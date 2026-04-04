@@ -88,33 +88,43 @@ function getTrustTier(weight: number): string {
   return "tier_3";
 }
 
-// Fetch GDELT articles as a secondary source
+// Fetch GDELT articles as a secondary source (parallel, with timeout)
 async function fetchGdeltArticles(): Promise<any[]> {
-  const queries = ["conflict", "economic crisis", "health emergency", "cybersecurity", "climate disaster"];
+  const queries = ["conflict OR war", "economic crisis OR recession"];
   const articles: any[] = [];
   
-  for (const query of queries) {
-    try {
-      const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=10&timespan=1h`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.articles) {
-          articles.push(...data.articles.map((a: any) => ({
+  const results = await Promise.allSettled(
+    queries.map(async (query) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=5&timespan=2h`;
+        const res = await fetch(url, { signal: controller.signal });
+        if (res.ok) {
+          const data = await res.json();
+          return (data.articles || []).map((a: any) => ({
             title: a.title || "",
-            description: a.seendate ? `GDELT event detected: ${a.title}` : a.title,
+            description: `GDELT: ${a.title || ""}`,
             url: a.url || "",
             source: { name: a.domain || "GDELT" },
             publishedAt: a.seendate ? new Date(
               a.seendate.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, '$1-$2-$3T$4:$5:$6Z')
             ).toISOString() : new Date().toISOString(),
             _ingestionSource: "gdelt",
-          })));
+          }));
         }
+        return [];
+      } catch (e) {
+        console.error(`GDELT ${query} error:`, e);
+        return [];
+      } finally {
+        clearTimeout(timeout);
       }
-    } catch (e) {
-      console.error(`GDELT ${query} error:`, e);
-    }
+    })
+  );
+  
+  for (const r of results) {
+    if (r.status === "fulfilled") articles.push(...r.value);
   }
   return articles;
 }
