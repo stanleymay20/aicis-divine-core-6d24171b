@@ -1,53 +1,55 @@
-## Phase 16.1 — Signal Quality & Trust Hardening
+## Phase 16.2 — Source Quality + Routing Precision Hardening
 
-### Objective
-Harden the Global Signal Engine from "first working version" to "trustworthy intelligence layer" by improving source diversity, dedup quality, source trust scoring, and routing precision validation.
+### Step 1: Database Schema Extensions
+**Migration** to add:
+- New columns on `global_signals`: `official_source`, `canonical_source_name`, `source_rank_score`, `event_cluster_id`, `enrichment_status` (pending/enriched/failed), `enrichment_attempts`, `enrichment_error`, `ingested_at`, `enriched_at`, `routed_at`, `official_source_present`, `merged_source_count`, `routing_score`, `routing_suppressed_reason`
+- New table `routing_threshold_config`: configurable routing rules (min_impact, min_confidence, trust_floor, official_boost, multi_source_boost, misinfo_penalty)
+- New table `signal_quality_metrics_daily`: daily aggregated routing precision stats
+- New table `source_connector_runs`: tracks each ingestion run per source (success/fail, duration, signal count)
+- Extend `source_trust_scores` with `official_source` boolean, `country_jurisdiction`
+- Seed additional Tier 1/2 official sources (WHO, CDC, Fed, ECB, CISA, etc.)
 
-### Step 1: Source Trust Scoring System
-**Database**: Add `source_trust_scores` table with fields: source_name, source_type (wire_agency, state_media, financial, tech, tabloid, official_body), credibility_weight (0-100), verification_level (primary, secondary, aggregated), notes.
+### Step 2: Ingestion/Enrichment Split
+- **`ingest-global-signals`** becomes Stage 1 (fast intake): fetch, normalize, dedup, write as `pending_enrichment`, return quickly
+- **New `enrich-global-signals`** edge function as Stage 2: picks pending signals, runs AI classification, scoring, recommendations, updates status to `enriched`
+- Schedule enrichment to run every 2 minutes via pg_cron
 
-**Edge function update**: When ingesting, look up source trust weight and factor it into final impact_score calculation. Pre-seed ~30 known sources with trust weights (AP, Reuters, BBC = 95; CNN, CNBC = 85; Gizmodo, Eonline = 40).
+### Step 3: Source Preference + Event Merging
+- Upgrade dedup/merge logic with source rank preference
+- Canonical source selection: official > Tier 1 > Tier 2 > recency
+- Event cluster ID assignment for related signals
+- Merged source count tracking
 
-### Step 2: Enhanced Deduplication — Semantic Similarity
-Upgrade dedup from exact-title-match to semantic similarity:
-- Normalize titles more aggressively (remove source suffixes like "- CNN", "- BBC News")
-- Compare word overlap ratio between new and existing signals (Jaccard similarity > 0.6 = duplicate)
-- Add `related_signal_ids` field to global_signals for event clustering
-- When a near-duplicate is found, increment `source_count` on the existing signal and add the new source to `source_references`
+### Step 4: Routing Precision Metrics
+- Build `useRoutingPrecision` hook querying `signal_routing_feedback` aggregates
+- Create `RoutingPrecisionPanel` component showing confirm/reject/unclear rates by category and tier
+- Add daily metric snapshots via the enrichment function
 
-### Step 3: Multi-Source Confirmation Score  
-Add `multi_source_confirmed` boolean and upgrade source_count tracking:
-- If source_count >= 3 from different credible sources → mark as confirmed
-- Display confirmation badge on SignalCard ("3+ sources confirmed")
-- Factor multi-source status into impact_score boost (+5 for 2 sources, +10 for 3+)
+### Step 5: Threshold Tuning
+- Seed default routing thresholds in `routing_threshold_config`
+- Apply configurable rules in enrichment: impact >= X, confidence >= Y, trust floor, boosts/penalties
+- Make thresholds inspectable in /live
 
-### Step 4: Source Diversity — Add RSS Feed Support
-Add a second ingestion pathway for official/institutional sources:
-- GDELT API (already in providers.registry.yml) for geopolitical events
-- This runs alongside NewsAPI, not replacing it
-- Update edge function to support multiple source connectors
+### Step 6: /live UI Hardening
+- Official source badge on SignalCard
+- Enrichment status indicator (pending/enriched)
+- Canonical source display
+- Routing precision summary in header
+- Ingestion/enrichment health timestamps
+- Degraded-mode warning banner
 
-### Step 5: Routing Quality Audit Panel
-Add a "Signal Audit" section to the /live page:
-- Show last 20 routed signals with their scores
-- Display category accuracy indicator (was the AI classification sensible?)
-- Add manual "Confirm" / "Reject" buttons for operators to validate routing quality
-- Store routing feedback in a new `signal_routing_feedback` table
-
-### Step 6: Signal Freshness & Staleness
-- Add visual freshness indicator on each signal card (green < 2h, yellow < 12h, orange < 24h, red > 24h)
-- Show "last ingestion" timestamp in the header
-- Add staleness warning if no new signals in 4+ hours
-
-### Step 7: UI Polish
-- Add source credibility badge (Tier 1 / Tier 2 / Tier 3) on SignalCard
-- Add multi-source confirmation indicator
-- Improve mobile tap targets (ensure all interactive elements ≥ 40px)
+### Step 7: Operational Monitoring
+- Source connector run history panel
+- Enrichment queue depth indicator
+- Stale source warnings
 
 ### Files to create/edit:
-- Migration: `source_trust_scores` table, `signal_routing_feedback` table, add `source_trust_tier` and `multi_source_confirmed` to global_signals
-- `supabase/functions/ingest-global-signals/index.ts` — trust scoring, enhanced dedup, GDELT support
-- `src/components/live/SignalCard.tsx` — freshness indicator, trust tier badge, confirmation badge
-- `src/components/live/SignalDetailPanel.tsx` — routing audit actions
-- `src/pages/LiveCommandFeed.tsx` — last ingestion timestamp, staleness warning
-- `src/hooks/useGlobalSignals.ts` — add freshness helpers
+- Migration SQL
+- `supabase/functions/enrich-global-signals/index.ts` (new)
+- `supabase/functions/ingest-global-signals/index.ts` (simplify to fast intake)
+- `src/hooks/useRoutingPrecision.ts` (new)
+- `src/components/live/RoutingPrecisionPanel.tsx` (new)
+- `src/components/live/SignalCard.tsx` (badges)
+- `src/components/live/SignalDetailPanel.tsx` (enrichment info)
+- `src/pages/LiveCommandFeed.tsx` (health indicators)
+- `src/hooks/useGlobalSignals.ts` (enrichment status helpers)
