@@ -4037,13 +4037,16 @@ export type Database = {
           likely_consequences: string | null
           misinformation_risk: number | null
           model_version: string | null
+          multi_source_confirmed: boolean | null
           normalized_summary: string | null
           occurred_at: string | null
           primary_source: string | null
           recommended_actions: Json | null
+          related_signal_ids: string[] | null
           routing_targets: string[] | null
           source_count: number
           source_references: Json | null
+          source_trust_tier: string | null
           status: Database["public"]["Enums"]["signal_status"]
           strategic_implications: string | null
           subcategory: string | null
@@ -4075,13 +4078,16 @@ export type Database = {
           likely_consequences?: string | null
           misinformation_risk?: number | null
           model_version?: string | null
+          multi_source_confirmed?: boolean | null
           normalized_summary?: string | null
           occurred_at?: string | null
           primary_source?: string | null
           recommended_actions?: Json | null
+          related_signal_ids?: string[] | null
           routing_targets?: string[] | null
           source_count?: number
           source_references?: Json | null
+          source_trust_tier?: string | null
           status?: Database["public"]["Enums"]["signal_status"]
           strategic_implications?: string | null
           subcategory?: string | null
@@ -4113,13 +4119,16 @@ export type Database = {
           likely_consequences?: string | null
           misinformation_risk?: number | null
           model_version?: string | null
+          multi_source_confirmed?: boolean | null
           normalized_summary?: string | null
           occurred_at?: string | null
           primary_source?: string | null
           recommended_actions?: Json | null
+          related_signal_ids?: string[] | null
           routing_targets?: string[] | null
           source_count?: number
           source_references?: Json | null
+          source_trust_tier?: string | null
           status?: Database["public"]["Enums"]["signal_status"]
           strategic_implications?: string | null
           subcategory?: string | null
@@ -6759,6 +6768,50 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_routing_feedback: {
+        Row: {
+          category_correct: boolean | null
+          created_at: string
+          feedback: string
+          id: string
+          impact_appropriate: boolean | null
+          reviewed_by: string | null
+          reviewer_notes: string | null
+          routing_appropriate: boolean | null
+          signal_id: string
+        }
+        Insert: {
+          category_correct?: boolean | null
+          created_at?: string
+          feedback?: string
+          id?: string
+          impact_appropriate?: boolean | null
+          reviewed_by?: string | null
+          reviewer_notes?: string | null
+          routing_appropriate?: boolean | null
+          signal_id: string
+        }
+        Update: {
+          category_correct?: boolean | null
+          created_at?: string
+          feedback?: string
+          id?: string
+          impact_appropriate?: boolean | null
+          reviewed_by?: string | null
+          reviewer_notes?: string | null
+          routing_appropriate?: boolean | null
+          signal_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_routing_feedback_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "global_signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       silent_failure_state: {
         Row: {
           description: string
@@ -6825,6 +6878,39 @@ export type Database = {
           slo_response_minutes?: number | null
           target_uptime_pct?: number
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      source_trust_scores: {
+        Row: {
+          created_at: string
+          credibility_weight: number
+          id: string
+          notes: string | null
+          source_name: string
+          source_type: string
+          updated_at: string
+          verification_level: string
+        }
+        Insert: {
+          created_at?: string
+          credibility_weight?: number
+          id?: string
+          notes?: string | null
+          source_name: string
+          source_type?: string
+          updated_at?: string
+          verification_level?: string
+        }
+        Update: {
+          created_at?: string
+          credibility_weight?: number
+          id?: string
+          notes?: string | null
+          source_name?: string
+          source_type?: string
+          updated_at?: string
+          verification_level?: string
         }
         Relationships: []
       }
