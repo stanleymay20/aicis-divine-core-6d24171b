@@ -133,6 +133,14 @@ export default function LiveCommandFeed() {
             </Button>
           </div>
 
+          {/* Staleness Warning */}
+          {isStale && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded px-3 py-1.5 flex items-center gap-2 text-xs text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              No new signals in {Math.round(hoursSinceLatest)}h — click "Ingest Now" to refresh
+            </div>
+          )}
+
           {/* KPI Bar */}
           <div className="grid grid-cols-4 gap-2">
             <Card className="p-2 text-center">
@@ -140,7 +148,7 @@ export default function LiveCommandFeed() {
               <div className="text-[9px] text-muted-foreground">Total Signals</div>
             </Card>
             <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono text-red-400">{highImpactCount}</div>
+              <div className="text-lg font-bold font-mono text-destructive">{highImpactCount}</div>
               <div className="text-[9px] text-muted-foreground">High Impact</div>
             </Card>
             <Card className="p-2 text-center">
@@ -148,8 +156,8 @@ export default function LiveCommandFeed() {
               <div className="text-[9px] text-muted-foreground">Avg Confidence</div>
             </Card>
             <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono text-primary">{topSignals.length}</div>
-              <div className="text-[9px] text-muted-foreground">Top Priority</div>
+              <div className="text-lg font-bold font-mono text-primary">{confirmedCount}</div>
+              <div className="text-[9px] text-muted-foreground">Confirmed</div>
             </Card>
           </div>
 
