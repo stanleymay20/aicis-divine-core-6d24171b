@@ -1,24 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, TrendingUp, Clock, Globe, ExternalLink, Shield } from "lucide-react";
+import { AlertTriangle, TrendingUp, Clock, Globe, ExternalLink, Shield, CheckCircle2 } from "lucide-react";
 import type { GlobalSignal } from "@/hooks/useGlobalSignals";
+import { getSignalFreshness, freshnessColor, trustTierLabel, trustTierColor } from "@/hooks/useGlobalSignals";
 
 const CATEGORY_LABELS: Record<string, string> = {
-  geopolitical: "Geopolitical",
-  economic: "Economic",
-  financial_markets: "Financial Markets",
-  central_banking: "Central Banking",
-  public_health: "Public Health",
-  climate_disaster: "Climate / Disaster",
-  energy: "Energy",
-  technology: "Technology",
-  cybersecurity: "Cybersecurity",
-  defense_conflict: "Defense / Conflict",
-  legal_regulatory: "Legal / Regulatory",
-  supply_chain: "Supply Chain",
-  elections: "Elections",
-  social_unrest: "Social Unrest",
+  geopolitical: "Geopolitical", economic: "Economic", financial_markets: "Financial Markets",
+  central_banking: "Central Banking", public_health: "Public Health", climate_disaster: "Climate / Disaster",
+  energy: "Energy", technology: "Technology", cybersecurity: "Cybersecurity",
+  defense_conflict: "Defense / Conflict", legal_regulatory: "Legal / Regulatory",
+  supply_chain: "Supply Chain", elections: "Elections", social_unrest: "Social Unrest",
   infrastructure: "Infrastructure",
 };
 
@@ -59,10 +51,7 @@ function timeAgo(dateStr: string) {
 type AudienceMode = "government" | "media" | "business" | "public";
 
 export function SignalCard({
-  signal,
-  audienceMode,
-  onSelect,
-  selected,
+  signal, audienceMode, onSelect, selected,
 }: {
   signal: GlobalSignal;
   audienceMode: AudienceMode;
@@ -74,6 +63,8 @@ export function SignalCard({
   const recommendation = signal.recommended_actions?.[audienceMode] || signal.recommended_actions?.government || null;
   const isHighImpact = signal.impact_score >= 75;
   const source = signal.source_references?.[0];
+  const freshness = getSignalFreshness(signal.first_detected_at);
+  const tier = signal.source_trust_tier;
 
   return (
     <Card
@@ -96,8 +87,18 @@ export function SignalCard({
                 <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> HIGH IMPACT
               </Badge>
             )}
+            {signal.multi_source_confirmed && (
+              <Badge variant="outline" className="text-[10px] h-5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> {signal.source_count}+ sources
+              </Badge>
+            )}
+            {tier && tier !== "unknown" && (
+              <Badge variant="outline" className={cn("text-[9px] h-4 border", trustTierColor(tier))}>
+                {trustTierLabel(tier)}
+              </Badge>
+            )}
           </div>
-          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 shrink-0">
+          <span className={cn("text-[10px] flex items-center gap-0.5 shrink-0", freshnessColor(freshness))}>
             <Clock className="h-2.5 w-2.5" />
             {timeAgo(signal.first_detected_at)}
           </span>
@@ -154,6 +155,9 @@ export function SignalCard({
           <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
             <ExternalLink className="h-2.5 w-2.5" />
             {signal.primary_source || "Source"}
+            {signal.ingestion_source === "gdelt" && (
+              <Badge variant="outline" className="text-[8px] h-3.5 ml-1">GDELT</Badge>
+            )}
           </div>
         )}
       </div>

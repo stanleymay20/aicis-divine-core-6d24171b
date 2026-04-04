@@ -32,8 +32,49 @@ export type GlobalSignal = {
   evidence_hash: string | null;
   model_version: string | null;
   ingestion_source: string | null;
+  source_trust_tier: string | null;
+  multi_source_confirmed: boolean;
+  related_signal_ids: string[];
   created_at: string;
 };
+
+export type FreshnessLevel = "fresh" | "recent" | "aging" | "stale";
+
+export function getSignalFreshness(dateStr: string): FreshnessLevel {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const hours = diffMs / (1000 * 60 * 60);
+  if (hours < 2) return "fresh";
+  if (hours < 12) return "recent";
+  if (hours < 24) return "aging";
+  return "stale";
+}
+
+export function freshnessColor(level: FreshnessLevel): string {
+  switch (level) {
+    case "fresh": return "text-emerald-400";
+    case "recent": return "text-yellow-400";
+    case "aging": return "text-orange-400";
+    case "stale": return "text-red-400";
+  }
+}
+
+export function trustTierLabel(tier: string | null): string {
+  switch (tier) {
+    case "tier_1": return "Tier 1";
+    case "tier_2": return "Tier 2";
+    case "tier_3": return "Tier 3";
+    default: return "Unrated";
+  }
+}
+
+export function trustTierColor(tier: string | null): string {
+  switch (tier) {
+    case "tier_1": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+    case "tier_2": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+    case "tier_3": return "bg-red-500/20 text-red-400 border-red-500/30";
+    default: return "bg-muted text-muted-foreground border-border";
+  }
+}
 
 export function useGlobalSignals(options?: {
   category?: string;

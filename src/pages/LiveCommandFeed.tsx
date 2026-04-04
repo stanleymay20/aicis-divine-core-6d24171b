@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap
+  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -92,6 +92,14 @@ export default function LiveCommandFeed() {
   const avgConfidence = allSignals.length > 0
     ? Math.round(allSignals.reduce((s, sig) => s + sig.confidence_score, 0) / allSignals.length)
     : 0;
+  const confirmedCount = allSignals.filter(s => s.multi_source_confirmed).length;
+
+  // Staleness check
+  const latestSignalTime = allSignals.length > 0 
+    ? new Date(allSignals[0].first_detected_at).getTime() 
+    : 0;
+  const hoursSinceLatest = latestSignalTime ? (Date.now() - latestSignalTime) / (1000 * 60 * 60) : 999;
+  const isStale = hoursSinceLatest > 4;
 
   return (
     <AICISLayout>
@@ -105,6 +113,11 @@ export default function LiveCommandFeed() {
                 <h1 className="text-base sm:text-lg font-semibold">AICIS Live Command Feed</h1>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
                   Real-time global signal intelligence • {allSignals.length} signals tracked
+                  {latestSignalTime > 0 && (
+                    <span className={cn("ml-1", isStale ? "text-red-400" : "text-emerald-400")}>
+                      • Last: {Math.round(hoursSinceLatest)}h ago
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -120,6 +133,14 @@ export default function LiveCommandFeed() {
             </Button>
           </div>
 
+          {/* Staleness Warning */}
+          {isStale && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded px-3 py-1.5 flex items-center gap-2 text-xs text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              No new signals in {Math.round(hoursSinceLatest)}h — click "Ingest Now" to refresh
+            </div>
+          )}
+
           {/* KPI Bar */}
           <div className="grid grid-cols-4 gap-2">
             <Card className="p-2 text-center">
@@ -127,7 +148,7 @@ export default function LiveCommandFeed() {
               <div className="text-[9px] text-muted-foreground">Total Signals</div>
             </Card>
             <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono text-red-400">{highImpactCount}</div>
+              <div className="text-lg font-bold font-mono text-destructive">{highImpactCount}</div>
               <div className="text-[9px] text-muted-foreground">High Impact</div>
             </Card>
             <Card className="p-2 text-center">
@@ -135,8 +156,8 @@ export default function LiveCommandFeed() {
               <div className="text-[9px] text-muted-foreground">Avg Confidence</div>
             </Card>
             <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono text-primary">{topSignals.length}</div>
-              <div className="text-[9px] text-muted-foreground">Top Priority</div>
+              <div className="text-lg font-bold font-mono text-primary">{confirmedCount}</div>
+              <div className="text-[9px] text-muted-foreground">Confirmed</div>
             </Card>
           </div>
 

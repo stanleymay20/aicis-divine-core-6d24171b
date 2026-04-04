@@ -31,6 +31,46 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   infrastructure: ["bridge","dam","grid","telecom","internet","rail","airport","infrastructure","blackout"],
 };
 
+// Source suffix patterns to strip for better dedup
+const SOURCE_SUFFIXES = [
+  / - [A-Z][A-Za-z\s.]+$/,
+  / \| [A-Z][A-Za-z\s.]+$/,
+  / — [A-Z][A-Za-z\s.]+$/,
+  /: Live [Uu]pdates?$/,
+  / Live [Uu]pdates?$/,
+];
+
+function stripSourceSuffix(title: string): string {
+  let cleaned = title;
+  for (const pattern of SOURCE_SUFFIXES) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+  return cleaned.trim();
+}
+
+function normalizeForDedup(title: string): string {
+  return stripSourceSuffix(title)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function computeDedup(title: string, source: string): string {
+  const normalized = normalizeForDedup(title);
+  const words = normalized.split(' ').slice(0, 8).join(' ');
+  return `${words}::${source}`;
+}
+
+// Jaccard similarity for semantic dedup
+function jaccardSimilarity(a: string, b: string): number {
+  const setA = new Set(normalizeForDedup(a).split(' '));
+  const setB = new Set(normalizeForDedup(b).split(' '));
+  const intersection = new Set([...setA].filter(x => setB.has(x)));
+  const union = new Set([...setA, ...setB]);
+  return union.size === 0 ? 0 : intersection.size / union.size;
+}
+
 function classifyCategory(title: string, description: string): string {
   const text = `${title} ${description}`.toLowerCase();
   let best = "geopolitical";
@@ -42,10 +82,51 @@ function classifyCategory(title: string, description: string): string {
   return best;
 }
 
-function computeDedup(title: string, source: string): string {
-  const normalized = title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-  const words = normalized.split(' ').slice(0, 8).join(' ');
-  return `${words}::${source}`;
+function getTrustTier(weight: number): string {
+  if (weight >= 85) return "tier_1";
+  if (weight >= 60) return "tier_2";
+  return "tier_3";
+}
+
+// Fetch GDELT articles as a secondary source (parallel, with timeout)
+async function fetchGdeltArticles(): Promise<any[]> {
+  const queries = ["conflict OR war", "economic crisis OR recession"];
+  const articles: any[] = [];
+  
+  const results = await Promise.allSettled(
+    queries.map(async (query) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=5&timespan=2h`;
+        const res = await fetch(url, { signal: controller.signal });
+        if (res.ok) {
+          const data = await res.json();
+          return (data.articles || []).map((a: any) => ({
+            title: a.title || "",
+            description: `GDELT: ${a.title || ""}`,
+            url: a.url || "",
+            source: { name: a.domain || "GDELT" },
+            publishedAt: a.seendate ? new Date(
+              a.seendate.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, '$1-$2-$3T$4:$5:$6Z')
+            ).toISOString() : new Date().toISOString(),
+            _ingestionSource: "gdelt",
+          }));
+        }
+        return [];
+      } catch (e) {
+        console.error(`GDELT ${query} error:`, e);
+        return [];
+      } finally {
+        clearTimeout(timeout);
+      }
+    })
+  );
+  
+  for (const r of results) {
+    if (r.status === "fulfilled") articles.push(...r.value);
+  }
+  return articles;
 }
 
 serve(async (req) => {
@@ -63,7 +144,21 @@ serve(async (req) => {
     if (!NEWSAPI_KEY) throw new Error("NEWSAPI_KEY not configured");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    // Step 1: Fetch from NewsAPI - top headlines across categories
+    // Load source trust scores
+    const { data: trustData } = await supabase
+      .from("source_trust_scores")
+      .select("source_name, credibility_weight, source_type, verification_level");
+    
+    const trustMap: Record<string, { weight: number; type: string; level: string }> = {};
+    for (const t of (trustData || [])) {
+      trustMap[t.source_name.toLowerCase()] = {
+        weight: t.credibility_weight,
+        type: t.source_type,
+        level: t.verification_level,
+      };
+    }
+
+    // Step 1: Fetch from NewsAPI
     const categories = ["general", "business", "health", "science", "technology"];
     const allArticles: any[] = [];
 
@@ -74,7 +169,7 @@ serve(async (req) => {
         if (res.ok) {
           const data = await res.json();
           if (data.articles) {
-            allArticles.push(...data.articles.map((a: any) => ({ ...a, _newsCat: cat })));
+            allArticles.push(...data.articles.map((a: any) => ({ ...a, _ingestionSource: "newsapi" })));
           }
         }
       } catch (e) {
@@ -82,45 +177,123 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Fetched ${allArticles.length} raw articles`);
+    // Step 1b: Fetch from GDELT
+    const gdeltArticles = await fetchGdeltArticles();
+    allArticles.push(...gdeltArticles);
 
-    // Step 2: Filter out junk
+    console.log(`Fetched ${allArticles.length} raw articles (NewsAPI + GDELT)`);
+
+    // Step 2: Filter junk
     const validArticles = allArticles.filter(a =>
       a.title && a.title !== "[Removed]" &&
       a.description && a.description !== "[Removed]" &&
       a.url
     );
 
-    // Step 3: Deduplicate
+    // Step 3: Enhanced dedup — exact key + semantic similarity
     const seen = new Set<string>();
-    const uniqueArticles = validArticles.filter(a => {
+    const keptArticles: any[] = [];
+    
+    for (const a of validArticles) {
       const key = computeDedup(a.title, a.source?.name || "unknown");
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+      if (seen.has(key)) continue;
+      
+      // Check semantic similarity against already-kept articles
+      let isDuplicate = false;
+      for (const kept of keptArticles) {
+        if (jaccardSimilarity(a.title, kept.title) > 0.6) {
+          // Near-duplicate: merge source into existing
+          if (!kept._mergedSources) kept._mergedSources = [];
+          kept._mergedSources.push({
+            url: a.url,
+            name: a.source?.name,
+            published: a.publishedAt,
+          });
+          isDuplicate = true;
+          break;
+        }
+      }
+      
+      if (!isDuplicate) {
+        seen.add(key);
+        keptArticles.push(a);
+      }
+    }
 
-    // Check existing dedup keys
-    const dedupKeys = uniqueArticles.map(a => computeDedup(a.title, a.source?.name || "unknown"));
+    // Check existing dedup keys in DB
+    const dedupKeys = keptArticles.map(a => computeDedup(a.title, a.source?.name || "unknown"));
     const { data: existing } = await supabase
       .from("global_signals")
-      .select("dedup_key")
+      .select("dedup_key, id, title, source_count, source_references")
       .in("dedup_key", dedupKeys);
-    const existingKeys = new Set((existing || []).map((r: any) => r.dedup_key));
-    const newArticles = uniqueArticles.filter(a => {
-      const key = computeDedup(a.title, a.source?.name || "unknown");
-      return !existingKeys.has(key);
-    });
+    
+    const existingKeyMap = new Map<string, any>();
+    for (const r of (existing || [])) {
+      existingKeyMap.set(r.dedup_key, r);
+    }
 
-    console.log(`${newArticles.length} new unique articles after dedup`);
+    // Also check semantic similarity against recent DB signals
+    const { data: recentSignals } = await supabase
+      .from("global_signals")
+      .select("id, title, source_count, source_references")
+      .order("first_detected_at", { ascending: false })
+      .limit(50);
+
+    const newArticles: any[] = [];
+    const updatedSignals: { id: string; source_count: number; source_references: any[]; multi_source_confirmed: boolean }[] = [];
+
+    for (const a of keptArticles) {
+      const key = computeDedup(a.title, a.source?.name || "unknown");
+      
+      // Exact dedup key match
+      if (existingKeyMap.has(key)) continue;
+
+      // Semantic match against recent DB signals
+      let matchedExisting = false;
+      for (const recent of (recentSignals || [])) {
+        if (jaccardSimilarity(a.title, recent.title) > 0.6) {
+          // Update existing signal's source count
+          const newRefs = [...(recent.source_references || []), {
+            url: a.url, name: a.source?.name, published: a.publishedAt,
+          }];
+          const newCount = (recent.source_count || 1) + 1;
+          updatedSignals.push({
+            id: recent.id,
+            source_count: newCount,
+            source_references: newRefs,
+            multi_source_confirmed: newCount >= 3,
+          });
+          matchedExisting = true;
+          break;
+        }
+      }
+
+      if (!matchedExisting) {
+        newArticles.push(a);
+      }
+    }
+
+    // Update existing signals with new source confirmations
+    for (const upd of updatedSignals) {
+      await supabase.from("global_signals").update({
+        source_count: upd.source_count,
+        source_references: upd.source_references as any,
+        multi_source_confirmed: upd.multi_source_confirmed,
+      }).eq("id", upd.id);
+    }
+
+    console.log(`${newArticles.length} new, ${updatedSignals.length} updated with multi-source`);
 
     if (newArticles.length === 0) {
-      return new Response(JSON.stringify({ ok: true, new_signals: 0, message: "No new signals" }), {
+      return new Response(JSON.stringify({
+        ok: true, new_signals: 0, updated_signals: updatedSignals.length,
+        message: "No new signals, updated existing",
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Step 4: AI classification batch - process top 15 most relevant
+    // Step 4: AI classification
     const topArticles = newArticles.slice(0, 15);
     const articlesSummary = topArticles.map((a, i) =>
       `[${i}] "${a.title}" — ${a.description || "No description"} (Source: ${a.source?.name || "Unknown"})`
@@ -151,13 +324,11 @@ serve(async (req) => {
 - likely_consequences: one sentence on probable outcomes
 - recommended_actions: object with keys "government", "media", "business", "public" each being a short recommended action
 - misinformation_risk: 0-100
+- impact_reasoning: 2-3 sentences explaining why the impact score was assigned, who is affected, over what time horizon, and what could worsen or reduce the impact.
 
 Only return the JSON array, no markdown.`
           },
-          {
-            role: "user",
-            content: `Classify these articles:\n${articlesSummary}`
-          }
+          { role: "user", content: `Classify these articles:\n${articlesSummary}` }
         ],
       }),
     });
@@ -179,20 +350,37 @@ Only return the JSON array, no markdown.`
       console.error("AI gateway error:", aiResponse.status, errText);
     }
 
-    // Step 5: Build signal objects
+    // Step 5: Build signal objects with trust scoring
     const signals: any[] = [];
     for (let i = 0; i < topArticles.length; i++) {
       const article = topArticles[i];
       const cls = classifications.find((c: any) => c.index === i) || {};
+      const sourceName = article.source?.name || "Unknown";
+      const trustInfo = trustMap[sourceName.toLowerCase()];
+      const trustWeight = trustInfo?.weight ?? 50;
+      const trustTier = getTrustTier(trustWeight);
+
+      // Adjust impact score based on source trust
+      let rawImpact = cls.impact_score || 40;
+      if (trustWeight >= 85) rawImpact = Math.min(100, rawImpact + 5);
+      else if (trustWeight < 50) rawImpact = Math.max(0, rawImpact - 10);
 
       const category = CATEGORIES.includes(cls.category) ? cls.category : classifyCategory(article.title, article.description || "");
-      const dedupKey = computeDedup(article.title, article.source?.name || "unknown");
+      const dedupKey = computeDedup(article.title, sourceName);
 
       // Evidence hash
       const encoder = new TextEncoder();
       const hashData = encoder.encode(`${article.title}|${article.url}|${article.publishedAt}`);
       const hashBuffer = await crypto.subtle.digest("SHA-256", hashData);
       const evidenceHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // Merged sources from semantic dedup
+      const mergedSources = article._mergedSources || [];
+      const allSourceRefs = [
+        { url: article.url, name: sourceName, published: article.publishedAt },
+        ...mergedSources,
+      ];
+      const sourceCount = allSourceRefs.length;
 
       signals.push({
         title: article.title,
@@ -201,11 +389,11 @@ Only return the JSON array, no markdown.`
         category,
         status: "new",
         confidence_score: Math.min(100, Math.max(0, cls.confidence_score || 50)),
-        impact_score: Math.min(100, Math.max(0, cls.impact_score || 40)),
+        impact_score: Math.min(100, Math.max(0, rawImpact)),
         urgency_score: Math.min(100, Math.max(0, cls.urgency_score || 40)),
-        source_count: 1,
-        primary_source: article.source?.name || "Unknown",
-        source_references: [{ url: article.url, name: article.source?.name, published: article.publishedAt }],
+        source_count: sourceCount,
+        primary_source: sourceName,
+        source_references: allSourceRefs,
         first_detected_at: article.publishedAt || new Date().toISOString(),
         latest_update_at: new Date().toISOString(),
         occurred_at: article.publishedAt || null,
@@ -218,16 +406,19 @@ Only return the JSON array, no markdown.`
         misinformation_risk: cls.misinformation_risk || 0,
         recommended_actions: cls.recommended_actions || {},
         audience_framing: cls.recommended_actions || {},
-        impact_reasoning: cls.strategic_implications || null,
+        impact_reasoning: cls.impact_reasoning || cls.strategic_implications || null,
         evidence_hash: evidenceHash,
         model_version: "gemini-3-flash-preview",
         classification_time_ms: classificationTimeMs,
-        ingestion_source: "newsapi",
+        ingestion_source: article._ingestionSource || "newsapi",
         dedup_key: dedupKey,
+        source_trust_tier: trustTier,
+        multi_source_confirmed: sourceCount >= 3,
+        related_signal_ids: [],
       });
     }
 
-    // Step 6: Insert signals
+    // Step 6: Insert
     const { data: inserted, error: insertErr } = await supabase
       .from("global_signals")
       .insert(signals)
@@ -240,16 +431,11 @@ Only return the JSON array, no markdown.`
 
     console.log(`Inserted ${inserted?.length || 0} signals`);
 
-    // Step 7: Route high-impact signals to decision_outcome_log
+    // Step 7: Route high-impact signals to decisions
     const highImpact = (inserted || []).filter((s: any) => s.impact_score >= 70);
     let decisionsCreated = 0;
 
     for (const signal of highImpact) {
-      const cls = classifications.find((c: any) => {
-        const article = topArticles[c.index];
-        return article?.title === signal.title;
-      });
-
       await supabase.from("decision_outcome_log").insert({
         signal_title: `[SIGNAL] ${signal.title}`,
         signal_id: signal.id,
@@ -275,17 +461,21 @@ Only return the JSON array, no markdown.`
         articles_fetched: allArticles.length,
         unique_after_dedup: newArticles.length,
         signals_created: inserted?.length || 0,
+        signals_updated: updatedSignals.length,
         decisions_routed: decisionsCreated,
         classification_time_ms: classificationTimeMs,
         model: "gemini-3-flash-preview",
+        sources: { newsapi: allArticles.filter(a => a._ingestionSource === "newsapi").length, gdelt: gdeltArticles.length },
       },
     });
 
     return new Response(JSON.stringify({
       ok: true,
       new_signals: inserted?.length || 0,
+      updated_signals: updatedSignals.length,
       high_impact_routed: decisionsCreated,
       classification_time_ms: classificationTimeMs,
+      sources: { newsapi: allArticles.length - gdeltArticles.length, gdelt: gdeltArticles.length },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

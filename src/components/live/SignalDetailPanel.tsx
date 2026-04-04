@@ -1,14 +1,18 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle, TrendingUp, Clock, Globe, ExternalLink,
-  Shield, Zap, FileText, Plus, Eye, ArrowRight, X
+  Shield, Zap, FileText, Plus, Eye, ArrowRight, X,
+  CheckCircle2, XCircle, HelpCircle, BookOpen
 } from "lucide-react";
 import type { GlobalSignal } from "@/hooks/useGlobalSignals";
+import { trustTierLabel, trustTierColor } from "@/hooks/useGlobalSignals";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -30,15 +34,15 @@ function scoreBar(score: number, label: string) {
 }
 
 export function SignalDetailPanel({
-  signal,
-  audienceMode,
-  onClose,
+  signal, audienceMode, onClose,
 }: {
   signal: GlobalSignal;
   audienceMode: AudienceMode;
   onClose: () => void;
 }) {
   const { toast } = useToast();
+  const [feedbackNotes, setFeedbackNotes] = useState("");
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   const createDecision = async () => {
     const domain = signal.category === "public_health" ? "health" :
@@ -62,6 +66,24 @@ export function SignalDetailPanel({
     }
   };
 
+  const submitFeedback = async (feedback: "confirmed" | "rejected" | "unclear") => {
+    const { error } = await supabase.from("signal_routing_feedback").insert({
+      signal_id: signal.id,
+      feedback,
+      category_correct: feedback === "confirmed",
+      impact_appropriate: feedback === "confirmed",
+      routing_appropriate: feedback !== "rejected",
+      reviewer_notes: feedbackNotes || null,
+    } as any);
+
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      setFeedbackSent(true);
+      toast({ title: "Feedback recorded", description: `Signal marked as ${feedback}` });
+    }
+  };
+
   const audiences: AudienceMode[] = ["government", "media", "business", "public"];
 
   return (
@@ -77,6 +99,25 @@ export function SignalDetailPanel({
         <div className="space-y-4">
           <h2 className="text-base font-semibold leading-tight">{signal.title}</h2>
 
+          {/* Trust & Confirmation badges */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {signal.source_trust_tier && signal.source_trust_tier !== "unknown" && (
+              <Badge variant="outline" className={cn("text-[10px] h-5 border", trustTierColor(signal.source_trust_tier))}>
+                {trustTierLabel(signal.source_trust_tier)} Source
+              </Badge>
+            )}
+            {signal.multi_source_confirmed && (
+              <Badge variant="outline" className="text-[10px] h-5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> Multi-Source Confirmed
+              </Badge>
+            )}
+            {signal.source_count > 1 && (
+              <Badge variant="secondary" className="text-[10px] h-5">
+                {signal.source_count} sources
+              </Badge>
+            )}
+          </div>
+
           <p className="text-xs text-muted-foreground">{signal.summary}</p>
 
           {/* Scores */}
@@ -88,6 +129,18 @@ export function SignalDetailPanel({
           </div>
 
           <Separator />
+
+          {/* Impact Reasoning */}
+          {signal.impact_reasoning && (
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold flex items-center gap-1">
+                <BookOpen className="h-3 w-3 text-blue-400" /> Impact Reasoning
+              </h4>
+              <p className="text-xs text-muted-foreground bg-blue-500/5 border border-blue-500/10 rounded p-2">
+                {signal.impact_reasoning}
+              </p>
+            </div>
+          )}
 
           {/* Strategic implications */}
           {signal.strategic_implications && (
@@ -110,7 +163,7 @@ export function SignalDetailPanel({
 
           <Separator />
 
-          {/* Audience-specific recommendations */}
+          {/* Audience recommendations */}
           <div className="space-y-2">
             <h4 className="text-xs font-semibold">Recommended Actions by Audience</h4>
             {audiences.map(aud => {
@@ -169,7 +222,7 @@ export function SignalDetailPanel({
           {/* Sources */}
           <div className="space-y-1">
             <h4 className="text-xs font-semibold flex items-center gap-1">
-              <FileText className="h-3 w-3" /> Sources
+              <FileText className="h-3 w-3" /> Sources ({signal.source_references?.length || 0})
             </h4>
             {signal.source_references?.map((s: any, i: number) => (
               <a
@@ -183,6 +236,38 @@ export function SignalDetailPanel({
                 {s.name || "Source"} — {s.published ? new Date(s.published).toLocaleDateString() : ""}
               </a>
             ))}
+          </div>
+
+          <Separator />
+
+          {/* Routing Feedback */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold">Signal Quality Feedback</h4>
+            {feedbackSent ? (
+              <div className="text-[11px] text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" /> Feedback recorded
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-1.5">
+                  <Button size="sm" variant="outline" className="h-7 text-[10px] flex-1" onClick={() => submitFeedback("confirmed")}>
+                    <CheckCircle2 className="h-3 w-3 mr-0.5 text-emerald-400" /> Confirm
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-[10px] flex-1" onClick={() => submitFeedback("rejected")}>
+                    <XCircle className="h-3 w-3 mr-0.5 text-red-400" /> Reject
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-[10px] flex-1" onClick={() => submitFeedback("unclear")}>
+                    <HelpCircle className="h-3 w-3 mr-0.5 text-yellow-400" /> Unclear
+                  </Button>
+                </div>
+                <Textarea
+                  placeholder="Optional notes on classification quality..."
+                  className="text-[11px] h-14 resize-none"
+                  value={feedbackNotes}
+                  onChange={e => setFeedbackNotes(e.target.value)}
+                />
+              </>
+            )}
           </div>
 
           {/* Audit */}
