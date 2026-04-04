@@ -4021,30 +4021,44 @@ export type Database = {
           affected_sectors: string[] | null
           affected_stakeholders: string[] | null
           audience_framing: Json | null
+          canonical_source_name: string | null
           category: Database["public"]["Enums"]["signal_category"]
           classification_time_ms: number | null
           confidence_score: number
           created_at: string
           decision_candidates: Json | null
           dedup_key: string | null
+          enriched_at: string | null
+          enrichment_attempts: number | null
+          enrichment_error: string | null
+          enrichment_status: string | null
+          event_cluster_id: string | null
           evidence_hash: string | null
           first_detected_at: string
           id: string
           impact_reasoning: string | null
           impact_score: number
+          ingested_at: string | null
           ingestion_source: string | null
           latest_update_at: string
           likely_consequences: string | null
+          merged_source_count: number | null
           misinformation_risk: number | null
           model_version: string | null
           multi_source_confirmed: boolean | null
           normalized_summary: string | null
           occurred_at: string | null
+          official_source: boolean | null
+          official_source_present: boolean | null
           primary_source: string | null
           recommended_actions: Json | null
           related_signal_ids: string[] | null
+          routed_at: string | null
+          routing_score: number | null
+          routing_suppressed_reason: string | null
           routing_targets: string[] | null
           source_count: number
+          source_rank_score: number | null
           source_references: Json | null
           source_trust_tier: string | null
           status: Database["public"]["Enums"]["signal_status"]
@@ -4062,30 +4076,44 @@ export type Database = {
           affected_sectors?: string[] | null
           affected_stakeholders?: string[] | null
           audience_framing?: Json | null
+          canonical_source_name?: string | null
           category: Database["public"]["Enums"]["signal_category"]
           classification_time_ms?: number | null
           confidence_score?: number
           created_at?: string
           decision_candidates?: Json | null
           dedup_key?: string | null
+          enriched_at?: string | null
+          enrichment_attempts?: number | null
+          enrichment_error?: string | null
+          enrichment_status?: string | null
+          event_cluster_id?: string | null
           evidence_hash?: string | null
           first_detected_at?: string
           id?: string
           impact_reasoning?: string | null
           impact_score?: number
+          ingested_at?: string | null
           ingestion_source?: string | null
           latest_update_at?: string
           likely_consequences?: string | null
+          merged_source_count?: number | null
           misinformation_risk?: number | null
           model_version?: string | null
           multi_source_confirmed?: boolean | null
           normalized_summary?: string | null
           occurred_at?: string | null
+          official_source?: boolean | null
+          official_source_present?: boolean | null
           primary_source?: string | null
           recommended_actions?: Json | null
           related_signal_ids?: string[] | null
+          routed_at?: string | null
+          routing_score?: number | null
+          routing_suppressed_reason?: string | null
           routing_targets?: string[] | null
           source_count?: number
+          source_rank_score?: number | null
           source_references?: Json | null
           source_trust_tier?: string | null
           status?: Database["public"]["Enums"]["signal_status"]
@@ -4103,30 +4131,44 @@ export type Database = {
           affected_sectors?: string[] | null
           affected_stakeholders?: string[] | null
           audience_framing?: Json | null
+          canonical_source_name?: string | null
           category?: Database["public"]["Enums"]["signal_category"]
           classification_time_ms?: number | null
           confidence_score?: number
           created_at?: string
           decision_candidates?: Json | null
           dedup_key?: string | null
+          enriched_at?: string | null
+          enrichment_attempts?: number | null
+          enrichment_error?: string | null
+          enrichment_status?: string | null
+          event_cluster_id?: string | null
           evidence_hash?: string | null
           first_detected_at?: string
           id?: string
           impact_reasoning?: string | null
           impact_score?: number
+          ingested_at?: string | null
           ingestion_source?: string | null
           latest_update_at?: string
           likely_consequences?: string | null
+          merged_source_count?: number | null
           misinformation_risk?: number | null
           model_version?: string | null
           multi_source_confirmed?: boolean | null
           normalized_summary?: string | null
           occurred_at?: string | null
+          official_source?: boolean | null
+          official_source_present?: boolean | null
           primary_source?: string | null
           recommended_actions?: Json | null
           related_signal_ids?: string[] | null
+          routed_at?: string | null
+          routing_score?: number | null
+          routing_suppressed_reason?: string | null
           routing_targets?: string[] | null
           source_count?: number
+          source_rank_score?: number | null
           source_references?: Json | null
           source_trust_tier?: string | null
           status?: Database["public"]["Enums"]["signal_status"]
@@ -6233,6 +6275,51 @@ export type Database = {
         }
         Relationships: []
       }
+      routing_threshold_config: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          enabled: boolean | null
+          id: string
+          min_confidence: number | null
+          min_impact: number | null
+          misinfo_penalty: number | null
+          multi_source_boost: number | null
+          official_boost: number | null
+          rule_name: string
+          trust_floor: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          enabled?: boolean | null
+          id?: string
+          min_confidence?: number | null
+          min_impact?: number | null
+          misinfo_penalty?: number | null
+          multi_source_boost?: number | null
+          official_boost?: number | null
+          rule_name: string
+          trust_floor?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          enabled?: boolean | null
+          id?: string
+          min_confidence?: number | null
+          min_impact?: number | null
+          misinfo_penalty?: number | null
+          multi_source_boost?: number | null
+          official_boost?: number | null
+          rule_name?: string
+          trust_floor?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       satellite_observations: {
         Row: {
           confidence: number | null
@@ -6768,6 +6855,69 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_quality_metrics_daily: {
+        Row: {
+          avg_confidence_of_routed: number | null
+          avg_impact_of_routed: number | null
+          confirm_rate: number | null
+          confirmed_count: number | null
+          created_at: string | null
+          id: string
+          metric_date: string
+          official_source_pct: number | null
+          precision_by_category: Json | null
+          precision_by_tier: Json | null
+          reject_rate: number | null
+          rejected_count: number | null
+          tier1_pct: number | null
+          tier2_pct: number | null
+          tier3_pct: number | null
+          total_routed: number | null
+          unclear_count: number | null
+          unclear_rate: number | null
+        }
+        Insert: {
+          avg_confidence_of_routed?: number | null
+          avg_impact_of_routed?: number | null
+          confirm_rate?: number | null
+          confirmed_count?: number | null
+          created_at?: string | null
+          id?: string
+          metric_date?: string
+          official_source_pct?: number | null
+          precision_by_category?: Json | null
+          precision_by_tier?: Json | null
+          reject_rate?: number | null
+          rejected_count?: number | null
+          tier1_pct?: number | null
+          tier2_pct?: number | null
+          tier3_pct?: number | null
+          total_routed?: number | null
+          unclear_count?: number | null
+          unclear_rate?: number | null
+        }
+        Update: {
+          avg_confidence_of_routed?: number | null
+          avg_impact_of_routed?: number | null
+          confirm_rate?: number | null
+          confirmed_count?: number | null
+          created_at?: string | null
+          id?: string
+          metric_date?: string
+          official_source_pct?: number | null
+          precision_by_category?: Json | null
+          precision_by_tier?: Json | null
+          reject_rate?: number | null
+          rejected_count?: number | null
+          tier1_pct?: number | null
+          tier2_pct?: number | null
+          tier3_pct?: number | null
+          total_routed?: number | null
+          unclear_count?: number | null
+          unclear_rate?: number | null
+        }
+        Relationships: []
+      }
       signal_routing_feedback: {
         Row: {
           category_correct: boolean | null
@@ -6881,32 +7031,77 @@ export type Database = {
         }
         Relationships: []
       }
+      source_connector_runs: {
+        Row: {
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          run_at: string | null
+          run_status: string
+          signals_fetched: number | null
+          signals_merged: number | null
+          signals_new: number | null
+          source_name: string
+          source_type: string | null
+        }
+        Insert: {
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          run_at?: string | null
+          run_status?: string
+          signals_fetched?: number | null
+          signals_merged?: number | null
+          signals_new?: number | null
+          source_name: string
+          source_type?: string | null
+        }
+        Update: {
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          run_at?: string | null
+          run_status?: string
+          signals_fetched?: number | null
+          signals_merged?: number | null
+          signals_new?: number | null
+          source_name?: string
+          source_type?: string | null
+        }
+        Relationships: []
+      }
       source_trust_scores: {
         Row: {
+          country_jurisdiction: string | null
           created_at: string
           credibility_weight: number
           id: string
           notes: string | null
+          official_source: boolean | null
           source_name: string
           source_type: string
           updated_at: string
           verification_level: string
         }
         Insert: {
+          country_jurisdiction?: string | null
           created_at?: string
           credibility_weight?: number
           id?: string
           notes?: string | null
+          official_source?: boolean | null
           source_name: string
           source_type?: string
           updated_at?: string
           verification_level?: string
         }
         Update: {
+          country_jurisdiction?: string | null
           created_at?: string
           credibility_weight?: number
           id?: string
           notes?: string | null
+          official_source?: boolean | null
           source_name?: string
           source_type?: string
           updated_at?: string

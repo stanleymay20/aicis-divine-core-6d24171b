@@ -9,10 +9,10 @@ import { cn } from "@/lib/utils";
 import {
   AlertTriangle, TrendingUp, Clock, Globe, ExternalLink,
   Shield, Zap, FileText, Plus, Eye, ArrowRight, X,
-  CheckCircle2, XCircle, HelpCircle, BookOpen
+  CheckCircle2, XCircle, HelpCircle, BookOpen, Building2, Cpu, Route
 } from "lucide-react";
 import type { GlobalSignal } from "@/hooks/useGlobalSignals";
-import { trustTierLabel, trustTierColor } from "@/hooks/useGlobalSignals";
+import { trustTierLabel, trustTierColor, enrichmentStatusLabel, enrichmentStatusColor } from "@/hooks/useGlobalSignals";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -85,6 +85,7 @@ export function SignalDetailPanel({
   };
 
   const audiences: AudienceMode[] = ["government", "media", "business", "public"];
+  const isPending = signal.enrichment_status === "pending_enrichment" || signal.enrichment_status === "enriching";
 
   return (
     <Card className="h-full border-l flex flex-col">
@@ -99,8 +100,13 @@ export function SignalDetailPanel({
         <div className="space-y-4">
           <h2 className="text-base font-semibold leading-tight">{signal.title}</h2>
 
-          {/* Trust & Confirmation badges */}
+          {/* Trust, Confirmation & Enrichment badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
+            {signal.official_source_present && (
+              <Badge variant="outline" className="text-[10px] h-5 border-blue-500/30 bg-blue-500/10 text-blue-400">
+                <Building2 className="h-2.5 w-2.5 mr-0.5" /> Official Source
+              </Badge>
+            )}
             {signal.source_trust_tier && signal.source_trust_tier !== "unknown" && (
               <Badge variant="outline" className={cn("text-[10px] h-5 border", trustTierColor(signal.source_trust_tier))}>
                 {trustTierLabel(signal.source_trust_tier)} Source
@@ -116,19 +122,60 @@ export function SignalDetailPanel({
                 {signal.source_count} sources
               </Badge>
             )}
+            <Badge variant="outline" className={cn("text-[9px] h-4", enrichmentStatusColor(signal.enrichment_status))}>
+              <Cpu className="h-2 w-2 mr-0.5" /> {enrichmentStatusLabel(signal.enrichment_status)}
+            </Badge>
           </div>
+
+          {/* Canonical source */}
+          {signal.canonical_source_name && (
+            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <ExternalLink className="h-2.5 w-2.5" />
+              Canonical: <span className="font-semibold">{signal.canonical_source_name}</span>
+              {signal.merged_source_count > 1 && (
+                <span>({signal.merged_source_count} merged)</span>
+              )}
+            </div>
+          )}
 
           <p className="text-xs text-muted-foreground">{signal.summary}</p>
 
-          {/* Scores */}
-          <div className="space-y-2">
-            {scoreBar(signal.impact_score, "Impact")}
-            {scoreBar(signal.confidence_score, "Confidence")}
-            {scoreBar(signal.urgency_score, "Urgency")}
-            {scoreBar(signal.misinformation_risk || 0, "Misinfo Risk")}
-          </div>
+          {/* Scores — only if enriched */}
+          {!isPending && (
+            <div className="space-y-2">
+              {scoreBar(signal.impact_score, "Impact")}
+              {scoreBar(signal.confidence_score, "Confidence")}
+              {scoreBar(signal.urgency_score, "Urgency")}
+              {scoreBar(signal.misinformation_risk || 0, "Misinfo Risk")}
+            </div>
+          )}
+
+          {isPending && (
+            <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded p-2 flex items-center gap-1.5">
+              <Cpu className="h-3.5 w-3.5" />
+              This signal is awaiting AI enrichment. Scores and recommendations will appear after processing.
+            </div>
+          )}
 
           <Separator />
+
+          {/* Routing Info */}
+          {signal.routing_score > 0 && (
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold flex items-center gap-1">
+                <Route className="h-3 w-3 text-primary" /> Routing
+              </h4>
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                <div>Score: <span className="font-mono font-bold">{Math.round(signal.routing_score)}</span></div>
+                <div>Routed: <span className="font-mono font-bold">{signal.routed_at ? "Yes" : "No"}</span></div>
+                {signal.routing_suppressed_reason && (
+                  <div className="col-span-2 text-amber-400">
+                    Suppressed: {signal.routing_suppressed_reason}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Impact Reasoning */}
           {signal.impact_reasoning && (
@@ -142,7 +189,6 @@ export function SignalDetailPanel({
             </div>
           )}
 
-          {/* Strategic implications */}
           {signal.strategic_implications && (
             <div className="space-y-1">
               <h4 className="text-xs font-semibold flex items-center gap-1">
@@ -164,22 +210,24 @@ export function SignalDetailPanel({
           <Separator />
 
           {/* Audience recommendations */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-semibold">Recommended Actions by Audience</h4>
-            {audiences.map(aud => {
-              const action = signal.recommended_actions?.[aud];
-              if (!action) return null;
-              return (
-                <div key={aud} className={cn(
-                  "text-[11px] rounded px-2 py-1.5 border",
-                  aud === audienceMode ? "bg-primary/10 border-primary/30" : "bg-muted/30 border-border/50"
-                )}>
-                  <span className="font-semibold capitalize">{aud}:</span>{" "}
-                  <span className="text-foreground/80">{action}</span>
-                </div>
-              );
-            })}
-          </div>
+          {!isPending && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold">Recommended Actions by Audience</h4>
+              {audiences.map(aud => {
+                const action = signal.recommended_actions?.[aud];
+                if (!action) return null;
+                return (
+                  <div key={aud} className={cn(
+                    "text-[11px] rounded px-2 py-1.5 border",
+                    aud === audienceMode ? "bg-primary/10 border-primary/30" : "bg-muted/30 border-border/50"
+                  )}>
+                    <span className="font-semibold capitalize">{aud}:</span>{" "}
+                    <span className="text-foreground/80">{action}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <Separator />
 
@@ -225,13 +273,8 @@ export function SignalDetailPanel({
               <FileText className="h-3 w-3" /> Sources ({signal.source_references?.length || 0})
             </h4>
             {signal.source_references?.map((s: any, i: number) => (
-              <a
-                key={i}
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[11px] text-primary hover:underline"
-              >
+              <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[11px] text-primary hover:underline">
                 <ExternalLink className="h-2.5 w-2.5" />
                 {s.name || "Source"} — {s.published ? new Date(s.published).toLocaleDateString() : ""}
               </a>
@@ -274,7 +317,10 @@ export function SignalDetailPanel({
           <div className="text-[9px] text-muted-foreground/60 font-mono space-y-0.5">
             <div>Model: {signal.model_version || "—"}</div>
             <div>Hash: {signal.evidence_hash?.slice(0, 16) || "—"}…</div>
-            <div>Source: {signal.ingestion_source || "—"}</div>
+            <div>Source: {signal.ingestion_source || "—"} | Rank: {signal.source_rank_score || 0}</div>
+            <div>Ingested: {signal.ingested_at ? new Date(signal.ingested_at).toLocaleString() : "—"}</div>
+            <div>Enriched: {signal.enriched_at ? new Date(signal.enriched_at).toLocaleString() : "—"}</div>
+            <div>Routed: {signal.routed_at ? new Date(signal.routed_at).toLocaleString() : "—"}</div>
           </div>
         </div>
       </ScrollArea>
