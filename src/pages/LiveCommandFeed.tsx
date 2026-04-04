@@ -113,8 +113,12 @@ export default function LiveCommandFeed() {
                 <h1 className="text-base sm:text-lg font-semibold">AICIS Live Command Feed</h1>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
                   Real-time global signal intelligence • {allSignals.length} signals tracked
+                  {latestSignalTime > 0 && (
+                    <span className={cn("ml-1", isStale ? "text-red-400" : "text-emerald-400")}>
+                      • Last: {Math.round(hoursSinceLatest)}h ago
+                    </span>
+                  )}
                 </p>
-              </div>
             </div>
             <Button
               size="sm"
