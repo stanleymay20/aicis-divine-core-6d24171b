@@ -119,7 +119,7 @@ export default function LiveCommandFeed() {
                     </span>
                   )}
                 </p>
-            </div>
+              </div>
             <Button
               size="sm"
               variant="outline"
