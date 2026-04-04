@@ -92,6 +92,14 @@ export default function LiveCommandFeed() {
   const avgConfidence = allSignals.length > 0
     ? Math.round(allSignals.reduce((s, sig) => s + sig.confidence_score, 0) / allSignals.length)
     : 0;
+  const confirmedCount = allSignals.filter(s => s.multi_source_confirmed).length;
+
+  // Staleness check
+  const latestSignalTime = allSignals.length > 0 
+    ? new Date(allSignals[0].first_detected_at).getTime() 
+    : 0;
+  const hoursSinceLatest = latestSignalTime ? (Date.now() - latestSignalTime) / (1000 * 60 * 60) : 999;
+  const isStale = hoursSinceLatest > 4;
 
   return (
     <AICISLayout>
