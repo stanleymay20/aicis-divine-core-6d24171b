@@ -5,6 +5,8 @@ import type { GlobalSignal } from "@/hooks/useGlobalSignals";
 import { SignalCard } from "@/components/live/SignalCard";
 import { SignalDetailPanel } from "@/components/live/SignalDetailPanel";
 import { AlertRibbon } from "@/components/live/AlertRibbon";
+import { RoutingPrecisionPanel } from "@/components/live/RoutingPrecisionPanel";
+import { useEnrichmentQueue } from "@/hooks/useRoutingPrecision";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle
+  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -48,9 +50,11 @@ export default function LiveCommandFeed() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSignal, setSelectedSignal] = useState<GlobalSignal | null>(null);
   const [ingesting, setIngesting] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
   const { data: allSignals = [], isLoading, refetch } = useGlobalSignals({ limit: 100 });
   const { data: topSignals = [] } = useTopSignals(5);
+  const { data: pendingCount = 0 } = useEnrichmentQueue();
   const { toast } = useToast();
 
   const filteredSignals = useMemo(() => {
@@ -76,30 +80,58 @@ export default function LiveCommandFeed() {
       const { data, error } = await supabase.functions.invoke("ingest-global-signals");
       if (error) throw error;
       toast({
-        title: "Ingestion complete",
-        description: `${data?.new_signals || 0} new signals, ${data?.high_impact_routed || 0} routed to decisions`,
+        title: "Intake complete",
+        description: `${data?.new_signals || 0} new signals ingested, ${data?.pending_enrichment || 0} pending enrichment`,
       });
       refetch();
+      // Auto-trigger enrichment after intake
+      if ((data?.pending_enrichment || 0) > 0) {
+        setTimeout(() => triggerEnrichment(), 2000);
+      }
     } catch (e: any) {
-      toast({ title: "Ingestion failed", description: e.message, variant: "destructive" });
+      toast({ title: "Intake failed", description: e.message, variant: "destructive" });
     } finally {
       setIngesting(false);
     }
   };
 
+  const triggerEnrichment = async () => {
+    setEnriching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-global-signals");
+      if (error) throw error;
+      toast({
+        title: "Enrichment complete",
+        description: `${data?.enriched || 0} signals enriched, ${data?.routed || 0} routed to decisions`,
+      });
+      refetch();
+    } catch (e: any) {
+      toast({ title: "Enrichment failed", description: e.message, variant: "destructive" });
+    } finally {
+      setEnriching(false);
+    }
+  };
+
   // Stats
-  const highImpactCount = allSignals.filter(s => s.impact_score >= 75).length;
-  const avgConfidence = allSignals.length > 0
-    ? Math.round(allSignals.reduce((s, sig) => s + sig.confidence_score, 0) / allSignals.length)
+  const enrichedSignals = allSignals.filter(s => s.enrichment_status === "enriched");
+  const highImpactCount = enrichedSignals.filter(s => s.impact_score >= 75).length;
+  const avgConfidence = enrichedSignals.length > 0
+    ? Math.round(enrichedSignals.reduce((s, sig) => s + sig.confidence_score, 0) / enrichedSignals.length)
     : 0;
   const confirmedCount = allSignals.filter(s => s.multi_source_confirmed).length;
+  const officialCount = allSignals.filter(s => s.official_source_present).length;
 
-  // Staleness check
+  // Staleness
   const latestSignalTime = allSignals.length > 0 
-    ? new Date(allSignals[0].first_detected_at).getTime() 
-    : 0;
+    ? new Date(allSignals[0].first_detected_at).getTime() : 0;
   const hoursSinceLatest = latestSignalTime ? (Date.now() - latestSignalTime) / (1000 * 60 * 60) : 999;
   const isStale = hoursSinceLatest > 4;
+
+  // Enrichment health
+  const latestEnriched = enrichedSignals.length > 0 && enrichedSignals[0].enriched_at
+    ? new Date(enrichedSignals[0].enriched_at).getTime() : 0;
+  const hoursSinceEnrich = latestEnriched ? (Date.now() - latestEnriched) / (1000 * 60 * 60) : 999;
+  const enrichmentStale = hoursSinceEnrich > 4;
 
   return (
     <AICISLayout>
@@ -113,39 +145,51 @@ export default function LiveCommandFeed() {
                 <h1 className="text-base sm:text-lg font-semibold">AICIS Live Command Feed</h1>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
                   Real-time global signal intelligence • {allSignals.length} signals tracked
+                  {pendingCount > 0 && (
+                    <span className="text-amber-400 ml-1">• {pendingCount} pending enrichment</span>
+                  )}
                   {latestSignalTime > 0 && (
                     <span className={cn("ml-1", isStale ? "text-red-400" : "text-emerald-400")}>
-                      • Last: {Math.round(hoursSinceLatest)}h ago
+                      • Ingest: {Math.round(hoursSinceLatest)}h ago
+                    </span>
+                  )}
+                  {latestEnriched > 0 && (
+                    <span className={cn("ml-1", enrichmentStale ? "text-red-400" : "text-emerald-400")}>
+                      • Enrich: {Math.round(hoursSinceEnrich)}h ago
                     </span>
                   )}
                 </p>
               </div>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 text-xs"
-              onClick={triggerIngestion}
-              disabled={ingesting}
-            >
-              {ingesting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-              {ingesting ? "Ingesting…" : "Ingest Now"}
-            </Button>
+            <div className="flex gap-1.5">
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={triggerIngestion} disabled={ingesting}>
+                {ingesting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                {ingesting ? "Ingesting…" : "Ingest"}
+              </Button>
+              {pendingCount > 0 && (
+                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={triggerEnrichment} disabled={enriching}>
+                  {enriching ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Cpu className="h-3 w-3 mr-1" />}
+                  Enrich ({pendingCount})
+                </Button>
+              )}
+            </div>
           </div>
 
-          {/* Staleness Warning */}
-          {isStale && (
+          {/* Warnings */}
+          {(isStale || enrichmentStale) && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded px-3 py-1.5 flex items-center gap-2 text-xs text-amber-400">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              No new signals in {Math.round(hoursSinceLatest)}h — click "Ingest Now" to refresh
+              {isStale && `No new signals in ${Math.round(hoursSinceLatest)}h.`}
+              {enrichmentStale && ` Enrichment stale (${Math.round(hoursSinceEnrich)}h).`}
+              {" "}Click "Ingest" to refresh.
             </div>
           )}
 
           {/* KPI Bar */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono">{allSignals.length}</div>
-              <div className="text-[9px] text-muted-foreground">Total Signals</div>
+              <div className="text-[9px] text-muted-foreground">Total</div>
             </Card>
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono text-destructive">{highImpactCount}</div>
@@ -153,11 +197,15 @@ export default function LiveCommandFeed() {
             </Card>
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono">{avgConfidence}%</div>
-              <div className="text-[9px] text-muted-foreground">Avg Confidence</div>
+              <div className="text-[9px] text-muted-foreground">Avg Conf</div>
             </Card>
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono text-primary">{confirmedCount}</div>
               <div className="text-[9px] text-muted-foreground">Confirmed</div>
+            </Card>
+            <Card className="p-2 text-center">
+              <div className="text-lg font-bold font-mono text-blue-400">{officialCount}</div>
+              <div className="text-[9px] text-muted-foreground">Official</div>
             </Card>
           </div>
 
@@ -212,25 +260,24 @@ export default function LiveCommandFeed() {
           )}>
             <ScrollArea className="flex-1 p-3">
               <div className="space-y-3">
-                {/* Alert Ribbon */}
                 <AlertRibbon signals={allSignals} />
 
-                {/* Top Signals Section */}
-                {topSignals.length > 0 && !categoryFilter.startsWith("all") === false && !searchQuery && (
+                {/* Top Signals */}
+                {topSignals.length > 0 && categoryFilter === "all" && !searchQuery && (
                   <div className="space-y-2">
                     <h2 className="text-xs font-semibold flex items-center gap-1 text-primary">
                       <Zap className="h-3.5 w-3.5" /> Top Global Signals
                     </h2>
                     {topSignals.map(s => (
-                      <SignalCard
-                        key={s.id}
-                        signal={s}
-                        audienceMode={audienceMode}
-                        onSelect={setSelectedSignal}
-                        selected={selectedSignal?.id === s.id}
-                      />
+                      <SignalCard key={s.id} signal={s} audienceMode={audienceMode}
+                        onSelect={setSelectedSignal} selected={selectedSignal?.id === s.id} />
                     ))}
                   </div>
+                )}
+
+                {/* Routing Precision Panel */}
+                {categoryFilter === "all" && !searchQuery && (
+                  <RoutingPrecisionPanel />
                 )}
 
                 {/* Full Feed */}
@@ -247,18 +294,13 @@ export default function LiveCommandFeed() {
                       <Globe className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
                       <p className="text-sm text-muted-foreground">No signals found</p>
                       <p className="text-xs text-muted-foreground/60 mt-1">
-                        Click "Ingest Now" to pull latest global events
+                        Click "Ingest" to pull latest global events
                       </p>
                     </Card>
                   ) : (
                     filteredSignals.map(s => (
-                      <SignalCard
-                        key={s.id}
-                        signal={s}
-                        audienceMode={audienceMode}
-                        onSelect={setSelectedSignal}
-                        selected={selectedSignal?.id === s.id}
-                      />
+                      <SignalCard key={s.id} signal={s} audienceMode={audienceMode}
+                        onSelect={setSelectedSignal} selected={selectedSignal?.id === s.id} />
                     ))
                   )}
                 </div>

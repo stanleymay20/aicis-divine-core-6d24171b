@@ -36,6 +36,21 @@ export type GlobalSignal = {
   multi_source_confirmed: boolean;
   related_signal_ids: string[];
   created_at: string;
+  // Phase 16.2 fields
+  official_source: boolean;
+  canonical_source_name: string | null;
+  source_rank_score: number;
+  event_cluster_id: string | null;
+  enrichment_status: string;
+  enrichment_attempts: number;
+  enrichment_error: string | null;
+  ingested_at: string | null;
+  enriched_at: string | null;
+  routed_at: string | null;
+  official_source_present: boolean;
+  merged_source_count: number;
+  routing_score: number;
+  routing_suppressed_reason: string | null;
 };
 
 export type FreshnessLevel = "fresh" | "recent" | "aging" | "stale";
@@ -76,6 +91,26 @@ export function trustTierColor(tier: string | null): string {
   }
 }
 
+export function enrichmentStatusLabel(status: string): string {
+  switch (status) {
+    case "pending_enrichment": return "Pending";
+    case "enriching": return "Processing…";
+    case "enriched": return "Enriched";
+    case "failed": return "Failed";
+    default: return status;
+  }
+}
+
+export function enrichmentStatusColor(status: string): string {
+  switch (status) {
+    case "pending_enrichment": return "text-amber-400";
+    case "enriching": return "text-blue-400";
+    case "enriched": return "text-emerald-400";
+    case "failed": return "text-red-400";
+    default: return "text-muted-foreground";
+  }
+}
+
 export function useGlobalSignals(options?: {
   category?: string;
   limit?: number;
@@ -113,6 +148,7 @@ export function useTopSignals(limit = 5) {
       const { data, error } = await supabase
         .from("global_signals")
         .select("*")
+        .eq("enrichment_status", "enriched")
         .gte("impact_score", 50)
         .order("impact_score", { ascending: false })
         .order("urgency_score", { ascending: false })

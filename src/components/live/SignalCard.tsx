@@ -1,9 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, TrendingUp, Clock, Globe, ExternalLink, Shield, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, TrendingUp, Clock, Globe, ExternalLink, Shield, CheckCircle2, Building2, Loader2 } from "lucide-react";
 import type { GlobalSignal } from "@/hooks/useGlobalSignals";
-import { getSignalFreshness, freshnessColor, trustTierLabel, trustTierColor } from "@/hooks/useGlobalSignals";
+import { getSignalFreshness, freshnessColor, trustTierLabel, trustTierColor, enrichmentStatusLabel, enrichmentStatusColor } from "@/hooks/useGlobalSignals";
 
 const CATEGORY_LABELS: Record<string, string> = {
   geopolitical: "Geopolitical", economic: "Economic", financial_markets: "Financial Markets",
@@ -65,6 +65,7 @@ export function SignalCard({
   const source = signal.source_references?.[0];
   const freshness = getSignalFreshness(signal.first_detected_at);
   const tier = signal.source_trust_tier;
+  const isPending = signal.enrichment_status === "pending_enrichment" || signal.enrichment_status === "enriching";
 
   return (
     <Card
@@ -87,6 +88,11 @@ export function SignalCard({
                 <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> HIGH IMPACT
               </Badge>
             )}
+            {signal.official_source_present && (
+              <Badge variant="outline" className="text-[10px] h-5 border-blue-500/30 bg-blue-500/10 text-blue-400">
+                <Building2 className="h-2.5 w-2.5 mr-0.5" /> Official
+              </Badge>
+            )}
             {signal.multi_source_confirmed && (
               <Badge variant="outline" className="text-[10px] h-5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
                 <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> {signal.source_count}+ sources
@@ -95,6 +101,11 @@ export function SignalCard({
             {tier && tier !== "unknown" && (
               <Badge variant="outline" className={cn("text-[9px] h-4 border", trustTierColor(tier))}>
                 {trustTierLabel(tier)}
+              </Badge>
+            )}
+            {isPending && (
+              <Badge variant="outline" className="text-[9px] h-4 border-blue-500/30 text-blue-400">
+                <Loader2 className="h-2 w-2 mr-0.5 animate-spin" /> {enrichmentStatusLabel(signal.enrichment_status)}
               </Badge>
             )}
           </div>
@@ -107,26 +118,42 @@ export function SignalCard({
         {/* Title */}
         <h3 className="text-sm font-semibold leading-tight line-clamp-2">{signal.title}</h3>
 
+        {/* Source provenance */}
+        {signal.canonical_source_name && (
+          <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <ExternalLink className="h-2.5 w-2.5" />
+            {signal.canonical_source_name}
+            {signal.merged_source_count > 1 && (
+              <span className="text-muted-foreground/60">+{signal.merged_source_count - 1} sources</span>
+            )}
+            {signal.ingestion_source === "gdelt" && (
+              <Badge variant="outline" className="text-[8px] h-3.5 ml-1">GDELT</Badge>
+            )}
+          </div>
+        )}
+
         {/* Summary */}
         <p className="text-xs text-muted-foreground line-clamp-2">
           {signal.normalized_summary || signal.summary}
         </p>
 
-        {/* Scores */}
-        <div className="flex items-center gap-3 text-[10px]">
-          <span className="flex items-center gap-0.5">
-            <TrendingUp className="h-3 w-3" />
-            Impact: <span className={cn("font-bold", scoreColor(signal.impact_score))}>{signal.impact_score}</span>
-          </span>
-          <span className="flex items-center gap-0.5">
-            <Shield className="h-3 w-3" />
-            Conf: <span className="font-bold">{signal.confidence_score}</span>
-          </span>
-          <span className="flex items-center gap-0.5">
-            <Clock className="h-3 w-3" />
-            Urgency: <span className={cn("font-bold", scoreColor(signal.urgency_score))}>{signal.urgency_score}</span>
-          </span>
-        </div>
+        {/* Scores — only show if enriched */}
+        {!isPending && (
+          <div className="flex items-center gap-3 text-[10px]">
+            <span className="flex items-center gap-0.5">
+              <TrendingUp className="h-3 w-3" />
+              Impact: <span className={cn("font-bold", scoreColor(signal.impact_score))}>{signal.impact_score}</span>
+            </span>
+            <span className="flex items-center gap-0.5">
+              <Shield className="h-3 w-3" />
+              Conf: <span className="font-bold">{signal.confidence_score}</span>
+            </span>
+            <span className="flex items-center gap-0.5">
+              <Clock className="h-3 w-3" />
+              Urgency: <span className={cn("font-bold", scoreColor(signal.urgency_score))}>{signal.urgency_score}</span>
+            </span>
+          </div>
+        )}
 
         {/* Regions/Sectors */}
         {(signal.affected_regions?.length > 0 || signal.affected_sectors?.length > 0) && (
@@ -143,21 +170,10 @@ export function SignalCard({
         )}
 
         {/* Audience-specific recommendation */}
-        {recommendation && (
+        {recommendation && !isPending && (
           <div className="text-[11px] bg-primary/5 border border-primary/10 rounded px-2 py-1.5 mt-1">
             <span className="font-semibold text-primary capitalize">{audienceMode} action:</span>{" "}
             <span className="text-foreground/80">{recommendation}</span>
-          </div>
-        )}
-
-        {/* Source */}
-        {source && (
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <ExternalLink className="h-2.5 w-2.5" />
-            {signal.primary_source || "Source"}
-            {signal.ingestion_source === "gdelt" && (
-              <Badge variant="outline" className="text-[8px] h-3.5 ml-1">GDELT</Badge>
-            )}
           </div>
         )}
       </div>
