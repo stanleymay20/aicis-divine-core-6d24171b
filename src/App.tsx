@@ -62,6 +62,7 @@ const MorningBrief = lazy(() => import("./pages/MorningBrief"));
 const DailyEvidenceOps = lazy(() => import("./pages/DailyEvidenceOps"));
 const Decisions = lazy(() => import("./pages/Decisions"));
 const LiveCommandFeed = lazy(() => import("./pages/LiveCommandFeed"));
+const SignalValidation = lazy(() => import("./pages/SignalValidation"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -148,6 +149,7 @@ const App = () => (
               <Route path="/morning-brief" element={<Lazy><MorningBrief /></Lazy>} />
               <Route path="/daily-evidence-ops" element={<Lazy><DailyEvidenceOps /></Lazy>} />
               <Route path="/live" element={<Lazy><LiveCommandFeed /></Lazy>} />
+              <Route path="/signal-validation" element={<Lazy><SignalValidation /></Lazy>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
