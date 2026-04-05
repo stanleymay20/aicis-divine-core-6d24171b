@@ -27,13 +27,13 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    // Fetch pending signals (max 10 per run to avoid timeouts)
+    // Fetch pending signals (max 4 per run for speed)
     const { data: pending, error: fetchErr } = await supabase
       .from("global_signals")
       .select("*")
       .eq("enrichment_status", "pending_enrichment")
       .order("ingested_at", { ascending: true })
-      .limit(10);
+      .limit(4);
 
     if (fetchErr) throw new Error(`Fetch pending failed: ${fetchErr.message}`);
     if (!pending || pending.length === 0) {
@@ -77,21 +77,7 @@ serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: `You are AICIS, a global intelligence classification engine. For each article, return a JSON array of objects with:
-- index: article index
-- category: one of ${CATEGORIES.join(", ")}
-- confidence_score: 0-100
-- impact_score: 0-100 (80+ = major, 60-79 = significant, 40-59 = moderate, <40 = minor)
-- urgency_score: 0-100
-- affected_regions: array of region names
-- affected_countries: array of ISO3 codes
-- affected_sectors: array of sectors
-- strategic_implications: one sentence
-- likely_consequences: one sentence
-- recommended_actions: object with keys "government", "media", "business", "public"
-- misinformation_risk: 0-100
-- impact_reasoning: 2-3 sentences explaining the impact score
-Only return the JSON array, no markdown.`
+              content: `Classify articles. Return JSON array with objects: index, category (one of: ${CATEGORIES.join(",")}), confidence_score (0-100), impact_score (0-100), urgency_score (0-100), affected_regions (array), affected_countries (ISO3 array), affected_sectors (array), strategic_implications (1 sentence), likely_consequences (1 sentence), recommended_actions ({government,media,business,public}), misinformation_risk (0-100), impact_reasoning (1-2 sentences). JSON only, no markdown.`
             },
             { role: "user", content: `Classify:\n${articlesSummary}` }
           ],

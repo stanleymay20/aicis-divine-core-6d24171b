@@ -6,7 +6,7 @@ import { SignalCard } from "@/components/live/SignalCard";
 import { SignalDetailPanel } from "@/components/live/SignalDetailPanel";
 import { AlertRibbon } from "@/components/live/AlertRibbon";
 import { RoutingPrecisionPanel } from "@/components/live/RoutingPrecisionPanel";
-import { useEnrichmentQueue } from "@/hooks/useRoutingPrecision";
+import { useEnrichmentQueue, useRoutingPrecision } from "@/hooks/useRoutingPrecision";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu
+  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu, ClipboardCheck
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -51,14 +51,25 @@ export default function LiveCommandFeed() {
   const [selectedSignal, setSelectedSignal] = useState<GlobalSignal | null>(null);
   const [ingesting, setIngesting] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [feedbackCount, setFeedbackCount] = useState(0);
 
   const { data: allSignals = [], isLoading, refetch } = useGlobalSignals({ limit: 100 });
   const { data: topSignals = [] } = useTopSignals(5);
   const { data: pendingCount = 0 } = useEnrichmentQueue();
+  const { data: precision } = useRoutingPrecision();
   const { toast } = useToast();
 
   const filteredSignals = useMemo(() => {
     let signals = allSignals;
+
+    // Review mode: show only routed enriched signals
+    if (reviewMode) {
+      signals = signals.filter(s =>
+        s.enrichment_status === "enriched" && (s.routed_at || s.impact_score >= 50)
+      );
+    }
+
     if (categoryFilter !== "all") {
       signals = signals.filter(s => s.category === categoryFilter);
     }
@@ -72,7 +83,7 @@ export default function LiveCommandFeed() {
       );
     }
     return signals;
-  }, [allSignals, categoryFilter, searchQuery]);
+  }, [allSignals, categoryFilter, searchQuery, reviewMode]);
 
   const triggerIngestion = async () => {
     setIngesting(true);
@@ -81,10 +92,9 @@ export default function LiveCommandFeed() {
       if (error) throw error;
       toast({
         title: "Intake complete",
-        description: `${data?.new_signals || 0} new signals ingested, ${data?.pending_enrichment || 0} pending enrichment`,
+        description: `${data?.new_signals || 0} new, ${data?.sources?.official || 0} official, ${data?.pending_enrichment || 0} pending`,
       });
       refetch();
-      // Auto-trigger enrichment after intake
       if ((data?.pending_enrichment || 0) > 0) {
         setTimeout(() => triggerEnrichment(), 2000);
       }
@@ -102,7 +112,7 @@ export default function LiveCommandFeed() {
       if (error) throw error;
       toast({
         title: "Enrichment complete",
-        description: `${data?.enriched || 0} signals enriched, ${data?.routed || 0} routed to decisions`,
+        description: `${data?.enriched || 0} enriched, ${data?.routed || 0} routed (${data?.total_duration_ms || 0}ms)`,
       });
       refetch();
     } catch (e: any) {
@@ -122,12 +132,11 @@ export default function LiveCommandFeed() {
   const officialCount = allSignals.filter(s => s.official_source_present).length;
 
   // Staleness
-  const latestSignalTime = allSignals.length > 0 
+  const latestSignalTime = allSignals.length > 0
     ? new Date(allSignals[0].first_detected_at).getTime() : 0;
   const hoursSinceLatest = latestSignalTime ? (Date.now() - latestSignalTime) / (1000 * 60 * 60) : 999;
   const isStale = hoursSinceLatest > 4;
 
-  // Enrichment health
   const latestEnriched = enrichedSignals.length > 0 && enrichedSignals[0].enriched_at
     ? new Date(enrichedSignals[0].enriched_at).getTime() : 0;
   const hoursSinceEnrich = latestEnriched ? (Date.now() - latestEnriched) / (1000 * 60 * 60) : 999;
@@ -144,27 +153,28 @@ export default function LiveCommandFeed() {
               <div>
                 <h1 className="text-base sm:text-lg font-semibold">AICIS Live Command Feed</h1>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  Real-time global signal intelligence • {allSignals.length} signals tracked
+                  Real-time global signal intelligence • {allSignals.length} signals
                   {pendingCount > 0 && (
-                    <span className="text-amber-400 ml-1">• {pendingCount} pending enrichment</span>
+                    <span className="text-amber-400 ml-1">• {pendingCount} pending</span>
                   )}
-                  {latestSignalTime > 0 && (
-                    <span className={cn("ml-1", isStale ? "text-red-400" : "text-emerald-400")}>
-                      • Ingest: {Math.round(hoursSinceLatest)}h ago
-                    </span>
+                  {officialCount > 0 && (
+                    <span className="text-blue-400 ml-1">• {officialCount} official</span>
                   )}
-                  {latestEnriched > 0 && (
-                    <span className={cn("ml-1", enrichmentStale ? "text-red-400" : "text-emerald-400")}>
-                      • Enrich: {Math.round(hoursSinceEnrich)}h ago
-                    </span>
+                  {feedbackCount > 0 && (
+                    <span className="text-emerald-400 ml-1">• {feedbackCount} reviewed today</span>
                   )}
                 </p>
               </div>
             </div>
             <div className="flex gap-1.5">
+              <Button size="sm" variant={reviewMode ? "default" : "outline"} className="h-8 text-xs"
+                onClick={() => setReviewMode(!reviewMode)}>
+                <ClipboardCheck className="h-3 w-3 mr-1" />
+                Review{reviewMode ? " ✓" : ""}
+              </Button>
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={triggerIngestion} disabled={ingesting}>
                 {ingesting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-                {ingesting ? "Ingesting…" : "Ingest"}
+                {ingesting ? "…" : "Ingest"}
               </Button>
               {pendingCount > 0 && (
                 <Button size="sm" variant="outline" className="h-8 text-xs" onClick={triggerEnrichment} disabled={enriching}>
@@ -176,12 +186,14 @@ export default function LiveCommandFeed() {
           </div>
 
           {/* Warnings */}
-          {(isStale || enrichmentStale) && (
+          {(isStale || enrichmentStale || (precision?.total === 0)) && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded px-3 py-1.5 flex items-center gap-2 text-xs text-amber-400">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              {isStale && `No new signals in ${Math.round(hoursSinceLatest)}h.`}
-              {enrichmentStale && ` Enrichment stale (${Math.round(hoursSinceEnrich)}h).`}
-              {" "}Click "Ingest" to refresh.
+              <div className="space-x-1">
+                {isStale && <span>No new signals in {Math.round(hoursSinceLatest)}h.</span>}
+                {enrichmentStale && <span>Enrichment stale ({Math.round(hoursSinceEnrich)}h).</span>}
+                {precision?.total === 0 && <span>Zero routing feedback — click Review to start.</span>}
+              </div>
             </div>
           )}
 
@@ -260,30 +272,44 @@ export default function LiveCommandFeed() {
           )}>
             <ScrollArea className="flex-1 p-3">
               <div className="space-y-3">
-                <AlertRibbon signals={allSignals} />
+                {!reviewMode && <AlertRibbon signals={allSignals} />}
+
+                {/* Review mode banner */}
+                {reviewMode && (
+                  <Card className="p-3 bg-primary/5 border-primary/20">
+                    <div className="flex items-center gap-2 text-xs">
+                      <ClipboardCheck className="h-4 w-4 text-primary" />
+                      <div>
+                        <span className="font-semibold">Review Queue</span> — Rate each signal to build routing precision.
+                        <span className="text-muted-foreground ml-1">{filteredSignals.length} signals to review</span>
+                      </div>
+                    </div>
+                  </Card>
+                )}
 
                 {/* Top Signals */}
-                {topSignals.length > 0 && categoryFilter === "all" && !searchQuery && (
+                {!reviewMode && topSignals.length > 0 && categoryFilter === "all" && !searchQuery && (
                   <div className="space-y-2">
                     <h2 className="text-xs font-semibold flex items-center gap-1 text-primary">
                       <Zap className="h-3.5 w-3.5" /> Top Global Signals
                     </h2>
                     {topSignals.map(s => (
                       <SignalCard key={s.id} signal={s} audienceMode={audienceMode}
-                        onSelect={setSelectedSignal} selected={selectedSignal?.id === s.id} />
+                        onSelect={setSelectedSignal} selected={selectedSignal?.id === s.id}
+                        showFeedback onFeedbackSubmitted={() => setFeedbackCount(c => c + 1)} />
                     ))}
                   </div>
                 )}
 
                 {/* Routing Precision Panel */}
-                {categoryFilter === "all" && !searchQuery && (
+                {!reviewMode && categoryFilter === "all" && !searchQuery && (
                   <RoutingPrecisionPanel />
                 )}
 
                 {/* Full Feed */}
                 <div className="space-y-2">
                   <h2 className="text-xs font-semibold text-muted-foreground">
-                    {searchQuery || categoryFilter !== "all" ? "Filtered" : "All"} Signals ({filteredSignals.length})
+                    {reviewMode ? "Review Queue" : searchQuery || categoryFilter !== "all" ? "Filtered" : "All"} Signals ({filteredSignals.length})
                   </h2>
                   {isLoading ? (
                     <div className="flex items-center justify-center py-12">
@@ -292,15 +318,18 @@ export default function LiveCommandFeed() {
                   ) : filteredSignals.length === 0 ? (
                     <Card className="p-6 text-center">
                       <Globe className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
-                      <p className="text-sm text-muted-foreground">No signals found</p>
+                      <p className="text-sm text-muted-foreground">
+                        {reviewMode ? "No signals need review" : "No signals found"}
+                      </p>
                       <p className="text-xs text-muted-foreground/60 mt-1">
-                        Click "Ingest" to pull latest global events
+                        {reviewMode ? "All signals have been reviewed" : "Click \"Ingest\" to pull latest global events"}
                       </p>
                     </Card>
                   ) : (
                     filteredSignals.map(s => (
                       <SignalCard key={s.id} signal={s} audienceMode={audienceMode}
-                        onSelect={setSelectedSignal} selected={selectedSignal?.id === s.id} />
+                        onSelect={setSelectedSignal} selected={selectedSignal?.id === s.id}
+                        showFeedback={reviewMode} onFeedbackSubmitted={() => setFeedbackCount(c => c + 1)} />
                     ))
                   )}
                 </div>
