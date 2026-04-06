@@ -75,40 +75,64 @@ export function SignalCard({
   const tier = signal.source_trust_tier;
   const isPending = signal.enrichment_status === "pending_enrichment" || signal.enrichment_status === "enriching";
 
+  const [submitting, setSubmitting] = useState(false);
+
   const submitFeedback = async (e: React.MouseEvent, feedback: "confirmed" | "rejected" | "unclear") => {
     e.stopPropagation();
-    const { error } = await supabase.from("signal_routing_feedback").insert({
-      signal_id: signal.id,
-      feedback,
-      category_correct: feedback === "confirmed",
-      impact_appropriate: feedback === "confirmed",
-      routing_appropriate: feedback !== "rejected",
-    } as any);
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      setFeedbackGiven(feedback);
-      toast({ title: "Feedback recorded", description: `Marked as ${feedback}` });
-      onFeedbackSubmitted?.();
+    if (submitting || feedbackGiven) return;
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.from("signal_routing_feedback").insert({
+        signal_id: signal.id,
+        feedback,
+        category_correct: feedback === "confirmed",
+        impact_appropriate: feedback === "confirmed",
+        routing_appropriate: feedback !== "rejected",
+      } as any);
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      } else {
+        setFeedbackGiven(feedback);
+        toast({ title: "Feedback recorded", description: `Marked as ${feedback}` });
+        onFeedbackSubmitted?.();
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to submit feedback", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  const [promoting, setPromoting] = useState(false);
+  const [promoted, setPromoted] = useState(false);
+
   const promoteTo = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const domain = signal.category === "public_health" ? "health" :
-      signal.category === "defense_conflict" ? "security" :
-      (signal.category === "economic" || signal.category === "financial_markets") ? "economy" :
-      signal.category === "energy" ? "energy" : "governance";
-    const { error } = await supabase.from("decision_outcome_log").insert({
-      signal_title: `[SIGNAL] ${signal.title}`,
-      signal_id: signal.id,
-      signal_date: new Date().toISOString().split("T")[0],
-      domain,
-      action_taken: false,
-      evidence_type: "hypothetical",
-    } as any);
-    if (!error) {
-      toast({ title: "Decision created", description: "Signal promoted to decision pipeline" });
+    if (promoting || promoted) return;
+    setPromoting(true);
+    try {
+      const domain = signal.category === "public_health" ? "health" :
+        signal.category === "defense_conflict" ? "security" :
+        (signal.category === "economic" || signal.category === "financial_markets") ? "economy" :
+        signal.category === "energy" ? "energy" : "governance";
+      const { error } = await supabase.from("decision_outcome_log").insert({
+        signal_title: `[SIGNAL] ${signal.title.slice(0, 500)}`,
+        signal_id: signal.id,
+        signal_date: new Date().toISOString().split("T")[0],
+        domain,
+        action_taken: false,
+        evidence_type: "hypothetical",
+      } as any);
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      } else {
+        setPromoted(true);
+        toast({ title: "Decision created", description: "Signal promoted to decision pipeline" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to promote signal", variant: "destructive" });
+    } finally {
+      setPromoting(false);
     }
   };
 
@@ -231,26 +255,31 @@ export function SignalCard({
               </span>
             ) : (
               <>
-                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5"
+                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5" disabled={submitting}
                   onClick={(e) => submitFeedback(e, "confirmed")}>
                   <CheckCircle2 className="h-3 w-3 mr-0.5 text-emerald-400" /> Confirm
                 </Button>
-                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5"
+                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5" disabled={submitting}
                   onClick={(e) => submitFeedback(e, "rejected")}>
                   <XCircle className="h-3 w-3 mr-0.5 text-red-400" /> Reject
                 </Button>
-                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5"
+                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5" disabled={submitting}
                   onClick={(e) => submitFeedback(e, "unclear")}>
                   <HelpCircle className="h-3 w-3 mr-0.5 text-yellow-400" /> Unclear
                 </Button>
               </>
             )}
             <div className="flex-1" />
-            {!signal.routed_at && (
-              <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5 text-primary"
+            {!signal.routed_at && !promoted && (
+              <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5 text-primary" disabled={promoting}
                 onClick={promoteTo}>
-                <ArrowRight className="h-3 w-3 mr-0.5" /> Promote
+                {promoting ? <Loader2 className="h-3 w-3 mr-0.5 animate-spin" /> : <ArrowRight className="h-3 w-3 mr-0.5" />} Promote
               </Button>
+            )}
+            {promoted && (
+              <span className="text-[9px] text-emerald-400 flex items-center gap-0.5">
+                <CheckCircle2 className="h-3 w-3" /> Promoted
+              </span>
             )}
           </div>
         )}

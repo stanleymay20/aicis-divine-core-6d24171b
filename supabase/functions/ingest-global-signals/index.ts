@@ -284,11 +284,11 @@ serve(async (req) => {
   const intakeStart = Date.now();
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseKey) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
 
+    const supabase = createClient(supabaseUrl, supabaseKey);
     const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
 
     // Load trust scores
@@ -553,7 +553,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("Intake error:", error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
+    const errMsg = (error as Error).message || "Unknown intake error";
+    return new Response(JSON.stringify({ error: errMsg.slice(0, 500) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
