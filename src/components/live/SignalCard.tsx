@@ -255,26 +255,31 @@ export function SignalCard({
               </span>
             ) : (
               <>
-                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5"
+                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5" disabled={submitting}
                   onClick={(e) => submitFeedback(e, "confirmed")}>
                   <CheckCircle2 className="h-3 w-3 mr-0.5 text-emerald-400" /> Confirm
                 </Button>
-                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5"
+                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5" disabled={submitting}
                   onClick={(e) => submitFeedback(e, "rejected")}>
                   <XCircle className="h-3 w-3 mr-0.5 text-red-400" /> Reject
                 </Button>
-                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5"
+                <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5" disabled={submitting}
                   onClick={(e) => submitFeedback(e, "unclear")}>
                   <HelpCircle className="h-3 w-3 mr-0.5 text-yellow-400" /> Unclear
                 </Button>
               </>
             )}
             <div className="flex-1" />
-            {!signal.routed_at && (
-              <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5 text-primary"
+            {!signal.routed_at && !promoted && (
+              <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5 text-primary" disabled={promoting}
                 onClick={promoteTo}>
-                <ArrowRight className="h-3 w-3 mr-0.5" /> Promote
+                {promoting ? <Loader2 className="h-3 w-3 mr-0.5 animate-spin" /> : <ArrowRight className="h-3 w-3 mr-0.5" />} Promote
               </Button>
+            )}
+            {promoted && (
+              <span className="text-[9px] text-emerald-400 flex items-center gap-0.5">
+                <CheckCircle2 className="h-3 w-3" /> Promoted
+              </span>
             )}
           </div>
         )}
