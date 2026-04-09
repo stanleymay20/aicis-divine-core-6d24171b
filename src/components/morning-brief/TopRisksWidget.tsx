@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, TrendingDown, MapPin } from "lucide-react";
+import { AlertTriangle, MapPin, Loader2, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface RiskCountry {
@@ -20,14 +20,15 @@ interface RiskCountry {
 export const TopRisksWidget = () => {
   const navigate = useNavigate();
 
-  const { data: topRisks, isLoading } = useQuery({
+  const { data: topRisks, isLoading, isError } = useQuery({
     queryKey: ["top-5-risks"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("vulnerability_scores")
         .select("iso_code, country, overall_score, health_risk, food_risk, energy_risk, climate_risk, economic_risk, governance_risk")
         .order("overall_score", { ascending: false })
         .limit(5);
+      if (error) throw error;
       return (data || []) as unknown as RiskCountry[];
     },
     staleTime: 120_000,
@@ -69,10 +70,24 @@ export const TopRisksWidget = () => {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">Loading risk data…</span>
+          </div>
+        ) : isError ? (
+          <div className="flex items-center gap-2 py-6 justify-center text-sm text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            Failed to load risk data. Try refreshing.
+          </div>
+        ) : !topRisks || topRisks.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <Info className="h-5 w-5 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No vulnerability scores computed yet.</p>
+            <p className="text-xs text-muted-foreground">Scores are generated after the performance engine runs.</p>
+          </div>
         ) : (
           <div className="space-y-2">
-            {topRisks?.map((risk, i) => {
+            {topRisks.map((risk, i) => {
               const topDomain = getTopDomain(risk);
               return (
                 <div

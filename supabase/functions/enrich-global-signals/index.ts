@@ -133,14 +133,39 @@ serve(async (req) => {
         }
       } else {
         const errText = await aiResponse.text();
-        console.error("AI gateway error:", aiResponse.status, errText.slice(0, 200));
+        const statusCode = aiResponse.status;
+        console.error("AI gateway error:", statusCode, errText.slice(0, 200));
 
-        // Graceful degradation: revert to pending with error
+        // ── 402 CREDIT EXHAUSTION FALLBACK ──
+        // Instead of reverting to pending (creates infinite backlog), apply lightweight
+        // heuristic classification so signals still flow through the pipeline.
+        if (statusCode === 402 || statusCode === 429) {
+          console.warn(`AI credits unavailable (${statusCode}). Applying fallback heuristic classification.`);
+          for (const signal of pending) {
+            const fallbackImpact = signal.official_source ? 55 : 35;
+            const fallbackConf = signal.multi_source_confirmed ? 50 : 30;
+            await supabase.from("global_signals").update({
+              enrichment_status: "enriched",
+              enrichment_error: `fallback_heuristic: AI ${statusCode}`,
+              impact_score: fallbackImpact,
+              confidence_score: fallbackConf,
+              urgency_score: 30,
+              model_version: "heuristic-fallback",
+              enriched_at: new Date().toISOString(),
+              status: "new",
+            } as any).eq("id", signal.id);
+          }
+          return new Response(JSON.stringify({ ok: true, enriched: pending.length, mode: "heuristic_fallback", reason: `AI ${statusCode}` }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Non-credit errors: revert to pending
         await supabase.from("global_signals")
-          .update({ enrichment_status: "pending_enrichment", enrichment_error: `AI error: ${aiResponse.status}` } as any)
+          .update({ enrichment_status: "pending_enrichment", enrichment_error: `AI error: ${statusCode}` } as any)
           .in("id", pendingIds);
 
-        return new Response(JSON.stringify({ ok: false, error: "AI classification failed", status: aiResponse.status }), {
+        return new Response(JSON.stringify({ ok: false, error: "AI classification failed", status: statusCode }), {
           status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -148,6 +173,7 @@ serve(async (req) => {
       const errMsg = (aiErr as Error).message || "Unknown AI error";
       console.error("AI call failed:", errMsg);
 
+      // On timeout/network error, revert but cap attempts
       await supabase.from("global_signals")
         .update({ enrichment_status: "pending_enrichment", enrichment_error: `AI exception: ${errMsg.slice(0, 200)}` } as any)
         .in("id", pendingIds);

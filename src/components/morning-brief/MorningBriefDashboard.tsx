@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sunrise, AlertTriangle, TrendingDown, TrendingUp, Activity, Shield, Clock, Info } from "lucide-react";
+import { Sunrise, AlertTriangle, TrendingUp, Activity, Shield, Clock, Info } from "lucide-react";
 import { format } from "date-fns";
 import { TopRisksWidget } from "./TopRisksWidget";
 import { OvernightChanges } from "./OvernightChanges";
@@ -10,6 +10,7 @@ import { SystemPulse } from "./SystemPulse";
 import { GlobalSignalsBrief } from "./GlobalSignalsBrief";
 import { WelcomeBanner } from "./WelcomeBanner";
 import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
+import { ProofOfValueWidget } from "./ProofOfValueWidget";
 
 export const MorningBriefDashboard = () => {
   const today = format(new Date(), "yyyy-MM-dd");
@@ -48,11 +49,9 @@ export const MorningBriefDashboard = () => {
 
   const todayHealth = healthData?.[0] || null;
   const yesterdayHealth = healthData?.[1] || null;
-  const hasHealthData = todayHealth !== null;
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Welcome onboarding */}
       <WelcomeBanner />
 
       {/* Header */}
@@ -71,6 +70,9 @@ export const MorningBriefDashboard = () => {
           Updated {format(new Date(), "HH:mm")}
         </Badge>
       </div>
+
+      {/* ── PROOF OF VALUE — first thing an executive sees ── */}
+      <ProofOfValueWidget />
 
       {/* Quick stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -107,7 +109,7 @@ export const MorningBriefDashboard = () => {
       {/* Top 5 Risks */}
       <TopRisksWidget />
 
-      {/* Recent Decisions — shows the decision loop in action */}
+      {/* Recent Decisions */}
       <RecentDecisionsWidget />
 
       {/* Two columns */}
@@ -127,17 +129,9 @@ const EMPTY_HINTS: Record<string, string> = {
 };
 
 const StatCard = ({
-  icon,
-  label,
-  value,
-  sub,
-  alert,
+  icon, label, value, sub, alert,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  sub: string;
-  alert?: boolean;
+  icon: React.ReactNode; label: string; value: number; sub: string; alert?: boolean;
 }) => (
   <Card className={alert ? "border-destructive/50" : ""}>
     <CardContent className="p-3">
