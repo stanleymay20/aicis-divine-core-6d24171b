@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Shield,
   Settings,
+  Code2,
   X,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ const navItems = [
   { id: "decisions", label: "Decisions", icon: Activity, path: "/decision-ops" },
   { id: "outcomes", label: "Outcomes", icon: TrendingUp, path: "/evidence-command" },
   { id: "governance", label: "Governance", icon: Shield, path: "/governance" },
+  { id: "developers", label: "Developers", icon: Code2, path: "/developers" },
   { id: "settings", label: "Settings", icon: Settings, path: "/admin" },
 ];
 
