@@ -15,10 +15,10 @@ export default function DecisionOperations() {
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
             <Activity className="h-5 w-5 text-primary" />
-            Decision Operations
+            Decisions
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Daily activation, execution tracking, and outcome capture
+            Track decisions from signal to outcome. Execute, measure, and prove value.
           </p>
         </div>
 

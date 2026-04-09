@@ -81,19 +81,19 @@ const App = () => (
               <Route path="/privacy" element={<Lazy><Privacy /></Lazy>} />
               <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
 
-              {/* ── Protected pilot-core routes ─────────────── */}
+              {/* ── Core pilot routes (6 nav items) ──────────── */}
               <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
               <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
-              <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
               <Route path="/decision-ops" element={<Protected><DecisionOperations /></Protected>} />
-              <Route path="/daily-evidence-ops" element={<Protected><DailyEvidenceOps /></Protected>} />
+              <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
               <Route path="/evidence-command" element={<Protected><EvidenceCommand /></Protected>} />
               <Route path="/governance" element={<Protected><GovernanceHub /></Protected>} />
               <Route path="/admin" element={<Protected><AdminDashboard /></Protected>} />
               <Route path="/deepdive/:iso3" element={<Protected><CountryDeepDivePage /></Protected>} />
 
-              {/* ── Protected secondary routes ──────────────── */}
+              {/* ── Secondary (deep-link only, not in nav) ───── */}
+              <Route path="/daily-evidence-ops" element={<Protected><DailyEvidenceOps /></Protected>} />
               <Route path="/signal-validation" element={<Protected><SignalValidation /></Protected>} />
               <Route path="/operational-truth" element={<Protected><OperationalTruth /></Protected>} />
               <Route path="/system-status" element={<Protected><SystemStatus /></Protected>} />
