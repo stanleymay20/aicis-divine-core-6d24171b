@@ -2,12 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sunrise, AlertTriangle, TrendingDown, TrendingUp, Activity, Shield, Clock } from "lucide-react";
+import { Sunrise, AlertTriangle, TrendingDown, TrendingUp, Activity, Shield, Clock, Info } from "lucide-react";
 import { format } from "date-fns";
 import { TopRisksWidget } from "./TopRisksWidget";
 import { OvernightChanges } from "./OvernightChanges";
 import { SystemPulse } from "./SystemPulse";
 import { GlobalSignalsBrief } from "./GlobalSignalsBrief";
+import { WelcomeBanner } from "./WelcomeBanner";
 
 export const MorningBriefDashboard = () => {
   const today = format(new Date(), "yyyy-MM-dd");
@@ -49,6 +50,9 @@ export const MorningBriefDashboard = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Welcome onboarding */}
+      <WelcomeBanner />
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
