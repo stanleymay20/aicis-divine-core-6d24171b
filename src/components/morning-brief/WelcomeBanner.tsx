@@ -43,7 +43,7 @@ export const WelcomeBanner = () => {
             icon={<Sunrise className="h-4 w-4 text-primary" />}
             title="Today's Brief"
             desc="See the top risks and overnight changes"
-            onClick={() => {}}
+            onClick={() => { dismiss(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
             active
           />
           <QuickAction

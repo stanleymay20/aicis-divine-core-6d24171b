@@ -46,8 +46,9 @@ export const MorningBriefDashboard = () => {
     staleTime: 60_000,
   });
 
-  const todayHealth = healthData?.[0];
-  const yesterdayHealth = healthData?.[1];
+  const todayHealth = healthData?.[0] || null;
+  const yesterdayHealth = healthData?.[1] || null;
+  const hasHealthData = todayHealth !== null;
 
   return (
     <div className="space-y-6 animate-fade-in">
