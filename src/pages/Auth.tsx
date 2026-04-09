@@ -6,8 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import aicisLogo from "@/assets/aicis-logo.png";
 
 const Auth = () => {
@@ -45,49 +43,38 @@ const Auth = () => {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/reset-password`,
         });
-
         if (error) throw error;
-
         toast({
           title: "Password Reset Email Sent",
           description: "Check your email for the reset link.",
         });
         setIsReset(false);
       } else if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-
         toast({
           title: "Access Granted",
-          description: "Welcome to AICIS Command Center",
+          description: "Welcome to AICIS",
         });
       } else {
-        const { data, error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: {
-              full_name: fullName,
-            },
+            data: { full_name: fullName },
             emailRedirectTo: `${window.location.origin}/`,
           },
         });
-
         if (error) throw error;
-
         toast({
           title: "Registration Successful",
-          description: "Welcome to AICIS. Your account has been created with Observer access.",
+          description: "Check your email to verify your account.",
         });
       }
     } catch (error: any) {
       toast({
         title: "Authentication Failed",
-        description: error.message || "An unexpected error occurred. Please try again.",
+        description: error.message || "An unexpected error occurred.",
         variant: "destructive",
       });
     } finally {
@@ -98,7 +85,6 @@ const Auth = () => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4" role="main">
       <h1 className="sr-only">AICIS Authentication</h1>
-      {/* Background effects */}
       <div className="fixed inset-0 bg-[linear-gradient(to_right,hsl(189_40%_20%_/_0.1)_1px,transparent_1px),linear-gradient(to_bottom,hsl(189_40%_20%_/_0.1)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_0%,#000_70%,transparent_110%)]" aria-hidden="true" />
       <div className="fixed top-0 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[128px] pointer-events-none" aria-hidden="true" />
       <div className="fixed bottom-0 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-[128px] pointer-events-none" aria-hidden="true" />
@@ -117,29 +103,6 @@ const Auth = () => {
             AI-Assisted Civilization Intelligence System
           </p>
         </div>
-
-        {/* Diagnostic Banner */}
-        {diagnostic && (
-          <Alert 
-            variant={diagnostic.ok ? "default" : "destructive"} 
-            className="mb-6"
-          >
-            {diagnostic.ok ? (
-              <CheckCircle2 className="h-4 w-4" />
-            ) : (
-              <AlertTriangle className="h-4 w-4" />
-            )}
-            <AlertDescription>
-              {diagnostic.ok ? (
-                <span className="text-sm">System Status: Operational</span>
-              ) : (
-                <span className="text-sm">
-                  {diagnostic.message || diagnostic.error || 'System diagnostics detected issues'}
-                </span>
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
 
         <form onSubmit={handleAuth} className="space-y-6">
           {!isLogin && !isReset && (
@@ -162,7 +125,7 @@ const Auth = () => {
             <Input
               id="email"
               type="email"
-              placeholder="admin@aicis.com"
+              placeholder="you@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -196,8 +159,8 @@ const Auth = () => {
               : isReset 
                 ? "Send Reset Link" 
                 : isLogin 
-                  ? "Access System" 
-                  : "Register Account"}
+                  ? "Sign In" 
+                  : "Create Account"}
           </Button>
 
           <div className="flex flex-col gap-2">
@@ -205,42 +168,27 @@ const Auth = () => {
               <>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsReset(true);
-                    setIsLogin(false);
-                  }}
+                  onClick={() => { setIsReset(true); setIsLogin(false); }}
                   className="w-full text-center text-sm text-primary hover:underline font-medium"
                 >
-                  Forgot password? Reset →
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/onboarding")}
-                  className="w-full text-center text-sm text-primary hover:underline font-medium"
-                >
-                  New to AICIS? Start Enterprise Onboarding →
+                  Forgot password?
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsLogin(!isLogin)}
                   className="w-full text-center text-sm text-muted-foreground hover:text-primary transition-colors"
                 >
-                  {isLogin
-                    ? "Need an account? Quick Register"
-                    : "Already have an account? Sign in"}
+                  {isLogin ? "Need an account? Register" : "Already have an account? Sign in"}
                 </button>
               </>
             )}
             {isReset && (
               <button
                 type="button"
-                onClick={() => {
-                  setIsReset(false);
-                  setIsLogin(true);
-                }}
+                onClick={() => { setIsReset(false); setIsLogin(true); }}
                 className="w-full text-center text-sm text-muted-foreground hover:text-primary transition-colors"
               >
-                ← Back to login
+                ← Back to sign in
               </button>
             )}
           </div>
