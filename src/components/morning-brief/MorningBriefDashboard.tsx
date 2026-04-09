@@ -2,12 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sunrise, AlertTriangle, TrendingDown, TrendingUp, Activity, Shield, Clock } from "lucide-react";
+import { Sunrise, AlertTriangle, TrendingDown, TrendingUp, Activity, Shield, Clock, Info } from "lucide-react";
 import { format } from "date-fns";
 import { TopRisksWidget } from "./TopRisksWidget";
 import { OvernightChanges } from "./OvernightChanges";
 import { SystemPulse } from "./SystemPulse";
 import { GlobalSignalsBrief } from "./GlobalSignalsBrief";
+import { WelcomeBanner } from "./WelcomeBanner";
 
 export const MorningBriefDashboard = () => {
   const today = format(new Date(), "yyyy-MM-dd");
@@ -49,6 +50,9 @@ export const MorningBriefDashboard = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Welcome onboarding */}
+      <WelcomeBanner />
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
@@ -110,6 +114,13 @@ export const MorningBriefDashboard = () => {
   );
 };
 
+const EMPTY_HINTS: Record<string, string> = {
+  "Alerts (24h)": "No alerts yet — signals will appear as data flows in",
+  "Inferences Today": "AI analysis starts once live signals are ingested",
+  "Decisions Captured": "Use 'Ask AI' to create your first decision",
+  "Outcomes Recorded": "Outcomes are tracked after decisions are acted on",
+};
+
 const StatCard = ({
   icon,
   label,
@@ -130,7 +141,11 @@ const StatCard = ({
         <span className="text-xs">{label}</span>
       </div>
       <p className="text-2xl font-semibold">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      {value === 0 && EMPTY_HINTS[label] ? (
+        <p className="text-[11px] text-muted-foreground/70 mt-1 leading-snug">{EMPTY_HINTS[label]}</p>
+      ) : (
+        sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+      )}
     </CardContent>
   </Card>
 );
