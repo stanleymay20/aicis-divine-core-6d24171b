@@ -9,6 +9,7 @@ import { OvernightChanges } from "./OvernightChanges";
 import { SystemPulse } from "./SystemPulse";
 import { GlobalSignalsBrief } from "./GlobalSignalsBrief";
 import { WelcomeBanner } from "./WelcomeBanner";
+import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
 
 export const MorningBriefDashboard = () => {
   const today = format(new Date(), "yyyy-MM-dd");
@@ -104,6 +105,9 @@ export const MorningBriefDashboard = () => {
 
       {/* Top 5 Risks */}
       <TopRisksWidget />
+
+      {/* Recent Decisions — shows the decision loop in action */}
+      <RecentDecisionsWidget />
 
       {/* Two columns */}
       <div className="grid md:grid-cols-2 gap-4">
