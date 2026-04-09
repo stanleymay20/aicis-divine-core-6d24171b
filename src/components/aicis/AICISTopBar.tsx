@@ -12,18 +12,15 @@ import {
 
 const PAGE_TITLES: Record<string, string> = {
   "/": "Home",
-  "/morning-brief": "Morning Brief",
+  "/morning-brief": "Today's Brief",
   "/live": "Live Signals",
   "/live-signals": "Live Signals",
-  "/decisions": "Ask AI",
-  "/decision-ops": "Decision Operations",
+  "/decisions": "Decision Engine",
+  "/decision-ops": "Decisions",
   "/daily-evidence-ops": "Daily Ops",
-  "/measured-acceleration": "Evidence",
-  "/evidence-closure": "Closure",
-  "/evidence-command": "Command",
+  "/evidence-command": "Outcomes",
   "/operational-truth": "Data Quality",
   "/governance": "Governance",
-  "/enterprise-governance": "Billing",
   "/admin": "Settings",
   "/signal-validation": "Signal Validation",
 };

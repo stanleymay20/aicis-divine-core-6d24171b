@@ -1,19 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sunrise, AlertTriangle, TrendingUp, Activity, Shield, Clock, Info } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Sunrise, AlertTriangle, TrendingUp, Activity, Clock,
+  ArrowRight, CheckCircle2, Target, Radio, Zap
+} from "lucide-react";
 import { format } from "date-fns";
 import { TopRisksWidget } from "./TopRisksWidget";
-import { OvernightChanges } from "./OvernightChanges";
-import { SystemPulse } from "./SystemPulse";
 import { GlobalSignalsBrief } from "./GlobalSignalsBrief";
-import { WelcomeBanner } from "./WelcomeBanner";
 import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
-import { ProofOfValueWidget } from "./ProofOfValueWidget";
+import { SystemHealthBadge } from "./SystemHealthBadge";
+import { RecentWinWidget } from "./RecentWinWidget";
+import { useNavigate } from "react-router-dom";
 
 export const MorningBriefDashboard = () => {
   const today = format(new Date(), "yyyy-MM-dd");
+  const navigate = useNavigate();
 
   const { data: healthData } = useQuery({
     queryKey: ["morning-brief-health", today],
@@ -28,123 +32,210 @@ export const MorningBriefDashboard = () => {
     staleTime: 60_000,
   });
 
-  const { data: alertStats } = useQuery({
-    queryKey: ["morning-brief-alerts"],
+  const { data: valueData } = useQuery({
+    queryKey: ["brief-value-summary"],
     queryFn: async () => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const { data } = await supabase
-        .from("alerts")
-        .select("severity, acknowledged")
-        .gte("created_at", yesterday.toISOString());
-      const all = data || [];
+      const [decisionsRes, outcomesRes] = await Promise.all([
+        supabase
+          .from("decision_outcome_log")
+          .select("id, action_taken, execution_status")
+          .eq("action_taken", true),
+        supabase
+          .from("decision_outcome_log")
+          .select("id, outcome_success, roi_estimate, net_value, evidence_type")
+          .not("outcome_success", "is", null),
+      ]);
+      const decisions = decisionsRes.data || [];
+      const outcomes = outcomesRes.data || [];
+      const totalNetValue = outcomes.reduce((s, o) => s + (Number(o.net_value) || 0), 0);
+      const successRate = outcomes.length > 0
+        ? Math.round((outcomes.filter(o => o.outcome_success).length / outcomes.length) * 100)
+        : 0;
+      const avgROI = outcomes.length > 0
+        ? outcomes.reduce((s, o) => s + (Number(o.roi_estimate) || 0), 0) / outcomes.length
+        : 0;
       return {
-        total: all.length,
-        critical: all.filter(a => a.severity === "critical").length,
-        unack: all.filter(a => !a.acknowledged).length,
+        acted: decisions.length,
+        outcomes: outcomes.length,
+        inProgress: decisions.filter(d => d.execution_status === "in_progress").length,
+        successRate,
+        avgROI,
+        totalNetValue,
+        measured: outcomes.filter(o => o.evidence_type === "measured").length,
       };
     },
-    staleTime: 60_000,
+    staleTime: 120_000,
   });
 
   const todayHealth = healthData?.[0] || null;
-  const yesterdayHealth = healthData?.[1] || null;
+
+  const formatCurrency = (val: number) => {
+    if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
+    if (val >= 1_000) return `$${(val / 1_000).toFixed(0)}K`;
+    return `$${val.toFixed(0)}`;
+  };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <WelcomeBanner />
-
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Sunrise className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold">Morning Brief</h1>
-            <p className="text-sm text-muted-foreground">{format(new Date(), "EEEE, MMMM d, yyyy · HH:mm")} UTC</p>
+    <div className="space-y-5 animate-fade-in">
+      {/* ── HERO HEADER ── */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Sunrise className="h-4.5 w-4.5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold leading-tight">Today's Brief</h1>
+              <p className="text-xs text-muted-foreground">{format(new Date(), "EEEE, MMMM d · HH:mm")} UTC</p>
+            </div>
           </div>
         </div>
-        <Badge variant="outline" className="gap-1.5">
-          <Clock className="h-3 w-3" />
-          Updated {format(new Date(), "HH:mm")}
-        </Badge>
+        <SystemHealthBadge />
       </div>
 
-      {/* ── PROOF OF VALUE — first thing an executive sees ── */}
-      <ProofOfValueWidget />
-
-      {/* Quick stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          icon={<AlertTriangle className="h-4 w-4" />}
-          label="Alerts (24h)"
-          value={alertStats?.total ?? 0}
-          sub={`${alertStats?.critical ?? 0} critical · ${alertStats?.unack ?? 0} unack`}
-          alert={!!alertStats?.critical}
-        />
-        <StatCard
-          icon={<Activity className="h-4 w-4" />}
-          label="Inferences Today"
-          value={todayHealth?.inferences_generated ?? 0}
-          sub={yesterdayHealth ? `vs ${yesterdayHealth.inferences_generated ?? 0} yesterday` : ""}
-        />
-        <StatCard
-          icon={<TrendingUp className="h-4 w-4" />}
-          label="Decisions Captured"
-          value={todayHealth?.decisions_captured ?? 0}
-          sub={`${todayHealth?.executions_started ?? 0} started`}
-        />
-        <StatCard
-          icon={<Shield className="h-4 w-4" />}
-          label="Outcomes Recorded"
-          value={todayHealth?.outcomes_recorded ?? 0}
-          sub={`${todayHealth?.measured_outcomes ?? 0} measured`}
-        />
+      {/* ── TAGLINE — 30-second understanding ── */}
+      <div className="rounded-lg border border-border bg-card/50 px-4 py-3">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          <span className="text-foreground font-medium">AICIS</span> monitors global signals, recommends decisions, tracks execution, and measures outcomes —{" "}
+          <span className="text-primary font-medium">proving the value of every action taken</span>.
+        </p>
       </div>
 
-      {/* Global Signals */}
+      {/* ── VALUE SCORECARD — the first thing that proves worth ── */}
+      {valueData && valueData.acted > 0 && (
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-transparent overflow-hidden">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">System Impact</span>
+              {valueData.measured > 0 && (
+                <Badge variant="outline" className="text-[10px] border-primary/30 text-primary ml-auto">
+                  {valueData.measured} measured
+                </Badge>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <MetricBlock
+                value={String(valueData.acted)}
+                label="Decisions Acted"
+                sub={`${valueData.inProgress} in progress`}
+                accent={false}
+              />
+              <MetricBlock
+                value={`${valueData.successRate}%`}
+                label="Success Rate"
+                sub={`${valueData.outcomes} outcomes`}
+                accent={valueData.successRate >= 70}
+              />
+              <MetricBlock
+                value={valueData.totalNetValue > 0 ? formatCurrency(valueData.totalNetValue) : "—"}
+                label="Value Created"
+                sub={valueData.totalNetValue > 0 ? "net captured" : "Pending"}
+                accent={valueData.totalNetValue > 0}
+              />
+              <MetricBlock
+                value={valueData.avgROI > 0 ? `${valueData.avgROI.toFixed(1)}x` : "—"}
+                label="Avg ROI"
+                sub={valueData.avgROI > 0 ? "per decision" : "Pending"}
+                accent={valueData.avgROI > 1}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No data yet — onboarding CTA */}
+      {(!valueData || valueData.acted === 0) && (
+        <Card className="border-primary/20">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Target className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">No decisions yet</p>
+              <p className="text-xs text-muted-foreground">Review live signals and create your first decision to start tracking value.</p>
+            </div>
+            <Button size="sm" onClick={() => navigate("/live")} className="shrink-0 gap-1">
+              View Signals <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── RECENT WIN — proof story ── */}
+      <RecentWinWidget />
+
+      {/* ── WHAT MATTERS — top signals ── */}
       <GlobalSignalsBrief />
 
-      {/* Top 5 Risks */}
-      <TopRisksWidget />
-
-      {/* Recent Decisions */}
+      {/* ── WHAT WE DID — recent decisions ── */}
       <RecentDecisionsWidget />
 
-      {/* Two columns */}
-      <div className="grid md:grid-cols-2 gap-4">
-        <OvernightChanges />
-        <SystemPulse />
-      </div>
+      {/* ── RISK RADAR ── */}
+      <TopRisksWidget />
+
+      {/* ── WHAT TO DO NEXT ── */}
+      <Card className="border-border">
+        <CardContent className="p-4">
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-primary" />
+            What To Do Next
+          </h3>
+          <div className="grid sm:grid-cols-3 gap-2">
+            <ActionCard
+              icon={<Radio className="h-4 w-4 text-primary" />}
+              title="Review Signals"
+              desc="Check new intelligence"
+              onClick={() => navigate("/live")}
+              count={todayHealth?.inferences_generated ?? undefined}
+            />
+            <ActionCard
+              icon={<Activity className="h-4 w-4 text-primary" />}
+              title="Manage Decisions"
+              desc="Execute or close open items"
+              onClick={() => navigate("/decision-ops")}
+              count={valueData?.inProgress ?? undefined}
+            />
+            <ActionCard
+              icon={<TrendingUp className="h-4 w-4 text-primary" />}
+              title="Record Outcomes"
+              desc="Capture results and evidence"
+              onClick={() => navigate("/decision-ops")}
+            />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
 
-const EMPTY_HINTS: Record<string, string> = {
-  "Alerts (24h)": "No alerts yet — signals will appear as data flows in",
-  "Inferences Today": "AI analysis starts once live signals are ingested",
-  "Decisions Captured": "Use 'Ask AI' to create your first decision",
-  "Outcomes Recorded": "Outcomes are tracked after decisions are acted on",
-};
+/* ── Sub-components ── */
 
-const StatCard = ({
-  icon, label, value, sub, alert,
-}: {
-  icon: React.ReactNode; label: string; value: number; sub: string; alert?: boolean;
+const MetricBlock = ({ value, label, sub, accent }: {
+  value: string; label: string; sub: string; accent: boolean;
 }) => (
-  <Card className={alert ? "border-destructive/50" : ""}>
-    <CardContent className="p-3">
-      <div className="flex items-center gap-2 text-muted-foreground mb-1">
-        {icon}
-        <span className="text-xs">{label}</span>
-      </div>
-      <p className="text-2xl font-semibold">{value}</p>
-      {value === 0 && EMPTY_HINTS[label] ? (
-        <p className="text-[11px] text-muted-foreground/70 mt-1 leading-snug">{EMPTY_HINTS[label]}</p>
-      ) : (
-        sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
-      )}
-    </CardContent>
-  </Card>
+  <div>
+    <p className={`text-xl font-semibold ${accent ? "text-primary" : ""}`}>{value}</p>
+    <p className="text-[11px] font-medium text-muted-foreground mt-0.5">{label}</p>
+    <p className="text-[10px] text-muted-foreground/70">{sub}</p>
+  </div>
+);
+
+const ActionCard = ({ icon, title, desc, onClick, count }: {
+  icon: React.ReactNode; title: string; desc: string; onClick: () => void; count?: number;
+}) => (
+  <button
+    onClick={onClick}
+    className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/30 hover:bg-primary/5 transition-all text-left group"
+  >
+    <div className="shrink-0">{icon}</div>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-medium group-hover:text-primary transition-colors">{title}</p>
+      <p className="text-[11px] text-muted-foreground">{desc}</p>
+    </div>
+    {count !== undefined && count > 0 && (
+      <Badge variant="secondary" className="text-[10px] shrink-0">{count}</Badge>
+    )}
+    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+  </button>
 );
