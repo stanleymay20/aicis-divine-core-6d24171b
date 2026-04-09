@@ -94,9 +94,14 @@ export function GlobalSignalsBrief() {
                         </Badge>
                       ))}
                     </div>
-                    {signal.recommended_actions?.government && (
-                      <div className="text-[10px] text-primary/80 mt-0.5">
-                        → {signal.recommended_actions.government}
+                    {signal.recommended_actions?.government ? (
+                      <div className="text-[11px] text-primary/80 mt-0.5 flex items-center gap-1">
+                        <ArrowRight className="h-2.5 w-2.5" />
+                        <span className="line-clamp-1">{signal.recommended_actions.government}</span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-muted-foreground/60 mt-0.5">
+                        → Create a decision from this signal
                       </div>
                     )}
                   </div>
