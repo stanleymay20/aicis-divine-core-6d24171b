@@ -25,7 +25,7 @@ export default function DecisionOperations() {
         <DailyTaskPanel />
         <MeasuredOutcomeKPI />
 
-        <Tabs defaultValue="backlog" className="w-full">
+        <Tabs defaultValue="execution" className="w-full">
           <TabsList className="bg-muted/50 p-0.5 h-auto flex-wrap">
             <TabsTrigger value="backlog" className="text-xs gap-1.5 data-[state=active]:bg-card">
               <Flame className="h-3.5 w-3.5" /> Backlog
