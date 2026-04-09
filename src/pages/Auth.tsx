@@ -17,25 +17,11 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [diagnostic, setDiagnostic] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Run diagnostics
-    const runDiagnostics = async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('diagnose-auth');
-        if (!error && data) {
-          setDiagnostic(data);
-        }
-      } catch (e) {
-        console.error('Diagnostic error:', e);
-      }
-    };
-    runDiagnostics();
-
-    // Check if user is already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         navigate("/morning-brief", { replace: true });
@@ -163,7 +149,7 @@ const Auth = () => {
               <Input
                 id="fullName"
                 type="text"
-                placeholder="Stanley Osei-Wusu"
+                placeholder="Your full name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required={!isLogin}
