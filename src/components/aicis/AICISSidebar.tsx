@@ -31,32 +31,27 @@ interface SidebarProps {
 
 const navGroups = [
   {
-    label: "Core",
+    label: "Home",
     items: [
-      { id: "brief", label: "Brief", icon: Sunrise, path: "/morning-brief" },
-      { id: "live", label: "Live", icon: Radio, path: "/live" },
-      { id: "decisions", label: "Decisions", icon: MessageSquare, path: "/decisions" },
+      { id: "brief", label: "Today's Brief", icon: Sunrise, path: "/morning-brief" },
+      { id: "live", label: "Live Signals", icon: Radio, path: "/live" },
+      { id: "decisions", label: "Ask AI", icon: MessageSquare, path: "/decisions" },
     ],
   },
   {
-    label: "Operations",
+    label: "Analysis",
     items: [
-      { id: "decision-ops", label: "Decision Ops", icon: Activity, path: "/decision-ops" },
-      { id: "daily-ops", label: "Daily Ops", icon: Gauge, path: "/daily-evidence-ops" },
-      { id: "measured", label: "Evidence", icon: Target, path: "/measured-acceleration" },
-      { id: "closure", label: "Closure", icon: ClipboardCheck, path: "/evidence-closure" },
-    ],
-  },
-  {
-    label: "Assurance",
-    items: [
-      { id: "evidence-cmd", label: "Command", icon: Shield, path: "/evidence-command" },
-      { id: "operational-truth", label: "Truth", icon: Cpu, path: "/operational-truth" },
+      { id: "decision-ops", label: "Decisions", icon: Activity, path: "/decision-ops" },
+      { id: "daily-ops", label: "Daily Activity", icon: Gauge, path: "/daily-evidence-ops" },
+      { id: "measured", label: "Reports", icon: Target, path: "/measured-acceleration" },
+      { id: "closure", label: "Reviews", icon: ClipboardCheck, path: "/evidence-closure" },
+      { id: "evidence-cmd", label: "Evidence", icon: Shield, path: "/evidence-command" },
+      { id: "operational-truth", label: "Data Quality", icon: Cpu, path: "/operational-truth" },
       { id: "governance", label: "Governance", icon: Shield, path: "/governance" },
     ],
   },
   {
-    label: "System",
+    label: "Account",
     items: [
       { id: "billing", label: "Billing", icon: CreditCard, path: "/enterprise-governance" },
       { id: "admin", label: "Settings", icon: Settings, path: "/admin" },
