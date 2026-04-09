@@ -246,14 +246,10 @@ export function SignalCard({
           </div>
         )}
 
-        {/* Inline 1-click feedback + Promote */}
-        {(showFeedback || signal.routed_at) && !isPending && (
+        {/* Decision CTA — always visible for enriched signals */}
+        {!isPending && (
           <div className="flex items-center gap-1.5 pt-1 border-t border-border/30 mt-1">
-            {feedbackGiven ? (
-              <span className="text-[10px] text-emerald-400 flex items-center gap-0.5">
-                <CheckCircle2 className="h-3 w-3" /> {feedbackGiven}
-              </span>
-            ) : (
+            {showFeedback && !feedbackGiven && (
               <>
                 <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5" disabled={submitting}
                   onClick={(e) => submitFeedback(e, "confirmed")}>
@@ -269,17 +265,22 @@ export function SignalCard({
                 </Button>
               </>
             )}
-            <div className="flex-1" />
-            {!signal.routed_at && !promoted && (
-              <Button size="sm" variant="ghost" className="h-6 text-[9px] px-1.5 text-primary" disabled={promoting}
-                onClick={promoteTo}>
-                {promoting ? <Loader2 className="h-3 w-3 mr-0.5 animate-spin" /> : <ArrowRight className="h-3 w-3 mr-0.5" />} Promote
-              </Button>
-            )}
-            {promoted && (
-              <span className="text-[9px] text-emerald-400 flex items-center gap-0.5">
-                <CheckCircle2 className="h-3 w-3" /> Promoted
+            {feedbackGiven && (
+              <span className="text-[10px] text-emerald-400 flex items-center gap-0.5">
+                <CheckCircle2 className="h-3 w-3" /> {feedbackGiven}
               </span>
+            )}
+            <div className="flex-1" />
+            {promoted ? (
+              <span className="text-[9px] text-emerald-400 flex items-center gap-0.5">
+                <CheckCircle2 className="h-3 w-3" /> Decision Created
+              </span>
+            ) : (
+              <Button size="sm" variant="outline" className="h-6 text-[9px] px-2 gap-1 text-primary border-primary/30" disabled={promoting}
+                onClick={promoteTo}>
+                {promoting ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+                Create Decision
+              </Button>
             )}
           </div>
         )}
