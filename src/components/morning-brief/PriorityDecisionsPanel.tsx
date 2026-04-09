@@ -86,7 +86,9 @@ export function PriorityDecisionsPanel() {
       const { error } = await supabase
         .from("decision_outcome_log")
         .insert({
+          signal_id: signal.id,
           signal_title: `[SIGNAL] ${signal.title}`,
+          signal_date: new Date().toISOString().slice(0, 10),
           domain: signal.category,
           recommended_action: signal.recommendedAction,
           action_taken: true,
