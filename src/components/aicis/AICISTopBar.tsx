@@ -11,17 +11,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const PAGE_TITLES: Record<string, string> = {
-  "/": "Decisions",
+  "/": "Home",
   "/morning-brief": "Morning Brief",
+  "/live": "Live Signals",
+  "/live-signals": "Live Signals",
+  "/decisions": "Ask AI",
   "/decision-ops": "Decision Operations",
   "/daily-evidence-ops": "Daily Ops",
   "/measured-acceleration": "Evidence",
   "/evidence-closure": "Closure",
   "/evidence-command": "Command",
-  "/operational-truth": "Operational Truth",
+  "/operational-truth": "Data Quality",
   "/governance": "Governance",
   "/enterprise-governance": "Billing",
   "/admin": "Settings",
+  "/signal-validation": "Signal Validation",
 };
 
 export const AICISTopBar = () => {

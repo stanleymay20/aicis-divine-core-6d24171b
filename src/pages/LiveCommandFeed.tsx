@@ -198,26 +198,26 @@ export default function LiveCommandFeed() {
           )}
 
           {/* KPI Bar */}
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono">{allSignals.length}</div>
-              <div className="text-[9px] text-muted-foreground">Total</div>
+              <div className="text-[10px] text-muted-foreground">Total</div>
             </Card>
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono text-destructive">{highImpactCount}</div>
-              <div className="text-[9px] text-muted-foreground">High Impact</div>
+              <div className="text-[10px] text-muted-foreground">High Impact</div>
             </Card>
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono">{avgConfidence}%</div>
-              <div className="text-[9px] text-muted-foreground">Avg Conf</div>
+              <div className="text-[10px] text-muted-foreground">Avg Conf</div>
             </Card>
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono text-primary">{confirmedCount}</div>
-              <div className="text-[9px] text-muted-foreground">Confirmed</div>
+              <div className="text-[10px] text-muted-foreground">Confirmed</div>
             </Card>
             <Card className="p-2 text-center">
               <div className="text-lg font-bold font-mono text-blue-400">{officialCount}</div>
-              <div className="text-[9px] text-muted-foreground">Official</div>
+              <div className="text-[10px] text-muted-foreground">Official</div>
             </Card>
           </div>
 
