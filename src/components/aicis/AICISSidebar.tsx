@@ -39,21 +39,17 @@ const navGroups = [
     ],
   },
   {
-    label: "Analysis",
+    label: "Operations",
     items: [
       { id: "decision-ops", label: "Decisions", icon: Activity, path: "/decision-ops" },
       { id: "daily-ops", label: "Daily Activity", icon: Gauge, path: "/daily-evidence-ops" },
-      { id: "measured", label: "Reports", icon: Target, path: "/measured-acceleration" },
-      { id: "closure", label: "Reviews", icon: ClipboardCheck, path: "/evidence-closure" },
-      { id: "evidence-cmd", label: "Evidence", icon: Shield, path: "/evidence-command" },
-      { id: "operational-truth", label: "Data Quality", icon: Cpu, path: "/operational-truth" },
+      { id: "evidence-cmd", label: "Evidence", icon: Target, path: "/evidence-command" },
       { id: "governance", label: "Governance", icon: Shield, path: "/governance" },
     ],
   },
   {
     label: "Account",
     items: [
-      { id: "billing", label: "Billing", icon: CreditCard, path: "/enterprise-governance" },
       { id: "admin", label: "Settings", icon: Settings, path: "/admin" },
     ],
   },
