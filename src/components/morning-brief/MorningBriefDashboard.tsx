@@ -114,6 +114,13 @@ export const MorningBriefDashboard = () => {
   );
 };
 
+const EMPTY_HINTS: Record<string, string> = {
+  "Alerts (24h)": "No alerts yet — signals will appear as data flows in",
+  "Inferences Today": "AI analysis starts once live signals are ingested",
+  "Decisions Captured": "Use 'Ask AI' to create your first decision",
+  "Outcomes Recorded": "Outcomes are tracked after decisions are acted on",
+};
+
 const StatCard = ({
   icon,
   label,
@@ -134,7 +141,11 @@ const StatCard = ({
         <span className="text-xs">{label}</span>
       </div>
       <p className="text-2xl font-semibold">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      {value === 0 && EMPTY_HINTS[label] ? (
+        <p className="text-[11px] text-muted-foreground/70 mt-1 leading-snug">{EMPTY_HINTS[label]}</p>
+      ) : (
+        sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+      )}
     </CardContent>
   </Card>
 );
