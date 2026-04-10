@@ -39,24 +39,30 @@ export const MorningBriefDashboard = () => {
       {/* ── SYSTEM STATUS STRIP ── */}
       <SystemStatusStrip />
 
-      {/* ── TAGLINE ── */}
-      <div className="rounded-lg border border-border bg-card/50 px-4 py-3">
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          <span className="text-foreground font-medium">AICIS</span> turns global signals into decisions you can execute, track, and measure —{" "}
-          <span className="text-primary font-medium">proving the value of every action taken</span>.
+      {/* ── VALUE PROPOSITION — what this system does for you ── */}
+      <div className="rounded-lg border border-primary/20 bg-gradient-to-r from-primary/5 via-transparent to-transparent px-4 py-3">
+        <p className="text-sm leading-relaxed">
+          <span className="text-primary font-bold">AICIS</span>{" "}
+          <span className="text-muted-foreground">tells you </span>
+          <span className="text-foreground font-medium">what to do</span>
+          <span className="text-muted-foreground">, </span>
+          <span className="text-foreground font-medium">why it matters</span>
+          <span className="text-muted-foreground">, and </span>
+          <span className="text-foreground font-medium">how much it saves</span>
+          <span className="text-muted-foreground"> — backed by data, not guesswork.</span>
         </p>
       </div>
+
+      {/* ── 1. PROVEN VALUE — show ROI first ── */}
+      <ExecutiveProofPanel />
+
+      {/* ── 2. WHAT YOU MUST DECIDE — Priority Decisions (now with ROI + precedent) ── */}
+      <PriorityDecisionsPanel />
 
       {/* ── WATCHLIST ── */}
       <WatchlistBriefWidget />
 
-      {/* ── 1. WHAT YOU MUST DECIDE — Priority Decisions ── */}
-      <PriorityDecisionsPanel />
-
-      {/* ── 2. WHAT VALUE WAS CREATED — Executive Proof ── */}
-      <ExecutiveProofPanel />
-
-      {/* ── 3. WHAT MATTERS — Top Signals ── */}
+      {/* ── 3. WHAT MATTERS — Top Signals (now with action + estimated impact) ── */}
       <GlobalSignalsBrief />
 
       {/* ── 4. WHAT WE DID — Recent Decisions ── */}

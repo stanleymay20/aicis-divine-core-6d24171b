@@ -2,7 +2,7 @@ import { useTopSignals } from "@/hooks/useGlobalSignals";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Radio, TrendingUp, Clock, ArrowRight, Info, Loader2, AlertTriangle } from "lucide-react";
+import { Radio, TrendingUp, Clock, ArrowRight, Info, Loader2, AlertTriangle, Target, DollarSign } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 function timeAgo(dateStr: string) {
@@ -16,8 +16,15 @@ function timeAgo(dateStr: string) {
 
 function impactColor(score: number) {
   if (score >= 80) return "text-destructive";
-  if (score >= 60) return "text-warning";
+  if (score >= 60) return "text-amber-500";
   return "text-muted-foreground";
+}
+
+function quickImpactEstimate(score: number): string {
+  if (score >= 80) return "€1M+";
+  if (score >= 70) return "€500K+";
+  if (score >= 60) return "€200K+";
+  return "€50K+";
 }
 
 export function GlobalSignalsBrief() {
@@ -63,7 +70,7 @@ export function GlobalSignalsBrief() {
               <div
                 key={signal.id}
                 className={cn(
-                  "p-2 rounded border cursor-pointer hover:border-primary/40 transition-colors",
+                  "p-3 rounded-lg border cursor-pointer hover:border-primary/40 transition-colors",
                   signal.impact_score >= 80 ? "border-destructive/30 bg-destructive/5" : "border-border/50"
                 )}
                 onClick={() => navigate("/live")}
@@ -72,13 +79,17 @@ export function GlobalSignalsBrief() {
                   <span className="text-[10px] font-bold text-muted-foreground mt-0.5 shrink-0">
                     #{i + 1}
                   </span>
-                  <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <h4 className="text-xs font-semibold leading-tight line-clamp-2">{signal.title}</h4>
+                    
+                    {/* Why it matters — strategic context */}
                     {signal.strategic_implications && (
                       <p className="text-[10px] text-muted-foreground line-clamp-1">
                         {signal.strategic_implications}
                       </p>
                     )}
+
+                    {/* Score strip */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={cn("text-[10px] font-mono font-bold", impactColor(signal.impact_score))}>
                         <TrendingUp className="h-2.5 w-2.5 inline mr-0.5" />
@@ -88,20 +99,31 @@ export function GlobalSignalsBrief() {
                         <Clock className="h-2.5 w-2.5" />
                         {timeAgo(signal.first_detected_at)}
                       </span>
-                      {signal.affected_regions?.slice(0, 2).map(r => (
+                      <span className="text-[10px] text-emerald-500 font-medium flex items-center gap-0.5">
+                        <DollarSign className="h-2.5 w-2.5" />
+                        {quickImpactEstimate(signal.impact_score)} at risk
+                      </span>
+                      {signal.affected_regions?.slice(0, 1).map(r => (
                         <Badge key={r} variant="secondary" className="text-[8px] h-3.5 px-1">
                           {r}
                         </Badge>
                       ))}
                     </div>
+
+                    {/* Recommended action — always show */}
                     {signal.recommended_actions?.government ? (
-                      <div className="text-[11px] text-primary/80 mt-0.5 flex items-center gap-1">
-                        <ArrowRight className="h-2.5 w-2.5" />
-                        <span className="line-clamp-1">{signal.recommended_actions.government}</span>
+                      <div className="bg-primary/5 rounded px-2 py-1.5 flex items-start gap-1.5">
+                        <Target className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                        <span className="text-[11px] font-medium text-foreground line-clamp-1">
+                          {signal.recommended_actions.government}
+                        </span>
                       </div>
                     ) : (
-                      <div className="text-[11px] text-muted-foreground/60 mt-0.5">
-                        → Create a decision from this signal
+                      <div className="bg-muted/50 rounded px-2 py-1.5 flex items-center gap-1.5">
+                        <Target className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="text-[11px] text-muted-foreground">
+                          Create a decision from this signal →
+                        </span>
                       </div>
                     )}
                   </div>
