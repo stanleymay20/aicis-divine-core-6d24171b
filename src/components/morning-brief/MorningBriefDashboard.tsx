@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Sunrise, ArrowRight, CheckCircle2, Radio, Activity, TrendingUp
+  Sunrise, ArrowRight, CheckCircle2, Radio, Activity, TrendingUp, Layers
 } from "lucide-react";
 import { format } from "date-fns";
 import { PriorityDecisionsPanel } from "./PriorityDecisionsPanel";
@@ -68,7 +68,7 @@ export const MorningBriefDashboard = () => {
             <CheckCircle2 className="h-4 w-4 text-primary" />
             What To Do Next
           </h3>
-          <div className="grid sm:grid-cols-3 gap-2">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <ActionCard
               icon={<Radio className="h-4 w-4 text-primary" />}
               title="Review Signals"
@@ -86,6 +86,12 @@ export const MorningBriefDashboard = () => {
               title="Record Outcomes"
               desc="Close the loop with evidence"
               onClick={() => navigate("/evidence-command")}
+            />
+            <ActionCard
+              icon={<Layers className="h-4 w-4 text-primary" />}
+              title="Drill Down"
+              desc="Global → Country → Village"
+              onClick={() => navigate("/resolution")}
             />
           </div>
         </CardContent>

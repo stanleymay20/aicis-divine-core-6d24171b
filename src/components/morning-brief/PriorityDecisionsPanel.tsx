@@ -178,17 +178,22 @@ export function PriorityDecisionsPanel() {
                 </Badge>
               </div>
 
-              {/* Cross-domain chips */}
+              {/* Resolution context + Cross-domain chips */}
               <div className="flex items-center gap-1.5 flex-wrap">
-                {p.crossDomains.map((d: string) => (
-                  <Badge key={d} variant="outline" className="text-[9px] h-5 gap-1 border-primary/20">
+                {p.affected_countries?.slice(0, 2).map((c: string) => (
+                  <Badge key={c} variant="outline" className="text-[9px] h-5 gap-1 border-blue-500/30 text-blue-600">
                     <Globe className="h-2.5 w-2.5" />
-                    {d}
+                    {c}
                   </Badge>
                 ))}
                 {p.affected_regions?.slice(0, 2).map((r: string) => (
                   <Badge key={r} variant="secondary" className="text-[9px] h-5">
                     {r}
+                  </Badge>
+                ))}
+                {p.crossDomains.map((d: string) => (
+                  <Badge key={d} variant="outline" className="text-[9px] h-5 gap-1 border-primary/20">
+                    {d}
                   </Badge>
                 ))}
                 <span className="text-[10px] font-mono text-muted-foreground ml-auto">
