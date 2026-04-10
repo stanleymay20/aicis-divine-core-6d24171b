@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Globe, Map, MapPin, Database, ArrowRight, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Globe, Map, MapPin, ArrowRight, TrendingDown, TrendingUp, Minus, Package, AlertTriangle } from "lucide-react";
 import { DecisionPropagationPanel } from "./DecisionPropagationPanel";
 import { RiskHeatMap } from "./RiskHeatMap";
 import { WatchButton } from "@/components/watchlist/WatchButton";
@@ -13,8 +13,7 @@ interface Props {
 }
 
 export const GlobalOverview = ({ onSelectCountry }: Props) => {
-  // Aggregate stats
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats } = useQuery({
     queryKey: ["resolution-global-stats"],
     queryFn: async () => {
       const [snapshots, regions, villages] = await Promise.all([
@@ -31,7 +30,6 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
     staleTime: 60_000,
   });
 
-  // Top risk countries
   const { data: topCountries, isLoading: countriesLoading } = useQuery({
     queryKey: ["resolution-top-countries"],
     queryFn: async () => {
@@ -45,7 +43,6 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
 
       if (!data?.length) return [];
 
-      // Aggregate by country
       interface CountryAgg { iso3: string; avgRisk: number; avgMomentum: number; domains: number; directions: string[] }
       const map: Record<string, CountryAgg> = {};
       for (const row of data) {
@@ -77,7 +74,6 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
     return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
   };
 
-  // Country name lookup (simple)
   const countryNames: Record<string, string> = {
     AFG: "Afghanistan", AGO: "Angola", BDI: "Burundi", BFA: "Burkina Faso", CAF: "Central African Republic",
     COD: "DR Congo", ETH: "Ethiopia", HTI: "Haiti", IRQ: "Iraq", LBY: "Libya",
@@ -87,16 +83,32 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
     USA: "United States", GBR: "United Kingdom", DEU: "Germany", FRA: "France", CHN: "China",
     IND: "India", BRA: "Brazil", RUS: "Russia", ZAF: "South Africa", KEN: "Kenya",
     RWA: "Rwanda", TZA: "Tanzania", UGA: "Uganda", GHA: "Ghana", SEN: "Senegal",
+    TUR: "Turkey", EGY: "Egypt", SAU: "Saudi Arabia", ARE: "UAE", VNM: "Vietnam",
+    THA: "Thailand", IDN: "Indonesia", MYS: "Malaysia", PHL: "Philippines", BGD: "Bangladesh",
   };
 
   return (
     <div className="space-y-4">
-      {/* Resolution tiers */}
+      {/* Supply chain context */}
+      <Card className="border-primary/20 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold">Where Your Supply Chain Is Most Exposed</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            This map shows risk levels across trade markets, sourcing regions, and logistics corridors. 
+            Click any country to see domain-level risk, business impact, and recommended actions.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Resolution tiers — simplified */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {[
-          { icon: Globe, label: "Macro — National", value: "211 Countries", sub: "9 domains · daily updates", color: "text-blue-500", bg: "bg-blue-500/10" },
-          { icon: Map, label: "Meso — Regional", value: stats ? `${stats.regions.toLocaleString()} Regions` : "24,774 Regions", sub: "194 countries · admin hierarchy", color: "text-amber-500", bg: "bg-amber-500/10" },
-          { icon: MapPin, label: "Micro — Village", value: stats ? `${(stats.villageIndicators / 1_000_000).toFixed(1)}M Indicators` : "2.57M Indicators", sub: "188 countries · satellite + AI", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+          { icon: Globe, label: "Market Level", value: "211 Markets", sub: "Country-level risk across 9 domains", color: "text-blue-500", bg: "bg-blue-500/10" },
+          { icon: Map, label: "Region Level", value: stats ? `${stats.regions.toLocaleString()} Regions` : "24,774 Regions", sub: "Sub-national risk concentration", color: "text-amber-500", bg: "bg-amber-500/10" },
+          { icon: MapPin, label: "Local Level", value: stats ? `${(stats.villageIndicators / 1_000_000).toFixed(1)}M Data Points` : "2.57M Points", sub: "Village-level indicators", color: "text-emerald-500", bg: "bg-emerald-500/10" },
         ].map((tier) => (
           <Card key={tier.label} className="border-border/50">
             <CardContent className="p-4 flex items-start gap-3">
@@ -113,29 +125,26 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
         ))}
       </div>
 
-      {/* Propagation example */}
+      {/* Disruption propagation — commercial framing */}
       <Card className="border-primary/20 bg-primary/5">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
-            <Database className="h-4 w-4 text-primary" />
-            Impact Propagation — How Intelligence Flows
+            <AlertTriangle className="h-4 w-4 text-primary" />
+            How Disruptions Propagate Through Your Supply Chain
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Village drought signal</Badge>
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Local disruption</Badge>
             <ArrowRight className="h-3 w-3" />
-            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">Regional food stress</Badge>
+            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">Regional supply stress</Badge>
             <ArrowRight className="h-3 w-3" />
-            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">National inflation risk</Badge>
+            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">Market price impact</Badge>
             <ArrowRight className="h-3 w-3" />
-            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30">Decision: Pre-position aid</Badge>
+            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30">Action: Hedge or switch supplier</Badge>
           </div>
         </CardContent>
       </Card>
 
-      {/* Decision Propagation */}
       <DecisionPropagationPanel />
-
-      {/* Risk Heat Map */}
       <RiskHeatMap onSelectCountry={onSelectCountry} />
 
       {/* Country list */}
@@ -143,7 +152,7 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Globe className="h-4 w-4 text-primary" />
-            Highest Risk Countries — Click to Drill Down
+            Top Trade Risk Markets — Click to Drill Down
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">

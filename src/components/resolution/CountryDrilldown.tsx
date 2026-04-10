@@ -4,9 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, ArrowRight, Map, MapPin, BarChart3, TrendingDown, TrendingUp, Minus, AlertTriangle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Map, MapPin, BarChart3, TrendingDown, TrendingUp, Minus, AlertTriangle, Package, Target } from "lucide-react";
 import { CountryRecommendations } from "./ResolutionRecommendations";
 import { WatchButton } from "@/components/watchlist/WatchButton";
+import { cn } from "@/lib/utils";
 
 interface Props {
   iso3: string;
@@ -15,8 +16,19 @@ interface Props {
   onBack: () => void;
 }
 
+const DOMAIN_BUSINESS_IMPACT: Record<string, string> = {
+  health: "Workforce disruption risk",
+  food: "Input price / sourcing risk",
+  energy: "Fuel cost / transport cost risk",
+  economy: "Payment / FX exposure",
+  governance: "Regulatory / compliance risk",
+  security: "Physical security / access risk",
+  climate: "Weather / shipping delay risk",
+  education: "Skilled labor availability",
+  infrastructure: "Logistics / port reliability",
+};
+
 export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: Props) => {
-  // Domain snapshots for this country
   const { data: domains, isLoading: domainsLoading } = useQuery({
     queryKey: ["resolution-country-domains", iso3],
     queryFn: async () => {
@@ -30,7 +42,6 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
     },
   });
 
-  // Regions for this country
   const { data: regions, isLoading: regionsLoading } = useQuery({
     queryKey: ["resolution-country-regions", iso3],
     queryFn: async () => {
@@ -46,7 +57,6 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
     },
   });
 
-  // Village indicator stats for this country
   const { data: villageStats } = useQuery({
     queryKey: ["resolution-country-village-stats", iso3],
     queryFn: async () => {
@@ -55,7 +65,6 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
         .select("id")
         .eq("country_iso3", iso3);
       if (!data?.length) return { regions: 0, hasVillageData: false };
-
       const regionIds = data.map((r) => r.id);
       const { count } = await supabase
         .from("village_indicators")
@@ -73,10 +82,17 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
 
   const riskColor = (v: number) => (v > 60 ? "text-red-500" : v > 40 ? "text-amber-500" : "text-green-500");
 
+  // Compute overall market risk
+  const avgRisk = domains?.length
+    ? domains.reduce((s, d) => s + d.risk_pressure_score, 0) / domains.length
+    : 0;
+
+  const stressedDomains = domains?.filter(d => d.risk_pressure_score > 50) || [];
+
   return (
     <div className="space-y-4">
       <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground">
-        <ArrowLeft className="h-4 w-4 mr-1" /> Back to Global
+        <ArrowLeft className="h-4 w-4 mr-1" /> Back to Global Risk Map
       </Button>
 
       {/* Country header */}
@@ -86,11 +102,15 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
             <div className="flex items-center gap-3">
               <div>
                 <h2 className="text-lg font-bold text-foreground">{countryName}</h2>
-                <p className="text-xs text-muted-foreground font-mono">{iso3}</p>
+                <p className="text-xs text-muted-foreground font-mono">{iso3} · Trade market profile</p>
               </div>
               <WatchButton watchType="country" label={countryName} countryIso3={iso3} />
             </div>
             <div className="flex gap-3">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Market Risk</p>
+                <p className={cn("text-lg font-bold", riskColor(avgRisk))}>{avgRisk.toFixed(0)}</p>
+              </div>
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">Domains</p>
                 <p className="text-lg font-bold text-primary">{domains?.length || 0}</p>
@@ -99,23 +119,50 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
                 <p className="text-xs text-muted-foreground">Regions</p>
                 <p className="text-lg font-bold text-primary">{regions?.length || 0}</p>
               </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">Village Data</p>
-                <p className="text-lg font-bold text-primary">
-                  {villageStats?.indicatorCount ? `${(villageStats.indicatorCount / 1000).toFixed(0)}K` : "—"}
-                </p>
-              </div>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Business Impact Summary */}
+      {stressedDomains.length > 0 && (
+        <Card className="border-amber-500/20 bg-amber-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Package className="h-4 w-4 text-amber-500" />
+              <span className="text-sm font-semibold">Business Impact Summary</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {stressedDomains.slice(0, 4).map(d => (
+                <div key={d.domain} className="flex items-center gap-2 text-xs">
+                  <AlertTriangle className={cn("h-3 w-3 shrink-0", riskColor(d.risk_pressure_score))} />
+                  <span className="font-medium capitalize">{d.domain}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="text-muted-foreground">{DOMAIN_BUSINESS_IMPACT[d.domain] || "Trade risk"}</span>
+                  <Badge variant="outline" className={cn("text-[9px] ml-auto", riskColor(d.risk_pressure_score))}>
+                    {d.risk_pressure_score.toFixed(0)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            {stressedDomains.length >= 3 && (
+              <div className="mt-2 bg-primary/5 rounded px-2.5 py-1.5 flex items-start gap-1.5">
+                <Target className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                <span className="text-[11px] font-medium">
+                  Compounding disruption risk — consider diversifying sourcing or hedging exposure in this market
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Domain performance grid */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-primary" />
-            Macro — Domain Performance
+            Domain Risk Breakdown
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -127,15 +174,15 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
                 <div key={d.domain} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-card">
                   <div className="flex items-center gap-2">
                     {directionIcon(d.forecast_direction)}
-                    <span className="text-sm font-medium capitalize">{d.domain}</span>
+                    <div>
+                      <span className="text-sm font-medium capitalize">{d.domain}</span>
+                      <p className="text-[10px] text-muted-foreground">{DOMAIN_BUSINESS_IMPACT[d.domain] || ""}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className={`text-[10px] ${riskColor(d.risk_pressure_score)}`}>
                       Risk {d.risk_pressure_score.toFixed(0)}
                     </Badge>
-                    <span className={`text-xs font-mono font-bold ${riskColor(d.risk_pressure_score)}`}>
-                      {d.performance_index.toFixed(0)}
-                    </span>
                   </div>
                 </div>
               ))}
@@ -144,7 +191,6 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
         </CardContent>
       </Card>
 
-      {/* Resolution-Aware Recommendations */}
       <CountryRecommendations domains={domains as any} />
 
       {/* Regions list */}
@@ -152,7 +198,7 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Map className="h-4 w-4 text-amber-500" />
-            Meso — Sub-National Regions
+            Sub-National Regions
             <Badge variant="secondary" className="text-[10px] ml-auto">{regions?.length || 0} regions</Badge>
           </CardTitle>
         </CardHeader>
