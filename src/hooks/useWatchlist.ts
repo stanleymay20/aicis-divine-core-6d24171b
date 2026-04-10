@@ -17,6 +17,11 @@ export interface WatchlistItem {
   last_checked_at: string | null;
   created_at: string;
   updated_at: string;
+  alert_enabled: boolean;
+  alert_threshold: number;
+  last_alerted_at: string | null;
+  current_status: string;
+  last_risk_value: number | null;
 }
 
 export interface WatchlistEvent {
@@ -27,6 +32,10 @@ export interface WatchlistEvent {
   severity: string;
   metadata: Record<string, any>;
   created_at: string;
+  previous_value: number | null;
+  current_value: number | null;
+  delta_value: number | null;
+  event_hash: string | null;
 }
 
 const WATCHLIST_KEY = ["watchlist-items"];
@@ -55,7 +64,6 @@ export function useWatchlist() {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
-      // Get item ids first
       const { data: myItems } = await supabase
         .from("watchlist_items")
         .select("id")
@@ -67,7 +75,7 @@ export function useWatchlist() {
         .select("*")
         .in("watchlist_item_id", ids)
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(100);
       return (data || []) as WatchlistEvent[];
     },
     enabled: items.length > 0,
@@ -121,6 +129,17 @@ export function useWatchlist() {
     onSuccess: () => qc.invalidateQueries({ queryKey: WATCHLIST_KEY }),
   });
 
+  const toggleAlert = useMutation({
+    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      const { error } = await supabase.from("watchlist_items").update({ alert_enabled: enabled }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: WATCHLIST_KEY });
+      toast.success("Alert settings updated");
+    },
+  });
+
   const isWatching = (type: WatchType, key: string) => {
     return items.some((i) => {
       if (type === "country") return i.watch_type === "country" && i.country_iso3 === key;
@@ -149,5 +168,34 @@ export function useWatchlist() {
     }
   };
 
-  return { items, events, isLoading, addItem, removeItem, updatePriority, isWatching, toggleWatch };
+  // Smart sorting: alerts first → critical status → high priority → newest events
+  const sortedItems = [...items].sort((a, b) => {
+    // Alert-active items first
+    const aAlerting = a.alert_enabled && a.last_alerted_at && a.current_status !== "stable" ? 1 : 0;
+    const bAlerting = b.alert_enabled && b.last_alerted_at && b.current_status !== "stable" ? 1 : 0;
+    if (bAlerting !== aAlerting) return bAlerting - aAlerting;
+
+    // Status weight
+    const statusWeight: Record<string, number> = { critical: 4, rising: 3, improving: 1, stable: 0 };
+    const aStatus = statusWeight[a.current_status] || 0;
+    const bStatus = statusWeight[b.current_status] || 0;
+    if (bStatus !== aStatus) return bStatus - aStatus;
+
+    // Priority
+    if (a.priority_level === "high" && b.priority_level !== "high") return -1;
+    if (b.priority_level === "high" && a.priority_level !== "high") return 1;
+
+    // Newest events
+    const aEvents = events.filter((e) => e.watchlist_item_id === a.id);
+    const bEvents = events.filter((e) => e.watchlist_item_id === b.id);
+    const aLatest = aEvents[0]?.created_at || "0";
+    const bLatest = bEvents[0]?.created_at || "0";
+    return bLatest.localeCompare(aLatest);
+  });
+
+  return {
+    items, sortedItems, events, isLoading,
+    addItem, removeItem, updatePriority, toggleAlert,
+    isWatching, toggleWatch,
+  };
 }

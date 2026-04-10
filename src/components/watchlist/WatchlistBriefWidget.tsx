@@ -1,45 +1,84 @@
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Eye, ArrowRight, Globe, Map, Zap } from "lucide-react";
+import {
+  Eye, ArrowRight, Globe, Map, Zap, AlertTriangle,
+  TrendingUp, CheckCircle2, Shield
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 const ICONS: Record<string, any> = { country: Globe, region: Map, hotspot: Zap };
 
+const STATUS_CONFIG: Record<string, { icon: any; color: string; label: string }> = {
+  critical: { icon: AlertTriangle, color: "text-destructive", label: "Critical" },
+  rising: { icon: TrendingUp, color: "text-amber-500", label: "Rising" },
+  improving: { icon: TrendingUp, color: "text-emerald-500", label: "Improving" },
+  stable: { icon: CheckCircle2, color: "text-muted-foreground", label: "Stable" },
+};
+
 export const WatchlistBriefWidget = () => {
-  const { items, events } = useWatchlist();
+  const { sortedItems, events } = useWatchlist();
   const navigate = useNavigate();
 
-  if (items.length === 0) return null;
+  if (sortedItems.length === 0) return null;
 
-  // Priority items first, then by recency of events
-  const priorityItems = items.filter((i) => i.priority_level === "high");
-  const recentEvents = events.slice(0, 5);
+  // Only show items with events or non-stable status
+  const changedItems = sortedItems.filter((item) => {
+    if (item.current_status !== "stable") return true;
+    return events.some((e) => e.watchlist_item_id === item.id);
+  });
 
-  // Items with recent events
-  const changedItemIds = new Set(recentEvents.map((e) => e.watchlist_item_id));
-  const changedItems = items.filter((i) => changedItemIds.has(i.id));
-  const allCandidates = [...priorityItems, ...changedItems, ...items];
-  const seen = new Set<string>();
-  const displayItems = allCandidates.filter((i) => {
-    if (seen.has(i.id)) return false;
-    seen.add(i.id);
-    return true;
-  }).slice(0, 5);
+  const hasChanges = changedItems.length > 0;
+  const displayItems = hasChanges ? changedItems.slice(0, 5) : sortedItems.slice(0, 3);
 
   return (
-    <Card className="border-border">
+    <Card className={cn(
+      "border-border",
+      hasChanges && changedItems.some((i) => i.current_status === "critical") && "border-destructive/20",
+    )}>
       <CardContent className="p-4">
-        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Eye className="h-4 w-4 text-primary" />
-          Your Watchlist Today
-          <Badge variant="secondary" className="text-[10px] ml-auto">{items.length} monitored</Badge>
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <Eye className="h-4 w-4 text-primary" />
+            Your Watchlist Today
+          </h3>
+          <div className="flex items-center gap-2">
+            {hasChanges ? (
+              <Badge variant="destructive" className="text-[10px]">
+                {changedItems.length} changed
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="text-[10px]">
+                {sortedItems.length} monitored
+              </Badge>
+            )}
+            <button
+              onClick={() => navigate("/watchlist")}
+              className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+            >
+              Manage <ArrowRight className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+
+        {!hasChanges && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 mb-3">
+            <Shield className="h-4 w-4 text-emerald-500 shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">No significant changes detected.</span>{" "}
+              All {sortedItems.length} watched items remain stable.
+            </p>
+          </div>
+        )}
+
         <div className="space-y-2">
           {displayItems.map((item) => {
             const Icon = ICONS[item.watch_type] || Globe;
-            const itemEvents = events.filter((e) => e.watchlist_item_id === item.id);
-            const latestEvent = itemEvents[0];
+            const latestEvent = events.find((e) => e.watchlist_item_id === item.id);
+            const statusConfig = STATUS_CONFIG[item.current_status] || STATUS_CONFIG.stable;
+            const StatusIcon = statusConfig.icon;
+
             return (
               <button
                 key={item.id}
@@ -52,20 +91,47 @@ export const WatchlistBriefWidget = () => {
                     navigate("/resolution");
                   }
                 }}
-                className="w-full flex items-center gap-3 p-2.5 rounded-lg border border-border hover:border-primary/30 hover:bg-primary/5 transition-all text-left group"
+                className={cn(
+                  "w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left group",
+                  item.current_status === "critical"
+                    ? "border-destructive/30 bg-destructive/5 hover:border-destructive/50"
+                    : item.current_status === "rising"
+                    ? "border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40"
+                    : "border-border hover:border-primary/30 hover:bg-primary/5",
+                )}
               >
-                <Icon className="h-4 w-4 text-primary shrink-0" />
+                <Icon className={cn("h-4 w-4 shrink-0", statusConfig.color)} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium group-hover:text-primary transition-colors truncate">{item.label}</span>
+                    <span className="text-sm font-medium group-hover:text-primary transition-colors truncate">
+                      {item.label}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn("text-[9px] shrink-0", statusConfig.color)}
+                    >
+                      {statusConfig.label}
+                    </Badge>
                     {item.priority_level === "high" && (
-                      <Badge className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30" variant="outline">Priority</Badge>
+                      <Badge className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30" variant="outline">
+                        Priority
+                      </Badge>
                     )}
                   </div>
                   {latestEvent ? (
-                    <p className="text-[11px] text-muted-foreground truncate">{latestEvent.event_summary}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {latestEvent.delta_value != null && (
+                        <span className={cn(
+                          "font-mono font-medium mr-1",
+                          latestEvent.delta_value > 0 ? "text-destructive" : "text-emerald-500"
+                        )}>
+                          {latestEvent.delta_value > 0 ? "+" : ""}{latestEvent.delta_value.toFixed(1)}
+                        </span>
+                      )}
+                      {latestEvent.event_summary}
+                    </p>
                   ) : (
-                    <p className="text-[11px] text-muted-foreground">Monitoring · No changes detected</p>
+                    <p className="text-[11px] text-muted-foreground">Monitoring · No changes</p>
                   )}
                 </div>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
@@ -73,12 +139,13 @@ export const WatchlistBriefWidget = () => {
             );
           })}
         </div>
-        {items.length > 5 && (
+
+        {sortedItems.length > displayItems.length && (
           <button
             onClick={() => navigate("/watchlist")}
-            className="mt-2 text-xs text-primary hover:underline"
+            className="mt-2 text-xs text-primary hover:underline w-full text-center"
           >
-            View all {items.length} watch items →
+            View all {sortedItems.length} watch items →
           </button>
         )}
       </CardContent>
