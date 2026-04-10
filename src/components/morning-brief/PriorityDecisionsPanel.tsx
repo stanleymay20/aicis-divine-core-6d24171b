@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import {
   Flame, ArrowRight, CheckCircle2, AlertTriangle,
-  Target, DollarSign, Shield, Clock, TrendingUp, Zap, X
+  Target, DollarSign, Shield, Clock, TrendingUp, Zap, X, Package
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +21,6 @@ function urgencyFromScore(impact: number, urgency: number): "critical" | "high" 
 }
 
 function estimateImpactValue(impactScore: number, category: string): string {
-  // Simple model: higher impact = higher estimated value
   const base = impactScore >= 80 ? 2_000_000 : impactScore >= 60 ? 500_000 : 100_000;
   const multiplier = category?.includes("energy") || category?.includes("financial") ? 2.5 : 1.5;
   const value = base * multiplier;
@@ -39,21 +38,36 @@ function deriveTimeframe(urgency: "critical" | "high" | "medium"): string {
   return "1 week";
 }
 
+const COMMERCIAL_LABELS: Record<string, string> = {
+  energy: "Cost avoidance",
+  geopolitical: "Supply continuity",
+  climate_disaster: "Delay reduction",
+  supply_chain: "Margin protection",
+  infrastructure: "Delay reduction",
+  defense_conflict: "Exposure reduction",
+  economic: "Cost avoidance",
+  financial_markets: "Margin protection",
+  public_health: "Supply continuity",
+  legal_regulatory: "Compliance protection",
+  social_unrest: "Supply continuity",
+};
+
 function derivePrecedent(category: string, impactScore: number): string | undefined {
   const precedents: Record<string, string> = {
-    energy: "Similar energy disruptions in 2022 caused 18–34% price spikes within 10 days",
-    financial_markets: "Comparable market signals preceded 12–20% corrections in 6 of last 8 occurrences",
-    geopolitical: "Past geopolitical escalations at this intensity led to supply chain disruptions in 72% of cases",
-    climate_disaster: "Historical climate events at this severity displaced 50K–200K people within 2 weeks",
-    cybersecurity: "Similar threat patterns preceded major breaches 65% of the time",
-    public_health: "Comparable health signals preceded outbreak declarations in 4 of last 5 instances",
-    food: "Food security signals at this level preceded price spikes of 15–30% within 30 days",
+    energy: "Similar energy disruptions caused 18–34% cost spikes within 10 days",
+    financial_markets: "Comparable signals preceded 12–20% pricing corrections in 6 of 8 cases",
+    geopolitical: "Past escalations at this intensity disrupted supply chains 72% of the time",
+    climate_disaster: "Climate events at this severity caused port closures and 2–4 week delays",
+    supply_chain: "Similar supply chain signals preceded 15–30 day sourcing delays",
+    infrastructure: "Infrastructure events at this level caused 7–21 day shipment delays",
+    public_health: "Health signals at this level disrupted labor availability for 2–6 weeks",
+    food: "Food security signals at this level preceded input price spikes of 15–30%",
   };
   if (impactScore < 65) return undefined;
   for (const [key, text] of Object.entries(precedents)) {
     if (category?.toLowerCase().includes(key)) return text;
   }
-  return `Signals at this impact level (${impactScore}+) led to measurable disruptions in 70% of tracked cases`;
+  return `Risks at this impact level (${impactScore}+) led to measurable business disruptions in 70% of tracked cases`;
 }
 
 const URGENCY_BORDER = {
@@ -87,7 +101,7 @@ export function PriorityDecisionsPanel() {
       if (error) throw error;
       return (data || []).map((s: any) => {
         const urgency = urgencyFromScore(s.impact_score, s.urgency_score);
-        const action = s.recommended_actions?.government || s.recommended_actions?.business || s.strategic_implications || "Review and assess impact";
+        const action = s.recommended_actions?.business || s.recommended_actions?.government || s.strategic_implications || "Review and assess impact on your supply chain";
         return {
           ...s,
           urgency,
@@ -96,6 +110,7 @@ export function PriorityDecisionsPanel() {
           estimatedROI: estimateROI(s.impact_score, s.confidence_score || 50),
           timeframe: deriveTimeframe(urgency),
           precedent: derivePrecedent(s.category, s.impact_score),
+          commercialLabel: COMMERCIAL_LABELS[s.category] || "Exposure reduction",
         };
       });
     },
@@ -118,7 +133,7 @@ export function PriorityDecisionsPanel() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Decision created", description: "Moved to execution queue with estimated impact tracked." });
+      toast({ title: "Action created", description: "Moved to execution queue — track outcomes to prove value." });
       queryClient.invalidateQueries({ queryKey: ["morning-brief-decisions"] });
       queryClient.invalidateQueries({ queryKey: ["executive-proof"] });
     },
@@ -133,7 +148,7 @@ export function PriorityDecisionsPanel() {
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Flame className="h-4 w-4 text-destructive" />
-            <span className="text-sm font-semibold">Priority Decisions</span>
+            <span className="text-sm font-semibold">Top Actions To Take Now</span>
           </div>
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-40 w-full" />)}
         </CardContent>
@@ -150,11 +165,11 @@ export function PriorityDecisionsPanel() {
               <CheckCircle2 className="h-5 w-5 text-primary" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-medium">No urgent decisions required</p>
-              <p className="text-xs text-muted-foreground">All high-impact signals have been addressed.</p>
+              <p className="text-sm font-medium">No urgent actions required</p>
+              <p className="text-xs text-muted-foreground">All high-impact supply chain risks have been addressed.</p>
             </div>
             <Button size="sm" variant="outline" onClick={() => navigate("/live")} className="shrink-0 gap-1">
-              Signals <ArrowRight className="h-3 w-3" />
+              View Risks <ArrowRight className="h-3 w-3" />
             </Button>
           </div>
         </CardContent>
@@ -167,13 +182,13 @@ export function PriorityDecisionsPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Flame className="h-4 w-4 text-destructive" />
-          <h2 className="text-sm font-bold">Decisions You Must Make Today</h2>
+          <h2 className="text-sm font-bold">Top Actions To Take Now</h2>
           <Badge variant="destructive" className="text-[10px]">
             {priorities.filter(p => p.urgency === "critical").length} critical
           </Badge>
         </div>
         <Button size="sm" variant="ghost" className="text-xs gap-1 h-7 text-primary" onClick={() => navigate("/live")}>
-          All signals <ArrowRight className="h-3 w-3" />
+          All risks <ArrowRight className="h-3 w-3" />
         </Button>
       </div>
 
@@ -195,7 +210,10 @@ export function PriorityDecisionsPanel() {
                   <Badge variant={p.urgency === "critical" ? "destructive" : "secondary"} className="text-[10px] uppercase">
                     {p.urgency} risk
                   </Badge>
-                  <Badge variant="outline" className="text-[10px]">{p.category?.replace(/_/g, " ")}</Badge>
+                  <Badge variant="outline" className="text-[10px] gap-0.5">
+                    <Package className="h-2.5 w-2.5" />
+                    {p.commercialLabel}
+                  </Badge>
                   {p.affected_countries?.slice(0, 2).map((c: string) => (
                     <Badge key={c} variant="outline" className="text-[9px] h-5">{c}</Badge>
                   ))}
@@ -211,7 +229,7 @@ export function PriorityDecisionsPanel() {
             <div className="rounded-lg bg-primary/10 border border-primary/20 p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Target className="h-4 w-4 text-primary shrink-0" />
-                <span className="text-[10px] uppercase tracking-wider font-bold text-primary">Recommended Action</span>
+                <span className="text-[10px] uppercase tracking-wider font-bold text-primary">Recommended Business Action</span>
               </div>
               <p className="text-sm font-semibold leading-snug">{p.recommendedAction}</p>
               <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
@@ -225,7 +243,7 @@ export function PriorityDecisionsPanel() {
               <div className="rounded-md bg-muted/50 p-2 text-center">
                 <DollarSign className="h-3.5 w-3.5 mx-auto mb-0.5 text-emerald-500" />
                 <p className="text-xs font-bold text-emerald-500">{p.estimatedImpact}</p>
-                <p className="text-[9px] text-muted-foreground">Risk Avoided</p>
+                <p className="text-[9px] text-muted-foreground">Potential loss avoided</p>
               </div>
               <div className="rounded-md bg-muted/50 p-2 text-center">
                 <TrendingUp className="h-3.5 w-3.5 mx-auto mb-0.5 text-primary" />
@@ -244,7 +262,7 @@ export function PriorityDecisionsPanel() {
               <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2">
                 <Zap className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
                 <p className="leading-relaxed">
-                  <span className="font-medium text-foreground">Historical precedent:</span> {p.precedent}
+                  <span className="font-medium text-foreground">Past pattern:</span> {p.precedent}
                 </p>
               </div>
             )}
@@ -258,7 +276,7 @@ export function PriorityDecisionsPanel() {
                 disabled={executeMutation.isPending}
               >
                 <CheckCircle2 className="h-4 w-4" />
-                Execute This Decision
+                Execute This Action
               </Button>
               <Button size="sm" variant="ghost" className="h-9 text-xs text-muted-foreground gap-1">
                 <X className="h-3.5 w-3.5" />
