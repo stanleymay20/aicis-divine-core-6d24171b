@@ -21,10 +21,10 @@ export default function EvidenceCommand() {
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
-              Evidence Command
+              Proven Results
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Daily enforcement — accountability by person, domain, and closure target
+              Track outcomes, measure savings, and prove the value of every action taken
             </p>
           </div>
 
