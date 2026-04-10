@@ -8115,28 +8115,40 @@ export type Database = {
       watchlist_events: {
         Row: {
           created_at: string
+          current_value: number | null
+          delta_value: number | null
+          event_hash: string | null
           event_summary: string
           event_type: string
           id: string
           metadata: Json | null
+          previous_value: number | null
           severity: string
           watchlist_item_id: string
         }
         Insert: {
           created_at?: string
+          current_value?: number | null
+          delta_value?: number | null
+          event_hash?: string | null
           event_summary: string
           event_type: string
           id?: string
           metadata?: Json | null
+          previous_value?: number | null
           severity?: string
           watchlist_item_id: string
         }
         Update: {
           created_at?: string
+          current_value?: number | null
+          delta_value?: number | null
+          event_hash?: string | null
           event_summary?: string
           event_type?: string
           id?: string
           metadata?: Json | null
+          previous_value?: number | null
           severity?: string
           watchlist_item_id?: string
         }
@@ -8152,13 +8164,18 @@ export type Database = {
       }
       watchlist_items: {
         Row: {
+          alert_enabled: boolean
+          alert_threshold: number | null
           country_iso3: string | null
           created_at: string
+          current_status: string
           hotspot_key: string | null
           id: string
           is_active: boolean
           label: string
+          last_alerted_at: string | null
           last_checked_at: string | null
+          last_risk_value: number | null
           priority_level: string
           region_id: string | null
           updated_at: string
@@ -8166,13 +8183,18 @@ export type Database = {
           watch_type: string
         }
         Insert: {
+          alert_enabled?: boolean
+          alert_threshold?: number | null
           country_iso3?: string | null
           created_at?: string
+          current_status?: string
           hotspot_key?: string | null
           id?: string
           is_active?: boolean
           label: string
+          last_alerted_at?: string | null
           last_checked_at?: string | null
+          last_risk_value?: number | null
           priority_level?: string
           region_id?: string | null
           updated_at?: string
@@ -8180,13 +8202,18 @@ export type Database = {
           watch_type?: string
         }
         Update: {
+          alert_enabled?: boolean
+          alert_threshold?: number | null
           country_iso3?: string | null
           created_at?: string
+          current_status?: string
           hotspot_key?: string | null
           id?: string
           is_active?: boolean
           label?: string
+          last_alerted_at?: string | null
           last_checked_at?: string | null
+          last_risk_value?: number | null
           priority_level?: string
           region_id?: string | null
           updated_at?: string
