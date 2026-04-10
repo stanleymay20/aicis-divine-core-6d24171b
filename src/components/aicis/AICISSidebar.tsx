@@ -15,6 +15,7 @@ import {
   Shield,
   Settings,
   Code2,
+  Layers,
   X,
 } from "lucide-react";
 
@@ -28,6 +29,7 @@ interface SidebarProps {
 const navItems = [
   { id: "brief", label: "Today's Brief", icon: Sunrise, path: "/morning-brief" },
   { id: "signals", label: "Live Signals", icon: Radio, path: "/live" },
+  { id: "resolution", label: "Resolution", icon: Layers, path: "/resolution" },
   { id: "decisions", label: "Decisions", icon: Activity, path: "/decision-ops" },
   { id: "outcomes", label: "Outcomes", icon: TrendingUp, path: "/evidence-command" },
   { id: "governance", label: "Governance", icon: Shield, path: "/governance" },
