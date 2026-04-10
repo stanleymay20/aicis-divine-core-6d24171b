@@ -43,21 +43,23 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
       if (!data?.length) return [];
 
       // Aggregate by country
-      const map = new Map<string, { iso3: string; avgRisk: number; avgMomentum: number; domains: number; directions: string[] }>();
+      interface CountryAgg { iso3: string; avgRisk: number; avgMomentum: number; domains: number; directions: string[] }
+      const map: Record<string, CountryAgg> = {};
       for (const row of data) {
-        const existing = map.get(row.iso3) || { iso3: row.iso3, avgRisk: 0, avgMomentum: 0, domains: 0, directions: [] };
+        if (!map[row.iso3]) map[row.iso3] = { iso3: row.iso3, avgRisk: 0, avgMomentum: 0, domains: 0, directions: [] };
+        const existing = map[row.iso3];
         existing.avgRisk += row.risk_pressure_score;
         existing.avgMomentum += row.momentum_score;
         existing.domains += 1;
         if (row.forecast_direction) existing.directions.push(row.forecast_direction);
-        map.set(row.iso3, existing);
       }
 
-      return Array.from(map.values())
+      return Object.values(map)
         .map((c) => ({
-          ...c,
+          iso3: c.iso3,
           avgRisk: c.avgRisk / c.domains,
           avgMomentum: c.avgMomentum / c.domains,
+          domains: c.domains,
           netDirection: c.directions.filter((d) => d === "down").length > c.directions.length / 2 ? "down" : c.directions.filter((d) => d === "up").length > c.directions.length / 2 ? "up" : "stable",
         }))
         .sort((a, b) => b.avgRisk - a.avgRisk)

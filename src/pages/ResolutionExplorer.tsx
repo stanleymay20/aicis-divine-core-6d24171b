@@ -31,7 +31,7 @@ export default function ResolutionExplorer() {
     setDrill((prev) => ({ ...prev, level: "region", regionId, regionName }));
 
   return (
-    <AICISLayout activeSection="resolution" onSectionChange={() => {}}>
+    <AICISLayout>
       <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
         <div className="space-y-1">
           <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight">
