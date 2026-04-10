@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Globe, Map, MapPin, Database, ArrowRight, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { DecisionPropagationPanel } from "./DecisionPropagationPanel";
+import { RiskHeatMap } from "./RiskHeatMap";
 
 interface Props {
   onSelectCountry: (iso3: string, name: string) => void;
@@ -128,6 +130,12 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Decision Propagation */}
+      <DecisionPropagationPanel />
+
+      {/* Risk Heat Map */}
+      <RiskHeatMap onSelectCountry={onSelectCountry} />
 
       {/* Country list */}
       <Card>

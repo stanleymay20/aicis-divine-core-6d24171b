@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, ArrowRight, Map, MapPin, BarChart3, TrendingDown, TrendingUp, Minus, AlertTriangle } from "lucide-react";
+import { CountryRecommendations } from "./ResolutionRecommendations";
 
 interface Props {
   iso3: string;
@@ -138,6 +139,9 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
           )}
         </CardContent>
       </Card>
+
+      {/* Resolution-Aware Recommendations */}
+      <CountryRecommendations domains={domains as any} />
 
       {/* Regions list */}
       <Card>

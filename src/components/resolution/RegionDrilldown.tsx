@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, MapPin, Activity, Thermometer, Heart, Building, Leaf, TrendingUp, AlertTriangle } from "lucide-react";
+import { RegionRecommendations } from "./ResolutionRecommendations";
 
 interface Props {
   regionId: string;
@@ -132,6 +133,9 @@ export const RegionDrilldown = ({ regionId, regionName, countryIso3, onBack }: P
           </CardContent>
         </Card>
       )}
+
+      {/* Resolution-Aware Recommendations */}
+      <RegionRecommendations indicators={indicators as any} childCount={children?.length || 0} />
 
       {/* Village indicators by domain */}
       <Card>
