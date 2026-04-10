@@ -18,12 +18,18 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu, ClipboardCheck
+  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu, ClipboardCheck, Package
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 type AudienceMode = "government" | "media" | "business" | "public";
+
+const SUPPLY_CHAIN_CATEGORIES = [
+  "energy", "supply_chain", "infrastructure", "climate_disaster",
+  "defense_conflict", "geopolitical", "legal_regulatory", "public_health",
+  "social_unrest", "economic",
+];
 
 const CATEGORIES = [
   { value: "all", label: "All Categories" },
@@ -45,7 +51,8 @@ const CATEGORIES = [
 ];
 
 export default function LiveCommandFeed() {
-  const [audienceMode, setAudienceMode] = useState<AudienceMode>("government");
+  const [audienceMode, setAudienceMode] = useState<AudienceMode>("business");
+  const [supplyChainMode, setSupplyChainMode] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSignal, setSelectedSignal] = useState<GlobalSignal | null>(null);
@@ -70,6 +77,11 @@ export default function LiveCommandFeed() {
       );
     }
 
+    // Supply chain mode: filter to relevant categories
+    if (supplyChainMode && categoryFilter === "all") {
+      signals = signals.filter(s => SUPPLY_CHAIN_CATEGORIES.includes(s.category));
+    }
+
     if (categoryFilter !== "all") {
       signals = signals.filter(s => s.category === categoryFilter);
     }
@@ -83,7 +95,7 @@ export default function LiveCommandFeed() {
       );
     }
     return signals;
-  }, [allSignals, categoryFilter, searchQuery, reviewMode]);
+  }, [allSignals, categoryFilter, searchQuery, reviewMode, supplyChainMode]);
 
   const triggerIngestion = async () => {
     setIngesting(true);
@@ -151,22 +163,24 @@ export default function LiveCommandFeed() {
             <div className="flex items-center gap-2">
               <Radio className="h-5 w-5 text-red-500 animate-pulse" />
               <div>
-                <h1 className="text-base sm:text-lg font-semibold">AICIS Live Command Feed</h1>
+                <h1 className="text-base sm:text-lg font-semibold">Supply Chain Risks</h1>
                 <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  Real-time global signal intelligence • {allSignals.length} signals
+                  Live risk detection for trade, logistics, and sourcing • {filteredSignals.length} risks
                   {pendingCount > 0 && (
                     <span className="text-amber-400 ml-1">• {pendingCount} pending</span>
                   )}
                   {officialCount > 0 && (
                     <span className="text-blue-400 ml-1">• {officialCount} official</span>
                   )}
-                  {feedbackCount > 0 && (
-                    <span className="text-emerald-400 ml-1">• {feedbackCount} reviewed today</span>
-                  )}
                 </p>
               </div>
             </div>
             <div className="flex gap-1.5">
+              <Button size="sm" variant={supplyChainMode ? "default" : "outline"} className="h-8 text-xs"
+                onClick={() => setSupplyChainMode(!supplyChainMode)}>
+                <Package className="h-3 w-3 mr-1" />
+                {supplyChainMode ? "Supply Chain ✓" : "All"}
+              </Button>
               <Button size="sm" variant={reviewMode ? "default" : "outline"} className="h-8 text-xs"
                 onClick={() => setReviewMode(!reviewMode)}>
                 <ClipboardCheck className="h-3 w-3 mr-1" />

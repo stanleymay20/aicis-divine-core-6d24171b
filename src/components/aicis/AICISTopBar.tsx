@@ -13,16 +13,19 @@ import {
 const PAGE_TITLES: Record<string, string> = {
   "/": "Home",
   "/morning-brief": "Today's Brief",
-  "/live": "Live Signals",
-  "/live-signals": "Live Signals",
-  "/decisions": "Decision Engine",
-  "/decision-ops": "Decisions",
+  "/live": "Supply Chain Risks",
+  "/live-signals": "Supply Chain Risks",
+  "/decisions": "Actions & Outcomes",
+  "/decision-ops": "Actions & Outcomes",
   "/daily-evidence-ops": "Daily Ops",
-  "/evidence-command": "Outcomes",
+  "/evidence-command": "Proven Results",
   "/operational-truth": "Data Quality",
   "/governance": "Governance",
   "/admin": "Settings",
   "/signal-validation": "Signal Validation",
+  "/resolution": "Country & Region Risk Map",
+  "/watchlist": "Tracked Markets",
+  "/learning": "System Accuracy",
 };
 
 export const AICISTopBar = () => {

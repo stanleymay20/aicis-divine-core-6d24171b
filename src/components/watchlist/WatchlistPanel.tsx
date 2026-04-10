@@ -1,21 +1,21 @@
 import { useWatchlist, WatchlistItem, WatchlistEvent, WatchType } from "@/hooks/useWatchlist";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Eye, Globe, Map, Zap, Trash2, ArrowRight, Star, StarOff,
   Bell, BellOff, TrendingUp, TrendingDown, AlertTriangle,
-  CheckCircle2, Radio, Shield, Clock
+  CheckCircle2, Clock, Package, Layers, Target
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
-const TYPE_META: Record<WatchType, { icon: any; color: string; bg: string }> = {
-  country: { icon: Globe, color: "text-blue-500", bg: "bg-blue-500/10" },
-  region: { icon: Map, color: "text-amber-500", bg: "bg-amber-500/10" },
-  hotspot: { icon: Zap, color: "text-red-500", bg: "bg-red-500/10" },
+const TYPE_META: Record<WatchType, { icon: any; color: string; bg: string; label: string }> = {
+  country: { icon: Globe, color: "text-blue-500", bg: "bg-blue-500/10", label: "Market" },
+  region: { icon: Map, color: "text-amber-500", bg: "bg-amber-500/10", label: "Region" },
+  hotspot: { icon: Zap, color: "text-red-500", bg: "bg-red-500/10", label: "Hotspot" },
 };
 
 const STATUS_META: Record<string, { label: string; icon: any; color: string; bg: string }> = {
@@ -26,14 +26,20 @@ const STATUS_META: Record<string, { label: string; icon: any; color: string; bg:
 };
 
 const EVENT_LABELS: Record<string, string> = {
-  risk_increase: "Risk Increased",
-  risk_decrease: "Risk Decreased",
-  new_signal: "New Signal",
-  signal_escalation: "Signal Escalation",
-  region_deterioration: "Region Worsened",
-  region_improvement: "Region Improved",
-  multi_domain_stress: "Multi-Domain Stress",
-  propagation_alert: "Propagation Alert",
+  risk_increase: "Risk increased",
+  risk_decrease: "Risk decreased",
+  new_signal: "New risk detected",
+  signal_escalation: "Risk escalation",
+  region_deterioration: "Region worsened",
+  region_improvement: "Region improved",
+  multi_domain_stress: "Compounding disruption",
+  propagation_alert: "Risk propagation",
+};
+
+const BUSINESS_CONTEXT: Record<string, string> = {
+  country: "May affect shipment timing, fuel costs, port reliability, or supplier continuity",
+  region: "Regional instability may disrupt local sourcing, transport, or workforce availability",
+  hotspot: "Active risk zone — may cause immediate delays or cost escalations",
 };
 
 export const WatchlistPanel = () => {
@@ -65,15 +71,15 @@ export const WatchlistPanel = () => {
       <Card className="border-dashed border-border">
         <CardContent className="py-12 text-center">
           <Eye className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
-          <h3 className="text-sm font-semibold text-foreground mb-1">No Watch Items Yet</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-1">No Tracked Markets Yet</h3>
           <p className="text-xs text-muted-foreground max-w-xs mx-auto mb-1">
-            Save countries, regions, or hotspots to monitor ongoing changes automatically.
+            Track the countries, regions, and trade routes that matter to your supply chain.
           </p>
           <p className="text-[10px] text-muted-foreground max-w-xs mx-auto">
-            AICIS will scan your watched items and alert you when risk changes, new signals appear, or conditions worsen.
+            AICIS will monitor your tracked markets and alert you when risks change, new disruptions appear, or conditions worsen.
           </p>
           <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate("/resolution")}>
-            Open Resolution Explorer
+            Open Risk Map
           </Button>
         </CardContent>
       </Card>
@@ -84,14 +90,14 @@ export const WatchlistPanel = () => {
     <div className="space-y-2">
       {/* Summary strip */}
       <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-        <span>{sortedItems.length} monitored</span>
+        <span>{sortedItems.length} tracked</span>
         <span>·</span>
         <span className="text-destructive font-medium">
           {sortedItems.filter((i) => i.current_status === "critical").length} critical
         </span>
         <span>·</span>
         <span className="text-amber-500 font-medium">
-          {sortedItems.filter((i) => i.current_status === "rising").length} rising
+          {sortedItems.filter((i) => i.current_status === "rising").length} rising risk
         </span>
         <span>·</span>
         <span>
@@ -107,13 +113,14 @@ export const WatchlistPanel = () => {
         const itemEvents = getEventsForItem(item.id);
         const isPriority = item.priority_level === "high";
         const isAlerting = item.alert_enabled && item.last_alerted_at && item.current_status !== "stable";
+        const isCritical = item.current_status === "critical";
 
         return (
           <Card
             key={item.id}
             className={cn(
               "transition-all hover:shadow-sm",
-              item.current_status === "critical" && "border-destructive/30",
+              isCritical && "border-destructive/30",
               item.current_status === "rising" && "border-amber-500/20",
               isAlerting && "ring-1 ring-destructive/20",
             )}
@@ -129,9 +136,10 @@ export const WatchlistPanel = () => {
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-semibold truncate">{item.label}</p>
                       {isPriority && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
+                      <Badge variant="outline" className="text-[9px] shrink-0">{meta.label}</Badge>
                     </div>
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span>Added {format(new Date(item.created_at), "MMM d")}</span>
+                      <span>Tracked since {format(new Date(item.created_at), "MMM d")}</span>
                       {item.last_checked_at && (
                         <>
                           <span>·</span>
@@ -155,7 +163,7 @@ export const WatchlistPanel = () => {
               {/* Risk value + delta */}
               {item.last_risk_value != null && (
                 <div className="flex items-center gap-3 ml-8">
-                  <span className="text-xs text-muted-foreground">Risk:</span>
+                  <span className="text-xs text-muted-foreground">Market risk:</span>
                   <span className={cn(
                     "text-sm font-bold",
                     item.last_risk_value >= 70 ? "text-destructive" : item.last_risk_value >= 50 ? "text-amber-500" : "text-emerald-500"
@@ -167,11 +175,17 @@ export const WatchlistPanel = () => {
                       "text-xs font-mono",
                       itemEvents[0].delta_value > 0 ? "text-destructive" : "text-emerald-500"
                     )}>
-                      {itemEvents[0].delta_value > 0 ? "+" : ""}{itemEvents[0].delta_value.toFixed(1)}
+                      {itemEvents[0].delta_value > 0 ? "+" : ""}{itemEvents[0].delta_value.toFixed(1)} pts
                     </span>
                   )}
                 </div>
               )}
+
+              {/* Business context */}
+              <div className="ml-8 flex items-start gap-1.5 text-[10px] text-muted-foreground">
+                <Package className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>{BUSINESS_CONTEXT[item.watch_type]}</span>
+              </div>
 
               {/* Latest events */}
               {itemEvents.length > 0 && (
@@ -195,8 +209,20 @@ export const WatchlistPanel = () => {
                 </div>
               )}
 
+              {/* Recommended next step for critical/rising items */}
+              {(isCritical || item.current_status === "rising") && (
+                <div className="ml-8 bg-primary/5 rounded px-2.5 py-1.5 flex items-start gap-1.5">
+                  <Target className="h-3 w-3 text-primary mt-0.5 shrink-0" />
+                  <span className="text-[11px] font-medium">
+                    {isCritical
+                      ? "Review immediately — consider alternative sourcing or hedging"
+                      : "Monitor closely — prepare contingency plans for this market"}
+                  </span>
+                </div>
+              )}
+
               {/* Actions */}
-              <div className="flex items-center gap-1 ml-8 pt-1">
+              <div className="flex items-center gap-1 ml-8 pt-1 flex-wrap">
                 <Button
                   variant="ghost" size="icon" className="h-7 w-7"
                   onClick={() => updatePriority.mutate({ id: item.id, priority: isPriority ? "normal" : "high" })}
@@ -207,7 +233,7 @@ export const WatchlistPanel = () => {
                 <Button
                   variant="ghost" size="icon" className="h-7 w-7"
                   onClick={() => toggleAlert.mutate({ id: item.id, enabled: !item.alert_enabled })}
-                  title={item.alert_enabled ? "Disable alerts" : "Enable alerts"}
+                  title={item.alert_enabled ? "Mute alerts" : "Enable alerts"}
                 >
                   {item.alert_enabled ? <Bell className="h-3.5 w-3.5 text-primary" /> : <BellOff className="h-3.5 w-3.5 text-muted-foreground" />}
                 </Button>
@@ -217,11 +243,22 @@ export const WatchlistPanel = () => {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
+
+                {isCritical && (
+                  <Button
+                    variant="outline" size="sm" className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={() => navigate("/decision-ops")}
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    Escalate to action
+                  </Button>
+                )}
                 <Button
                   variant="ghost" size="sm" className="h-7 text-xs gap-1 ml-auto text-primary"
                   onClick={() => handleNavigate(item)}
                 >
-                  View <ArrowRight className="h-3 w-3" />
+                  <Layers className="h-3 w-3" />
+                  Open in map
                 </Button>
               </div>
             </CardContent>

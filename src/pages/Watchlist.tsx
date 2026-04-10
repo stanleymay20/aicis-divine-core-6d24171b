@@ -9,10 +9,10 @@ export default function Watchlist() {
         <div className="space-y-1">
           <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
             <Eye className="h-5 w-5 text-primary" />
-            Watchlist
+            Tracked Markets
           </h1>
           <p className="text-sm text-muted-foreground">
-            Monitor countries, regions, and hotspots for ongoing changes
+            Monitor your key sourcing markets, trade routes, and supply regions for disruptions
           </p>
         </div>
         <WatchlistPanel />

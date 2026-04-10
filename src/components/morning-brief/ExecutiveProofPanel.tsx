@@ -52,9 +52,9 @@ export function ExecutiveProofPanel() {
   });
 
   const fmt = (val: number) => {
-    if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
-    if (val >= 1_000) return `$${(val / 1_000).toFixed(0)}K`;
-    return `$${val.toFixed(0)}`;
+    if (val >= 1_000_000) return `€${(val / 1_000_000).toFixed(1)}M`;
+    if (val >= 1_000) return `€${(val / 1_000).toFixed(0)}K`;
+    return `€${val.toFixed(0)}`;
   };
 
   if (isLoading) {
@@ -62,7 +62,7 @@ export function ExecutiveProofPanel() {
   }
 
   if (!data || data.acted === 0) {
-    return null; // Morning Brief handles the empty state
+    return null;
   }
 
   return (
@@ -72,7 +72,7 @@ export function ExecutiveProofPanel() {
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <Trophy className="h-4 w-4 text-primary" />
-            <span className="text-sm font-bold">Proven System Value</span>
+            <span className="text-sm font-bold">Proven Cost Savings</span>
             {data.measured > 0 && (
               <Badge variant="outline" className="text-[10px] border-primary/30 text-primary ml-auto">
                 {data.measured} measured
@@ -84,7 +84,7 @@ export function ExecutiveProofPanel() {
               <p className="text-2xl font-bold text-primary">
                 {data.totalNetValue > 0 ? fmt(data.totalNetValue) : "—"}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Total Value Created</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Total Value Saved</p>
             </div>
             <div>
               <p className="text-2xl font-bold">
@@ -100,13 +100,13 @@ export function ExecutiveProofPanel() {
             </div>
             <div>
               <p className="text-2xl font-bold">{data.completed}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Outcomes Tracked</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Actions Tracked</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Last Decision Impact — narrative story */}
+      {/* Last proven win */}
       {data.lastWin && (
         <Card
           className="border-emerald-500/20 bg-gradient-to-r from-emerald-500/5 to-transparent cursor-pointer hover:border-emerald-500/30 transition-colors"
@@ -115,30 +115,30 @@ export function ExecutiveProofPanel() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
               <Zap className="h-3.5 w-3.5 text-emerald-400" />
-              <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-400">Last Decision Impact</span>
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-400">Recent Proven Win</span>
             </div>
             <div className="text-sm leading-relaxed space-y-1">
               <p>
-                <span className="text-muted-foreground">We detected</span>{" "}
+                <span className="text-muted-foreground">Detected</span>{" "}
                 <span className="font-medium">{data.lastWin.signal_title?.replace("[SIGNAL] ", "")}</span>
               </p>
               {data.lastWin.recommended_action && (
                 <p>
-                  <span className="text-muted-foreground">→ Recommended</span>{" "}
+                  <span className="text-muted-foreground">→ Action:</span>{" "}
                   <span className="font-medium">{data.lastWin.recommended_action}</span>
                 </p>
               )}
               <p>
                 <span className="text-muted-foreground">→ Result:</span>{" "}
                 <span className="font-medium text-emerald-400">
-                  {data.lastWin.net_value ? fmt(Number(data.lastWin.net_value)) : "Successful"}
+                  {data.lastWin.net_value ? fmt(Number(data.lastWin.net_value)) + " saved" : "Successful"}
                   {data.lastWin.roi_estimate ? ` (${Number(data.lastWin.roi_estimate).toFixed(1)}x ROI)` : ""}
                 </span>
               </p>
             </div>
             <div className="flex items-center justify-end mt-2">
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                View all outcomes <ArrowRight className="h-3 w-3" />
+                View all results <ArrowRight className="h-3 w-3" />
               </span>
             </div>
           </CardContent>

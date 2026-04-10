@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, MapPin, Loader2, Info } from "lucide-react";
+import { AlertTriangle, MapPin, Loader2, Info, Package } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface RiskCountry {
@@ -16,6 +16,15 @@ interface RiskCountry {
   economic_risk: number;
   governance_risk: number;
 }
+
+const BUSINESS_IMPACT: Record<string, string> = {
+  Health: "Workforce / logistics disruption",
+  Food: "Input price volatility",
+  Energy: "Fuel cost / transport delays",
+  Climate: "Shipping / port risk",
+  Economy: "Payment / FX exposure",
+  Gov: "Regulatory / compliance risk",
+};
 
 export const TopRisksWidget = () => {
   const navigate = useNavigate();
@@ -64,7 +73,7 @@ export const TopRisksWidget = () => {
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-destructive" />
-          Top 5 Risk Countries
+          Top 5 Risk Markets
           <Badge variant="outline" className="text-xs ml-auto">Live</Badge>
         </CardTitle>
       </CardHeader>
@@ -72,7 +81,7 @@ export const TopRisksWidget = () => {
         {isLoading ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">Loading risk data…</span>
+            <span className="ml-2 text-sm text-muted-foreground">Loading market risk data…</span>
           </div>
         ) : isError ? (
           <div className="flex items-center gap-2 py-6 justify-center text-sm text-destructive">
@@ -82,8 +91,8 @@ export const TopRisksWidget = () => {
         ) : !topRisks || topRisks.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6 text-center">
             <Info className="h-5 w-5 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No vulnerability scores computed yet.</p>
-            <p className="text-xs text-muted-foreground">Scores are generated after the performance engine runs.</p>
+            <p className="text-sm text-muted-foreground">No market risk scores computed yet.</p>
+            <p className="text-xs text-muted-foreground">Scores are generated after the risk engine runs.</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -93,7 +102,7 @@ export const TopRisksWidget = () => {
                 <div
                   key={risk.iso_code || i}
                   className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                  onClick={() => navigate(`/deepdive/${risk.iso_code}`)}
+                  onClick={() => navigate(`/resolution`)}
                 >
                   <span className="text-xs font-mono text-muted-foreground w-4">{i + 1}</span>
                   <div className="flex-1 min-w-0">
@@ -102,8 +111,9 @@ export const TopRisksWidget = () => {
                       <span className="font-medium text-sm truncate">{risk.country}</span>
                       <Badge variant="outline" className="text-[10px] shrink-0">{risk.iso_code}</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Primary driver: {topDomain.name} ({Math.round(topDomain.score ?? 0)})
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <Package className="h-2.5 w-2.5" />
+                      {BUSINESS_IMPACT[topDomain.name] || "Trade risk"} — {topDomain.name} ({Math.round(topDomain.score ?? 0)})
                     </p>
                   </div>
                   <div className="text-right shrink-0">
