@@ -12,6 +12,7 @@ import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
 import { TopRisksWidget } from "./TopRisksWidget";
 import { SystemStatusStrip } from "./SystemStatusStrip";
 import { SystemHealthBadge } from "./SystemHealthBadge";
+import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidget";
 import { useNavigate } from "react-router-dom";
 
 export const MorningBriefDashboard = () => {
@@ -45,6 +46,9 @@ export const MorningBriefDashboard = () => {
           <span className="text-primary font-medium">proving the value of every action taken</span>.
         </p>
       </div>
+
+      {/* ── WATCHLIST ── */}
+      <WatchlistBriefWidget />
 
       {/* ── 1. WHAT YOU MUST DECIDE — Priority Decisions ── */}
       <PriorityDecisionsPanel />

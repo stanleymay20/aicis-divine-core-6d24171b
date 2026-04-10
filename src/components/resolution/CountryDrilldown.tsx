@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, ArrowRight, Map, MapPin, BarChart3, TrendingDown, TrendingUp, Minus, AlertTriangle } from "lucide-react";
 import { CountryRecommendations } from "./ResolutionRecommendations";
+import { WatchButton } from "@/components/watchlist/WatchButton";
 
 interface Props {
   iso3: string;
@@ -82,9 +83,12 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
       <Card className="border-primary/20">
         <CardContent className="p-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h2 className="text-lg font-bold text-foreground">{countryName}</h2>
-              <p className="text-xs text-muted-foreground font-mono">{iso3}</p>
+            <div className="flex items-center gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">{countryName}</h2>
+                <p className="text-xs text-muted-foreground font-mono">{iso3}</p>
+              </div>
+              <WatchButton watchType="country" label={countryName} countryIso3={iso3} />
             </div>
             <div className="flex gap-3">
               <div className="text-center">

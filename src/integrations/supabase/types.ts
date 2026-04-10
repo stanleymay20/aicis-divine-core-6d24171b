@@ -8073,6 +8073,97 @@ export type Database = {
         }
         Relationships: []
       }
+      watchlist_events: {
+        Row: {
+          created_at: string
+          event_summary: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          severity: string
+          watchlist_item_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_summary: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          severity?: string
+          watchlist_item_id: string
+        }
+        Update: {
+          created_at?: string
+          event_summary?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          severity?: string
+          watchlist_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watchlist_events_watchlist_item_id_fkey"
+            columns: ["watchlist_item_id"]
+            isOneToOne: false
+            referencedRelation: "watchlist_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watchlist_items: {
+        Row: {
+          country_iso3: string | null
+          created_at: string
+          hotspot_key: string | null
+          id: string
+          is_active: boolean
+          label: string
+          last_checked_at: string | null
+          priority_level: string
+          region_id: string | null
+          updated_at: string
+          user_id: string
+          watch_type: string
+        }
+        Insert: {
+          country_iso3?: string | null
+          created_at?: string
+          hotspot_key?: string | null
+          id?: string
+          is_active?: boolean
+          label: string
+          last_checked_at?: string | null
+          priority_level?: string
+          region_id?: string | null
+          updated_at?: string
+          user_id: string
+          watch_type?: string
+        }
+        Update: {
+          country_iso3?: string | null
+          created_at?: string
+          hotspot_key?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          last_checked_at?: string | null
+          priority_level?: string
+          region_id?: string | null
+          updated_at?: string
+          user_id?: string
+          watch_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watchlist_items_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "admin_regions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_event_log: {
         Row: {
           created_at: string | null

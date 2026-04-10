@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, MapPin, Activity, Thermometer, Heart, Building, Leaf, TrendingUp, AlertTriangle } from "lucide-react";
 import { RegionRecommendations } from "./ResolutionRecommendations";
+import { WatchButton } from "@/components/watchlist/WatchButton";
 
 interface Props {
   regionId: string;
@@ -88,6 +89,7 @@ export const RegionDrilldown = ({ regionId, regionName, countryIso3, onBack }: P
               <div className="flex items-center gap-2">
                 <MapPin className="h-5 w-5 text-amber-500" />
                 <h2 className="text-lg font-bold text-foreground">{regionName}</h2>
+                <WatchButton watchType="region" label={regionName} regionId={regionId} />
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Admin Level {region?.admin_level || "—"} · {region?.urban_rural || "Unknown"} · {countryIso3}

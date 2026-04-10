@@ -16,6 +16,7 @@ import {
   Settings,
   Code2,
   Layers,
+  Eye,
   X,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ const navItems = [
   { id: "brief", label: "Today's Brief", icon: Sunrise, path: "/morning-brief" },
   { id: "signals", label: "Live Signals", icon: Radio, path: "/live" },
   { id: "resolution", label: "Resolution", icon: Layers, path: "/resolution" },
+  { id: "watchlist", label: "Watchlist", icon: Eye, path: "/watchlist" },
   { id: "decisions", label: "Decisions", icon: Activity, path: "/decision-ops" },
   { id: "outcomes", label: "Outcomes", icon: TrendingUp, path: "/evidence-command" },
   { id: "governance", label: "Governance", icon: Shield, path: "/governance" },
