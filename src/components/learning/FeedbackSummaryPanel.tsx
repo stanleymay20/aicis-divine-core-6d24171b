@@ -9,20 +9,23 @@ export const FeedbackSummaryPanel = () => {
   const { data: feedback, isLoading } = useQuery({
     queryKey: ["learning-feedback-summary"],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("signal_feedback")
-        .select("feedback_type, rating, category, created_at")
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (!data) return { total: 0, confirmed: 0, rejected: 0, unclear: 0, avgRating: 0, recent: [] };
+      // Read from both feedback tables
+      const [{ data: sf }, { data: srf }] = await Promise.all([
+        supabase.from("signal_feedback").select("feedback_type, rating, category, created_at").order("created_at", { ascending: false }).limit(200),
+        supabase.from("signal_routing_feedback").select("feedback, created_at").order("created_at", { ascending: false }).limit(200),
+      ]);
 
-      const confirmed = data.filter((f) => f.feedback_type === "confirmed").length;
-      const rejected = data.filter((f) => f.feedback_type === "rejected").length;
-      const unclear = data.filter((f) => f.feedback_type === "unclear").length;
-      const ratings = data.filter((f) => f.rating != null).map((f) => f.rating!);
+      const allFeedback: Array<{ type: string; rating?: number }> = [];
+      for (const f of sf || []) allFeedback.push({ type: f.feedback_type, rating: f.rating ?? undefined });
+      for (const f of srf || []) allFeedback.push({ type: (f as any).feedback || "confirmed" });
+
+      const confirmed = allFeedback.filter((f) => f.type === "confirmed").length;
+      const rejected = allFeedback.filter((f) => f.type === "rejected").length;
+      const unclear = allFeedback.filter((f) => f.type === "unclear").length;
+      const ratings = allFeedback.filter((f) => f.rating != null).map((f) => f.rating!);
       const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
 
-      return { total: data.length, confirmed, rejected, unclear, avgRating, recent: data.slice(0, 5) };
+      return { total: allFeedback.length, confirmed, rejected, unclear, avgRating };
     },
   });
 
