@@ -19,7 +19,13 @@ export const WatchlistBriefWidget = () => {
   // Items with recent events
   const changedItemIds = new Set(recentEvents.map((e) => e.watchlist_item_id));
   const changedItems = items.filter((i) => changedItemIds.has(i.id));
-  const displayItems = [...new Map([...priorityItems, ...changedItems, ...items].map((i) => [i.id, i])).values()].slice(0, 5);
+  const allCandidates = [...priorityItems, ...changedItems, ...items];
+  const seen = new Set<string>();
+  const displayItems = allCandidates.filter((i) => {
+    if (seen.has(i.id)) return false;
+    seen.add(i.id);
+    return true;
+  }).slice(0, 5);
 
   return (
     <Card className="border-border">
