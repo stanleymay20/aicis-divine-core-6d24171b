@@ -24,6 +24,7 @@ const EvidenceCommand = lazy(() => import("./pages/EvidenceCommand"));
 const GovernanceHub = lazy(() => import("./pages/GovernanceHub"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const CountryDeepDivePage = lazy(() => import("./pages/CountryDeepDivePage"));
+const ResolutionExplorer = lazy(() => import("./pages/ResolutionExplorer"));
 
 // ── Public pages ─────────────────────────────────────────────
 const Terms = lazy(() => import("./pages/Terms"));
@@ -92,6 +93,7 @@ const App = () => (
               <Route path="/governance" element={<Protected><GovernanceHub /></Protected>} />
               <Route path="/admin" element={<Protected><AdminDashboard /></Protected>} />
               <Route path="/deepdive/:iso3" element={<Protected><CountryDeepDivePage /></Protected>} />
+              <Route path="/resolution" element={<Protected><ResolutionExplorer /></Protected>} />
 
               {/* ── Secondary (deep-link only, not in nav) ───── */}
               <Route path="/daily-evidence-ops" element={<Protected><DailyEvidenceOps /></Protected>} />
