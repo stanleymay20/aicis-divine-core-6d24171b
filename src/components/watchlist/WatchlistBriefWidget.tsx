@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Eye, ArrowRight, Globe, Map, Zap, AlertTriangle,
-  TrendingUp, CheckCircle2, Shield
+  TrendingUp, CheckCircle2, Shield, Package
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,7 @@ export const WatchlistBriefWidget = () => {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <Eye className="h-4 w-4 text-primary" />
-            Your Watchlist Today
+            Tracked Markets Today
           </h3>
           <div className="flex items-center gap-2">
             {hasChanges ? (
@@ -50,7 +50,7 @@ export const WatchlistBriefWidget = () => {
               </Badge>
             ) : (
               <Badge variant="secondary" className="text-[10px]">
-                {sortedItems.length} monitored
+                {sortedItems.length} tracked
               </Badge>
             )}
             <button
@@ -67,7 +67,7 @@ export const WatchlistBriefWidget = () => {
             <Shield className="h-4 w-4 text-emerald-500 shrink-0" />
             <p className="text-xs text-muted-foreground">
               <span className="font-medium text-foreground">No significant changes detected.</span>{" "}
-              All {sortedItems.length} watched items remain stable.
+              All {sortedItems.length} tracked markets remain stable.
             </p>
           </div>
         )}
@@ -125,13 +125,13 @@ export const WatchlistBriefWidget = () => {
                           "font-mono font-medium mr-1",
                           latestEvent.delta_value > 0 ? "text-destructive" : "text-emerald-500"
                         )}>
-                          {latestEvent.delta_value > 0 ? "+" : ""}{latestEvent.delta_value.toFixed(1)}
+                          {latestEvent.delta_value > 0 ? "+" : ""}{latestEvent.delta_value.toFixed(1)} pts
                         </span>
                       )}
                       {latestEvent.event_summary}
                     </p>
                   ) : (
-                    <p className="text-[11px] text-muted-foreground">Monitoring · No changes</p>
+                    <p className="text-[11px] text-muted-foreground">Monitoring · No disruptions</p>
                   )}
                 </div>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
@@ -145,7 +145,7 @@ export const WatchlistBriefWidget = () => {
             onClick={() => navigate("/watchlist")}
             className="mt-2 text-xs text-primary hover:underline w-full text-center"
           >
-            View all {sortedItems.length} watch items →
+            View all {sortedItems.length} tracked markets →
           </button>
         )}
       </CardContent>

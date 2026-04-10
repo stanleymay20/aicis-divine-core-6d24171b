@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Clock, ArrowRight, TrendingUp } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, ArrowRight, TrendingUp, Package } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
@@ -19,8 +19,10 @@ interface RecentDecision {
 }
 
 const DOMAIN_LABELS: Record<string, string> = {
-  health: "Health", security: "Security", economy: "Economy",
-  energy: "Energy", food: "Food", governance: "Governance",
+  health: "Workforce risk", security: "Security", economy: "Cost exposure",
+  energy: "Fuel / transport", food: "Input pricing", governance: "Compliance",
+  geopolitical: "Trade route", climate_disaster: "Shipping risk",
+  supply_chain: "Supply continuity", infrastructure: "Logistics",
 };
 
 export const RecentDecisionsWidget = () => {
@@ -51,7 +53,7 @@ export const RecentDecisionsWidget = () => {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">Recent Decisions</h3>
+            <h3 className="text-sm font-semibold">Recent Actions</h3>
           </div>
           <Button
             variant="ghost"
@@ -94,7 +96,8 @@ export const RecentDecisionsWidget = () => {
                   {d.signal_title?.replace("[SIGNAL] ", "")}
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
+                  <Badge variant="secondary" className="text-[9px] h-4 px-1.5 gap-0.5">
+                    <Package className="h-2 w-2" />
                     {DOMAIN_LABELS[d.domain] || d.domain}
                   </Badge>
                   <span className="text-[10px] text-muted-foreground">

@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { GlobalOverview } from "@/components/resolution/GlobalOverview";
 import { CountryDrilldown } from "@/components/resolution/CountryDrilldown";
@@ -20,10 +18,6 @@ export interface DrillState {
 export default function ResolutionExplorer() {
   const [drill, setDrill] = useState<DrillState>({ level: "global" });
 
-  const navigateTo = (next: Partial<DrillState>) => {
-    setDrill((prev) => ({ ...prev, ...next }));
-  };
-
   const goGlobal = () => setDrill({ level: "global" });
   const goCountry = (iso3: string, name: string) =>
     setDrill({ level: "country", countryIso3: iso3, countryName: name });
@@ -32,13 +26,13 @@ export default function ResolutionExplorer() {
 
   return (
     <AICISLayout>
-      <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
+      <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto overflow-y-auto h-full">
         <div className="space-y-1">
           <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight">
-            Multi-Resolution Intelligence
+            Country & Region Risk Map
           </h1>
           <p className="text-sm text-muted-foreground">
-            Global → Country → Region → Village — drill into any level of resolution
+            See where your supply chain is most exposed — drill from market level to region to local risk
           </p>
         </div>
 
