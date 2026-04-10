@@ -17,6 +17,7 @@ import {
   Code2,
   Layers,
   Eye,
+  Brain,
   X,
 } from "lucide-react";
 
@@ -32,6 +33,7 @@ const navItems = [
   { id: "signals", label: "Live Signals", icon: Radio, path: "/live" },
   { id: "resolution", label: "Resolution", icon: Layers, path: "/resolution" },
   { id: "watchlist", label: "Watchlist", icon: Eye, path: "/watchlist" },
+  { id: "learning", label: "Learning", icon: Brain, path: "/learning" },
   { id: "decisions", label: "Decisions", icon: Activity, path: "/decision-ops" },
   { id: "outcomes", label: "Outcomes", icon: TrendingUp, path: "/evidence-command" },
   { id: "governance", label: "Governance", icon: Shield, path: "/governance" },

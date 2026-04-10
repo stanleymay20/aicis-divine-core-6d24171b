@@ -6855,6 +6855,45 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_feedback: {
+        Row: {
+          category: string | null
+          comment: string | null
+          created_at: string
+          decision_id: string | null
+          feedback_type: string
+          id: string
+          rating: number | null
+          signal_id: string | null
+          source_tier: string | null
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          comment?: string | null
+          created_at?: string
+          decision_id?: string | null
+          feedback_type?: string
+          id?: string
+          rating?: number | null
+          signal_id?: string | null
+          source_tier?: string | null
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          comment?: string | null
+          created_at?: string
+          decision_id?: string | null
+          feedback_type?: string
+          id?: string
+          rating?: number | null
+          signal_id?: string | null
+          source_tier?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       signal_quality_metrics_daily: {
         Row: {
           avg_confidence_of_routed: number | null
