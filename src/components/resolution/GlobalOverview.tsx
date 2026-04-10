@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Globe, Map, MapPin, Database, ArrowRight, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { DecisionPropagationPanel } from "./DecisionPropagationPanel";
 import { RiskHeatMap } from "./RiskHeatMap";
+import { WatchButton } from "@/components/watchlist/WatchButton";
 
 interface Props {
   onSelectCountry: (iso3: string, name: string) => void;
@@ -164,6 +165,7 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
                     <Badge variant="outline" className="text-[10px]">{c.domains} domains</Badge>
                   </div>
                   <div className="flex items-center gap-3">
+                    <WatchButton watchType="country" label={countryNames[c.iso3] || c.iso3} countryIso3={c.iso3} />
                     <div className="text-right">
                       <span className="text-xs text-muted-foreground">Risk</span>
                       <p className={`text-sm font-bold ${c.avgRisk > 60 ? "text-red-500" : c.avgRisk > 40 ? "text-amber-500" : "text-green-500"}`}>
