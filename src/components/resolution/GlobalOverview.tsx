@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Globe, Map, MapPin, ArrowRight, TrendingDown, TrendingUp, Minus, Package, AlertTriangle } from "lucide-react";
 import { DecisionPropagationPanel } from "./DecisionPropagationPanel";
 import { RiskHeatMap } from "./RiskHeatMap";
+import { GlobalRiskMap } from "./InteractiveRiskMap";
 import { WatchButton } from "@/components/watchlist/WatchButton";
 
 interface Props {
@@ -144,6 +145,7 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
         </CardContent>
       </Card>
 
+      <GlobalRiskMap onSelectCountry={onSelectCountry} />
       <DecisionPropagationPanel />
       <RiskHeatMap onSelectCountry={onSelectCountry} />
 
