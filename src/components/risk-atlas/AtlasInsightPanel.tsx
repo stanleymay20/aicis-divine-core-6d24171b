@@ -4,10 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   X, TrendingUp, TrendingDown, Minus, AlertTriangle, ArrowRight,
-  Bookmark, FileText, MapPin, Eye, Globe, Shield,
+  Bookmark, FileText, MapPin, Eye, Globe, Shield, ExternalLink, Plus,
 } from "lucide-react";
 import { MapQuery } from "./queryParser";
 import { SignalRow } from "./useAtlasData";
+import { CN } from "./RiskAtlas";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const DOMAIN_COLORS: Record<string, string> = {
   climate: "#06b6d4", education: "#8b5cf6", energy: "#f59e0b",
@@ -55,15 +59,74 @@ export function AtlasInsightPanel({
   query, selectedCountry, countryData, countryName,
   topCountries, signals, onClose, onSelectCountry,
 }: Props) {
+  const navigate = useNavigate();
+
   const DirIcon = ({ dir }: { dir: string }) =>
     dir === "up" ? <TrendingUp className="w-3 h-3 text-destructive" />
     : dir === "down" ? <TrendingDown className="w-3 h-3 text-green-500" />
     : <Minus className="w-3 h-3 text-muted-foreground" />;
 
+  const handleAddToWatchlist = async () => {
+    if (!selectedCountry) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Sign in to add to watchlist"); return; }
+      
+      const { error } = await supabase.from("watchlist_items").insert({
+        user_id: user.id,
+        item_type: "country",
+        item_id: selectedCountry,
+        label: countryName || selectedCountry,
+        metadata: {
+          avg_risk: countryData?.avgRisk,
+          domains: countryData?.domains,
+          source: "risk-atlas",
+        },
+      });
+      if (error) {
+        if (error.code === "23505") toast.info(`${countryName} is already on your watchlist`);
+        else throw error;
+      } else {
+        toast.success(`${countryName} added to watchlist`);
+      }
+    } catch (e: any) {
+      toast.error("Failed to add to watchlist");
+    }
+  };
+
+  const handleCreateDecision = async () => {
+    if (!selectedCountry || !countryData) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Sign in to create a decision"); return; }
+
+      const topDomain = countryData.domainBreakdown[0];
+      const { error } = await supabase.from("decision_outcome_log").insert({
+        user_id: user.id,
+        signal_title: `${topDomain?.domain || "multi-domain"} risk in ${countryName}`,
+        signal_category: topDomain?.domain || "governance",
+        recommended_action: countryData.avgRisk >= 70
+          ? `Immediate review of ${topDomain?.domain || "risk"} exposure in ${countryName}`
+          : `Monitor ${topDomain?.domain || "risk"} trends in ${countryName}`,
+        confidence_score: Math.round(countryData.avgRisk),
+        potential_impact: countryData.avgRisk >= 55 ? "high" : countryData.avgRisk >= 40 ? "medium" : "low",
+        country_iso3: selectedCountry,
+      });
+      if (error) throw error;
+      toast.success("Decision created — go to Actions to review");
+    } catch {
+      toast.error("Failed to create decision");
+    }
+  };
+
+  const handleDrillDown = () => {
+    if (selectedCountry) navigate(`/deepdive/${selectedCountry}`);
+  };
+
   return (
     <div className="w-80 lg:w-96 border-l border-border bg-background flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
           <Eye className="w-4 h-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">
@@ -137,20 +200,56 @@ export function AtlasInsightPanel({
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1 text-xs gap-1">
-                  <Bookmark className="w-3 h-3" /> Watch
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1 text-xs gap-1">
-                  <FileText className="w-3 h-3" /> Decision
-                </Button>
+              {/* Action buttons — the core "Act" layer */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Actions</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleAddToWatchlist}>
+                    <Bookmark className="w-3 h-3" /> Watch
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleCreateDecision}>
+                    <Plus className="w-3 h-3" /> Decision
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs gap-1 col-span-2" onClick={handleDrillDown}>
+                    <ExternalLink className="w-3 h-3" /> Deep Dive into {countryName}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Comparison view */}
+          {query.comparison && !selectedCountry && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                Comparison: {CN[query.comparison.a] || query.comparison.a} vs {CN[query.comparison.b] || query.comparison.b}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {[query.comparison.a, query.comparison.b].map(iso => {
+                  const c = topCountries.find(tc => tc.iso3 === iso);
+                  if (!c) return null;
+                  return (
+                    <Card key={iso} className="border-border cursor-pointer hover:border-primary/50" onClick={() => onSelectCountry(iso)}>
+                      <CardContent className="p-3 space-y-1">
+                        <p className="text-xs font-bold text-foreground">{CN[iso] || iso}</p>
+                        <p className="text-lg font-bold" style={{ color: riskColor(c.avgRisk) }}>
+                          {c.avgRisk.toFixed(0)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">{riskLabel(c.avgRisk)}</p>
+                        <div className="flex items-center gap-1">
+                          <DirIcon dir={c.direction} />
+                          <span className="text-[10px] text-muted-foreground">{c.domains} domains</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* Top affected countries */}
-          {!selectedCountry && topCountries.length > 0 && (
+          {!selectedCountry && !query.comparison && topCountries.length > 0 && (
             <div>
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
                 Highest Risk Markets
@@ -164,7 +263,7 @@ export function AtlasInsightPanel({
                   >
                     <span className="text-[10px] text-muted-foreground w-4">{i + 1}</span>
                     <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskColor(c.avgRisk) }} />
-                    <span className="text-xs text-foreground flex-1">{c.iso3}</span>
+                    <span className="text-xs text-foreground flex-1">{CN[c.iso3] || c.iso3}</span>
                     <DirIcon dir={c.direction} />
                     <span className="text-xs font-mono font-medium" style={{ color: riskColor(c.avgRisk) }}>
                       {c.avgRisk.toFixed(0)}
@@ -230,7 +329,7 @@ export function AtlasInsightPanel({
           )}
 
           {/* Empty state */}
-          {!countryData && topCountries.length === 0 && (
+          {!countryData && topCountries.length === 0 && !query.comparison && (
             <div className="text-center py-8">
               <MapPin className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">
