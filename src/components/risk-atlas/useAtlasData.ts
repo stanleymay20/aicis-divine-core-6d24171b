@@ -22,20 +22,40 @@ export interface SignalRow {
   created_at: string;
 }
 
-/** Fetch country-level domain scores filtered by query */
+/** Fetch country-level domain scores filtered by query — latest snapshot only */
 export function useCountryRiskData(query: MapQuery) {
   return useQuery({
-    queryKey: ["atlas-country-risk", query.geography, query.domains.join(","), query.threshold, query.trend],
+    queryKey: ["atlas-country-risk", query.geography, query.domains.join(","), query.threshold, query.trend, query.scope],
     queryFn: async (): Promise<CountryRiskRow[]> => {
+      // Step 1: Get the latest snapshot date
+      const { data: dateRow } = await supabase
+        .from("country_performance_snapshots")
+        .select("snapshot_date")
+        .order("snapshot_date", { ascending: false })
+        .limit(1);
+
+      const latestDate = dateRow?.[0]?.snapshot_date;
+      if (!latestDate) return [];
+
+      // Step 2: Fetch all rows for latest date (up to 2000 to cover all countries×domains)
       let q = supabase
         .from("country_performance_snapshots")
         .select("iso3, domain, risk_pressure_score, momentum_score, forecast_direction, confidence_score")
+        .eq("snapshot_date", latestDate)
         .order("risk_pressure_score", { ascending: false })
-        .limit(1000);
+        .limit(2000);
 
-      // Filter by domain
+      // Filter by domain at DB level
       if (query.domains.length > 0) {
         q = q.in("domain", query.domains);
+      }
+
+      // Filter by geography at DB level when possible
+      if (query.scope === "country" && query.geography && !query.comparison) {
+        q = q.eq("iso3", query.geography);
+      }
+      if (query.comparison) {
+        q = q.in("iso3", [query.comparison.a, query.comparison.b]);
       }
 
       const { data } = await q;
@@ -50,17 +70,10 @@ export function useCountryRiskData(query: MapQuery) {
         confidence: r.confidence_score,
       }));
 
-      // Filter by continent/geography
+      // Filter by continent (client-side — ISO list matching)
       if (query.scope === "continent" && query.geography) {
         const isos = getContinentISOs(query.geography);
         rows = rows.filter(r => isos.includes(r.iso3));
-      } else if (query.scope === "country" && query.geography && !query.comparison) {
-        rows = rows.filter(r => r.iso3 === query.geography);
-      }
-
-      // Filter by comparison
-      if (query.comparison) {
-        rows = rows.filter(r => r.iso3 === query.comparison!.a || r.iso3 === query.comparison!.b);
       }
 
       // Filter by threshold
@@ -77,7 +90,7 @@ export function useCountryRiskData(query: MapQuery) {
 
       return rows;
     },
-    staleTime: 30_000,
+    staleTime: 60_000,
   });
 }
 
@@ -126,31 +139,49 @@ export function aggregateByCountry(rows: CountryRiskRow[]): Record<string, {
   return result;
 }
 
-/** Fetch related signals for a geography */
+/** Fetch related signals for a geography — filtered by affected_countries */
 export function useRelatedSignals(iso3: string | null, domains: string[]) {
   return useQuery({
     queryKey: ["atlas-signals", iso3, domains.join(",")],
     queryFn: async (): Promise<SignalRow[]> => {
-      let q = supabase
+      const { data } = await supabase
         .from("global_signals")
         .select("id, title, category, impact_score, confidence_score, affected_countries, recommended_actions, created_at")
-        .order("created_at", { ascending: false })
-        .limit(20);
+        .order("impact_score", { ascending: false })
+        .limit(50);
 
-      if (domains.length > 0) {
-        // Don't filter by category enum — just fetch all and filter client-side
-      }
-
-      const { data } = await q;
       if (!data?.length) return [];
 
       let signals = data as unknown as SignalRow[];
+
+      // Filter by country if specified
       if (iso3) {
-        const filtered = signals.filter(s =>
+        const countryFiltered = signals.filter(s =>
           s.affected_countries && Array.isArray(s.affected_countries) && s.affected_countries.includes(iso3)
         );
-        if (filtered.length > 0) return filtered.slice(0, 10);
+        if (countryFiltered.length > 0) signals = countryFiltered;
       }
+
+      // Filter by domain category if specified
+      if (domains.length > 0) {
+        const domainMap: Record<string, string[]> = {
+          climate: ["Climate / Disaster"],
+          energy: ["Energy"],
+          finance: ["Financial Markets", "Economic"],
+          food: ["Supply Chain / Trade"],
+          governance: ["Legal / Regulatory", "Elections / Political Transition"],
+          health: ["Public Health"],
+          security: ["Defense / Conflict", "Cybersecurity", "Social unrest"],
+          population: ["Social unrest"],
+          education: ["Technology"],
+        };
+        const cats = domains.flatMap(d => domainMap[d] || []);
+        if (cats.length > 0) {
+          const domainFiltered = signals.filter(s => cats.includes(s.category));
+          if (domainFiltered.length > 0) signals = domainFiltered;
+        }
+      }
+
       return signals.slice(0, 10);
     },
     staleTime: 30_000,
