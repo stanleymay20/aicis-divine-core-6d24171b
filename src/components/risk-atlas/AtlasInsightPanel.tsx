@@ -74,14 +74,12 @@ export function AtlasInsightPanel({
       
       const { error } = await supabase.from("watchlist_items").insert({
         user_id: user.id,
-        item_type: "country",
-        item_id: selectedCountry,
+        watch_type: "country",
+        country_iso3: selectedCountry,
         label: countryName || selectedCountry,
-        metadata: {
-          avg_risk: countryData?.avgRisk,
-          domains: countryData?.domains,
-          source: "risk-atlas",
-        },
+        priority_level: countryData && countryData.avgRisk >= 70 ? "critical" : countryData && countryData.avgRisk >= 55 ? "high" : "medium",
+        is_active: true,
+        alert_enabled: true,
       });
       if (error) {
         if (error.code === "23505") toast.info(`${countryName} is already on your watchlist`);
@@ -102,15 +100,15 @@ export function AtlasInsightPanel({
 
       const topDomain = countryData.domainBreakdown[0];
       const { error } = await supabase.from("decision_outcome_log").insert({
-        user_id: user.id,
+        recorded_by: user.id,
         signal_title: `${topDomain?.domain || "multi-domain"} risk in ${countryName}`,
-        signal_category: topDomain?.domain || "governance",
+        domain: topDomain?.domain || "governance",
+        iso3: selectedCountry,
         recommended_action: countryData.avgRisk >= 70
           ? `Immediate review of ${topDomain?.domain || "risk"} exposure in ${countryName}`
           : `Monitor ${topDomain?.domain || "risk"} trends in ${countryName}`,
-        confidence_score: Math.round(countryData.avgRisk),
-        potential_impact: countryData.avgRisk >= 55 ? "high" : countryData.avgRisk >= 40 ? "medium" : "low",
-        country_iso3: selectedCountry,
+        signal_confidence: Math.round(countryData.avgRisk),
+        status: "pending",
       });
       if (error) throw error;
       toast.success("Decision created — go to Actions to review");
