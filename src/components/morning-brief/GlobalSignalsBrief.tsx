@@ -5,6 +5,10 @@ import { cn } from "@/lib/utils";
 import { Radio, TrendingUp, Clock, ArrowRight, Info, Loader2, AlertTriangle, Target, DollarSign, Package } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+interface Props {
+  onSignalClick?: (signal: any) => void;
+}
+
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -27,7 +31,7 @@ function quickImpactEstimate(score: number): string {
   return "€50K+";
 }
 
-function businessInterpretation(category: string, impact: number): string {
+function businessInterpretation(category: string): string {
   const map: Record<string, string> = {
     energy: "May cause fuel cost spikes and transport delays",
     geopolitical: "Could disrupt trade routes or sourcing contracts",
@@ -48,7 +52,7 @@ function businessInterpretation(category: string, impact: number): string {
   return map[category] || "May affect trade operations, sourcing, or delivery timelines";
 }
 
-export function GlobalSignalsBrief() {
+export function GlobalSignalsBrief({ onSignalClick }: Props) {
   const { data: signals = [], isLoading, isError } = useTopSignals(5);
   const navigate = useNavigate();
 
@@ -58,7 +62,7 @@ export function GlobalSignalsBrief() {
         <CardTitle className="text-sm flex items-center justify-between">
           <span className="flex items-center gap-1.5">
             <Radio className="h-4 w-4 text-destructive animate-pulse" />
-            Top Supply Chain Risks
+            Today's Critical Risks
           </span>
           <button
             onClick={() => navigate("/live")}
@@ -94,7 +98,7 @@ export function GlobalSignalsBrief() {
                   "p-3 rounded-lg border cursor-pointer hover:border-primary/40 transition-colors",
                   signal.impact_score >= 80 ? "border-destructive/30 bg-destructive/5" : "border-border/50"
                 )}
-                onClick={() => navigate("/live")}
+                onClick={() => onSignalClick?.(signal)}
               >
                 <div className="flex items-start gap-2">
                   <span className="text-[10px] font-bold text-muted-foreground mt-0.5 shrink-0">
@@ -103,13 +107,11 @@ export function GlobalSignalsBrief() {
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <h4 className="text-xs font-semibold leading-tight line-clamp-2">{signal.title}</h4>
                     
-                    {/* Business interpretation */}
                     <p className="text-[10px] text-muted-foreground line-clamp-1">
                       <Package className="h-2.5 w-2.5 inline mr-0.5" />
-                      {businessInterpretation(signal.category, signal.impact_score)}
+                      {businessInterpretation(signal.category)}
                     </p>
 
-                    {/* Score strip */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={cn("text-[10px] font-mono font-bold", impactColor(signal.impact_score))}>
                         <TrendingUp className="h-2.5 w-2.5 inline mr-0.5" />
@@ -121,16 +123,15 @@ export function GlobalSignalsBrief() {
                       </span>
                       <span className="text-[10px] text-emerald-500 font-medium flex items-center gap-0.5">
                         <DollarSign className="h-2.5 w-2.5" />
-                        {quickImpactEstimate(signal.impact_score)} potential loss
+                        {quickImpactEstimate(signal.impact_score)} exposure
                       </span>
-                      {signal.affected_countries?.slice(0, 2).map(r => (
+                      {signal.affected_countries?.slice(0, 2).map((r: string) => (
                         <Badge key={r} variant="secondary" className="text-[8px] h-3.5 px-1">
                           {r}
                         </Badge>
                       ))}
                     </div>
 
-                    {/* Recommended business action */}
                     {signal.recommended_actions?.business || signal.recommended_actions?.government ? (
                       <div className="bg-primary/5 rounded px-2 py-1.5 flex items-start gap-1.5">
                         <Target className="h-3 w-3 text-primary mt-0.5 shrink-0" />
@@ -142,7 +143,7 @@ export function GlobalSignalsBrief() {
                       <div className="bg-muted/50 rounded px-2 py-1.5 flex items-center gap-1.5">
                         <Target className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span className="text-[11px] text-muted-foreground">
-                          Create an action from this risk →
+                          Tap to view details and create an action →
                         </span>
                       </div>
                     )}
