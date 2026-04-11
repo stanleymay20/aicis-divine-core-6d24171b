@@ -77,7 +77,7 @@ export const MorningBriefDashboard = () => {
       <GlobalSignalsBrief onSignalClick={handleSignalClick} />
 
       {/* ── D+E. BUSINESS IMPACT + RECOMMENDED ACTIONS ── */}
-      <PriorityDecisionsPanel onSignalClick={handleSignalClick} />
+      <PriorityDecisionsPanel />
 
       {/* ── TRACKED MARKETS ── */}
       <WatchlistBriefWidget />
