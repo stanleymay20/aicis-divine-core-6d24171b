@@ -154,3 +154,18 @@
 .scan-line::after { display: none; }
 .data-pulse::before { display: none; }
 .animate-pulse-glow { animation: none; }
+
+/* Atlas map popup styling */
+.atlas-popup .leaflet-popup-content-wrapper {
+  background: hsl(222 47% 11%);
+  border: 1px solid hsl(217 33% 17%);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+.atlas-popup .leaflet-popup-tip {
+  background: hsl(222 47% 11%);
+  border: 1px solid hsl(217 33% 17%);
+}
+.atlas-popup .leaflet-popup-close-button {
+  color: #94a3b8 !important;
+}
