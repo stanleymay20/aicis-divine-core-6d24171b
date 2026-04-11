@@ -18,7 +18,7 @@ export interface SignalRow {
   impact_score: number;
   confidence_score: number;
   affected_countries: string[] | null;
-  recommended_actions_business: string | null;
+  recommended_actions: any;
   created_at: string;
 }
 
