@@ -1,14 +1,11 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Country centroids for global view
 const COUNTRY_COORDS: Record<string, [number, number]> = {
   AFG:[33.93,67.71],AGO:[-11.20,17.87],ARG:[-38.42,-63.62],AUS:[-25.27,133.78],
   BDI:[-3.37,29.92],BFA:[12.24,-1.56],BGD:[23.68,90.36],BRA:[-14.24,-51.93],
@@ -36,7 +33,7 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   UZB:[41.38,64.59],TKM:[38.97,59.56],KGZ:[41.20,74.77],TJK:[38.86,71.28],
   GEO:[42.32,43.36],ARM:[40.07,45.04],AZE:[40.14,47.58],JOR:[30.59,36.24],
   LBN:[33.85,35.86],KWT:[29.31,47.48],BHR:[26.07,50.55],QAT:[25.35,51.18],
-  OMN:[21.47,55.98],AFR:[0,25],ECU:[-1.83,-78.18],BOL:[-16.29,-63.59],
+  OMN:[21.47,55.98],ECU:[-1.83,-78.18],BOL:[-16.29,-63.59],
   PRY:[-23.44,-58.44],URY:[-32.52,-55.77],CHL:[-35.68,-71.54],CRI:[9.75,-83.75],
   PAN:[8.54,-80.78],HND:[15.20,-86.24],NIC:[12.87,-85.21],CUB:[21.52,-77.78],
   DOM:[18.74,-70.16],JAM:[18.11,-77.30],TTO:[10.69,-61.22],
@@ -74,23 +71,54 @@ function riskLabel(score: number): string {
   return "Low";
 }
 
-/* ── Fly-to helper ── */
-function FlyTo({ center, zoom }: { center: [number, number]; zoom: number }) {
-  const map = useMap();
+/* ── Generic Leaflet map hook ── */
+function useLeafletMap(
+  containerRef: React.RefObject<HTMLDivElement>,
+  center: [number, number],
+  zoom: number,
+) {
+  const mapRef = useRef<L.Map | null>(null);
+
   useEffect(() => {
-    map.flyTo(center, zoom, { duration: 1.2 });
+    if (!containerRef.current || mapRef.current) return;
+    const map = L.map(containerRef.current, {
+      center,
+      zoom,
+      scrollWheelZoom: true,
+      zoomControl: true,
+    });
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; <a href="https://carto.com">CARTO</a>',
+    }).addTo(map);
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Fly to new center when it changes
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.flyTo(center, zoom, { duration: 1.2 });
+    }
   }, [center[0], center[1], zoom]);
-  return null;
+
+  return mapRef;
 }
 
 /* ===================================================================
-   GLOBAL MAP  – country-level heat circles
+   GLOBAL MAP – country-level heat circles
    =================================================================== */
 interface GlobalMapProps {
   onSelectCountry: (iso3: string, name: string) => void;
 }
 
 export function GlobalRiskMap({ onSelectCountry }: GlobalMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const markersRef = useRef<L.CircleMarker[]>([]);
+
   const { data, isLoading } = useQuery({
     queryKey: ["map-global-risk"],
     queryFn: async () => {
@@ -101,73 +129,101 @@ export function GlobalRiskMap({ onSelectCountry }: GlobalMapProps) {
         .eq("snapshot_date", today);
       if (!data?.length) return [];
 
-      const map: Record<string, { iso3: string; totalRisk: number; count: number; domains: string[] }> = {};
+      const agg: Record<string, { iso3: string; totalRisk: number; count: number }> = {};
       for (const r of data) {
-        if (!map[r.iso3]) map[r.iso3] = { iso3: r.iso3, totalRisk: 0, count: 0, domains: [] };
-        map[r.iso3].totalRisk += r.risk_pressure_score;
-        map[r.iso3].count += 1;
-        map[r.iso3].domains.push(r.domain);
+        if (!agg[r.iso3]) agg[r.iso3] = { iso3: r.iso3, totalRisk: 0, count: 0 };
+        agg[r.iso3].totalRisk += r.risk_pressure_score;
+        agg[r.iso3].count += 1;
       }
-      return Object.values(map).map(c => ({
-        iso3: c.iso3,
-        avgRisk: c.totalRisk / c.count,
-        domains: c.count,
-        coords: COUNTRY_COORDS[c.iso3] as [number, number] | undefined,
-      })).filter(c => c.coords);
+      return Object.values(agg)
+        .map(c => ({
+          iso3: c.iso3,
+          avgRisk: c.totalRisk / c.count,
+          domains: c.count,
+          coords: COUNTRY_COORDS[c.iso3] as [number, number] | undefined,
+        }))
+        .filter(c => c.coords);
     },
     staleTime: 60_000,
   });
+
+  const mapRef = useLeafletMap(containerRef, [20, 10], 2);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !data) return;
+
+    // Clear old markers
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    for (const c of data) {
+      const color = riskFill(c.avgRisk);
+      const radius = Math.max(6, Math.min(22, c.avgRisk / 3.5));
+      const name = COUNTRY_NAMES[c.iso3] || c.iso3;
+
+      const marker = L.circleMarker(c.coords!, {
+        radius,
+        fillColor: color,
+        fillOpacity: 0.75,
+        color,
+        weight: 1.5,
+        opacity: 0.9,
+      }).addTo(map);
+
+      marker.bindPopup(`
+        <div style="min-width:160px">
+          <strong>${name}</strong><br/>
+          <span>Risk: <strong style="color:${color}">${c.avgRisk.toFixed(0)} — ${riskLabel(c.avgRisk)}</strong></span><br/>
+          <span style="color:#888;font-size:12px">${c.domains} domains tracked</span><br/>
+          <button onclick="window.__aicisSelectCountry('${c.iso3}','${name.replace(/'/g, "\\'")}')" 
+            style="margin-top:6px;width:100%;padding:4px 8px;border:1px solid #555;border-radius:4px;background:transparent;color:#fff;cursor:pointer;font-size:12px">
+            Drill into market →
+          </button>
+        </div>
+      `);
+
+      marker.on("click", () => {
+        marker.openPopup();
+      });
+
+      markersRef.current.push(marker);
+    }
+  }, [data, mapRef.current]);
+
+  // Expose click handler globally for popup buttons
+  useEffect(() => {
+    (window as any).__aicisSelectCountry = (iso3: string, name: string) => {
+      onSelectCountry(iso3, name);
+    };
+    return () => {
+      delete (window as any).__aicisSelectCountry;
+    };
+  }, [onSelectCountry]);
 
   if (isLoading) return <Skeleton className="h-[500px] w-full rounded-xl" />;
 
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
-        <div className="h-[500px] md:h-[600px] w-full">
-          <MapContainer
-            center={[20, 10]}
-            zoom={2}
-            minZoom={2}
-            maxZoom={6}
-            scrollWheelZoom
-            className="h-full w-full z-0"
-            style={{ background: "#0f172a" }}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://carto.com">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            />
-            {data?.map((c) => (
-              <CircleMarker
-                key={c.iso3}
-                center={c.coords!}
-                radius={Math.max(6, Math.min(22, c.avgRisk / 3.5))}
-                pathOptions={{
-                  fillColor: riskFill(c.avgRisk),
-                  fillOpacity: 0.75,
-                  color: riskFill(c.avgRisk),
-                  weight: 1.5,
-                  opacity: 0.9,
-                }}
-                eventHandlers={{
-                  click: () => onSelectCountry(c.iso3, COUNTRY_NAMES[c.iso3] || c.iso3),
-                }}
-              >
-                <Popup>
-                  <div className="text-sm space-y-1 min-w-[160px]">
-                    <p className="font-bold">{COUNTRY_NAMES[c.iso3] || c.iso3}</p>
-                    <p>Risk: <strong style={{ color: riskFill(c.avgRisk) }}>{c.avgRisk.toFixed(0)} — {riskLabel(c.avgRisk)}</strong></p>
-                    <p className="text-xs text-gray-500">{c.domains} domains tracked</p>
-                    <Button size="sm" variant="outline" className="w-full mt-1 text-xs"
-                      onClick={() => onSelectCountry(c.iso3, COUNTRY_NAMES[c.iso3] || c.iso3)}>
-                      Drill into market →
-                    </Button>
-                  </div>
-                </Popup>
-              </CircleMarker>
+        <div className="relative">
+          <div ref={containerRef} className="h-[500px] md:h-[600px] w-full" style={{ background: "#0f172a" }} />
+          {/* Legend */}
+          <div className="absolute bottom-3 left-3 z-[1000] bg-background/90 backdrop-blur rounded-lg p-2 border border-border shadow-lg text-xs space-y-1">
+            <p className="font-semibold text-foreground text-[11px]">Risk Level</p>
+            {[
+              { color: "#22c55e", label: "Low (< 25)" },
+              { color: "#facc15", label: "Moderate (25–40)" },
+              { color: "#eab308", label: "Elevated (40–55)" },
+              { color: "#f97316", label: "High (55–70)" },
+              { color: "#ef4444", label: "Critical (70+)" },
+            ].map((l) => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full shrink-0" style={{ background: l.color }} />
+                <span className="text-muted-foreground">{l.label}</span>
+              </div>
             ))}
-            <MapLegend />
-          </MapContainer>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -175,7 +231,7 @@ export function GlobalRiskMap({ onSelectCountry }: GlobalMapProps) {
 }
 
 /* ===================================================================
-   COUNTRY MAP  – region-level circles within a country
+   COUNTRY MAP – region-level circles within a country
    =================================================================== */
 interface CountryMapProps {
   iso3: string;
@@ -184,7 +240,9 @@ interface CountryMapProps {
 }
 
 export function CountryRiskMap({ iso3, countryName, onSelectRegion }: CountryMapProps) {
-  const center = COUNTRY_COORDS[iso3] || [0, 0];
+  const containerRef = useRef<HTMLDivElement>(null);
+  const markersRef = useRef<L.CircleMarker[]>([]);
+  const center: [number, number] = COUNTRY_COORDS[iso3] || [0, 0];
 
   const { data: regions, isLoading } = useQuery({
     queryKey: ["map-country-regions", iso3],
@@ -202,14 +260,12 @@ export function CountryRiskMap({ iso3, countryName, onSelectRegion }: CountryMap
     staleTime: 60_000,
   });
 
-  // Get village indicator counts per region for heat intensity
   const regionIds = useMemo(() => regions?.map(r => r.id) || [], [regions]);
 
   const { data: indicatorCounts } = useQuery({
-    queryKey: ["map-region-indicator-counts", iso3, regionIds.slice(0, 5).join(",")],
+    queryKey: ["map-region-indicator-counts", iso3, regionIds.length],
     queryFn: async () => {
       if (!regionIds.length) return {};
-      // Get a sample of indicators to derive a pseudo-risk per region
       const { data } = await supabase
         .from("village_indicators")
         .select("region_id, value, confidence, domain")
@@ -233,89 +289,79 @@ export function CountryRiskMap({ iso3, countryName, onSelectRegion }: CountryMap
     staleTime: 60_000,
   });
 
+  const mapRef = useLeafletMap(containerRef, center, 6);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !regions) return;
+
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    for (const r of regions) {
+      if (!r.lat || !r.lon) continue;
+      const info = indicatorCounts?.[r.id];
+      const hasData = !!info;
+      const color = hasData
+        ? (info.avgConf < 0.5 ? "#f97316" : info.domainCount >= 3 ? "#eab308" : "#22c55e")
+        : "#64748b";
+      const intensity = hasData ? Math.min(info.count / 5, 1) : 0.3;
+
+      const marker = L.circleMarker([r.lat, r.lon], {
+        radius: Math.max(5, Math.min(14, (r.population_est || 50000) / 100000 + 5)),
+        fillColor: color,
+        fillOpacity: 0.35 + intensity * 0.45,
+        color,
+        weight: 1,
+        opacity: 0.8,
+      }).addTo(map);
+
+      marker.bindPopup(`
+        <div style="min-width:150px">
+          <strong>${r.name}</strong><br/>
+          <span style="color:#888;font-size:12px">Level ${r.admin_level} · ${r.urban_rural || "unknown"}</span><br/>
+          ${r.population_est ? `<span style="font-size:12px">Pop: ${(r.population_est / 1000).toFixed(0)}K</span><br/>` : ""}
+          ${info ? `<span style="font-size:12px">${info.count} indicators · ${info.domainCount} domains</span><br/>
+          <span style="font-size:12px">Confidence: ${(info.avgConf * 100).toFixed(0)}%</span><br/>` : ""}
+          <button onclick="window.__aicisSelectRegion('${r.id}','${r.name.replace(/'/g, "\\'")}')" 
+            style="margin-top:6px;width:100%;padding:4px 8px;border:1px solid #555;border-radius:4px;background:transparent;color:#fff;cursor:pointer;font-size:12px">
+            Drill into region →
+          </button>
+        </div>
+      `);
+
+      markersRef.current.push(marker);
+    }
+  }, [regions, indicatorCounts, mapRef.current]);
+
+  useEffect(() => {
+    (window as any).__aicisSelectRegion = (id: string, name: string) => {
+      onSelectRegion(id, name);
+    };
+    return () => { delete (window as any).__aicisSelectRegion; };
+  }, [onSelectRegion]);
+
   if (isLoading) return <Skeleton className="h-[400px] w-full rounded-xl" />;
 
   if (!regions?.length) {
     return (
-      <Card>
-        <CardContent className="p-8 text-center text-muted-foreground">
-          <p>No geo-located regions found for {countryName}.</p>
-        </CardContent>
-      </Card>
+      <Card><CardContent className="p-8 text-center text-muted-foreground">
+        No geo-located regions found for {countryName}.
+      </CardContent></Card>
     );
   }
 
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
-        <div className="h-[400px] md:h-[500px] w-full">
-          <MapContainer
-            center={center}
-            zoom={6}
-            minZoom={3}
-            maxZoom={12}
-            scrollWheelZoom
-            className="h-full w-full z-0"
-            style={{ background: "#0f172a" }}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://carto.com">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            />
-            <FlyTo center={center} zoom={6} />
-            {regions.map((r) => {
-              const info = indicatorCounts?.[r.id];
-              const hasData = !!info;
-              const intensity = hasData ? Math.min(info.count / 5, 1) : 0.3;
-              const color = hasData
-                ? (info.avgConf < 0.5 ? "#f97316" : info.domainCount >= 3 ? "#eab308" : "#22c55e")
-                : "#64748b";
-
-              return (
-                <CircleMarker
-                  key={r.id}
-                  center={[r.lat!, r.lon!]}
-                  radius={Math.max(5, Math.min(14, (r.population_est || 50000) / 100000 + 5))}
-                  pathOptions={{
-                    fillColor: color,
-                    fillOpacity: 0.35 + intensity * 0.45,
-                    color,
-                    weight: 1,
-                    opacity: 0.8,
-                  }}
-                  eventHandlers={{
-                    click: () => onSelectRegion(r.id, r.name),
-                  }}
-                >
-                  <Popup>
-                    <div className="text-sm space-y-1 min-w-[150px]">
-                      <p className="font-bold">{r.name}</p>
-                      <p className="text-xs text-gray-500">Level {r.admin_level} · {r.urban_rural || "unknown"}</p>
-                      {r.population_est && <p className="text-xs">Pop: {(r.population_est / 1000).toFixed(0)}K</p>}
-                      {info && (
-                        <>
-                          <p className="text-xs">{info.count} indicators · {info.domainCount} domains</p>
-                          <p className="text-xs">Avg confidence: {(info.avgConf * 100).toFixed(0)}%</p>
-                        </>
-                      )}
-                      <Button size="sm" variant="outline" className="w-full mt-1 text-xs"
-                        onClick={() => onSelectRegion(r.id, r.name)}>
-                        Drill into region →
-                      </Button>
-                    </div>
-                  </Popup>
-                </CircleMarker>
-              );
-            })}
-          </MapContainer>
-        </div>
+        <div ref={containerRef} className="h-[400px] md:h-[500px] w-full" style={{ background: "#0f172a" }} />
       </CardContent>
     </Card>
   );
 }
 
 /* ===================================================================
-   REGION MAP  – village/settlement-level indicator heat points
+   REGION MAP – village/settlement-level indicator heat points
    =================================================================== */
 interface RegionMapProps {
   regionId: string;
@@ -324,6 +370,9 @@ interface RegionMapProps {
 }
 
 export function RegionRiskMap({ regionId, regionName, countryIso3 }: RegionMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const markersRef = useRef<L.CircleMarker[]>([]);
+
   const { data: region } = useQuery({
     queryKey: ["map-region-center", regionId],
     queryFn: async () => {
@@ -337,7 +386,7 @@ export function RegionRiskMap({ regionId, regionName, countryIso3 }: RegionMapPr
   });
 
   const { data: children, isLoading } = useQuery({
-    queryKey: ["map-region-children", regionId],
+    queryKey: ["map-region-children-geo", regionId],
     queryFn: async () => {
       const { data } = await supabase
         .from("admin_regions")
@@ -350,7 +399,6 @@ export function RegionRiskMap({ regionId, regionName, countryIso3 }: RegionMapPr
     },
   });
 
-  // Get indicators for child regions
   const childIds = useMemo(() => children?.map(c => c.id) || [], [children]);
 
   const { data: childIndicators } = useQuery({
@@ -359,7 +407,7 @@ export function RegionRiskMap({ regionId, regionName, countryIso3 }: RegionMapPr
       if (!childIds.length) return {};
       const { data } = await supabase
         .from("village_indicators")
-        .select("region_id, domain, indicator, value, confidence")
+        .select("region_id, domain, value, confidence")
         .in("region_id", childIds.slice(0, 100))
         .limit(500);
       if (!data?.length) return {};
@@ -380,147 +428,78 @@ export function RegionRiskMap({ regionId, regionName, countryIso3 }: RegionMapPr
     staleTime: 60_000,
   });
 
-  // Also get indicators directly on this region
-  const { data: selfIndicators } = useQuery({
-    queryKey: ["map-region-self-indicators", regionId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("village_indicators")
-        .select("domain, indicator, value, confidence")
-        .eq("region_id", regionId)
-        .limit(100);
-      return data || [];
-    },
-  });
-
   const center: [number, number] = region?.lat && region?.lon
     ? [region.lat, region.lon]
     : COUNTRY_COORDS[countryIso3] || [0, 0];
 
+  const mapRef = useLeafletMap(containerRef, center, 9);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !children) return;
+
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    // Self marker
+    if (region?.lat && region?.lon) {
+      const self = L.circleMarker([region.lat, region.lon], {
+        radius: 12,
+        fillColor: "#3b82f6",
+        fillOpacity: 0.6,
+        color: "#3b82f6",
+        weight: 2,
+        opacity: 1,
+      }).addTo(map);
+      self.bindPopup(`<strong>${regionName}</strong><br/><span style="font-size:12px">Region center</span>`);
+      markersRef.current.push(self);
+    }
+
+    for (const c of children) {
+      if (!c.lat || !c.lon) continue;
+      const info = childIndicators?.[c.id];
+      const col = info
+        ? (info.lowConf > info.count * 0.5 ? "#ef4444" : info.domainCount >= 4 ? "#f97316" : info.domainCount >= 2 ? "#eab308" : "#22c55e")
+        : "#64748b";
+
+      const marker = L.circleMarker([c.lat, c.lon], {
+        radius: info ? Math.max(4, Math.min(10, info.count / 3 + 4)) : 4,
+        fillColor: col,
+        fillOpacity: info ? 0.7 : 0.3,
+        color: col,
+        weight: 1,
+        opacity: 0.8,
+      }).addTo(map);
+
+      marker.bindPopup(`
+        <div style="min-width:130px">
+          <strong>${c.name}</strong><br/>
+          <span style="color:#888;font-size:12px">Level ${c.admin_level} · ${c.urban_rural || ""}</span><br/>
+          ${c.population_est ? `<span style="font-size:12px">Pop: ${c.population_est.toLocaleString()}</span><br/>` : ""}
+          ${info ? `<span style="font-size:12px">${info.count} indicators · ${info.domainCount} domains</span><br/>` : ""}
+          ${info?.lowConf ? `<span style="color:#f97316;font-size:12px">${info.lowConf} low-confidence</span>` : ""}
+        </div>
+      `);
+
+      markersRef.current.push(marker);
+    }
+  }, [children, childIndicators, region, mapRef.current]);
+
   if (isLoading) return <Skeleton className="h-[350px] w-full rounded-xl" />;
 
-  const hasPoints = (children?.length || 0) > 0 || (region?.lat && region?.lon);
-
-  if (!hasPoints) {
+  if (!children?.length && !(region?.lat && region?.lon)) {
     return (
-      <Card>
-        <CardContent className="p-8 text-center text-muted-foreground">
-          <p>No geo-located settlements found for {regionName}.</p>
-        </CardContent>
-      </Card>
+      <Card><CardContent className="p-8 text-center text-muted-foreground">
+        No geo-located settlements found for {regionName}.
+      </CardContent></Card>
     );
   }
-
-  // Domain color coding
-  const domainColor = (domainCount: number, lowConf: number, count: number) => {
-    if (lowConf > count * 0.5) return "#ef4444"; // many low-confidence = warning
-    if (domainCount >= 4) return "#f97316";
-    if (domainCount >= 2) return "#eab308";
-    return "#22c55e";
-  };
 
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
-        <div className="h-[350px] md:h-[450px] w-full">
-          <MapContainer
-            center={center}
-            zoom={9}
-            minZoom={5}
-            maxZoom={16}
-            scrollWheelZoom
-            className="h-full w-full z-0"
-            style={{ background: "#0f172a" }}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://carto.com">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            />
-            <FlyTo center={center} zoom={9} />
-
-            {/* Self marker */}
-            {region?.lat && region?.lon && selfIndicators && selfIndicators.length > 0 && (
-              <CircleMarker
-                center={[region.lat, region.lon]}
-                radius={12}
-                pathOptions={{ fillColor: "#3b82f6", fillOpacity: 0.6, color: "#3b82f6", weight: 2, opacity: 1 }}
-              >
-                <Popup>
-                  <div className="text-sm space-y-1 min-w-[140px]">
-                    <p className="font-bold">{regionName}</p>
-                    <p className="text-xs">{selfIndicators.length} indicators</p>
-                    <p className="text-xs text-gray-500">
-                      Domains: {[...new Set(selfIndicators.map(i => i.domain))].join(", ")}
-                    </p>
-                  </div>
-                </Popup>
-              </CircleMarker>
-            )}
-
-            {/* Child settlement markers */}
-            {children?.map((c) => {
-              const info = childIndicators?.[c.id];
-              const col = info
-                ? domainColor(info.domainCount, info.lowConf, info.count)
-                : "#64748b";
-
-              return (
-                <CircleMarker
-                  key={c.id}
-                  center={[c.lat!, c.lon!]}
-                  radius={info ? Math.max(4, Math.min(10, info.count / 3 + 4)) : 4}
-                  pathOptions={{
-                    fillColor: col,
-                    fillOpacity: info ? 0.7 : 0.3,
-                    color: col,
-                    weight: 1,
-                    opacity: 0.8,
-                  }}
-                >
-                  <Popup>
-                    <div className="text-sm space-y-1 min-w-[130px]">
-                      <p className="font-bold">{c.name}</p>
-                      <p className="text-xs text-gray-500">Level {c.admin_level} · {c.urban_rural || ""}</p>
-                      {c.population_est && <p className="text-xs">Pop: {c.population_est.toLocaleString()}</p>}
-                      {info && (
-                        <>
-                          <p className="text-xs">{info.count} indicators · {info.domainCount} domains</p>
-                          {info.lowConf > 0 && (
-                            <p className="text-xs text-orange-500">{info.lowConf} low-confidence readings</p>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </Popup>
-                </CircleMarker>
-              );
-            })}
-          </MapContainer>
-        </div>
+        <div ref={containerRef} className="h-[350px] md:h-[450px] w-full" style={{ background: "#0f172a" }} />
       </CardContent>
     </Card>
-  );
-}
-
-/* ── Shared legend overlay ── */
-function MapLegend() {
-  return (
-    <div className="leaflet-bottom leaflet-left" style={{ pointerEvents: "auto" }}>
-      <div className="leaflet-control bg-background/90 backdrop-blur rounded-lg p-2 m-2 text-xs space-y-1 border border-border shadow-lg">
-        <p className="font-semibold text-foreground text-[11px]">Risk Level</p>
-        {[
-          { color: "#22c55e", label: "Low (< 25)" },
-          { color: "#facc15", label: "Moderate (25–40)" },
-          { color: "#eab308", label: "Elevated (40–55)" },
-          { color: "#f97316", label: "High (55–70)" },
-          { color: "#ef4444", label: "Critical (70+)" },
-        ].map((l) => (
-          <div key={l.label} className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full" style={{ background: l.color }} />
-            <span className="text-muted-foreground">{l.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
