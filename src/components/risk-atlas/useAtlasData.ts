@@ -133,18 +133,18 @@ export function useRelatedSignals(iso3: string | null, domains: string[]) {
     queryFn: async (): Promise<SignalRow[]> => {
       let q = supabase
         .from("global_signals")
-        .select("id, title, category, impact_score, confidence_score, affected_countries, recommended_actions_business, created_at")
+        .select("id, title, category, impact_score, confidence_score, affected_countries, recommended_actions, created_at")
         .order("created_at", { ascending: false })
         .limit(20);
 
       if (domains.length > 0) {
-        q = q.in("category", domains.map(d => d.charAt(0).toUpperCase() + d.slice(1)));
+        // Don't filter by category enum — just fetch all and filter client-side
       }
 
       const { data } = await q;
       if (!data?.length) return [];
 
-      let signals = data as SignalRow[];
+      let signals = data as unknown as SignalRow[];
       if (iso3) {
         const filtered = signals.filter(s =>
           s.affected_countries && Array.isArray(s.affected_countries) && s.affected_countries.includes(iso3)
