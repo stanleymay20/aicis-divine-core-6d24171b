@@ -81,6 +81,7 @@ function useLeafletMap(
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+
     const map = L.map(containerRef.current, {
       center,
       zoom,
@@ -89,10 +90,18 @@ function useLeafletMap(
     });
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       attribution: '&copy; <a href="https://carto.com">CARTO</a>',
+      maxZoom: 18,
     }).addTo(map);
     mapRef.current = map;
 
+    // Ensure tiles render when container becomes visible
+    const timer = setTimeout(() => map.invalidateSize(), 200);
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(containerRef.current);
+
     return () => {
+      clearTimeout(timer);
+      observer.disconnect();
       map.remove();
       mapRef.current = null;
     };
