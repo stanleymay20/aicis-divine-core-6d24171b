@@ -19,6 +19,7 @@ import {
   Eye,
   Brain,
   X,
+  Globe,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -32,6 +33,7 @@ const navItems = [
   { id: "brief", label: "Today's Brief", icon: Sunrise, path: "/morning-brief" },
   { id: "signals", label: "Supply Chain Risks", icon: Radio, path: "/live" },
   { id: "resolution", label: "Risk Map", icon: Layers, path: "/resolution" },
+  { id: "atlas", label: "Risk Atlas", icon: Globe, path: "/risk-atlas" },
   { id: "watchlist", label: "Tracked Markets", icon: Eye, path: "/watchlist" },
   { id: "learning", label: "System Accuracy", icon: Brain, path: "/learning" },
   { id: "decisions", label: "Actions & Outcomes", icon: Activity, path: "/decision-ops" },
