@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, ArrowRight, Map, MapPin, BarChart3, TrendingDown, TrendingUp, Minus, AlertTriangle, Package, Target } from "lucide-react";
 import { CountryRecommendations } from "./ResolutionRecommendations";
+import { CountryRiskMap } from "./InteractiveRiskMap";
 import { WatchButton } from "@/components/watchlist/WatchButton";
 import { cn } from "@/lib/utils";
 
@@ -192,6 +193,9 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
       </Card>
 
       <CountryRecommendations domains={domains as any} />
+
+      {/* Interactive map */}
+      <CountryRiskMap iso3={iso3} countryName={countryName} onSelectRegion={onSelectRegion} />
 
       {/* Regions list */}
       <Card>

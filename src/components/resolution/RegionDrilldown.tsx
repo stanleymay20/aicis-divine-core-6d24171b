@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, MapPin, Activity, Thermometer, Heart, Building, Leaf, TrendingUp, AlertTriangle } from "lucide-react";
 import { RegionRecommendations } from "./ResolutionRecommendations";
+import { RegionRiskMap } from "./InteractiveRiskMap";
 import { WatchButton } from "@/components/watchlist/WatchButton";
 
 interface Props {
@@ -135,6 +136,9 @@ export const RegionDrilldown = ({ regionId, regionName, countryIso3, onBack }: P
           </CardContent>
         </Card>
       )}
+
+      {/* Interactive map */}
+      <RegionRiskMap regionId={regionId} regionName={regionName} countryIso3={countryIso3} />
 
       {/* Resolution-Aware Recommendations */}
       <RegionRecommendations indicators={indicators as any} childCount={children?.length || 0} />
