@@ -15,6 +15,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/morning-brief": "Today's Brief",
   "/live": "Supply Chain Risks",
   "/live-signals": "Supply Chain Risks",
+  "/risk-atlas": "Risk Atlas",
   "/decisions": "Actions & Outcomes",
   "/decision-ops": "Actions & Outcomes",
   "/daily-evidence-ops": "Daily Ops",
