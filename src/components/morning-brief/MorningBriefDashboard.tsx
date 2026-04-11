@@ -3,31 +3,32 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Sunrise, ArrowRight, CheckCircle2, Radio, Activity, TrendingUp, Layers,
+  ArrowRight, ChevronDown, ChevronUp, Radio, Activity, TrendingUp, Layers,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PriorityDecisionsPanel } from "./PriorityDecisionsPanel";
-import { ExecutiveProofPanel } from "./ExecutiveProofPanel";
 import { GlobalSignalsBrief } from "./GlobalSignalsBrief";
-import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
-import { TopRisksWidget } from "./TopRisksWidget";
-import { SystemStatusStrip } from "./SystemStatusStrip";
 import { SystemHealthBadge } from "./SystemHealthBadge";
-import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidget";
-import { BusinessExposureStrip } from "./BusinessExposureStrip";
 import { SignalDrillDown } from "@/components/command-center/SignalDrillDown";
 import { useNavigate } from "react-router-dom";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { BusinessExposureStrip } from "./BusinessExposureStrip";
+import { ExecutiveProofPanel } from "./ExecutiveProofPanel";
+import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
+import { TopRisksWidget } from "./TopRisksWidget";
+import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidget";
+import { SystemStatusStrip } from "./SystemStatusStrip";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [selectedSignal, setSelectedSignal] = useState<any>(null);
   const [drillDownOpen, setDrillDownOpen] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
-  // Fetch user profile for greeting
   const { data: profile } = useQuery({
     queryKey: ["user-profile", user?.id],
     queryFn: async () => {
@@ -44,7 +45,8 @@ export const MorningBriefDashboard = () => {
   });
 
   const firstName = profile?.full_name?.split(" ")[0] || user?.email?.split("@")[0] || "Operator";
-  const greeting = new Date().getHours() < 12 ? "Good Morning" : new Date().getHours() < 18 ? "Good Afternoon" : "Good Evening";
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
 
   const handleSignalClick = (signal: any) => {
     setSelectedSignal(signal);
@@ -53,81 +55,94 @@ export const MorningBriefDashboard = () => {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* ── A. HERO HEADER ── */}
+      {/* ── HERO: What + When + System Health ── */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold leading-tight">
             {greeting}, {firstName}.
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Here's what you need to know today.
+            Here's what needs your attention.
           </p>
-          <p className="text-[11px] text-muted-foreground">{format(new Date(), "EEEE, MMMM d · HH:mm")} UTC</p>
+          <p className="text-[11px] text-muted-foreground">
+            {format(new Date(), "EEEE, MMMM d · HH:mm")} UTC
+          </p>
         </div>
         <SystemHealthBadge />
       </div>
 
-      {/* ── SYSTEM STATUS STRIP ── */}
-      <SystemStatusStrip />
-
-      {/* ── B. BUSINESS EXPOSURE STRIP ── */}
+      {/* ── EXPOSURE: 3-4 compact KPIs ── */}
       <BusinessExposureStrip />
 
-      {/* ── C. CRITICAL RISKS / TOP SIGNALS ── */}
+      {/* ── TOP RISKS: 3-5 critical signals with impact + action ── */}
       <GlobalSignalsBrief onSignalClick={handleSignalClick} />
 
-      {/* ── D+E. BUSINESS IMPACT + RECOMMENDED ACTIONS ── */}
+      {/* ── PRIORITY ACTIONS: What to do now ── */}
       <PriorityDecisionsPanel />
 
-      {/* ── TRACKED MARKETS ── */}
-      <WatchlistBriefWidget />
+      {/* ── PROGRESSIVE DISCLOSURE: Everything else ── */}
+      <Collapsible open={showMore} onOpenChange={setShowMore}>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-muted-foreground hover:text-foreground gap-2"
+          >
+            {showMore ? (
+              <>
+                <ChevronUp className="h-4 w-4" />
+                Hide details
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-4 w-4" />
+                View more: tracked markets, recent decisions, system status
+              </>
+            )}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-5 pt-3">
+          <WatchlistBriefWidget />
+          <RecentDecisionsWidget />
+          <ExecutiveProofPanel />
+          <TopRisksWidget />
+          <SystemStatusStrip />
 
-      {/* ── F. RECENT DECISIONS & OUTCOMES ── */}
-      <RecentDecisionsWidget />
+          {/* Quick Actions */}
+          <Card className="border-border">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-semibold mb-3">What To Do Next</h3>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <ActionCard
+                  icon={<Radio className="h-4 w-4 text-primary" />}
+                  title="Review Risks"
+                  desc="Check new supply chain risks"
+                  onClick={() => navigate("/live")}
+                />
+                <ActionCard
+                  icon={<Activity className="h-4 w-4 text-primary" />}
+                  title="Execute Actions"
+                  desc="Act on open items"
+                  onClick={() => navigate("/decision-ops")}
+                />
+                <ActionCard
+                  icon={<TrendingUp className="h-4 w-4 text-primary" />}
+                  title="Record Outcomes"
+                  desc="Close the loop with evidence"
+                  onClick={() => navigate("/evidence-command")}
+                />
+                <ActionCard
+                  icon={<Layers className="h-4 w-4 text-primary" />}
+                  title="Risk Atlas"
+                  desc="Country & region exposure"
+                  onClick={() => navigate("/risk-atlas")}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
 
-      {/* ── PROVEN VALUE ── */}
-      <ExecutiveProofPanel />
-
-      {/* ── TOP RISK MARKETS ── */}
-      <TopRisksWidget />
-
-      {/* ── QUICK ACTIONS ── */}
-      <Card className="border-border">
-        <CardContent className="p-4">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-primary" />
-            What To Do Next
-          </h3>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <ActionCard
-              icon={<Radio className="h-4 w-4 text-primary" />}
-              title="Review Risks"
-              desc="Check new supply chain risks"
-              onClick={() => navigate("/live")}
-            />
-            <ActionCard
-              icon={<Activity className="h-4 w-4 text-primary" />}
-              title="Execute Actions"
-              desc="Act on open items"
-              onClick={() => navigate("/decision-ops")}
-            />
-            <ActionCard
-              icon={<TrendingUp className="h-4 w-4 text-primary" />}
-              title="Record Outcomes"
-              desc="Close the loop with evidence"
-              onClick={() => navigate("/evidence-command")}
-            />
-            <ActionCard
-              icon={<Layers className="h-4 w-4 text-primary" />}
-              title="Risk Map"
-              desc="Country & region exposure"
-              onClick={() => navigate("/resolution")}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Signal Drill-Down Panel */}
       <SignalDrillDown
         signal={selectedSignal}
         open={drillDownOpen}
