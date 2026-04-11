@@ -99,9 +99,12 @@ export function AtlasInsightPanel({
       if (!user) { toast.error("Sign in to create a decision"); return; }
 
       const topDomain = countryData.domainBreakdown[0];
+      const signalId = `atlas-${selectedCountry}-${Date.now()}`;
       const { error } = await supabase.from("decision_outcome_log").insert({
-        recorded_by: user.id,
+        signal_id: signalId,
         signal_title: `${topDomain?.domain || "multi-domain"} risk in ${countryName}`,
+        signal_date: new Date().toISOString().split("T")[0],
+        recorded_by: user.id,
         domain: topDomain?.domain || "governance",
         iso3: selectedCountry,
         recommended_action: countryData.avgRisk >= 70
@@ -109,6 +112,7 @@ export function AtlasInsightPanel({
           : `Monitor ${topDomain?.domain || "risk"} trends in ${countryName}`,
         signal_confidence: Math.round(countryData.avgRisk),
         status: "pending",
+        evidence_type: "hypothetical",
       });
       if (error) throw error;
       toast.success("Decision created — go to Actions to review");
