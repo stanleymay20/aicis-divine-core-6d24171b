@@ -10,24 +10,23 @@ import {
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
-interface ScaleStatus {
+interface StatsSnapshot {
+  snapped_at: string;
   metrics_total: number;
   entities_total: number;
-  metric_links_total: number;
-  event_links_total: number;
-  entity_links_total: number;
+  metric_links: number;
+  event_links: number;
+  entity_links: number;
   provenance_sources: number;
   reporting_countries: number;
   coverage_countries: number;
   metrics_country_coverage: number;
   link_to_metric_pct: number;
-  provenance_to_metric_pct: number;
-}
-
-interface JobOffset {
-  job_key: string;
-  current_offset: number;
-  last_tick: string;
+  provenance_pct: number;
+  provenance_completeness_pct: number;
+  duplicate_rate_pct: number;
+  canonical_mismatches: number;
+  job_offsets: Record<string, number>;
 }
 
 interface CronHealth {
@@ -41,20 +40,16 @@ interface CronHealth {
   success_rate_pct: number;
 }
 
-interface DupRate {
-  provider_name: string;
-  total_rows: number;
-  unique_keys: number;
-  estimated_conflicts: number;
-  conflict_rate_pct: number;
+interface MismatchRow {
+  issue_type: string;
+  code: string;
+  detail: string;
 }
 
 interface MilestoneCheck {
   check: string;
   passed: boolean;
   detail: string;
-  value?: number;
-  threshold?: number;
 }
 
 interface AuditResult {
@@ -79,10 +74,9 @@ function fmt(n: number): string {
 }
 
 export function PlanetaryScaleMonitor() {
-  const [status, setStatus] = useState<ScaleStatus | null>(null);
-  const [offsets, setOffsets] = useState<JobOffset[]>([]);
+  const [snap, setSnap] = useState<StatsSnapshot | null>(null);
   const [cronHealth, setCronHealth] = useState<CronHealth[]>([]);
-  const [dupRates, setDupRates] = useState<DupRate[]>([]);
+  const [mismatches, setMismatches] = useState<MismatchRow[]>([]);
   const [lastAudit, setLastAudit] = useState<AuditResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [auditing, setAuditing] = useState(false);
@@ -90,18 +84,16 @@ export function PlanetaryScaleMonitor() {
 
   const load = useCallback(async () => {
     try {
-      const [statusRes, offsetsRes, cronRes, dupRes, auditRes] = await Promise.all([
-        supabase.from("planetary_scale_status" as any).select("*").single(),
-        supabase.from("planetary_job_offsets" as any).select("*"),
+      const [snapRes, cronRes, mmRes, auditRes] = await Promise.all([
+        supabase.from("planetary_stats_snapshots" as any).select("*").order("snapped_at", { ascending: false }).limit(1).single(),
         supabase.from("planetary_cron_health" as any).select("*"),
-        supabase.from("planetary_duplicate_rate" as any).select("*").limit(10),
+        supabase.from("canonical_mismatch_audit" as any).select("*").limit(50),
         supabase.from("milestone_audit_log").select("*").order("audited_at", { ascending: false }).limit(1),
       ]);
 
-      if (statusRes.data) setStatus(statusRes.data as any);
-      if (offsetsRes.data) setOffsets(offsetsRes.data as any);
+      if (snapRes.data) setSnap(snapRes.data as any);
       if (cronRes.data) setCronHealth(cronRes.data as any);
-      if (dupRes.data) setDupRates(dupRes.data as any);
+      if (mmRes.data) setMismatches(mmRes.data as any);
       if (auditRes.data?.[0]) {
         const raw = auditRes.data[0] as any;
         setLastAudit(raw.checks as AuditResult);
@@ -142,21 +134,41 @@ export function PlanetaryScaleMonitor() {
     );
   }
 
-  const metricsTotal = status?.metrics_total ?? 0;
+  if (!snap) {
+    return (
+      <Card className="p-6">
+        <p className="text-sm text-muted-foreground">Waiting for first stats snapshot (runs every 5 min)...</p>
+        <Button variant="outline" size="sm" onClick={load} className="mt-2 gap-1">
+          <RefreshCw className="h-3 w-3" /> Check again
+        </Button>
+      </Card>
+    );
+  }
+
+  const metricsTotal = snap.metrics_total;
   const currentMilestone = MILESTONES.find(m => metricsTotal < m.value) ?? MILESTONES[MILESTONES.length - 1];
   const progressPct = Math.min((metricsTotal / currentMilestone.value) * 100, 100);
+
+  const issuesByType: Record<string, MismatchRow[]> = {};
+  mismatches.forEach(m => {
+    if (!issuesByType[m.issue_type]) issuesByType[m.issue_type] = [];
+    issuesByType[m.issue_type].push(m);
+  });
 
   return (
     <div className="space-y-6">
       {/* Milestone Progress */}
       <Card className="border-primary/30 bg-card/80 backdrop-blur">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex items-center justify-between flex-wrap gap-2">
             <span className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               Planetary Scale Progress
             </span>
             <div className="flex gap-2">
+              <span className="text-xs text-muted-foreground self-center">
+                Snapshot: {new Date(snap.snapped_at).toLocaleTimeString()}
+              </span>
               <Button variant="outline" size="sm" onClick={load} className="gap-1">
                 <RefreshCw className="h-3 w-3" /> Refresh
               </Button>
@@ -173,7 +185,7 @@ export function PlanetaryScaleMonitor() {
             <span className="text-muted-foreground">Next: {currentMilestone.label}</span>
           </div>
           <Progress value={progressPct} className="h-3" />
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {MILESTONES.map(m => (
               <Badge key={m.label} variant={metricsTotal >= m.value ? "default" : "outline"} className="text-xs">
                 {m.label} {metricsTotal >= m.value ? "✓" : ""}
@@ -186,14 +198,14 @@ export function PlanetaryScaleMonitor() {
       {/* Core Counts */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {[
-          { label: "Metrics", value: status?.metrics_total, icon: Database, color: "text-primary" },
-          { label: "Entities", value: status?.entities_total, icon: Globe, color: "text-primary" },
-          { label: "Metric Links", value: status?.metric_links_total, icon: Link2, color: "text-primary" },
-          { label: "Event Links", value: status?.event_links_total, icon: Link2, color: "text-muted-foreground" },
-          { label: "Entity Links", value: status?.entity_links_total, icon: Link2, color: "text-primary" },
-          { label: "Provenance Sources", value: status?.provenance_sources, icon: FileCheck, color: "text-primary" },
-          { label: "Reporting Countries", value: status?.reporting_countries, icon: Globe, color: "text-primary" },
-          { label: "Countries w/ Data", value: status?.metrics_country_coverage, icon: Globe, color: "text-primary" },
+          { label: "Metrics", value: snap.metrics_total, icon: Database, color: "text-primary" },
+          { label: "Entities", value: snap.entities_total, icon: Globe, color: "text-primary" },
+          { label: "Metric Links", value: snap.metric_links, icon: Link2, color: "text-primary" },
+          { label: "Event Links", value: snap.event_links, icon: Link2, color: "text-muted-foreground" },
+          { label: "Entity Links", value: snap.entity_links, icon: Link2, color: "text-primary" },
+          { label: "Provenance Sources", value: snap.provenance_sources, icon: FileCheck, color: "text-primary" },
+          { label: "Reporting Countries", value: snap.reporting_countries, icon: Globe, color: "text-primary" },
+          { label: "Countries w/ Data", value: snap.metrics_country_coverage, icon: Globe, color: "text-primary" },
         ].map(item => (
           <Card key={item.label} className="p-3">
             <div className="flex items-center gap-2 mb-1">
@@ -205,25 +217,43 @@ export function PlanetaryScaleMonitor() {
         ))}
       </div>
 
-      {/* Ratios */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Ratios & Integrity */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Card className="p-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Link-to-Metric Ratio</span>
-            <Badge variant={Number(status?.link_to_metric_pct ?? 0) >= 1 ? "default" : "destructive"}>
-              {status?.link_to_metric_pct ?? 0}%
+            <span className="text-sm font-medium">Link / Metric</span>
+            <Badge variant={Number(snap.link_to_metric_pct) >= 1 ? "default" : "destructive"}>
+              {snap.link_to_metric_pct}%
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Target: ≥ 1% (healthy graph connectivity)</p>
+          <p className="text-xs text-muted-foreground mt-1">Floor: ≥1% · Target: ≥10%</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Provenance Coverage</span>
-            <Badge variant={Number(status?.provenance_to_metric_pct ?? 0) >= 90 ? "default" : "destructive"}>
-              {status?.provenance_to_metric_pct ?? 0}%
+            <span className="text-sm font-medium">Provenance</span>
+            <Badge variant={Number(snap.provenance_pct) >= 90 ? "default" : "destructive"}>
+              {snap.provenance_pct}%
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Target: ≥ 90% (full audit trail)</p>
+          <p className="text-xs text-muted-foreground mt-1">Presence: ≥90%</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Prov. Completeness</span>
+            <Badge variant={Number(snap.provenance_completeness_pct) >= 70 ? "default" : "destructive"}>
+              {snap.provenance_completeness_pct}%
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">4-field depth: ≥70%</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Canonical Issues</span>
+            <Badge variant={snap.canonical_mismatches === 0 ? "default" : "destructive"}>
+              {snap.canonical_mismatches}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Unmapped source codes</p>
         </Card>
       </div>
 
@@ -249,15 +279,9 @@ export function PlanetaryScaleMonitor() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 ml-2">
-                    {job.error_count > 0 && (
-                      <Badge variant="destructive" className="text-xs">{job.error_count} err</Badge>
-                    )}
-                    {job.timeout_count > 0 && (
-                      <Badge variant="secondary" className="text-xs">{job.timeout_count} timeout</Badge>
-                    )}
-                    {job.still_running > 0 && (
-                      <Badge variant="outline" className="text-xs">{job.still_running} running</Badge>
-                    )}
+                    {job.error_count > 0 && <Badge variant="destructive" className="text-xs">{job.error_count} err</Badge>}
+                    {job.timeout_count > 0 && <Badge variant="secondary" className="text-xs">{job.timeout_count} timeout</Badge>}
+                    {job.still_running > 0 && <Badge variant="outline" className="text-xs">{job.still_running} running</Badge>}
                     <Badge variant={job.success_rate_pct >= 90 ? "default" : "destructive"} className="text-xs">
                       {job.success_rate_pct}%
                     </Badge>
@@ -279,49 +303,48 @@ export function PlanetaryScaleMonitor() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {offsets.map(o => (
-              <div key={o.job_key} className="p-2 rounded bg-muted/30 text-sm">
-                <p className="font-mono text-xs truncate">{o.job_key}</p>
-                <div className="flex justify-between mt-1">
-                  <span className="font-bold">{fmt(o.current_offset)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {o.last_tick ? new Date(o.last_tick).toLocaleTimeString() : "—"}
-                  </span>
-                </div>
+            {Object.entries(snap.job_offsets || {}).map(([key, val]) => (
+              <div key={key} className="p-2 rounded bg-muted/30 text-sm">
+                <p className="font-mono text-xs truncate">{key}</p>
+                <span className="font-bold">{fmt(val as number)}</span>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Duplicate Rates */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-warning" />
-            Duplicate / Conflict Rate by Provider
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2 max-h-[250px] overflow-y-auto">
-            {dupRates.map(d => (
-              <div key={d.provider_name} className="flex items-center justify-between p-2 rounded bg-muted/30 text-sm">
-                <div>
-                  <p className="font-mono text-xs">{d.provider_name}</p>
-                  <p className="text-xs text-muted-foreground">{fmt(d.total_rows)} rows · {fmt(d.unique_keys)} unique</p>
+      {/* Canonical Mismatch Audit */}
+      {mismatches.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-warning" />
+              Canonical Mismatch Audit ({mismatches.length} issues)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 max-h-[300px] overflow-y-auto">
+              {Object.entries(issuesByType).map(([type, rows]) => (
+                <div key={type}>
+                  <p className="text-xs font-medium text-muted-foreground uppercase mb-1">
+                    {type.replace(/_/g, " ")} ({rows.length})
+                  </p>
+                  {rows.map(r => (
+                    <div key={r.code + r.detail} className="flex items-center justify-between p-1.5 text-xs">
+                      <span className="font-mono">{r.code}</span>
+                      <span className="text-muted-foreground truncate ml-2">{r.detail}</span>
+                    </div>
+                  ))}
                 </div>
-                <Badge variant={d.conflict_rate_pct < 5 ? "default" : "destructive"} className="text-xs">
-                  {d.conflict_rate_pct}% dup
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Last Milestone Audit */}
       {lastAudit && (
-      <Card className={`border-2 ${lastAudit.all_passed ? "border-primary/30" : "border-destructive/30"}`}>
+        <Card className={`border-2 ${lastAudit.all_passed ? "border-primary/30" : "border-destructive/30"}`}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               {lastAudit.all_passed ? (
@@ -350,7 +373,7 @@ export function PlanetaryScaleMonitor() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground mt-3">
-              Audited: {lastAudit.audited_at ? new Date(lastAudit.audited_at).toLocaleString() : "—"} · {fmt(lastAudit.metrics_total)} metrics at audit
+              Audited: {lastAudit.audited_at ? new Date(lastAudit.audited_at).toLocaleString() : "—"} · {fmt(lastAudit.metrics_total)} metrics
             </p>
           </CardContent>
         </Card>
