@@ -6732,6 +6732,66 @@ export type Database = {
         }
         Relationships: []
       }
+      planetary_stats_snapshots: {
+        Row: {
+          canonical_mismatches: number
+          coverage_countries: number
+          duplicate_rate_pct: number
+          entities_total: number
+          entity_links: number
+          event_links: number
+          id: string
+          job_offsets: Json
+          link_to_metric_pct: number
+          metric_links: number
+          metrics_country_coverage: number
+          metrics_total: number
+          provenance_completeness_pct: number
+          provenance_pct: number
+          provenance_sources: number
+          reporting_countries: number
+          snapped_at: string
+        }
+        Insert: {
+          canonical_mismatches?: number
+          coverage_countries?: number
+          duplicate_rate_pct?: number
+          entities_total?: number
+          entity_links?: number
+          event_links?: number
+          id?: string
+          job_offsets?: Json
+          link_to_metric_pct?: number
+          metric_links?: number
+          metrics_country_coverage?: number
+          metrics_total?: number
+          provenance_completeness_pct?: number
+          provenance_pct?: number
+          provenance_sources?: number
+          reporting_countries?: number
+          snapped_at?: string
+        }
+        Update: {
+          canonical_mismatches?: number
+          coverage_countries?: number
+          duplicate_rate_pct?: number
+          entities_total?: number
+          entity_links?: number
+          event_links?: number
+          id?: string
+          job_offsets?: Json
+          link_to_metric_pct?: number
+          metric_links?: number
+          metrics_country_coverage?: number
+          metrics_total?: number
+          provenance_completeness_pct?: number
+          provenance_pct?: number
+          provenance_sources?: number
+          reporting_countries?: number
+          snapped_at?: string
+        }
+        Relationships: []
+      }
       political_events: {
         Row: {
           avg_tone: number | null
@@ -9564,6 +9624,14 @@ export type Database = {
         }
         Relationships: []
       }
+      canonical_mismatch_audit: {
+        Row: {
+          code: string | null
+          detail: string | null
+          issue_type: string | null
+        }
+        Relationships: []
+      }
       canonical_reporting_countries: {
         Row: {
           canonical_name: string | null
@@ -10086,6 +10154,7 @@ export type Database = {
           trust_score: number
         }[]
       }
+      snap_planetary_stats: { Args: never; Returns: undefined }
       traverse_entity_graph: {
         Args: { _depth?: number; _entity_id: string }
         Returns: {
