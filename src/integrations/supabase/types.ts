@@ -1046,6 +1046,54 @@ export type Database = {
           },
         ]
       }
+      canonical_entities: {
+        Row: {
+          canonical_name: string
+          created_at: string
+          display_name: string | null
+          entity_type: Database["public"]["Enums"]["entity_type"]
+          id: string
+          iso3: string | null
+          last_resolved_at: string | null
+          lat: number | null
+          lon: number | null
+          metadata: Json | null
+          source_count: number | null
+          trust_score: number | null
+          updated_at: string
+        }
+        Insert: {
+          canonical_name: string
+          created_at?: string
+          display_name?: string | null
+          entity_type: Database["public"]["Enums"]["entity_type"]
+          id?: string
+          iso3?: string | null
+          last_resolved_at?: string | null
+          lat?: number | null
+          lon?: number | null
+          metadata?: Json | null
+          source_count?: number | null
+          trust_score?: number | null
+          updated_at?: string
+        }
+        Update: {
+          canonical_name?: string
+          created_at?: string
+          display_name?: string | null
+          entity_type?: Database["public"]["Enums"]["entity_type"]
+          id?: string
+          iso3?: string | null
+          last_resolved_at?: string | null
+          lat?: number | null
+          lon?: number | null
+          metadata?: Json | null
+          source_count?: number | null
+          trust_score?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       command_history: {
         Row: {
           command: string
@@ -3196,6 +3244,174 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      entity_aliases: {
+        Row: {
+          alias: string
+          alias_type: Database["public"]["Enums"]["entity_alias_type"]
+          confidence: number | null
+          created_at: string
+          entity_id: string
+          id: string
+          source: string | null
+        }
+        Insert: {
+          alias: string
+          alias_type?: Database["public"]["Enums"]["entity_alias_type"]
+          confidence?: number | null
+          created_at?: string
+          entity_id: string
+          id?: string
+          source?: string | null
+        }
+        Update: {
+          alias?: string
+          alias_type?: Database["public"]["Enums"]["entity_alias_type"]
+          confidence?: number | null
+          created_at?: string
+          entity_id?: string
+          id?: string
+          source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_aliases_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_external_ids: {
+        Row: {
+          created_at: string
+          entity_id: string
+          external_id: string
+          external_type: string | null
+          id: string
+          last_verified_at: string | null
+          provider: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          external_id: string
+          external_type?: string | null
+          id?: string
+          last_verified_at?: string | null
+          provider: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          external_id?: string
+          external_type?: string | null
+          id?: string
+          last_verified_at?: string | null
+          provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_external_ids_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_links: {
+        Row: {
+          created_at: string
+          id: string
+          link_type: Database["public"]["Enums"]["entity_link_type"]
+          metadata: Json | null
+          source: string | null
+          source_entity_id: string
+          strength: number | null
+          target_entity_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          link_type: Database["public"]["Enums"]["entity_link_type"]
+          metadata?: Json | null
+          source?: string | null
+          source_entity_id: string
+          strength?: number | null
+          target_entity_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          link_type?: Database["public"]["Enums"]["entity_link_type"]
+          metadata?: Json | null
+          source?: string | null
+          source_entity_id?: string
+          strength?: number | null
+          target_entity_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_merge_log: {
+        Row: {
+          created_at: string
+          id: string
+          loser_id: string | null
+          merge_confidence: number | null
+          merge_reason: string
+          merged_by: string | null
+          metadata: Json | null
+          winner_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          loser_id?: string | null
+          merge_confidence?: number | null
+          merge_reason: string
+          merged_by?: string | null
+          metadata?: Json | null
+          winner_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          loser_id?: string | null
+          merge_confidence?: number | null
+          merge_reason?: string
+          merged_by?: string | null
+          metadata?: Json | null
+          winner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_merge_log_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ethics_audit_log: {
         Row: {
@@ -8809,6 +9025,8 @@ export type Database = {
         }
         Returns: string
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       access_tier: "public" | "institutional" | "administrative"
@@ -8832,6 +9050,42 @@ export type Database = {
         | "active"
         | "degraded"
         | "offline"
+      entity_alias_type:
+        | "name"
+        | "ticker"
+        | "lei"
+        | "registry_id"
+        | "iso_code"
+        | "fips"
+        | "osm_id"
+        | "abbreviation"
+        | "acronym"
+        | "isin"
+        | "cusip"
+        | "duns"
+      entity_link_type:
+        | "subsidiary"
+        | "parent"
+        | "headquartered_in"
+        | "operates_in"
+        | "trades_in"
+        | "supplies"
+        | "competes_with"
+        | "regulates"
+        | "member_of"
+        | "borders"
+        | "capital_of"
+      entity_type:
+        | "company"
+        | "country"
+        | "city"
+        | "person"
+        | "asset"
+        | "product"
+        | "event"
+        | "policy"
+        | "sector"
+        | "commodity"
       health_risk_level: "minimal" | "low" | "moderate" | "high" | "critical"
       ledger_entry_type:
         | "ethics"
@@ -9024,6 +9278,45 @@ export const Constants = {
         "active",
         "degraded",
         "offline",
+      ],
+      entity_alias_type: [
+        "name",
+        "ticker",
+        "lei",
+        "registry_id",
+        "iso_code",
+        "fips",
+        "osm_id",
+        "abbreviation",
+        "acronym",
+        "isin",
+        "cusip",
+        "duns",
+      ],
+      entity_link_type: [
+        "subsidiary",
+        "parent",
+        "headquartered_in",
+        "operates_in",
+        "trades_in",
+        "supplies",
+        "competes_with",
+        "regulates",
+        "member_of",
+        "borders",
+        "capital_of",
+      ],
+      entity_type: [
+        "company",
+        "country",
+        "city",
+        "person",
+        "asset",
+        "product",
+        "event",
+        "policy",
+        "sector",
+        "commodity",
       ],
       health_risk_level: ["minimal", "low", "moderate", "high", "critical"],
       ledger_entry_type: [
