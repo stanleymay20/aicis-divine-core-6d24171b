@@ -9798,6 +9798,10 @@ export type Database = {
           total_breaks: number
         }[]
       }
+      batch_expand_entities: { Args: { _batch_size?: number }; Returns: Json }
+      batch_generate_links: { Args: { _batch_size?: number }; Returns: Json }
+      batch_migrate_snapshots: { Args: { _batch_size?: number }; Returns: Json }
+      batch_migrate_villages: { Args: { _batch_size?: number }; Returns: Json }
       check_ip_access: {
         Args: { _ip_address: unknown; _org_id: string }
         Returns: boolean
@@ -9943,6 +9947,7 @@ export type Database = {
         }
         Returns: Json
       }
+      planetary_batch_tick: { Args: never; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       similarity_search_entities: {
