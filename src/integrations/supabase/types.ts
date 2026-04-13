@@ -807,6 +807,24 @@ export type Database = {
         }
         Relationships: []
       }
+      backfill_state: {
+        Row: {
+          key: string
+          updated_at: string | null
+          value_int: number | null
+        }
+        Insert: {
+          key: string
+          updated_at?: string | null
+          value_int?: number | null
+        }
+        Update: {
+          key?: string
+          updated_at?: string | null
+          value_int?: number | null
+        }
+        Relationships: []
+      }
       billing_events: {
         Row: {
           created_at: string | null
@@ -9588,6 +9606,9 @@ export type Database = {
           strength: number
         }[]
       }
+      trigger_legacy_unify: { Args: never; Returns: undefined }
+      trigger_region_promote: { Args: never; Returns: undefined }
+      trigger_wb_ingest: { Args: never; Returns: undefined }
     }
     Enums: {
       access_tier: "public" | "institutional" | "administrative"
