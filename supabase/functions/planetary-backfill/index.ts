@@ -661,7 +661,7 @@ async function generateLinks(supabase: any, params: any) {
 async function unifyLegacy(supabase: any, params: any) {
   const source = params.source || "performance_snapshots";
   const offset = params.offset || 0;
-  const limit = params.limit || 2000;
+  const limit = Math.min(params.limit || 1000, 1000); // Supabase caps at 1000 rows
 
   let migrated = 0;
   const errors: string[] = [];
