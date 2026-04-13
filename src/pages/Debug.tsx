@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Activity, Database, Zap, AlertCircle } from 'lucide-react';
 import { AICISLayout } from '@/components/aicis/AICISLayout';
 import { supabase } from '@/integrations/supabase/client';
+import { PlanetaryScaleMonitor } from '@/components/PlanetaryScaleMonitor';
 
 interface SystemStatus {
   alerts_count: number;
@@ -160,6 +161,9 @@ export default function Debug() {
             </p>
           </Card>
         )}
+
+        {/* Planetary Scale Monitor */}
+        <PlanetaryScaleMonitor />
       </div>
     </div>
     </AICISLayout>
