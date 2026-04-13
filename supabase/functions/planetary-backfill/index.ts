@@ -90,11 +90,13 @@ async function seedCountries(supabase: any, _params: any) {
       const incomeLevel = c.incomeLevel?.value || null;
       const iso2 = c.iso2Code || null;
 
-      // Upsert country entity
+      // Upsert country entity by entity_type + normalized_name
+      const normalizedName = name.toLowerCase().trim();
       const { data: entity, error: upsertErr } = await supabase
         .from("canonical_entities")
         .upsert({
           canonical_name: name,
+          normalized_name: normalizedName,
           entity_type: "country",
           iso3,
           lat,
@@ -110,7 +112,7 @@ async function seedCountries(supabase: any, _params: any) {
             wb_lending_type: c.lendingType?.value,
           },
           last_resolved_at: new Date().toISOString(),
-        }, { onConflict: "iso3" })
+        }, { onConflict: "entity_type,normalized_name" })
         .select("id")
         .single();
 
