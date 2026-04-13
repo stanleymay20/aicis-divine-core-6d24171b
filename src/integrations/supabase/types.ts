@@ -5664,6 +5664,33 @@ export type Database = {
         }
         Relationships: []
       }
+      milestone_audit_log: {
+        Row: {
+          audited_at: string
+          checks: Json
+          id: string
+          metrics_at_audit: number
+          milestone: string
+          passed: boolean
+        }
+        Insert: {
+          audited_at?: string
+          checks: Json
+          id?: string
+          metrics_at_audit: number
+          milestone: string
+          passed: boolean
+        }
+        Update: {
+          audited_at?: string
+          checks?: Json
+          id?: string
+          metrics_at_audit?: number
+          milestone?: string
+          passed?: boolean
+        }
+        Relationships: []
+      }
       model_calibration_profiles: {
         Row: {
           created_at: string
@@ -9770,6 +9797,93 @@ export type Database = {
           },
         ]
       }
+      planetary_country_integrity: {
+        Row: {
+          canonical_name: string | null
+          data_status: string | null
+          distinct_metrics: number | null
+          iso3: string | null
+          link_count: number | null
+          metric_count: number | null
+          sovereignty_status: string | null
+        }
+        Insert: {
+          canonical_name?: string | null
+          data_status?: never
+          distinct_metrics?: never
+          iso3?: string | null
+          link_count?: never
+          metric_count?: never
+          sovereignty_status?: never
+        }
+        Update: {
+          canonical_name?: string | null
+          data_status?: never
+          distinct_metrics?: never
+          iso3?: string | null
+          link_count?: never
+          metric_count?: never
+          sovereignty_status?: never
+        }
+        Relationships: []
+      }
+      planetary_cron_health: {
+        Row: {
+          error_count: number | null
+          job_name: string | null
+          last_run_at: string | null
+          still_running: number | null
+          success_count: number | null
+          success_rate_pct: number | null
+          timeout_count: number | null
+          total_runs: number | null
+        }
+        Relationships: []
+      }
+      planetary_duplicate_rate: {
+        Row: {
+          conflict_rate_pct: number | null
+          estimated_conflicts: number | null
+          provider_name: string | null
+          total_rows: number | null
+          unique_keys: number | null
+        }
+        Relationships: []
+      }
+      planetary_job_offsets: {
+        Row: {
+          current_offset: number | null
+          job_key: string | null
+          last_tick: string | null
+        }
+        Insert: {
+          current_offset?: number | null
+          job_key?: string | null
+          last_tick?: string | null
+        }
+        Update: {
+          current_offset?: number | null
+          job_key?: string | null
+          last_tick?: string | null
+        }
+        Relationships: []
+      }
+      planetary_scale_status: {
+        Row: {
+          coverage_countries: number | null
+          entities_total: number | null
+          entity_links_total: number | null
+          event_links_total: number | null
+          link_to_metric_pct: number | null
+          metric_links_total: number | null
+          metrics_country_coverage: number | null
+          metrics_total: number | null
+          provenance_sources: number | null
+          provenance_to_metric_pct: number | null
+          reporting_countries: number | null
+        }
+        Relationships: []
+      }
       system_trust_score: {
         Row: {
           acceptance_rate: number | null
@@ -9948,6 +10062,7 @@ export type Database = {
         Returns: Json
       }
       planetary_batch_tick: { Args: never; Returns: Json }
+      run_milestone_audit: { Args: { _milestone?: string }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       similarity_search_entities: {
