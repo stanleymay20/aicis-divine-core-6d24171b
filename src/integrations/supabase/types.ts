@@ -9608,6 +9608,8 @@ export type Database = {
       }
       trigger_legacy_unify: { Args: never; Returns: undefined }
       trigger_region_promote: { Args: never; Returns: undefined }
+      trigger_signals_unify: { Args: never; Returns: undefined }
+      trigger_village_unify: { Args: never; Returns: undefined }
       trigger_wb_ingest: { Args: never; Returns: undefined }
     }
     Enums: {
