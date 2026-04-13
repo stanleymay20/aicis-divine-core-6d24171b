@@ -3359,6 +3359,13 @@ export type Database = {
             foreignKeyName: "entity_aliases_entity_id_fkey"
             columns: ["entity_id"]
             isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_aliases_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
             referencedRelation: "canonical_entities"
             referencedColumns: ["id"]
           },
@@ -3390,6 +3397,13 @@ export type Database = {
           link_role?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "entity_event_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "entity_event_links_entity_id_fkey"
             columns: ["entity_id"]
@@ -3435,6 +3449,13 @@ export type Database = {
           provider?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "entity_external_ids_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "entity_external_ids_entity_id_fkey"
             columns: ["entity_id"]
@@ -3492,7 +3513,21 @@ export type Database = {
             foreignKeyName: "entity_links_source_entity_id_fkey"
             columns: ["source_entity_id"]
             isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
             referencedColumns: ["id"]
           },
           {
@@ -3540,6 +3575,13 @@ export type Database = {
             foreignKeyName: "entity_merge_log_winner_id_fkey"
             columns: ["winner_id"]
             isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_merge_log_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
             referencedRelation: "canonical_entities"
             referencedColumns: ["id"]
           },
@@ -3571,6 +3613,13 @@ export type Database = {
           metric_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "entity_metric_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "entity_metric_links_entity_id_fkey"
             columns: ["entity_id"]
@@ -5840,7 +5889,21 @@ export type Database = {
             foreignKeyName: "normalized_events_entity_id_fkey"
             columns: ["entity_id"]
             isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
             referencedColumns: ["id"]
           },
           {
@@ -5941,7 +6004,21 @@ export type Database = {
             foreignKeyName: "normalized_metrics_entity_id_fkey"
             columns: ["entity_id"]
             isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
             referencedColumns: ["id"]
           },
           {
@@ -5963,6 +6040,13 @@ export type Database = {
             columns: ["raw_payload_id"]
             isOneToOne: false
             referencedRelation: "provider_raw_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_related_entity_id_fkey"
+            columns: ["related_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
             referencedColumns: ["id"]
           },
           {
@@ -9255,6 +9339,27 @@ export type Database = {
         }
         Relationships: []
       }
+      canonical_country_list: {
+        Row: {
+          canonical_name: string | null
+          entity_type: string | null
+          id: string | null
+          iso3: string | null
+        }
+        Insert: {
+          canonical_name?: string | null
+          entity_type?: never
+          id?: string | null
+          iso3?: string | null
+        }
+        Update: {
+          canonical_name?: string | null
+          entity_type?: never
+          id?: string | null
+          iso3?: string | null
+        }
+        Relationships: []
+      }
       daily_accumulation: {
         Row: {
           count: number | null
@@ -9544,6 +9649,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_canonical_iso3: { Args: { _iso3: string }; Returns: boolean }
       log_audit_event: {
         Args: {
           _action: string
