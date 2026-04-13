@@ -90,11 +90,13 @@ async function seedCountries(supabase: any, _params: any) {
       const incomeLevel = c.incomeLevel?.value || null;
       const iso2 = c.iso2Code || null;
 
-      // Upsert country entity
+      // Upsert country entity by entity_type + normalized_name
+      const normalizedName = name.toLowerCase().trim();
       const { data: entity, error: upsertErr } = await supabase
         .from("canonical_entities")
         .upsert({
           canonical_name: name,
+          normalized_name: normalizedName,
           entity_type: "country",
           iso3,
           lat,
@@ -110,7 +112,7 @@ async function seedCountries(supabase: any, _params: any) {
             wb_lending_type: c.lendingType?.value,
           },
           last_resolved_at: new Date().toISOString(),
-        }, { onConflict: "iso3" })
+        }, { onConflict: "entity_type,normalized_name" })
         .select("id")
         .single();
 
@@ -324,73 +326,17 @@ async function bulkIngest(supabase: any, params: any) {
         };
       });
 
-      // Batch upsert in chunks of 500
-      for (let i = 0; i < rows.length; i += 500) {
-        const chunk = rows.slice(i, i + 500);
-        const dedupKeys = chunk.map((r: any) => r.dedup_key);
-
-        // Check existing for insert/update tracking
-        const { data: existing } = await supabase
+      // Batch upsert in chunks of 1000 — skip existence checks for speed
+      for (let i = 0; i < rows.length; i += 1000) {
+        const chunk = rows.slice(i, i + 1000);
+        const { error: upsertErr, count } = await supabase
           .from("normalized_metrics")
-          .select("dedup_key")
-          .in("dedup_key", dedupKeys);
-        const existingSet = new Set((existing || []).map((r: any) => r.dedup_key));
-
-        const { data: upserted, error: upsertErr } = await supabase
-          .from("normalized_metrics")
-          .upsert(chunk, { onConflict: "dedup_key", ignoreDuplicates: false })
-          .select("id, dedup_key");
+          .upsert(chunk, { onConflict: "dedup_key", ignoreDuplicates: true, count: "exact" });
 
         if (upsertErr) {
           errors.push(`${indicator} batch ${i}: ${upsertErr.message}`);
         } else {
-          for (const row of upserted || []) {
-            if (existingSet.has(row.dedup_key)) totalUpdated++;
-            else totalInserted++;
-          }
-        }
-      }
-
-      // Generate entity_metric_links for rows with entity_id
-      const linkRows = rows
-        .filter((r: any) => r.entity_id)
-        .map((r: any) => ({
-          metric_id: null as any, // Will be populated via dedup_key lookup
-          entity_id: r.entity_id,
-          link_role: "primary_entity",
-          confidence: 0.95,
-          _dedup_key: r.dedup_key,
-        }));
-
-      if (linkRows.length > 0) {
-        // Get metric IDs
-        for (let i = 0; i < linkRows.length; i += 500) {
-          const chunk = linkRows.slice(i, i + 500);
-          const keys = chunk.map(r => r._dedup_key);
-          const { data: metricIds } = await supabase
-            .from("normalized_metrics")
-            .select("id, dedup_key")
-            .in("dedup_key", keys);
-
-          const idMap = new Map((metricIds || []).map((r: any) => [r.dedup_key, r.id]));
-
-          const validLinks = chunk
-            .filter(r => idMap.has(r._dedup_key))
-            .map(r => ({
-              metric_id: idMap.get(r._dedup_key)!,
-              entity_id: r.entity_id,
-              link_role: r.link_role,
-              confidence: r.confidence,
-            }));
-
-          if (validLinks.length > 0) {
-            await supabase
-              .from("entity_metric_links")
-              .upsert(validLinks, {
-                onConflict: "metric_id,entity_id,link_role",
-                ignoreDuplicates: true,
-              });
-          }
+          totalInserted += count || chunk.length;
         }
       }
     } catch (e) {
