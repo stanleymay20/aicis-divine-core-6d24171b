@@ -9670,6 +9670,7 @@ export type Database = {
         | "policy"
         | "sector"
         | "commodity"
+        | "territory"
       health_risk_level: "minimal" | "low" | "moderate" | "high" | "critical"
       ledger_entry_type:
         | "ethics"
@@ -9901,6 +9902,7 @@ export const Constants = {
         "policy",
         "sector",
         "commodity",
+        "territory",
       ],
       health_risk_level: ["minimal", "low", "moderate", "high", "critical"],
       ledger_entry_type: [
