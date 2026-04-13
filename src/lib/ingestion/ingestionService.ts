@@ -1,19 +1,21 @@
 /**
- * AICIS Ingestion Service — Client-side wrapper for the ingest edge function
+ * AICIS Ingestion Service v2 — Client-side wrapper for the ingest edge function
  */
 import { supabase } from "@/integrations/supabase/client";
-import { NormalizedMetric } from "@/lib/providers/types";
 
 interface IngestionRunResult {
   ok: boolean;
   run_id: string;
   provider: string;
   endpoint: string;
+  run_mode: string;
   records_fetched: number;
   records_normalized: number;
+  records_inserted: number;
+  records_updated: number;
   records_written: number;
-  records_deduplicated: number;
   entities_resolved: number;
+  links_created: number;
   error_count: number;
   duration_ms: number;
 }
@@ -25,7 +27,7 @@ interface MetricResult {
 
 interface TimeseriesResult {
   metric: string;
-  series: Array<{ period: string; value: number; unit?: string; confidence?: number; provider_name: string }>;
+  series: Array<{ period: string; value: number; unit?: string; confidence?: number; provider_name: string; freshness_score?: number }>;
   count: number;
 }
 
@@ -43,7 +45,10 @@ interface RunHealthResult {
     failed: number;
     running: number;
     avg_duration_ms: number;
+    total_records_inserted: number;
+    total_records_updated: number;
     total_records_written: number;
+    total_entities_resolved: number;
   };
 }
 
@@ -55,18 +60,21 @@ async function invokeIngest(action: string, params: Record<string, any> = {}) {
   return data;
 }
 
-/**
- * Run ingestion for a provider endpoint.
- * Pass pre-normalized data (from client-side adapter) or a fetch_url for server-side fetch.
- */
+/** Run ingestion for a provider endpoint (server-side fetch + normalize) */
 export async function runIngestion(params: {
   provider_name: string;
   endpoint: string;
-  data?: NormalizedMetric[] | any[];
+  data?: any[];
   fetch_url?: string;
   fetch_params?: Record<string, any>;
+  run_mode?: "live" | "backfill";
 }): Promise<IngestionRunResult> {
   return invokeIngest("run", params);
+}
+
+/** Replay a previous ingestion run from stored raw payload */
+export async function replayIngestion(providerRunId: string): Promise<IngestionRunResult> {
+  return invokeIngest("replay", { provider_run_id: providerRunId });
 }
 
 /** Get latest metrics for an entity */
@@ -114,4 +122,18 @@ export async function getLatestByCountry(
   domain?: string
 ): Promise<{ iso3: string; metrics: any[]; count: number }> {
   return invokeIngest("latest_by_country", { iso3, domain });
+}
+
+/** Run server-side ingestion for a provider (auto-fetch + normalize) */
+export async function runServerIngestion(params: {
+  provider_name: string;
+  endpoint: string;
+  fetch_params?: Record<string, any>;
+}): Promise<IngestionRunResult> {
+  return invokeIngest("run", {
+    provider_name: params.provider_name,
+    endpoint: params.endpoint,
+    fetch_params: params.fetch_params,
+    run_mode: "live",
+  });
 }
