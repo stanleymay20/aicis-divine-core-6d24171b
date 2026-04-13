@@ -2000,6 +2000,57 @@ export type Database = {
         }
         Relationships: []
       }
+      data_provenance: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          expires_at: string | null
+          fact_id: string
+          fact_type: string
+          freshness_score: number | null
+          id: string
+          metadata: Json | null
+          observed_at: string
+          quality_score: number | null
+          source_endpoint: string | null
+          source_license: string | null
+          source_provider: string
+          source_url: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          expires_at?: string | null
+          fact_id: string
+          fact_type: string
+          freshness_score?: number | null
+          id?: string
+          metadata?: Json | null
+          observed_at?: string
+          quality_score?: number | null
+          source_endpoint?: string | null
+          source_license?: string | null
+          source_provider: string
+          source_url?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          expires_at?: string | null
+          fact_id?: string
+          fact_type?: string
+          freshness_score?: number | null
+          id?: string
+          metadata?: Json | null
+          observed_at?: string
+          quality_score?: number | null
+          source_endpoint?: string | null
+          source_license?: string | null
+          source_provider?: string
+          source_url?: string | null
+        }
+        Relationships: []
+      }
       data_retention_policies: {
         Row: {
           auto_delete: boolean | null
@@ -3286,6 +3337,48 @@ export type Database = {
           },
         ]
       }
+      entity_event_links: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          entity_id: string
+          event_id: string
+          id: string
+          link_role: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          entity_id: string
+          event_id: string
+          id?: string
+          link_role?: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          entity_id?: string
+          event_id?: string
+          id?: string
+          link_role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_event_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_event_links_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "normalized_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       entity_external_ids: {
         Row: {
           created_at: string
@@ -3421,6 +3514,48 @@ export type Database = {
             columns: ["winner_id"]
             isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_metric_links: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          entity_id: string
+          id: string
+          link_role: string
+          metric_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          entity_id: string
+          id?: string
+          link_role?: string
+          metric_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          entity_id?: string
+          id?: string
+          link_role?: string
+          metric_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_metric_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_metric_links_metric_id_fkey"
+            columns: ["metric_id"]
+            isOneToOne: false
+            referencedRelation: "normalized_metrics"
             referencedColumns: ["id"]
           },
         ]
@@ -4736,6 +4871,44 @@ export type Database = {
         }
         Relationships: []
       }
+      ingestion_errors: {
+        Row: {
+          created_at: string
+          error_detail: Json | null
+          error_message: string
+          id: string
+          provider_run_id: string
+          source_record: Json | null
+          stage: string
+        }
+        Insert: {
+          created_at?: string
+          error_detail?: Json | null
+          error_message: string
+          id?: string
+          provider_run_id: string
+          source_record?: Json | null
+          stage: string
+        }
+        Update: {
+          created_at?: string
+          error_detail?: Json | null
+          error_message?: string
+          id?: string
+          provider_run_id?: string
+          source_record?: Json | null
+          stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_errors_provider_run_id_fkey"
+            columns: ["provider_run_id"]
+            isOneToOne: false
+            referencedRelation: "provider_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       intel_events: {
         Row: {
           created_at: string | null
@@ -5568,6 +5741,200 @@ export type Database = {
           },
         ]
       }
+      normalized_events: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          dedup_key: string
+          description: string | null
+          ended_at: string | null
+          entity_id: string | null
+          event_type: string
+          id: string
+          iso3: string | null
+          location_entity_id: string | null
+          metadata: Json | null
+          provenance_source: string | null
+          provider_name: string
+          provider_run_id: string | null
+          raw_payload_id: string | null
+          severity: number | null
+          started_at: string | null
+          title: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          dedup_key: string
+          description?: string | null
+          ended_at?: string | null
+          entity_id?: string | null
+          event_type: string
+          id?: string
+          iso3?: string | null
+          location_entity_id?: string | null
+          metadata?: Json | null
+          provenance_source?: string | null
+          provider_name: string
+          provider_run_id?: string | null
+          raw_payload_id?: string | null
+          severity?: number | null
+          started_at?: string | null
+          title: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          dedup_key?: string
+          description?: string | null
+          ended_at?: string | null
+          entity_id?: string | null
+          event_type?: string
+          id?: string
+          iso3?: string | null
+          location_entity_id?: string | null
+          metadata?: Json | null
+          provenance_source?: string | null
+          provider_name?: string
+          provider_run_id?: string | null
+          raw_payload_id?: string | null
+          severity?: number | null
+          started_at?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "normalized_events_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_provider_run_id_fkey"
+            columns: ["provider_run_id"]
+            isOneToOne: false
+            referencedRelation: "provider_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_raw_payload_id_fkey"
+            columns: ["raw_payload_id"]
+            isOneToOne: false
+            referencedRelation: "provider_raw_payloads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      normalized_metrics: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          dedup_key: string
+          domain: string
+          entity_id: string | null
+          id: string
+          iso3: string | null
+          location_entity_id: string | null
+          metric_name: string
+          period: string
+          provenance_observed_at: string | null
+          provenance_source: string | null
+          provider_name: string
+          provider_run_id: string | null
+          raw_payload_id: string | null
+          related_entity_id: string | null
+          unit: string | null
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          dedup_key: string
+          domain: string
+          entity_id?: string | null
+          id?: string
+          iso3?: string | null
+          location_entity_id?: string | null
+          metric_name: string
+          period: string
+          provenance_observed_at?: string | null
+          provenance_source?: string | null
+          provider_name: string
+          provider_run_id?: string | null
+          raw_payload_id?: string | null
+          related_entity_id?: string | null
+          unit?: string | null
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          dedup_key?: string
+          domain?: string
+          entity_id?: string | null
+          id?: string
+          iso3?: string | null
+          location_entity_id?: string | null
+          metric_name?: string
+          period?: string
+          provenance_observed_at?: string | null
+          provenance_source?: string | null
+          provider_name?: string
+          provider_run_id?: string | null
+          raw_payload_id?: string | null
+          related_entity_id?: string | null
+          unit?: string | null
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "normalized_metrics_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_provider_run_id_fkey"
+            columns: ["provider_run_id"]
+            isOneToOne: false
+            referencedRelation: "provider_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_raw_payload_id_fkey"
+            columns: ["raw_payload_id"]
+            isOneToOne: false
+            referencedRelation: "provider_raw_payloads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_related_entity_id_fkey"
+            columns: ["related_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string | null
@@ -6275,6 +6642,98 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      provider_raw_payloads: {
+        Row: {
+          fetched_at: string
+          id: string
+          payload: Json
+          payload_hash: string
+          provider_run_id: string
+          source_record_id: string | null
+        }
+        Insert: {
+          fetched_at?: string
+          id?: string
+          payload: Json
+          payload_hash: string
+          provider_run_id: string
+          source_record_id?: string | null
+        }
+        Update: {
+          fetched_at?: string
+          id?: string
+          payload?: Json
+          payload_hash?: string
+          provider_run_id?: string
+          source_record_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_raw_payloads_provider_run_id_fkey"
+            columns: ["provider_run_id"]
+            isOneToOne: false
+            referencedRelation: "provider_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      provider_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          duration_ms: number | null
+          endpoint: string
+          entities_resolved: number | null
+          error_count: number | null
+          error_summary: string | null
+          id: string
+          params: Json | null
+          provider_name: string
+          records_deduplicated: number | null
+          records_fetched: number | null
+          records_normalized: number | null
+          records_written: number | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          endpoint: string
+          entities_resolved?: number | null
+          error_count?: number | null
+          error_summary?: string | null
+          id?: string
+          params?: Json | null
+          provider_name: string
+          records_deduplicated?: number | null
+          records_fetched?: number | null
+          records_normalized?: number | null
+          records_written?: number | null
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          endpoint?: string
+          entities_resolved?: number | null
+          error_count?: number | null
+          error_summary?: string | null
+          id?: string
+          params?: Json | null
+          provider_name?: string
+          records_deduplicated?: number | null
+          records_fetched?: number | null
+          records_normalized?: number | null
+          records_written?: number | null
+          started_at?: string
+          status?: string
         }
         Relationships: []
       }
