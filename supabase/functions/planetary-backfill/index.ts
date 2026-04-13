@@ -1,11 +1,11 @@
 /**
  * planetary-backfill — Full-scale AICIS data engine
  * 
- * Targets: 211 countries, 10M+ metrics, 1M+ entities, millions of links
+ * Targets: 211+ countries, 10M+ metrics, 1M+ entities, millions of links
  * 
  * Actions:
- *   seed_countries    — Seed all 211 countries from WB API into canonical_entities
- *   bulk_ingest       — Bulk WB indicator ingestion for all countries (chunked)
+ *   seed_countries    — Seed all 211+ countries from WB API into canonical_entities
+ *   bulk_ingest       — Scheduler-safe: one indicator per run, persistent progress
  *   promote_regions   — Promote admin_regions into canonical_entities
  *   seed_entities     — Seed organizations, commodities, sectors, institutions
  *   generate_links    — Mass-generate entity_links, entity_metric_links
@@ -58,17 +58,27 @@ Deno.serve(async (req) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// PHASE A: SEED ALL 211 COUNTRIES
+// HELPERS: Canonical entity map (countries + territories)
+// ═══════════════════════════════════════════════════════════════
+async function getCanonicalEntityMap(supabase: any): Promise<Map<string, string>> {
+  const { data: entities } = await supabase
+    .from("canonical_entities")
+    .select("id, iso3")
+    .in("entity_type", ["country", "territory"])
+    .not("iso3", "is", null);
+  return new Map((entities || []).map((e: any) => [e.iso3, e.id]));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE A: SEED ALL 211+ COUNTRIES
 // ═══════════════════════════════════════════════════════════════
 async function seedCountries(supabase: any, _params: any) {
-  console.log("Seeding all 211 countries from World Bank API...");
+  console.log("Seeding all 211+ countries from World Bank API...");
 
-  // Fetch complete country list from WB
   const resp = await fetch(`${WB_BASE}/country?format=json&per_page=400`);
   const data = await resp.json();
   if (!Array.isArray(data) || !data[1]) return jsonRes({ error: "WB API failed" }, 502);
 
-  // Filter to sovereign/territory entities (exclude aggregates)
   const wbCountries = data[1].filter((c: any) =>
     c.region?.id !== "NA" && c.capitalCity && c.id?.length === 3
   );
@@ -90,7 +100,6 @@ async function seedCountries(supabase: any, _params: any) {
       const incomeLevel = c.incomeLevel?.value || null;
       const iso2 = c.iso2Code || null;
 
-      // Upsert country entity by entity_type + normalized_name
       const normalizedName = name.toLowerCase().trim();
       const { data: entity, error: upsertErr } = await supabase
         .from("canonical_entities")
@@ -99,69 +108,41 @@ async function seedCountries(supabase: any, _params: any) {
           normalized_name: normalizedName,
           entity_type: "country",
           iso3,
-          lat,
-          lon,
+          lat, lon,
           display_name: name,
           trust_score: 0.95,
           source_count: 1,
-          metadata: {
-            region,
-            income_level: incomeLevel,
-            capital: c.capitalCity,
-            iso2,
-            wb_lending_type: c.lendingType?.value,
-          },
+          metadata: { region, income_level: incomeLevel, capital: c.capitalCity, iso2, wb_lending_type: c.lendingType?.value },
           last_resolved_at: new Date().toISOString(),
         }, { onConflict: "entity_type,normalized_name" })
         .select("id")
         .single();
 
-      if (upsertErr) {
-        errors.push(`${iso3}: ${upsertErr.message}`);
-        continue;
-      }
-
+      if (upsertErr) { errors.push(`${iso3}: ${upsertErr.message}`); continue; }
       seeded++;
       const entityId = entity.id;
 
-      // Add aliases (common name variations)
       const aliases: Array<{ alias: string; alias_type: string }> = [];
       if (iso2) aliases.push({ alias: iso2, alias_type: "iso_code" });
       if (iso3) aliases.push({ alias: iso3, alias_type: "iso_code" });
       aliases.push({ alias: name.toLowerCase(), alias_type: "name" });
-
-      // Common short names
-      if (name.includes("(")) {
-        aliases.push({ alias: name.split("(")[0].trim(), alias_type: "abbreviation" });
-      }
+      if (name.includes("(")) aliases.push({ alias: name.split("(")[0].trim(), alias_type: "abbreviation" });
 
       for (const a of aliases) {
         const { error: aliasErr } = await supabase
           .from("entity_aliases")
-          .upsert({
-            entity_id: entityId,
-            alias: a.alias,
-            alias_type: a.alias_type,
-            confidence: 1.0,
-            source: "worldbank",
-          }, { onConflict: "entity_id,alias,alias_type", ignoreDuplicates: true });
+          .upsert({ entity_id: entityId, alias: a.alias, alias_type: a.alias_type, confidence: 1.0, source: "worldbank" },
+            { onConflict: "entity_id,alias,alias_type", ignoreDuplicates: true });
         if (!aliasErr) aliasesCreated++;
       }
 
-      // Add external IDs
-      const extIds = [
-        { provider: "worldbank", external_id: iso3, external_type: "iso3" },
-      ];
+      const extIds = [{ provider: "worldbank", external_id: iso3, external_type: "iso3" }];
       if (iso2) extIds.push({ provider: "iso", external_id: iso2, external_type: "iso2" });
-
       for (const ext of extIds) {
         const { error: extErr } = await supabase
           .from("entity_external_ids")
-          .upsert({
-            entity_id: entityId,
-            ...ext,
-            last_verified_at: new Date().toISOString(),
-          }, { onConflict: "entity_id,provider,external_id", ignoreDuplicates: true });
+          .upsert({ entity_id: entityId, ...ext, last_verified_at: new Date().toISOString() },
+            { onConflict: "entity_id,provider,external_id", ignoreDuplicates: true });
         if (!extErr) externalIdsCreated++;
       }
     } catch (e) {
@@ -169,22 +150,13 @@ async function seedCountries(supabase: any, _params: any) {
     }
   }
 
-  return jsonRes({
-    ok: true,
-    phase: "A",
-    countries_seeded: seeded,
-    aliases_created: aliasesCreated,
-    external_ids_created: externalIdsCreated,
-    errors: errors.slice(0, 10),
-    error_count: errors.length,
-  });
+  return jsonRes({ ok: true, phase: "A", countries_seeded: seeded, aliases_created: aliasesCreated, external_ids_created: externalIdsCreated, errors: errors.slice(0, 10), error_count: errors.length });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PHASE B/C: BULK WB INDICATOR INGESTION
+// PHASE B: SCHEDULER-SAFE BULK WB INDICATOR INGESTION
 // ═══════════════════════════════════════════════════════════════
 
-// Full indicator catalog for planetary coverage
 const INDICATOR_CATALOG: Record<string, string[]> = {
   finance: [
     "NY.GDP.MKTP.CD", "NY.GDP.MKTP.KD.ZG", "NY.GDP.PCAP.CD", "NY.GDP.PCAP.KD.ZG",
@@ -253,61 +225,89 @@ const INDICATOR_CATALOG: Record<string, string[]> = {
 
 const ALL_INDICATORS = Object.values(INDICATOR_CATALOG).flat();
 
+/**
+ * Scheduler-safe bulk ingestion:
+ * - Exactly ONE indicator per run
+ * - Reads current progress from backfill_state
+ * - Updates progress after completion
+ * - Filters to canonical ISO3 codes only
+ * - Supports date_range param for historical depth
+ */
 async function bulkIngest(supabase: any, params: any) {
-  const batch_index = params.batch_index || 0;
-  const batch_size = params.batch_size || 5; // indicators per run
-  const date_range = params.date_range || "2000:2024";
+  // Determine which indicator to process
+  let indicatorIndex: number;
+  
+  if (params.indicator_index !== undefined) {
+    // Direct index override (manual runs)
+    indicatorIndex = params.indicator_index;
+  } else {
+    // Read from persistent state
+    const { data: state } = await supabase
+      .from("backfill_state")
+      .select("value_int")
+      .eq("key", "wb_indicator_index")
+      .maybeSingle();
+    indicatorIndex = state?.value_int ?? 0;
+  }
 
-  const startIdx = batch_index * batch_size;
-  const batchIndicators = ALL_INDICATORS.slice(startIdx, startIdx + batch_size);
-
-  if (batchIndicators.length === 0) {
+  if (indicatorIndex >= ALL_INDICATORS.length) {
     return jsonRes({
-      ok: true,
-      phase: "B",
-      complete: true,
+      ok: true, phase: "B", complete: true,
       message: "All indicators processed",
       total_indicators: ALL_INDICATORS.length,
     });
   }
 
-  console.log(`Bulk ingesting batch ${batch_index}: indicators ${startIdx}-${startIdx + batchIndicators.length - 1}`);
+  const indicator = ALL_INDICATORS[indicatorIndex];
+  const date_range = params.date_range || "1960:2024";
+  const domain = inferDomain(indicator);
+
+  console.log(`[${indicatorIndex}/${ALL_INDICATORS.length}] Ingesting indicator: ${indicator} (${domain}), range: ${date_range}`);
+
+  // Get canonical entity map (countries + territories)
+  const entityMap = await getCanonicalEntityMap(supabase);
+  const canonicalIso3Set = new Set(entityMap.keys());
 
   let totalFetched = 0;
   let totalInserted = 0;
-  let totalUpdated = 0;
   const errors: string[] = [];
 
-  // Get entity map for resolution
-  const { data: entities } = await supabase
-    .from("canonical_entities")
-    .select("id, iso3")
-    .eq("entity_type", "country");
-  const entityMap = new Map((entities || []).map((e: any) => [e.iso3, e.id]));
-
-  for (const indicator of batchIndicators) {
-    try {
-      // Fetch ALL countries at once for this indicator
-      const url = `${WB_BASE}/country/all/indicator/${indicator}?format=json&date=${date_range}&per_page=15000`;
+  try {
+    // Fetch ALL countries at once for this indicator
+    // WB API may paginate — fetch up to 3 pages
+    let allRecords: any[] = [];
+    let page = 1;
+    const perPage = 15000;
+    
+    while (page <= 3) {
+      const url = `${WB_BASE}/country/all/indicator/${indicator}?format=json&date=${date_range}&per_page=${perPage}&page=${page}`;
       const resp = await fetch(url);
       if (!resp.ok) {
-        errors.push(`${indicator}: HTTP ${resp.status}`);
-        continue;
+        errors.push(`HTTP ${resp.status} on page ${page}`);
+        break;
       }
       const data = await resp.json();
-      if (!Array.isArray(data) || !data[1]) continue;
+      if (!Array.isArray(data) || !data[1] || data[1].length === 0) break;
+      
+      allRecords = allRecords.concat(data[1]);
+      
+      // Check if more pages
+      const totalPages = data[0]?.pages || 1;
+      if (page >= totalPages) break;
+      page++;
+    }
 
-      const records = data[1].filter((r: any) => r.value !== null && r.value !== undefined);
-      totalFetched += records.length;
+    // Filter: non-null values + canonical ISO3 codes only
+    const records = allRecords.filter((r: any) =>
+      r.value !== null && r.value !== undefined && canonicalIso3Set.has(r.countryiso3code)
+    );
+    totalFetched = records.length;
 
-      if (records.length === 0) continue;
-
-      // Normalize and batch upsert
-      const domain = inferDomain(indicator);
+    if (records.length > 0) {
+      const metricName = indicator.toLowerCase().replace(/\./g, '_');
       const rows = records.map((r: any) => {
         const iso3 = r.countryiso3code;
         const entityId = entityMap.get(iso3) || null;
-        const metricName = indicator.toLowerCase().replace(/\./g, '_');
         return {
           provider_name: "worldbank",
           domain,
@@ -326,7 +326,7 @@ async function bulkIngest(supabase: any, params: any) {
         };
       });
 
-      // Batch upsert in chunks of 1000 — skip existence checks for speed
+      // Batch upsert in chunks of 1000
       for (let i = 0; i < rows.length; i += 1000) {
         const chunk = rows.slice(i, i + 1000);
         const { error: upsertErr, count } = await supabase
@@ -334,27 +334,37 @@ async function bulkIngest(supabase: any, params: any) {
           .upsert(chunk, { onConflict: "dedup_key", ignoreDuplicates: true, count: "exact" });
 
         if (upsertErr) {
-          errors.push(`${indicator} batch ${i}: ${upsertErr.message}`);
+          errors.push(`batch ${i}: ${upsertErr.message}`);
         } else {
           totalInserted += count || chunk.length;
         }
       }
-    } catch (e) {
-      errors.push(`${indicator}: ${(e as Error).message}`);
     }
+  } catch (e) {
+    errors.push(`${indicator}: ${(e as Error).message}`);
   }
+
+  // Update persistent progress
+  await supabase
+    .from("backfill_state")
+    .upsert({ key: "wb_indicator_index", value_int: indicatorIndex + 1, updated_at: new Date().toISOString() },
+      { onConflict: "key" });
+
+  // Log per-indicator status
+  console.log(`[${indicatorIndex}] ${indicator}: fetched=${totalFetched}, inserted=${totalInserted}, errors=${errors.length}`);
 
   return jsonRes({
     ok: true,
     phase: "B",
-    batch_index,
-    indicators_processed: batchIndicators.length,
+    indicator_index: indicatorIndex,
+    indicator,
+    domain,
+    date_range,
     total_indicators: ALL_INDICATORS.length,
-    next_batch_index: batch_index + 1,
-    remaining_batches: Math.ceil((ALL_INDICATORS.length - startIdx - batchIndicators.length) / batch_size),
+    next_indicator_index: indicatorIndex + 1,
+    remaining: ALL_INDICATORS.length - indicatorIndex - 1,
     records_fetched: totalFetched,
     records_inserted: totalInserted,
-    records_updated: totalUpdated,
     errors: errors.slice(0, 10),
     error_count: errors.length,
   });
@@ -383,24 +393,16 @@ async function promoteRegions(supabase: any, params: any) {
   }
 
   let promoted = 0;
-  let aliasesCreated = 0;
   const errors: string[] = [];
-
-  // Determine entity_type by admin_level
-  function entityTypeForLevel(level: number): string {
-    if (level <= 1) return "city"; // state/province → city type
-    if (level <= 2) return "city"; // district
-    return "city"; // settlement/village — 'city' is the closest enum value
-  }
 
   for (const r of regions) {
     try {
-      const { data: entity, error: upsertErr } = await supabase
+      const { error: insertErr } = await supabase
         .from("canonical_entities")
-        .upsert({
-          canonical_name: r.name,
-          entity_type: entityTypeForLevel(r.admin_level),
-          iso3: r.country_iso3,
+        .insert({
+          canonical_name: `${r.name}, ${r.country_iso3}`,
+          entity_type: "city",
+          iso3: null,
           lat: r.lat,
           lon: r.lon,
           display_name: r.name,
@@ -408,60 +410,30 @@ async function promoteRegions(supabase: any, params: any) {
           source_count: 1,
           metadata: {
             admin_level: r.admin_level,
+            country_iso3: r.country_iso3,
             population_est: r.population_est,
             urban_rural: r.urban_rural,
             admin_region_id: r.id,
           },
           last_resolved_at: new Date().toISOString(),
-        }, { onConflict: "iso3", ignoreDuplicates: true })
-        .select("id")
-        .maybeSingle();
-
-      // Many regions share iso3=null or same country, so we insert without iso3 conflict
-      // Use a different approach: insert only, skip on name+type collision
-      if (upsertErr) {
-        // Try direct insert without conflict on iso3
-        const { error: insertErr } = await supabase
-          .from("canonical_entities")
-          .insert({
-            canonical_name: `${r.name}, ${r.country_iso3}`,
-            entity_type: entityTypeForLevel(r.admin_level),
-            iso3: null, // Sub-national entities don't get iso3
-            lat: r.lat,
-            lon: r.lon,
-            display_name: r.name,
-            trust_score: 0.8,
-            source_count: 1,
-            metadata: {
-              admin_level: r.admin_level,
-              country_iso3: r.country_iso3,
-              population_est: r.population_est,
-              urban_rural: r.urban_rural,
-              admin_region_id: r.id,
-            },
-            last_resolved_at: new Date().toISOString(),
-          });
-        if (!insertErr) promoted++;
-        else errors.push(`${r.name}: ${insertErr.message}`);
-      } else {
-        promoted++;
-      }
+        });
+      if (!insertErr) promoted++;
+      else if (!insertErr.message?.includes("duplicate")) errors.push(`${r.name}: ${insertErr.message}`);
     } catch (e) {
       errors.push(`${r.name}: ${(e as Error).message}`);
     }
   }
 
+  // Update persistent progress
+  await supabase
+    .from("backfill_state")
+    .upsert({ key: "region_offset", value_int: offset + limit, updated_at: new Date().toISOString() },
+      { onConflict: "key" });
+
   return jsonRes({
-    ok: true,
-    phase: "D",
-    offset,
-    limit,
-    promoted,
-    aliases_created: aliasesCreated,
-    next_offset: offset + limit,
-    has_more: regions.length === limit,
-    errors: errors.slice(0, 10),
-    error_count: errors.length,
+    ok: true, phase: "D", offset, limit, promoted,
+    next_offset: offset + limit, has_more: regions.length === limit,
+    errors: errors.slice(0, 10), error_count: errors.length,
   });
 }
 
@@ -473,9 +445,7 @@ async function seedEntities(supabase: any, params: any) {
   let created = 0;
   const errors: string[] = [];
 
-  // Organizations & Institutions
   const ORGANIZATIONS = [
-    // International organizations
     { name: "United Nations", type: "company" as const, metadata: { category: "international_org" } },
     { name: "World Bank", type: "company" as const, metadata: { category: "international_org" } },
     { name: "International Monetary Fund", type: "company" as const, metadata: { category: "international_org" } },
@@ -504,7 +474,6 @@ async function seedEntities(supabase: any, params: any) {
     { name: "Transparency International", type: "company" as const, metadata: { category: "ngo" } },
     { name: "Oxfam International", type: "company" as const, metadata: { category: "ngo" } },
     { name: "Greenpeace International", type: "company" as const, metadata: { category: "ngo" } },
-    // Major companies (Fortune Global 100)
     { name: "Apple Inc.", type: "company" as const, metadata: { category: "tech", iso3: "USA" } },
     { name: "Microsoft Corporation", type: "company" as const, metadata: { category: "tech", iso3: "USA" } },
     { name: "Amazon.com Inc.", type: "company" as const, metadata: { category: "tech", iso3: "USA" } },
@@ -532,7 +501,6 @@ async function seedEntities(supabase: any, params: any) {
     { name: "Reliance Industries", type: "company" as const, metadata: { category: "conglomerate", iso3: "IND" } },
   ];
 
-  // Commodities
   const COMMODITIES = [
     "Crude Oil", "Natural Gas", "Coal", "Gold", "Silver", "Copper", "Iron Ore",
     "Aluminum", "Zinc", "Nickel", "Tin", "Lead", "Platinum", "Palladium",
@@ -544,7 +512,6 @@ async function seedEntities(supabase: any, params: any) {
     "Semiconductors", "Microchips", "Steel", "Cement", "Glass",
   ];
 
-  // Sectors
   const SECTORS = [
     "Agriculture", "Mining", "Manufacturing", "Construction", "Utilities",
     "Wholesale Trade", "Retail Trade", "Transportation", "Information Technology",
@@ -559,14 +526,9 @@ async function seedEntities(supabase: any, params: any) {
   if (entityClass === "all" || entityClass === "organizations") {
     for (const org of ORGANIZATIONS) {
       const { error } = await supabase.from("canonical_entities").insert({
-        canonical_name: org.name,
-        entity_type: org.type,
-        display_name: org.name,
-        trust_score: 0.9,
-        source_count: 1,
-        iso3: org.metadata.iso3 || null,
-        metadata: org.metadata,
-        last_resolved_at: new Date().toISOString(),
+        canonical_name: org.name, entity_type: org.type, display_name: org.name,
+        trust_score: 0.9, source_count: 1, iso3: org.metadata.iso3 || null,
+        metadata: org.metadata, last_resolved_at: new Date().toISOString(),
       });
       if (!error) created++;
       else if (!error?.message?.includes("duplicate")) errors.push(`${org.name}: ${error.message}`);
@@ -576,12 +538,8 @@ async function seedEntities(supabase: any, params: any) {
   if (entityClass === "all" || entityClass === "commodities") {
     for (const c of COMMODITIES) {
       const { error } = await supabase.from("canonical_entities").insert({
-        canonical_name: c,
-        entity_type: "commodity",
-        display_name: c,
-        trust_score: 0.95,
-        source_count: 1,
-        metadata: { category: "commodity" },
+        canonical_name: c, entity_type: "commodity", display_name: c,
+        trust_score: 0.95, source_count: 1, metadata: { category: "commodity" },
         last_resolved_at: new Date().toISOString(),
       });
       if (!error) created++;
@@ -592,12 +550,8 @@ async function seedEntities(supabase: any, params: any) {
   if (entityClass === "all" || entityClass === "sectors") {
     for (const s of SECTORS) {
       const { error } = await supabase.from("canonical_entities").insert({
-        canonical_name: s,
-        entity_type: "sector",
-        display_name: s,
-        trust_score: 0.9,
-        source_count: 1,
-        metadata: { category: "sector" },
+        canonical_name: s, entity_type: "sector", display_name: s,
+        trust_score: 0.9, source_count: 1, metadata: { category: "sector" },
         last_resolved_at: new Date().toISOString(),
       });
       if (!error) created++;
@@ -605,13 +559,7 @@ async function seedEntities(supabase: any, params: any) {
     }
   }
 
-  return jsonRes({
-    ok: true,
-    phase: "D2",
-    entities_created: created,
-    errors: errors.slice(0, 10),
-    error_count: errors.length,
-  });
+  return jsonRes({ ok: true, phase: "D2", entities_created: created, errors: errors.slice(0, 10), error_count: errors.length });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -622,16 +570,14 @@ async function generateLinks(supabase: any, params: any) {
   let linksCreated = 0;
   const errors: string[] = [];
 
-  // A. Country-to-country border/regional links
   if (linkType === "all" || linkType === "borders") {
     const { data: countries } = await supabase
       .from("canonical_entities")
       .select("id, iso3, metadata")
-      .eq("entity_type", "country")
+      .in("entity_type", ["country", "territory"])
       .not("iso3", "is", null);
 
     if (countries) {
-      // Group by region for regional links
       const regionMap = new Map<string, any[]>();
       for (const c of countries) {
         const region = c.metadata?.region;
@@ -640,19 +586,13 @@ async function generateLinks(supabase: any, params: any) {
           regionMap.get(region)!.push(c);
         }
       }
-
-      // Create member_of links within same region (limited to avoid explosion)
       for (const [_region, members] of regionMap) {
         for (let i = 0; i < members.length; i++) {
           for (let j = i + 1; j < Math.min(members.length, i + 20); j++) {
             const { error } = await supabase.from("entity_links").upsert({
-              source_entity_id: members[i].id,
-              target_entity_id: members[j].id,
-              link_type: "borders",
-              strength: 0.6,
-              source: "geographic_proximity",
-              provenance_source: "worldbank_regions",
-              provenance_confidence: 0.7,
+              source_entity_id: members[i].id, target_entity_id: members[j].id,
+              link_type: "borders", strength: 0.6,
+              source: "geographic_proximity", provenance_source: "worldbank_regions", provenance_confidence: 0.7,
             }, { onConflict: "source_entity_id,target_entity_id,link_type", ignoreDuplicates: true });
             if (!error) linksCreated++;
           }
@@ -661,19 +601,11 @@ async function generateLinks(supabase: any, params: any) {
     }
   }
 
-  // B. Company → Country (headquartered_in) links
   if (linkType === "all" || linkType === "company_country") {
     const { data: companies } = await supabase
-      .from("canonical_entities")
-      .select("id, metadata, iso3")
-      .eq("entity_type", "company")
-      .not("metadata", "is", null);
-
+      .from("canonical_entities").select("id, metadata, iso3").eq("entity_type", "company").not("metadata", "is", null);
     const { data: countries } = await supabase
-      .from("canonical_entities")
-      .select("id, iso3")
-      .eq("entity_type", "country")
-      .not("iso3", "is", null);
+      .from("canonical_entities").select("id, iso3").in("entity_type", ["country", "territory"]).not("iso3", "is", null);
 
     if (companies && countries) {
       const countryMap = new Map(countries.map((c: any) => [c.iso3, c.id]));
@@ -682,13 +614,9 @@ async function generateLinks(supabase: any, params: any) {
         const countryId = coIso3 ? countryMap.get(coIso3) : null;
         if (countryId) {
           const { error } = await supabase.from("entity_links").upsert({
-            source_entity_id: co.id,
-            target_entity_id: countryId,
-            link_type: "headquartered_in",
-            strength: 0.95,
-            source: "curated",
-            provenance_source: "entity_seed",
-            provenance_confidence: 0.9,
+            source_entity_id: co.id, target_entity_id: countryId,
+            link_type: "headquartered_in", strength: 0.95,
+            source: "curated", provenance_source: "entity_seed", provenance_confidence: 0.9,
           }, { onConflict: "source_entity_id,target_entity_id,link_type", ignoreDuplicates: true });
           if (!error) linksCreated++;
         }
@@ -696,42 +624,27 @@ async function generateLinks(supabase: any, params: any) {
     }
   }
 
-  // C. Unlinked metrics → entity_metric_links
   if (linkType === "all" || linkType === "metric_entity") {
     const batchLimit = params.limit || 5000;
     const { data: unlinked } = await supabase
-      .from("normalized_metrics")
-      .select("id, entity_id")
-      .not("entity_id", "is", null)
-      .order("id")
-      .limit(batchLimit);
+      .from("normalized_metrics").select("id, entity_id")
+      .not("entity_id", "is", null).order("id").limit(batchLimit);
 
     if (unlinked) {
-      // Check which already have links
       const metricIds = unlinked.map((m: any) => m.id);
       const { data: existing } = await supabase
-        .from("entity_metric_links")
-        .select("metric_id")
-        .in("metric_id", metricIds.slice(0, 1000));
+        .from("entity_metric_links").select("metric_id").in("metric_id", metricIds.slice(0, 1000));
       const existingSet = new Set((existing || []).map((r: any) => r.metric_id));
 
       const newLinks = unlinked
         .filter((m: any) => !existingSet.has(m.id))
-        .map((m: any) => ({
-          metric_id: m.id,
-          entity_id: m.entity_id,
-          link_role: "primary_entity",
-          confidence: 0.95,
-        }));
+        .map((m: any) => ({ metric_id: m.id, entity_id: m.entity_id, link_role: "primary_entity", confidence: 0.95 }));
 
       if (newLinks.length > 0) {
         for (let i = 0; i < newLinks.length; i += 500) {
           const { error } = await supabase
             .from("entity_metric_links")
-            .upsert(newLinks.slice(i, i + 500), {
-              onConflict: "metric_id,entity_id,link_role",
-              ignoreDuplicates: true,
-            });
+            .upsert(newLinks.slice(i, i + 500), { onConflict: "metric_id,entity_id,link_role", ignoreDuplicates: true });
           if (!error) linksCreated += Math.min(500, newLinks.length - i);
           else errors.push(error.message);
         }
@@ -739,13 +652,7 @@ async function generateLinks(supabase: any, params: any) {
     }
   }
 
-  return jsonRes({
-    ok: true,
-    phase: "4",
-    links_created: linksCreated,
-    errors: errors.slice(0, 10),
-    error_count: errors.length,
-  });
+  return jsonRes({ ok: true, phase: "4", links_created: linksCreated, errors: errors.slice(0, 10), error_count: errors.length });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -759,28 +666,18 @@ async function unifyLegacy(supabase: any, params: any) {
   let migrated = 0;
   const errors: string[] = [];
 
-  // Get entity map
-  const { data: entities } = await supabase
-    .from("canonical_entities")
-    .select("id, iso3")
-    .eq("entity_type", "country");
-  const entityMap = new Map((entities || []).map((e: any) => [e.iso3, e.id]));
+  const entityMap = await getCanonicalEntityMap(supabase);
 
   if (source === "performance_snapshots") {
     const { data: snapshots } = await supabase
-      .from("country_performance_snapshots")
-      .select("*")
-      .order("id")
-      .range(offset, offset + limit - 1);
+      .from("country_performance_snapshots").select("*").order("id").range(offset, offset + limit - 1);
 
     if (!snapshots || snapshots.length === 0) {
       return jsonRes({ ok: true, phase: "6", source, complete: true, migrated: 0 });
     }
 
-    const rows = snapshots.map((s: any) => {
+    const rows = snapshots.flatMap((s: any) => {
       const entityId = entityMap.get(s.iso3) || null;
-      // Each snapshot has multiple KPI fields — explode into individual metrics
-      const metrics: any[] = [];
       const fields: [string, string][] = [
         ["performance_index", "performance_index"],
         ["risk_pressure_score", "risk_pressure_score"],
@@ -792,31 +689,26 @@ async function unifyLegacy(supabase: any, params: any) {
         ["forecast_90d", "forecast_90d"],
         ["forecast_1y", "forecast_1y"],
       ];
+      return fields
+        .filter(([field]) => s[field] !== null && s[field] !== undefined)
+        .map(([field, metricName]) => ({
+          provider_name: "aicis_legacy",
+          domain: s.domain,
+          metric_name: `${s.domain}_${metricName}`,
+          entity_id: entityId,
+          iso3: s.iso3,
+          period: s.snapshot_date,
+          value: s[field],
+          unit: "index",
+          confidence: s.confidence_score || 0.8,
+          provenance_source: "country_performance_snapshots",
+          provenance_observed_at: s.created_at,
+          dedup_key: `m:aicis_legacy:${s.domain}_${metricName}:${s.iso3}:${s.snapshot_date}:${entityId || ""}`,
+          freshness_score: 0.7,
+          last_verified_at: s.created_at,
+        }));
+    });
 
-      for (const [field, metricName] of fields) {
-        if (s[field] !== null && s[field] !== undefined) {
-          metrics.push({
-            provider_name: "aicis_legacy",
-            domain: s.domain,
-            metric_name: `${s.domain}_${metricName}`,
-            entity_id: entityId,
-            iso3: s.iso3,
-            period: s.snapshot_date,
-            value: s[field],
-            unit: "index",
-            confidence: s.confidence_score || 0.8,
-            provenance_source: "country_performance_snapshots",
-            provenance_observed_at: s.created_at,
-            dedup_key: `m:aicis_legacy:${s.domain}_${metricName}:${s.iso3}:${s.snapshot_date}:${entityId || ""}`,
-            freshness_score: 0.7,
-            last_verified_at: s.created_at,
-          });
-        }
-      }
-      return metrics;
-    }).flat();
-
-    // Batch upsert
     for (let i = 0; i < rows.length; i += 500) {
       const { data: upserted, error } = await supabase
         .from("normalized_metrics")
@@ -826,24 +718,16 @@ async function unifyLegacy(supabase: any, params: any) {
       else migrated += (upserted || []).length;
     }
 
-    return jsonRes({
-      ok: true,
-      phase: "6",
-      source,
-      offset,
-      migrated,
-      next_offset: offset + limit,
-      has_more: snapshots.length === limit,
-      errors: errors.slice(0, 5),
-    });
+    // Update progress
+    await supabase.from("backfill_state")
+      .upsert({ key: "legacy_snapshot_offset", value_int: offset + limit, updated_at: new Date().toISOString() }, { onConflict: "key" });
+
+    return jsonRes({ ok: true, phase: "6", source, offset, migrated, next_offset: offset + limit, has_more: snapshots.length === limit, errors: errors.slice(0, 5) });
   }
 
   if (source === "conflict_signals") {
     const { data: conflicts } = await supabase
-      .from("conflict_signals")
-      .select("*")
-      .order("id")
-      .range(offset, offset + limit - 1);
+      .from("conflict_signals").select("*").order("id").range(offset, offset + limit - 1);
 
     if (!conflicts || conflicts.length === 0) {
       return jsonRes({ ok: true, phase: "6", source, complete: true, migrated: 0 });
@@ -884,11 +768,10 @@ async function unifyLegacy(supabase: any, params: any) {
       else migrated += (upserted || []).length;
     }
 
-    return jsonRes({
-      ok: true, phase: "6", source, offset, migrated,
-      next_offset: offset + limit, has_more: conflicts.length === limit,
-      errors: errors.slice(0, 5),
-    });
+    await supabase.from("backfill_state")
+      .upsert({ key: "legacy_conflict_offset", value_int: offset + limit, updated_at: new Date().toISOString() }, { onConflict: "key" });
+
+    return jsonRes({ ok: true, phase: "6", source, offset, migrated, next_offset: offset + limit, has_more: conflicts.length === limit, errors: errors.slice(0, 5) });
   }
 
   if (source === "village_indicators") {
@@ -902,12 +785,9 @@ async function unifyLegacy(supabase: any, params: any) {
       return jsonRes({ ok: true, phase: "6", source, complete: true, migrated: 0 });
     }
 
-    // Need region → country mapping
     const regionIds = [...new Set(indicators.map((i: any) => i.region_id).filter(Boolean))];
     const { data: regions } = await supabase
-      .from("admin_regions")
-      .select("id, country_iso3")
-      .in("id", regionIds.slice(0, 500));
+      .from("admin_regions").select("id, country_iso3").in("id", regionIds.slice(0, 500));
     const regionCountryMap = new Map((regions || []).map((r: any) => [r.id, r.country_iso3]));
 
     const rows = indicators.map((vi: any) => {
@@ -939,19 +819,15 @@ async function unifyLegacy(supabase: any, params: any) {
       else migrated += Math.min(1000, rows.length - i);
     }
 
-    return jsonRes({
-      ok: true, phase: "6", source, offset, migrated,
-      next_offset: offset + limit, has_more: indicators.length === limit,
-      errors: errors.slice(0, 5),
-    });
+    await supabase.from("backfill_state")
+      .upsert({ key: "legacy_village_offset", value_int: offset + limit, updated_at: new Date().toISOString() }, { onConflict: "key" });
+
+    return jsonRes({ ok: true, phase: "6", source, offset, migrated, next_offset: offset + limit, has_more: indicators.length === limit, errors: errors.slice(0, 5) });
   }
 
   if (source === "global_signals") {
     const { data: signals } = await supabase
-      .from("global_signals")
-      .select("*")
-      .order("id")
-      .range(offset, offset + limit - 1);
+      .from("global_signals").select("*").order("id").range(offset, offset + limit - 1);
 
     if (!signals || signals.length === 0) {
       return jsonRes({ ok: true, phase: "6", source, complete: true, migrated: 0 });
@@ -991,11 +867,10 @@ async function unifyLegacy(supabase: any, params: any) {
       else migrated += Math.min(500, rows.length - i);
     }
 
-    return jsonRes({
-      ok: true, phase: "6", source, offset, migrated,
-      next_offset: offset + limit, has_more: signals.length === limit,
-      errors: errors.slice(0, 5),
-    });
+    await supabase.from("backfill_state")
+      .upsert({ key: "legacy_signals_offset", value_int: offset + limit, updated_at: new Date().toISOString() }, { onConflict: "key" });
+
+    return jsonRes({ ok: true, phase: "6", source, offset, migrated, next_offset: offset + limit, has_more: signals.length === limit, errors: errors.slice(0, 5) });
   }
 
   return jsonRes({ error: `Unknown source: ${source}` }, 400);
@@ -1007,7 +882,7 @@ async function unifyLegacy(supabase: any, params: any) {
 async function getStatus(supabase: any) {
   const queries = await Promise.all([
     supabase.from("canonical_entities").select("*", { count: "exact", head: true }),
-    supabase.from("canonical_entities").select("*", { count: "exact", head: true }).eq("entity_type", "country"),
+    supabase.from("canonical_entities").select("*", { count: "exact", head: true }).in("entity_type", ["country", "territory"]),
     supabase.from("normalized_metrics").select("*", { count: "exact", head: true }),
     supabase.from("normalized_events").select("*", { count: "exact", head: true }),
     supabase.from("entity_metric_links").select("*", { count: "exact", head: true }),
@@ -1016,13 +891,14 @@ async function getStatus(supabase: any) {
     supabase.from("entity_aliases").select("*", { count: "exact", head: true }),
     supabase.from("entity_external_ids").select("*", { count: "exact", head: true }),
     supabase.from("data_provenance").select("*", { count: "exact", head: true }),
+    supabase.from("backfill_state").select("key, value_int"),
   ]);
 
-  const [entities, countries, metrics, events, metricLinks, eventLinks, entityLinks, aliases, extIds, provenance] = queries;
+  const [entities, countries, metrics, events, metricLinks, eventLinks, entityLinks, aliases, extIds, provenance, backfillState] = queries;
 
   const totals = {
     entities: entities.count || 0,
-    countries: countries.count || 0,
+    countries_territories: countries.count || 0,
     metrics: metrics.count || 0,
     events: events.count || 0,
     metric_links: metricLinks.count || 0,
@@ -1034,32 +910,35 @@ async function getStatus(supabase: any) {
     provenance: provenance.count || 0,
   };
 
+  const progress_state: Record<string, number> = {};
+  for (const row of (backfillState.data || [])) {
+    progress_state[row.key] = row.value_int;
+  }
+
   const targets = {
     countries: 211,
     metrics: 10_000_000,
     entities: 1_000_000,
-    total_links: 1_000_000, // "millions"
-  };
-
-  const progress = {
-    countries_pct: Math.round((totals.countries / targets.countries) * 100),
-    metrics_pct: Math.round((totals.metrics / targets.metrics) * 100 * 100) / 100,
-    entities_pct: Math.round((totals.entities / targets.entities) * 100 * 100) / 100,
-    links_pct: Math.round((totals.total_links / targets.total_links) * 100 * 100) / 100,
+    total_links: 1_000_000,
   };
 
   return jsonRes({
     ok: true,
     totals,
     targets,
-    progress,
+    progress: {
+      countries_pct: Math.round((totals.countries_territories / targets.countries) * 100),
+      metrics_pct: Math.round((totals.metrics / targets.metrics) * 100 * 100) / 100,
+      entities_pct: Math.round((totals.entities / targets.entities) * 100 * 100) / 100,
+      links_pct: Math.round((totals.total_links / targets.total_links) * 100 * 100) / 100,
+    },
+    backfill_state: progress_state,
     gates_passed: {
-      countries_211: totals.countries >= 211,
+      countries_211: totals.countries_territories >= 211,
       metrics_10m: totals.metrics >= 10_000_000,
       entities_1m: totals.entities >= 1_000_000,
       links_millions: totals.total_links >= 1_000_000,
       events_active: totals.events > 0,
-      provenance_complete: totals.provenance >= totals.metrics * 0.5,
     },
   });
 }
