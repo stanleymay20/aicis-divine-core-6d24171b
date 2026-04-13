@@ -1058,6 +1058,7 @@ export type Database = {
           lat: number | null
           lon: number | null
           metadata: Json | null
+          normalized_name: string | null
           source_count: number | null
           trust_score: number | null
           updated_at: string
@@ -1073,6 +1074,7 @@ export type Database = {
           lat?: number | null
           lon?: number | null
           metadata?: Json | null
+          normalized_name?: string | null
           source_count?: number | null
           trust_score?: number | null
           updated_at?: string
@@ -1088,6 +1090,7 @@ export type Database = {
           lat?: number | null
           lon?: number | null
           metadata?: Json | null
+          normalized_name?: string | null
           source_count?: number | null
           trust_score?: number | null
           updated_at?: string
@@ -3327,6 +3330,9 @@ export type Database = {
           id: string
           link_type: Database["public"]["Enums"]["entity_link_type"]
           metadata: Json | null
+          provenance_confidence: number | null
+          provenance_observed_at: string | null
+          provenance_source: string | null
           source: string | null
           source_entity_id: string
           strength: number | null
@@ -3338,6 +3344,9 @@ export type Database = {
           id?: string
           link_type: Database["public"]["Enums"]["entity_link_type"]
           metadata?: Json | null
+          provenance_confidence?: number | null
+          provenance_observed_at?: string | null
+          provenance_source?: string | null
           source?: string | null
           source_entity_id: string
           strength?: number | null
@@ -3349,6 +3358,9 @@ export type Database = {
           id?: string
           link_type?: Database["public"]["Enums"]["entity_link_type"]
           metadata?: Json | null
+          provenance_confidence?: number | null
+          provenance_observed_at?: string | null
+          provenance_source?: string | null
           source?: string | null
           source_entity_id?: string
           strength?: number | null
@@ -9025,8 +9037,54 @@ export type Database = {
         }
         Returns: string
       }
+      merge_entities_tx: {
+        Args: {
+          _confidence?: number
+          _loser_id: string
+          _merged_by?: string
+          _reason: string
+          _winner_id: string
+        }
+        Returns: Json
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      similarity_search_entities: {
+        Args: {
+          max_results?: number
+          min_similarity?: number
+          search_name: string
+          search_type?: string
+        }
+        Returns: {
+          canonical_name: string
+          display_name: string
+          entity_type: string
+          id: string
+          iso3: string
+          lat: number
+          lon: number
+          match_source: string
+          similarity: number
+          source_count: number
+          trust_score: number
+        }[]
+      }
+      traverse_entity_graph: {
+        Args: { _depth?: number; _entity_id: string }
+        Returns: {
+          canonical_name: string
+          connected_entity_id: string
+          connected_name: string
+          connected_type: string
+          depth: number
+          direction: string
+          entity_id: string
+          entity_type: string
+          link_type: string
+          strength: number
+        }[]
+      }
     }
     Enums: {
       access_tier: "public" | "institutional" | "administrative"
