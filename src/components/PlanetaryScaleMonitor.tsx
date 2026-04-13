@@ -321,11 +321,11 @@ export function PlanetaryScaleMonitor() {
 
       {/* Last Milestone Audit */}
       {lastAudit && (
-        <Card className={`border-2 ${lastAudit.all_passed ? "border-green-500/30" : "border-destructive/30"}`}>
+      <Card className={`border-2 ${lastAudit.all_passed ? "border-primary/30" : "border-destructive/30"}`}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               {lastAudit.all_passed ? (
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                <CheckCircle2 className="h-5 w-5 text-primary" />
               ) : (
                 <XCircle className="h-5 w-5 text-destructive" />
               )}
@@ -340,7 +340,7 @@ export function PlanetaryScaleMonitor() {
               {lastAudit.checks?.map((check, i) => (
                 <div key={i} className="flex items-center gap-2 text-sm">
                   {check.passed ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                   ) : (
                     <XCircle className="h-4 w-4 text-destructive shrink-0" />
                   )}
