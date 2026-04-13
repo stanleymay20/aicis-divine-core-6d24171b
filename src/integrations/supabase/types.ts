@@ -2002,8 +2002,10 @@ export type Database = {
       }
       data_provenance: {
         Row: {
+          adapter_version: string | null
           confidence: number | null
           created_at: string
+          entity_match_confidence: number | null
           expires_at: string | null
           fact_id: string
           fact_type: string
@@ -2012,14 +2014,17 @@ export type Database = {
           metadata: Json | null
           observed_at: string
           quality_score: number | null
+          retrieved_at: string | null
           source_endpoint: string | null
           source_license: string | null
           source_provider: string
           source_url: string | null
         }
         Insert: {
+          adapter_version?: string | null
           confidence?: number | null
           created_at?: string
+          entity_match_confidence?: number | null
           expires_at?: string | null
           fact_id: string
           fact_type: string
@@ -2028,14 +2033,17 @@ export type Database = {
           metadata?: Json | null
           observed_at?: string
           quality_score?: number | null
+          retrieved_at?: string | null
           source_endpoint?: string | null
           source_license?: string | null
           source_provider: string
           source_url?: string | null
         }
         Update: {
+          adapter_version?: string | null
           confidence?: number | null
           created_at?: string
+          entity_match_confidence?: number | null
           expires_at?: string | null
           fact_id?: string
           fact_type?: string
@@ -2044,6 +2052,7 @@ export type Database = {
           metadata?: Json | null
           observed_at?: string
           quality_score?: number | null
+          retrieved_at?: string | null
           source_endpoint?: string | null
           source_license?: string | null
           source_provider?: string
@@ -5750,8 +5759,10 @@ export type Database = {
           ended_at: string | null
           entity_id: string | null
           event_type: string
+          freshness_score: number | null
           id: string
           iso3: string | null
+          last_verified_at: string | null
           location_entity_id: string | null
           metadata: Json | null
           provenance_source: string | null
@@ -5770,8 +5781,10 @@ export type Database = {
           ended_at?: string | null
           entity_id?: string | null
           event_type: string
+          freshness_score?: number | null
           id?: string
           iso3?: string | null
+          last_verified_at?: string | null
           location_entity_id?: string | null
           metadata?: Json | null
           provenance_source?: string | null
@@ -5790,8 +5803,10 @@ export type Database = {
           ended_at?: string | null
           entity_id?: string | null
           event_type?: string
+          freshness_score?: number | null
           id?: string
           iso3?: string | null
+          last_verified_at?: string | null
           location_entity_id?: string | null
           metadata?: Json | null
           provenance_source?: string | null
@@ -5840,8 +5855,10 @@ export type Database = {
           dedup_key: string
           domain: string
           entity_id: string | null
+          freshness_score: number | null
           id: string
           iso3: string | null
+          last_verified_at: string | null
           location_entity_id: string | null
           metric_name: string
           period: string
@@ -5861,8 +5878,10 @@ export type Database = {
           dedup_key: string
           domain: string
           entity_id?: string | null
+          freshness_score?: number | null
           id?: string
           iso3?: string | null
+          last_verified_at?: string | null
           location_entity_id?: string | null
           metric_name: string
           period: string
@@ -5882,8 +5901,10 @@ export type Database = {
           dedup_key?: string
           domain?: string
           entity_id?: string | null
+          freshness_score?: number | null
           id?: string
           iso3?: string | null
+          last_verified_at?: string | null
           location_entity_id?: string | null
           metric_name?: string
           period?: string
@@ -6682,6 +6703,7 @@ export type Database = {
       }
       provider_runs: {
         Row: {
+          adapter_version: string | null
           completed_at: string | null
           created_at: string
           duration_ms: number | null
@@ -6694,12 +6716,17 @@ export type Database = {
           provider_name: string
           records_deduplicated: number | null
           records_fetched: number | null
+          records_inserted: number | null
           records_normalized: number | null
+          records_updated: number | null
           records_written: number | null
+          replay_source_run_id: string | null
+          run_mode: string | null
           started_at: string
           status: string
         }
         Insert: {
+          adapter_version?: string | null
           completed_at?: string | null
           created_at?: string
           duration_ms?: number | null
@@ -6712,12 +6739,17 @@ export type Database = {
           provider_name: string
           records_deduplicated?: number | null
           records_fetched?: number | null
+          records_inserted?: number | null
           records_normalized?: number | null
+          records_updated?: number | null
           records_written?: number | null
+          replay_source_run_id?: string | null
+          run_mode?: string | null
           started_at?: string
           status?: string
         }
         Update: {
+          adapter_version?: string | null
           completed_at?: string | null
           created_at?: string
           duration_ms?: number | null
@@ -6730,12 +6762,24 @@ export type Database = {
           provider_name?: string
           records_deduplicated?: number | null
           records_fetched?: number | null
+          records_inserted?: number | null
           records_normalized?: number | null
+          records_updated?: number | null
           records_written?: number | null
+          replay_source_run_id?: string | null
+          run_mode?: string | null
           started_at?: string
           status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "provider_runs_replay_source_run_id_fkey"
+            columns: ["replay_source_run_id"]
+            isOneToOne: false
+            referencedRelation: "provider_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       query_feedback: {
         Row: {
