@@ -891,6 +891,113 @@ async function unifyLegacy(supabase: any, params: any) {
     });
   }
 
+  if (source === "village_indicators") {
+    const { data: indicators } = await supabase
+      .from("village_indicators")
+      .select("id, region_id, domain, indicator, value, unit, confidence, data_source, observed_at")
+      .order("id")
+      .range(offset, offset + limit - 1);
+
+    if (!indicators || indicators.length === 0) {
+      return jsonRes({ ok: true, phase: "6", source, complete: true, migrated: 0 });
+    }
+
+    // Need region → country mapping
+    const regionIds = [...new Set(indicators.map((i: any) => i.region_id).filter(Boolean))];
+    const { data: regions } = await supabase
+      .from("admin_regions")
+      .select("id, country_iso3")
+      .in("id", regionIds.slice(0, 500));
+    const regionCountryMap = new Map((regions || []).map((r: any) => [r.id, r.country_iso3]));
+
+    const rows = indicators.map((vi: any) => {
+      const iso3 = regionCountryMap.get(vi.region_id) || null;
+      const entityId = iso3 ? entityMap.get(iso3) : null;
+      return {
+        provider_name: "aicis_village",
+        domain: vi.domain || "subnational",
+        metric_name: vi.indicator || "unknown",
+        entity_id: entityId,
+        iso3,
+        period: vi.observed_at ? vi.observed_at.split("T")[0] : new Date().toISOString().split("T")[0],
+        value: vi.value,
+        unit: vi.unit || "",
+        confidence: vi.confidence || 0.6,
+        provenance_source: vi.data_source || "village_indicators",
+        provenance_observed_at: vi.observed_at,
+        dedup_key: `m:village:${vi.indicator}:${vi.region_id}:${vi.observed_at || vi.id}`,
+        freshness_score: 0.5,
+        last_verified_at: vi.observed_at,
+      };
+    });
+
+    for (let i = 0; i < rows.length; i += 1000) {
+      const { error } = await supabase
+        .from("normalized_metrics")
+        .upsert(rows.slice(i, i + 1000), { onConflict: "dedup_key", ignoreDuplicates: true });
+      if (error) errors.push(error.message);
+      else migrated += Math.min(1000, rows.length - i);
+    }
+
+    return jsonRes({
+      ok: true, phase: "6", source, offset, migrated,
+      next_offset: offset + limit, has_more: indicators.length === limit,
+      errors: errors.slice(0, 5),
+    });
+  }
+
+  if (source === "global_signals") {
+    const { data: signals } = await supabase
+      .from("global_signals")
+      .select("*")
+      .order("id")
+      .range(offset, offset + limit - 1);
+
+    if (!signals || signals.length === 0) {
+      return jsonRes({ ok: true, phase: "6", source, complete: true, migrated: 0 });
+    }
+
+    const rows = signals.map((s: any) => {
+      const iso3 = s.affected_regions?.[0] || null;
+      const entityId = iso3 ? entityMap.get(iso3) : null;
+      return {
+        provider_name: "aicis_signals",
+        event_type: s.category || "signal",
+        title: s.title || s.headline || "Signal",
+        description: s.summary || "",
+        entity_id: entityId,
+        iso3,
+        started_at: s.detected_at || s.created_at,
+        severity: s.impact_score || null,
+        confidence: s.confidence_score || 0.5,
+        provenance_source: "global_signals",
+        dedup_key: `e:signals:${s.id}`,
+        freshness_score: 0.8,
+        last_verified_at: s.created_at,
+        metadata: {
+          category: s.category,
+          urgency: s.urgency_score,
+          source_tier: s.source_tier,
+          affected_sectors: s.affected_sectors,
+        },
+      };
+    });
+
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase
+        .from("normalized_events")
+        .upsert(rows.slice(i, i + 500), { onConflict: "dedup_key", ignoreDuplicates: true });
+      if (error) errors.push(error.message);
+      else migrated += Math.min(500, rows.length - i);
+    }
+
+    return jsonRes({
+      ok: true, phase: "6", source, offset, migrated,
+      next_offset: offset + limit, has_more: signals.length === limit,
+      errors: errors.slice(0, 5),
+    });
+  }
+
   return jsonRes({ error: `Unknown source: ${source}` }, 400);
 }
 
