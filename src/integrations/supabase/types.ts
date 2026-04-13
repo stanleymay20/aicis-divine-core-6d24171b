@@ -1078,6 +1078,9 @@ export type Database = {
           metadata: Json | null
           normalized_name: string | null
           source_count: number | null
+          sovereignty_status:
+            | Database["public"]["Enums"]["sovereignty_status"]
+            | null
           trust_score: number | null
           updated_at: string
         }
@@ -1094,6 +1097,9 @@ export type Database = {
           metadata?: Json | null
           normalized_name?: string | null
           source_count?: number | null
+          sovereignty_status?:
+            | Database["public"]["Enums"]["sovereignty_status"]
+            | null
           trust_score?: number | null
           updated_at?: string
         }
@@ -1110,6 +1116,9 @@ export type Database = {
           metadata?: Json | null
           normalized_name?: string | null
           source_count?: number | null
+          sovereignty_status?:
+            | Database["public"]["Enums"]["sovereignty_status"]
+            | null
           trust_score?: number | null
           updated_at?: string
         }
@@ -3369,6 +3378,20 @@ export type Database = {
             referencedRelation: "canonical_entities"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "entity_aliases_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_aliases_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
+            referencedColumns: ["id"]
+          },
         ]
       }
       entity_event_links: {
@@ -3409,6 +3432,20 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_event_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_event_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
           {
@@ -3461,6 +3498,20 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_external_ids_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_external_ids_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
         ]
@@ -3524,6 +3575,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "entity_links_target_entity_id_fkey"
             columns: ["target_entity_id"]
             isOneToOne: false
@@ -3535,6 +3600,20 @@ export type Database = {
             columns: ["target_entity_id"]
             isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
         ]
@@ -3585,6 +3664,20 @@ export type Database = {
             referencedRelation: "canonical_entities"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "entity_merge_log_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_merge_log_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
+            referencedColumns: ["id"]
+          },
         ]
       }
       entity_metric_links: {
@@ -3625,6 +3718,20 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_metric_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_metric_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
           {
@@ -5900,6 +6007,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "normalized_events_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "normalized_events_location_entity_id_fkey"
             columns: ["location_entity_id"]
             isOneToOne: false
@@ -5911,6 +6032,20 @@ export type Database = {
             columns: ["location_entity_id"]
             isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
           {
@@ -6015,6 +6150,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "normalized_metrics_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "normalized_metrics_location_entity_id_fkey"
             columns: ["location_entity_id"]
             isOneToOne: false
@@ -6026,6 +6175,20 @@ export type Database = {
             columns: ["location_entity_id"]
             isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
           {
@@ -6054,6 +6217,20 @@ export type Database = {
             columns: ["related_entity_id"]
             isOneToOne: false
             referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_related_entity_id_fkey"
+            columns: ["related_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_related_entity_id_fkey"
+            columns: ["related_entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
         ]
@@ -9360,6 +9537,97 @@ export type Database = {
         }
         Relationships: []
       }
+      canonical_reporting_countries: {
+        Row: {
+          canonical_name: string | null
+          display_name: string | null
+          id: string | null
+          iso3: string | null
+          lat: number | null
+          lon: number | null
+          sovereignty_status: string | null
+          trust_score: number | null
+        }
+        Insert: {
+          canonical_name?: string | null
+          display_name?: string | null
+          id?: string | null
+          iso3?: string | null
+          lat?: number | null
+          lon?: number | null
+          sovereignty_status?: never
+          trust_score?: number | null
+        }
+        Update: {
+          canonical_name?: string | null
+          display_name?: string | null
+          id?: string | null
+          iso3?: string | null
+          lat?: number | null
+          lon?: number | null
+          sovereignty_status?: never
+          trust_score?: number | null
+        }
+        Relationships: []
+      }
+      country_coverage_full: {
+        Row: {
+          canonical_name: string | null
+          display_name: string | null
+          entity_type: string | null
+          event_count: number | null
+          id: string | null
+          iso3: string | null
+          lat: number | null
+          lon: number | null
+          metric_count: number | null
+          source_count: number | null
+          sovereignty_status: string | null
+          trust_score: number | null
+        }
+        Insert: {
+          canonical_name?: string | null
+          display_name?: string | null
+          entity_type?: never
+          event_count?: never
+          id?: string | null
+          iso3?: string | null
+          lat?: number | null
+          lon?: number | null
+          metric_count?: never
+          source_count?: number | null
+          sovereignty_status?: never
+          trust_score?: number | null
+        }
+        Update: {
+          canonical_name?: string | null
+          display_name?: string | null
+          entity_type?: never
+          event_count?: never
+          id?: string | null
+          iso3?: string | null
+          lat?: number | null
+          lon?: number | null
+          metric_count?: never
+          source_count?: number | null
+          sovereignty_status?: never
+          trust_score?: number | null
+        }
+        Relationships: []
+      }
+      country_reconciliation_audit: {
+        Row: {
+          coverage_reporting_diff: number | null
+          duplicate_iso3_count: number | null
+          total_aggregates: number | null
+          total_coverage: number | null
+          total_deprecated: number | null
+          total_reporting: number | null
+          total_source_only: number | null
+          unmapped_metric_codes: number | null
+        }
+        Relationships: []
+      }
       daily_accumulation: {
         Row: {
           count: number | null
@@ -9650,6 +9918,7 @@ export type Database = {
         Returns: boolean
       }
       is_canonical_iso3: { Args: { _iso3: string }; Returns: boolean }
+      is_covered_iso3: { Args: { _iso3: string }; Returns: boolean }
       log_audit_event: {
         Args: {
           _action: string
@@ -9809,6 +10078,13 @@ export type Database = {
         | "confirmed"
         | "resolved"
         | "watchlist"
+      sovereignty_status:
+        | "sovereign_state"
+        | "territory"
+        | "disputed"
+        | "aggregate"
+        | "source_only"
+        | "deprecated"
       stability_status:
         | "stable"
         | "fluctuating"
@@ -10044,6 +10320,14 @@ export const Constants = {
         "confirmed",
         "resolved",
         "watchlist",
+      ],
+      sovereignty_status: [
+        "sovereign_state",
+        "territory",
+        "disputed",
+        "aggregate",
+        "source_only",
+        "deprecated",
       ],
       stability_status: [
         "stable",
