@@ -78,6 +78,122 @@ providers:
           data: "$.properties.parameter"
         cache_ttl_sec: 43200
   
+  imf:
+    domain: finance|governance
+    type: http
+    auth: none
+    endpoints:
+      weo_gdp_growth:
+        url: "https://www.imf.org/external/datamapper/api/v1/NGDP_RPCH/{iso3}"
+        method: GET
+        path_map:
+          data: "$.values"
+        cache_ttl_sec: 86400
+      weo_inflation:
+        url: "https://www.imf.org/external/datamapper/api/v1/PCPIPCH/{iso3}"
+        method: GET
+        path_map:
+          data: "$.values"
+        cache_ttl_sec: 86400
+      weo_unemployment:
+        url: "https://www.imf.org/external/datamapper/api/v1/LUR/{iso3}"
+        method: GET
+        path_map:
+          data: "$.values"
+        cache_ttl_sec: 86400
+      weo_fiscal_balance:
+        url: "https://www.imf.org/external/datamapper/api/v1/GGXCNL_NGDP/{iso3}"
+        method: GET
+        path_map:
+          data: "$.values"
+        cache_ttl_sec: 86400
+      ifs_reserves:
+        url: "https://dataservices.imf.org/REST/SDMX_JSON.svc/CompactData/IFS/M.{iso3}.RAXG_USD"
+        method: GET
+        path_map:
+          data: "$.CompactData.DataSet.Series"
+        cache_ttl_sec: 86400
+
+  un_comtrade:
+    domain: trade|finance
+    type: http
+    auth: none
+    endpoints:
+      bilateral_trade:
+        url: "https://comtradeapi.un.org/data/v1/get/C/A/HS?reporterCode={reporter_code}&period={year}&partnerCode=0&flowCode=M,X"
+        method: GET
+        path_map:
+          data: "$.data"
+        cache_ttl_sec: 86400
+      commodity_trade:
+        url: "https://comtradeapi.un.org/data/v1/get/C/A/HS?reporterCode={reporter_code}&period={year}&cmdCode={hs_code}&flowCode=M,X"
+        method: GET
+        path_map:
+          data: "$.data"
+        cache_ttl_sec: 86400
+
+  noaa:
+    domain: climate
+    type: http
+    auth: header
+    headers:
+      "token": "${NOAA_API_KEY}"
+    endpoints:
+      daily_summaries:
+        url: "https://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&locationid=FIPS:{fips}&startdate={start}&enddate={end}&limit=1000"
+        method: GET
+        path_map:
+          data: "$.results"
+        cache_ttl_sec: 43200
+      severe_weather:
+        url: "https://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&datatypeid=TMAX,TMIN,PRCP&locationid=FIPS:{fips}&startdate={start}&enddate={end}"
+        method: GET
+        path_map:
+          data: "$.results"
+        cache_ttl_sec: 21600
+
+  nasa_firms:
+    domain: climate|food
+    type: http
+    auth: none
+    endpoints:
+      active_fires_country:
+        url: "https://firms.modaps.eosdis.nasa.gov/api/country/csv/{map_key}/VIIRS_SNPP_NRT/{iso3}/1"
+        method: GET
+        path_map:
+          data: "$"
+        cache_ttl_sec: 3600
+      active_fires_area:
+        url: "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{map_key}/VIIRS_SNPP_NRT/{west},{south},{east},{north}/1"
+        method: GET
+        path_map:
+          data: "$"
+        cache_ttl_sec: 3600
+
+  openalex:
+    domain: research|governance
+    type: http
+    auth: none
+    endpoints:
+      works_by_country:
+        url: "https://api.openalex.org/works?filter=institutions.country_code:{iso2}&sort=cited_by_count:desc&per_page=50"
+        method: GET
+        path_map:
+          data: "$.results"
+        cache_ttl_sec: 86400
+      institutions_by_country:
+        url: "https://api.openalex.org/institutions?filter=country_code:{iso2}&sort=works_count:desc&per_page=50"
+        method: GET
+        path_map:
+          data: "$.results"
+        cache_ttl_sec: 86400
+      topics_trending:
+        url: "https://api.openalex.org/topics?sort=works_count:desc&per_page=50"
+        method: GET
+        path_map:
+          data: "$.results"
+        cache_ttl_sec: 86400
+
   worldpop:
     domain: population
     type: http

@@ -32,27 +32,53 @@ serve(async (req) => {
   }
 });
 
-// ─── Resolve: find or create canonical entity ────────────────────────
+// ─── Resolve: hardened priority order ────────────────────────────────
+// 1. External ID exact → 2. Canonical normalized exact → 3. Alias exact → 4. Fuzzy → 5. Unresolved
 async function resolveEntity(supabase: any, params: any) {
-  const { name, entity_type, iso3, aliases, external_ids } = params;
+  const { name, entity_type, iso3, external_ids } = params;
   if (!name || !entity_type) {
     return errorResponse(new Error("name and entity_type required"), 400);
   }
 
-  // 1. Try exact match on canonical_name
+  // 1. External ID match FIRST (strongest signal)
+  if (external_ids && Array.isArray(external_ids)) {
+    for (const ext of external_ids) {
+      const { data: extMatch } = await supabase
+        .from("entity_external_ids")
+        .select("entity_id, canonical_entities(*)")
+        .eq("provider", ext.provider)
+        .eq("external_id", ext.external_id)
+        .limit(1)
+        .maybeSingle();
+
+      if (extMatch?.canonical_entities) {
+        return jsonResponse({
+          resolved: true,
+          entity: extMatch.canonical_entities,
+          match_type: "external_id",
+          match_confidence: 1.0,
+          matched_provider: ext.provider,
+        });
+      }
+    }
+  }
+
+  const normalizedName = name.toLowerCase().trim();
+
+  // 2. Canonical normalized exact match
   const { data: exact } = await supabase
     .from("canonical_entities")
     .select("*")
     .eq("entity_type", entity_type)
-    .ilike("canonical_name", name)
+    .eq("normalized_name", normalizedName)
     .limit(1)
     .maybeSingle();
 
   if (exact) {
-    return jsonResponse({ resolved: true, entity: exact, match_type: "exact" });
+    return jsonResponse({ resolved: true, entity: exact, match_type: "exact", match_confidence: 1.0 });
   }
 
-  // 2. Try alias match
+  // 3. Alias exact match
   const { data: aliasMatch } = await supabase
     .from("entity_aliases")
     .select("entity_id, alias, confidence, canonical_entities(*)")
@@ -69,47 +95,27 @@ async function resolveEntity(supabase: any, params: any) {
     });
   }
 
-  // 3. Try external ID match
-  if (external_ids && Array.isArray(external_ids)) {
-    for (const ext of external_ids) {
-      const { data: extMatch } = await supabase
-        .from("entity_external_ids")
-        .select("entity_id, canonical_entities(*)")
-        .eq("provider", ext.provider)
-        .eq("external_id", ext.external_id)
-        .limit(1)
-        .maybeSingle();
-
-      if (extMatch?.canonical_entities) {
-        return jsonResponse({
-          resolved: true,
-          entity: extMatch.canonical_entities,
-          match_type: "external_id",
-          matched_provider: ext.provider,
-        });
-      }
-    }
-  }
-
-  // 4. Fuzzy match using trigram similarity
-  const { data: fuzzy } = await supabase.rpc("similarity_search_entities", {
+  // 4. Fuzzy match using ranked trigram similarity
+  const { data: fuzzyResults } = await supabase.rpc("similarity_search_entities", {
     search_name: name,
     search_type: entity_type,
     min_similarity: 0.3,
     max_results: 5,
-  }).maybeSingle();
+  });
 
-  // If we have a fuzzy function, use it; otherwise skip
-  if (fuzzy) {
+  if (fuzzyResults && fuzzyResults.length > 0) {
+    const best = fuzzyResults[0];
     return jsonResponse({
       resolved: true,
-      entity: fuzzy,
+      entity: best,
       match_type: "fuzzy",
-      match_confidence: fuzzy.similarity || 0.5,
+      match_confidence: best.similarity || 0.5,
+      match_source: best.match_source,
+      alternatives: fuzzyResults.length > 1 ? fuzzyResults.slice(1) : [],
     });
   }
 
-  // 5. No match — return unresolved
+  // 5. Unresolved
   return jsonResponse({
     resolved: false,
     suggestion: "Use action='register' to create this entity",
@@ -124,16 +130,13 @@ async function registerEntity(supabase: any, params: any) {
     return errorResponse(new Error("name and entity_type required"), 400);
   }
 
-  // Create entity
   const { data: entity, error } = await supabase
     .from("canonical_entities")
     .insert({
       entity_type,
       canonical_name: name,
       display_name: display_name || name,
-      iso3,
-      lat,
-      lon,
+      iso3, lat, lon,
       metadata: metadata || {},
       trust_score: 0.5,
       source_count: 1,
@@ -181,11 +184,14 @@ async function registerEntity(supabase: any, params: any) {
   return jsonResponse({ ok: true, entity });
 }
 
-// ─── Link: create relationship between entities ─────────────────────
+// ─── Link: create relationship with provenance ──────────────────────
 async function linkEntities(supabase: any, params: any) {
-  const { source_id, target_id, link_type, strength, source, metadata } = params;
+  const { source_id, target_id, link_type, strength, source, metadata, provenance_source, provenance_confidence } = params;
   if (!source_id || !target_id || !link_type) {
     return errorResponse(new Error("source_id, target_id, link_type required"), 400);
+  }
+  if (source_id === target_id) {
+    return errorResponse(new Error("Cannot link entity to itself"), 400);
   }
 
   const { data, error } = await supabase
@@ -197,6 +203,9 @@ async function linkEntities(supabase: any, params: any) {
       strength: strength || 1.0,
       source: source || "manual",
       metadata: metadata || {},
+      provenance_source: provenance_source || source || "manual",
+      provenance_confidence: provenance_confidence || 1.0,
+      provenance_observed_at: new Date().toISOString(),
     })
     .select()
     .single();
@@ -205,107 +214,65 @@ async function linkEntities(supabase: any, params: any) {
   return jsonResponse({ ok: true, link: data });
 }
 
-// ─── Merge: deduplicate two entities ────────────────────────────────
+// ─── Merge: transactional via DB function ───────────────────────────
 async function mergeEntities(supabase: any, params: any) {
   const { winner_id, loser_id, reason, confidence } = params;
   if (!winner_id || !loser_id || !reason) {
     return errorResponse(new Error("winner_id, loser_id, reason required"), 400);
   }
 
-  // Move aliases from loser to winner
-  await supabase
-    .from("entity_aliases")
-    .update({ entity_id: winner_id })
-    .eq("entity_id", loser_id);
-
-  // Move external IDs
-  await supabase
-    .from("entity_external_ids")
-    .update({ entity_id: winner_id })
-    .eq("entity_id", loser_id);
-
-  // Move links (source side)
-  await supabase
-    .from("entity_links")
-    .update({ source_entity_id: winner_id })
-    .eq("source_entity_id", loser_id);
-
-  // Move links (target side)
-  await supabase
-    .from("entity_links")
-    .update({ target_entity_id: winner_id })
-    .eq("target_entity_id", loser_id);
-
-  // Increment source count on winner
-  const { data: winner } = await supabase
-    .from("canonical_entities")
-    .select("source_count")
-    .eq("id", winner_id)
-    .single();
-
-  await supabase
-    .from("canonical_entities")
-    .update({
-      source_count: (winner?.source_count || 1) + 1,
-      last_resolved_at: new Date().toISOString(),
-    })
-    .eq("id", winner_id);
-
-  // Log the merge (immutable)
-  await supabase.from("entity_merge_log").insert({
-    winner_id,
-    loser_id,
-    merge_reason: reason,
-    merged_by: "system",
-    merge_confidence: confidence || 0.9,
+  const { data, error } = await supabase.rpc("merge_entities_tx", {
+    _winner_id: winner_id,
+    _loser_id: loser_id,
+    _reason: reason,
+    _confidence: confidence || 0.9,
+    _merged_by: "system",
   });
 
-  // Delete the loser
-  await supabase.from("canonical_entities").delete().eq("id", loser_id);
-
+  if (error) return errorResponse(error);
   structuredLog("info", FN, `Merged entity ${loser_id} → ${winner_id}`);
-  return jsonResponse({ ok: true, winner_id, loser_id, merged: true });
+  return jsonResponse(data);
 }
 
-// ─── Search: fuzzy search across entities ───────────────────────────
+// ─── Search: ranked with trigram scoring ────────────────────────────
 async function searchEntities(supabase: any, params: any) {
   const { query, entity_type, iso3, limit = 20 } = params;
   if (!query) return errorResponse(new Error("query required"), 400);
 
-  let q = supabase
-    .from("canonical_entities")
-    .select("*, entity_aliases(alias, alias_type, confidence)")
-    .ilike("canonical_name", `%${query}%`)
-    .limit(limit);
+  // Use ranked fuzzy search
+  const { data: ranked } = await supabase.rpc("similarity_search_entities", {
+    search_name: query,
+    search_type: entity_type || null,
+    min_similarity: 0.2,
+    max_results: limit,
+  });
 
-  if (entity_type) q = q.eq("entity_type", entity_type);
-  if (iso3) q = q.eq("iso3", iso3);
+  let results = ranked || [];
 
-  const { data, error } = await q;
-  if (error) return errorResponse(error);
+  // Also do substring fallback for short queries
+  if (results.length < 3) {
+    let q = supabase
+      .from("canonical_entities")
+      .select("*")
+      .ilike("canonical_name", `%${query}%`)
+      .limit(limit);
+    if (entity_type) q = q.eq("entity_type", entity_type);
+    if (iso3) q = q.eq("iso3", iso3);
+    const { data: substringHits } = await q;
 
-  // Also search aliases
-  const { data: aliasHits } = await supabase
-    .from("entity_aliases")
-    .select("entity_id, alias, confidence, canonical_entities(*)")
-    .ilike("alias", `%${query}%`)
-    .limit(limit);
-
-  // Merge and deduplicate
-  const seen = new Set(data?.map((e: any) => e.id) || []);
-  const merged = [...(data || [])];
-
-  for (const hit of aliasHits || []) {
-    if (hit.canonical_entities && !seen.has(hit.canonical_entities.id)) {
-      seen.add(hit.canonical_entities.id);
-      merged.push({ ...hit.canonical_entities, _matched_alias: hit.alias });
+    const seen = new Set(results.map((r: any) => r.id));
+    for (const hit of substringHits || []) {
+      if (!seen.has(hit.id)) {
+        seen.add(hit.id);
+        results.push({ ...hit, similarity: 0.1, match_source: "substring" });
+      }
     }
   }
 
-  return jsonResponse({ results: merged, count: merged.length });
+  return jsonResponse({ results, count: results.length });
 }
 
-// ─── Graph: get entity with all relationships ───────────────────────
+// ─── Graph: real depth traversal ────────────────────────────────────
 async function getEntityGraph(supabase: any, params: any) {
   const { entity_id, depth = 1 } = params;
   if (!entity_id) return errorResponse(new Error("entity_id required"), 400);
@@ -318,33 +285,23 @@ async function getEntityGraph(supabase: any, params: any) {
 
   if (!entity) return errorResponse(new Error("Entity not found"), 404);
 
-  const { data: aliases } = await supabase
-    .from("entity_aliases")
-    .select("*")
-    .eq("entity_id", entity_id);
+  // Parallel fetch: aliases, external IDs, and graph traversal
+  const [aliasRes, extRes, graphRes] = await Promise.all([
+    supabase.from("entity_aliases").select("*").eq("entity_id", entity_id),
+    supabase.from("entity_external_ids").select("*").eq("entity_id", entity_id),
+    supabase.rpc("traverse_entity_graph", { _entity_id: entity_id, _depth: depth }),
+  ]);
 
-  const { data: externalIds } = await supabase
-    .from("entity_external_ids")
-    .select("*")
-    .eq("entity_id", entity_id);
-
-  const { data: outLinks } = await supabase
-    .from("entity_links")
-    .select("*, target:canonical_entities!entity_links_target_entity_id_fkey(id, canonical_name, entity_type, iso3)")
-    .eq("source_entity_id", entity_id);
-
-  const { data: inLinks } = await supabase
-    .from("entity_links")
-    .select("*, source:canonical_entities!entity_links_source_entity_id_fkey(id, canonical_name, entity_type, iso3)")
-    .eq("target_entity_id", entity_id);
+  const edges = graphRes.data || [];
+  const outgoing = edges.filter((e: any) => e.direction === "outgoing");
+  const incoming = edges.filter((e: any) => e.direction === "incoming");
 
   return jsonResponse({
     entity,
-    aliases: aliases || [],
-    external_ids: externalIds || [],
-    relationships: {
-      outgoing: outLinks || [],
-      incoming: inLinks || [],
-    },
+    aliases: aliasRes.data || [],
+    external_ids: extRes.data || [],
+    relationships: { outgoing, incoming },
+    graph_depth: depth,
+    total_connections: edges.length,
   });
 }
