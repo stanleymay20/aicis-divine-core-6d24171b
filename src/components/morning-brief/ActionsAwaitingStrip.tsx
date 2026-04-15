@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  AlertTriangle, CheckCircle, Clock, Play, ChevronRight, Flame,
+  AlertTriangle, CheckCircle, Clock, Play, ChevronRight, Flame, CheckCheck, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -24,15 +24,23 @@ export function ActionsAwaitingStrip() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["actions-awaiting"] });
+    queryClient.invalidateQueries({ queryKey: ["execution-counts"] });
+    queryClient.invalidateQueries({ queryKey: ["overdue-count"] });
+    queryClient.invalidateQueries({ queryKey: ["execution-command-records"] });
+    queryClient.invalidateQueries({ queryKey: ["business-exposure-strip"] });
+  };
+
   const { data: actions = [], isLoading } = useQuery<PendingAction[]>({
     queryKey: ["actions-awaiting"],
     queryFn: async () => {
       const { data } = await supabase
         .from("decision_outcome_log")
         .select("id, signal_title, domain, impact_score, execution_status, created_at, review_sla_hours")
-        .in("execution_status", ["not_started", "overdue"])
+        .in("execution_status", ["not_started", "overdue", "in_progress"])
         .order("impact_score", { ascending: false, nullsFirst: false })
-        .limit(5);
+        .limit(6);
       return (data as any) || [];
     },
     staleTime: 30_000,
@@ -41,15 +49,18 @@ export function ActionsAwaitingStrip() {
   const { data: counts } = useQuery({
     queryKey: ["execution-counts"],
     queryFn: async () => {
-      const [notStarted, inProgress, completed] = await Promise.all([
+      const [notStarted, overdue, inProgress, completed] = await Promise.all([
         supabase.from("decision_outcome_log").select("id", { count: "exact", head: true }).eq("execution_status", "not_started"),
+        supabase.from("decision_outcome_log").select("id", { count: "exact", head: true }).eq("execution_status", "overdue"),
         supabase.from("decision_outcome_log").select("id", { count: "exact", head: true }).eq("execution_status", "in_progress"),
         supabase.from("decision_outcome_log").select("id", { count: "exact", head: true }).eq("execution_status", "completed"),
       ]);
       return {
-        pending: notStarted.count || 0,
+        pending: (notStarted.count || 0) + (overdue.count || 0),
+        overdue: overdue.count || 0,
         active: inProgress.count || 0,
         done: completed.count || 0,
+        total: (notStarted.count || 0) + (overdue.count || 0) + (inProgress.count || 0) + (completed.count || 0),
       };
     },
     staleTime: 30_000,
@@ -69,34 +80,63 @@ export function ActionsAwaitingStrip() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["actions-awaiting"] });
-      queryClient.invalidateQueries({ queryKey: ["execution-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["execution-command-records"] });
-      queryClient.invalidateQueries({ queryKey: ["business-exposure-strip"] });
+      invalidateAll();
       toast.success("Action started — track progress in Actions & Outcomes");
     },
     onError: () => toast.error("Failed to start action"),
   });
 
-  const { data: overdueTotal } = useQuery({
-    queryKey: ["overdue-count"],
-    queryFn: async () => {
-      const { count } = await supabase
+  const completeAction = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
         .from("decision_outcome_log")
-        .select("id", { count: "exact", head: true })
-        .eq("execution_status", "overdue");
-      return count || 0;
+        .update({
+          execution_status: "completed",
+          execution_completed_at: new Date().toISOString(),
+          outcome_success: true,
+          outcome_timestamp: new Date().toISOString(),
+          status: "closed",
+        })
+        .eq("id", id);
+      if (error) throw error;
     },
-    staleTime: 30_000,
+    onSuccess: () => {
+      invalidateAll();
+      toast.success("Action completed — outcome recorded ✓");
+    },
+    onError: () => toast.error("Failed to complete action"),
+  });
+
+  const dismissAction = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("decision_outcome_log")
+        .update({
+          execution_status: "completed",
+          execution_completed_at: new Date().toISOString(),
+          outcome_success: false,
+          outcome_timestamp: new Date().toISOString(),
+          status: "closed",
+          action_type: "dismissed",
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast("Action dismissed", { description: "Marked as not applicable" });
+    },
+    onError: () => toast.error("Failed to dismiss"),
   });
 
   const executionRate = counts
-    ? Math.round(((counts.done) / Math.max(counts.pending + counts.active + counts.done + (overdueTotal || 0), 1)) * 100)
+    ? Math.round((counts.done / Math.max(counts.total, 1)) * 100)
     : 0;
 
   if (isLoading || actions.length === 0) return null;
 
   const isOverdue = (action: PendingAction) => {
+    if (action.execution_status === "overdue") return true;
     if (!action.review_sla_hours) return false;
     const created = new Date(action.created_at).getTime();
     const slaMs = action.review_sla_hours * 3600_000;
@@ -104,6 +144,7 @@ export function ActionsAwaitingStrip() {
   };
 
   const overdueCount = actions.filter(isOverdue).length;
+  const isInProgress = (a: PendingAction) => a.execution_status === "in_progress";
 
   return (
     <Card className={overdueCount > 0 ? "border-destructive/40 bg-destructive/5" : "border-primary/30 bg-primary/5"}>
@@ -119,7 +160,7 @@ export function ActionsAwaitingStrip() {
             {overdueCount > 0 && (
               <Badge variant="destructive" className="text-[10px] h-5 animate-pulse">
                 <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
-                {overdueCount} overdue
+                {counts?.overdue || overdueCount} overdue
               </Badge>
             )}
           </div>
@@ -127,7 +168,7 @@ export function ActionsAwaitingStrip() {
             variant="ghost"
             size="sm"
             className="text-xs gap-1 h-7"
-            onClick={() => navigate("/decision-ops")}
+            onClick={() => navigate("/evidence-command")}
           >
             View all <ChevronRight className="h-3 w-3" />
           </Button>
@@ -139,7 +180,7 @@ export function ActionsAwaitingStrip() {
             <span className="font-medium text-foreground">{counts?.pending || 0}</span> pending
           </span>
           <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">{overdueTotal || 0}</span> overdue
+            <span className="font-medium text-foreground">{counts?.overdue || 0}</span> overdue
           </span>
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">{counts?.active || 0}</span> active
@@ -152,47 +193,81 @@ export function ActionsAwaitingStrip() {
           </span>
         </div>
 
+        {/* Execution rate progress bar */}
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${
+              executionRate >= 50 ? "bg-primary" : executionRate >= 20 ? "bg-yellow-500" : "bg-destructive"
+            }`}
+            style={{ width: `${Math.max(executionRate, 2)}%` }}
+          />
+        </div>
+
         {/* Action items */}
         <div className="space-y-2">
           {actions.map((action) => {
             const overdue = isOverdue(action);
+            const active = isInProgress(action);
             return (
               <div
                 key={action.id}
-                className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${
+                className={`flex items-center gap-2 p-2.5 rounded-lg border transition-all ${
                   overdue
                     ? "border-destructive/30 bg-destructive/5"
+                    : active
+                    ? "border-primary/30 bg-primary/5"
                     : "border-border/50 hover:border-primary/30 hover:bg-primary/5"
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{action.signal_title}</p>
+                  <p className="text-xs font-medium truncate">{action.signal_title}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <Badge variant="outline" className="text-[9px] h-4">{action.domain}</Badge>
-                    {action.impact_score && (
-                      <Badge variant="outline" className="text-[9px] h-4">
-                        Impact: {action.impact_score}
-                      </Badge>
-                    )}
                     <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
                       <Clock className="h-2.5 w-2.5" />
                       {formatDistanceToNow(new Date(action.created_at), { addSuffix: true })}
                     </span>
                     {overdue && (
-                      <Badge variant="destructive" className="text-[9px] h-4 animate-pulse">
-                        OVERDUE
-                      </Badge>
+                      <Badge variant="destructive" className="text-[9px] h-4 animate-pulse">SLA BREACH</Badge>
+                    )}
+                    {active && (
+                      <Badge className="text-[9px] h-4 bg-primary/20 text-primary border-0">IN PROGRESS</Badge>
                     )}
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  className="h-7 text-[10px] px-3 gap-1 shrink-0"
-                  onClick={() => executeAction.mutate(action.id)}
-                  disabled={executeAction.isPending}
-                >
-                  <Play className="h-3 w-3" /> Execute
-                </Button>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {active ? (
+                    <Button
+                      size="sm"
+                      className="h-7 text-[10px] px-2 gap-1 bg-green-600 hover:bg-green-700"
+                      onClick={() => completeAction.mutate(action.id)}
+                      disabled={completeAction.isPending}
+                    >
+                      <CheckCheck className="h-3 w-3" /> Done
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="h-7 text-[10px] px-2 gap-1"
+                      onClick={() => executeAction.mutate(action.id)}
+                      disabled={executeAction.isPending}
+                    >
+                      <Play className="h-3 w-3" /> Start
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => dismissAction.mutate(action.id)}
+                    disabled={dismissAction.isPending}
+                    title="Dismiss — not applicable"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             );
           })}
