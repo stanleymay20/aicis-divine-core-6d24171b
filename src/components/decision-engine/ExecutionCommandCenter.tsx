@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   PlayCircle, PauseCircle, CheckCircle, XCircle, AlertTriangle,
-  Clock, ChevronDown, ChevronUp, User
+  Clock, ChevronDown, ChevronUp, User, ClipboardCheck
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
+import { CompleteActionDialog } from "./CompleteActionDialog";
 
 interface ExecRecord {
   id: string;
@@ -34,6 +35,8 @@ export default function ExecutionCommandCenter() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [ownerInput, setOwnerInput] = useState<Record<string, string>>({});
   const [blockerInput, setBlockerInput] = useState<Record<string, string>>({});
+  const [completeDialogId, setCompleteDialogId] = useState<string | null>(null);
+  const [completeDialogTitle, setCompleteDialogTitle] = useState<string>("");
 
   const { data: records = [] } = useQuery<ExecRecord[]>({
     queryKey: ["execution-command-records"],
