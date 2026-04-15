@@ -166,7 +166,7 @@ export function ActionsAwaitingStrip() {
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{action.signal_title}</p>
+                  <p className="text-sm font-medium truncate">{action.signal_title}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <Badge variant="outline" className="text-[9px] h-4">{action.domain}</Badge>
                     {action.impact_score && (

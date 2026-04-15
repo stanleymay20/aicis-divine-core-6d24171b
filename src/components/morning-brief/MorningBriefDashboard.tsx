@@ -22,6 +22,7 @@ import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
 import { TopRisksWidget } from "./TopRisksWidget";
 import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidget";
 import { SystemStatusStrip } from "./SystemStatusStrip";
+import { SystemObservabilityWidget } from "./SystemObservabilityWidget";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
@@ -59,13 +60,13 @@ export const MorningBriefDashboard = () => {
       {/* ── HERO: What + When + System Health ── */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold leading-tight">
+          <h1 className="text-lg sm:text-xl font-semibold leading-tight">
             {greeting}, {firstName}.
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Here's what needs your attention.
           </p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {format(new Date(), "EEEE, MMMM d · HH:mm")} UTC
           </p>
         </div>
@@ -83,6 +84,9 @@ export const MorningBriefDashboard = () => {
 
       {/* ── PRIORITY ACTIONS: What to do now ── */}
       <PriorityDecisionsPanel />
+
+      {/* ── SYSTEM HEALTH: Observability ── */}
+      <SystemObservabilityWidget />
 
       {/* ── PROGRESSIVE DISCLOSURE: Everything else ── */}
       <Collapsible open={showMore} onOpenChange={setShowMore}>
@@ -116,7 +120,7 @@ export const MorningBriefDashboard = () => {
           <Card className="border-border">
             <CardContent className="p-4">
               <h3 className="text-sm font-semibold mb-3">What To Do Next</h3>
-              <div className="grid sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <ActionCard
                   icon={<Radio className="h-4 w-4 text-primary" />}
                   title="Review Risks"
@@ -166,7 +170,7 @@ const ActionCard = ({ icon, title, desc, onClick }: {
     <div className="shrink-0">{icon}</div>
     <div className="flex-1 min-w-0">
       <p className="text-sm font-medium group-hover:text-primary transition-colors">{title}</p>
-      <p className="text-[11px] text-muted-foreground">{desc}</p>
+      <p className="text-xs text-muted-foreground">{desc}</p>
     </div>
     <ArrowRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
   </button>
