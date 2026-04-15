@@ -75,6 +75,9 @@ export const MorningBriefDashboard = () => {
       {/* ── EXPOSURE: 3-4 compact KPIs ── */}
       <BusinessExposureStrip />
 
+      {/* ── 🚨 ACTIONS AWAITING: Execution activation ── */}
+      <ActionsAwaitingStrip />
+
       {/* ── TOP RISKS: 3-5 critical signals with impact + action ── */}
       <GlobalSignalsBrief onSignalClick={handleSignalClick} />
 
