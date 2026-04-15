@@ -30,7 +30,7 @@ export function ActionsAwaitingStrip() {
       const { data } = await supabase
         .from("decision_outcome_log")
         .select("id, signal_title, domain, impact_score, execution_status, created_at, review_sla_hours")
-        .in("execution_status", ["not_started"])
+        .in("execution_status", ["not_started", "overdue"])
         .order("impact_score", { ascending: false, nullsFirst: false })
         .limit(5);
       return (data as any) || [];
@@ -77,6 +77,22 @@ export function ActionsAwaitingStrip() {
     },
     onError: () => toast.error("Failed to start action"),
   });
+
+  const { data: overdueTotal } = useQuery({
+    queryKey: ["overdue-count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("decision_outcome_log")
+        .select("id", { count: "exact", head: true })
+        .eq("execution_status", "overdue");
+      return count || 0;
+    },
+    staleTime: 30_000,
+  });
+
+  const executionRate = counts
+    ? Math.round(((counts.done) / Math.max(counts.pending + counts.active + counts.done + (overdueTotal || 0), 1)) * 100)
+    : 0;
 
   if (isLoading || actions.length === 0) return null;
 
