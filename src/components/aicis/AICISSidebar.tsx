@@ -32,14 +32,9 @@ interface SidebarProps {
 const navItems = [
   { id: "brief", label: "Today's Brief", icon: Sunrise, path: "/morning-brief" },
   { id: "signals", label: "Supply Chain Risks", icon: Radio, path: "/live" },
-  { id: "resolution", label: "Risk Map", icon: Layers, path: "/resolution" },
-  { id: "atlas", label: "Risk Atlas", icon: Globe, path: "/risk-atlas" },
-  { id: "watchlist", label: "Tracked Markets", icon: Eye, path: "/watchlist" },
-  { id: "learning", label: "System Accuracy", icon: Brain, path: "/learning" },
   { id: "decisions", label: "Actions & Outcomes", icon: Activity, path: "/decision-ops" },
+  { id: "atlas", label: "Risk Atlas", icon: Globe, path: "/risk-atlas" },
   { id: "outcomes", label: "Proven Results", icon: TrendingUp, path: "/evidence-command" },
-  { id: "governance", label: "Governance", icon: Shield, path: "/governance" },
-  { id: "developers", label: "Developers", icon: Code2, path: "/developers" },
   { id: "settings", label: "Settings", icon: Settings, path: "/admin" },
 ];
 

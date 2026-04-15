@@ -30,7 +30,7 @@ export function ActionsAwaitingStrip() {
       const { data } = await supabase
         .from("decision_outcome_log")
         .select("id, signal_title, domain, impact_score, execution_status, created_at, review_sla_hours")
-        .in("execution_status", ["not_started"])
+        .in("execution_status", ["not_started", "overdue"])
         .order("impact_score", { ascending: false, nullsFirst: false })
         .limit(5);
       return (data as any) || [];
@@ -78,6 +78,22 @@ export function ActionsAwaitingStrip() {
     onError: () => toast.error("Failed to start action"),
   });
 
+  const { data: overdueTotal } = useQuery({
+    queryKey: ["overdue-count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("decision_outcome_log")
+        .select("id", { count: "exact", head: true })
+        .eq("execution_status", "overdue");
+      return count || 0;
+    },
+    staleTime: 30_000,
+  });
+
+  const executionRate = counts
+    ? Math.round(((counts.done) / Math.max(counts.pending + counts.active + counts.done + (overdueTotal || 0), 1)) * 100)
+    : 0;
+
   if (isLoading || actions.length === 0) return null;
 
   const isOverdue = (action: PendingAction) => {
@@ -118,15 +134,21 @@ export function ActionsAwaitingStrip() {
         </div>
 
         {/* Metrics strip */}
-        <div className="flex gap-3 text-[11px]">
+        <div className="flex flex-wrap gap-3 text-xs">
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">{counts?.pending || 0}</span> pending
           </span>
           <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">{counts?.active || 0}</span> in progress
+            <span className="font-medium text-foreground">{overdueTotal || 0}</span> overdue
           </span>
           <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">{counts?.done || 0}</span> completed
+            <span className="font-medium text-foreground">{counts?.active || 0}</span> active
+          </span>
+          <span className="text-muted-foreground">
+            <span className="font-medium text-foreground">{counts?.done || 0}</span> done
+          </span>
+          <span className={executionRate >= 50 ? "text-primary font-medium" : "text-destructive font-medium"}>
+            {executionRate}% execution rate
           </span>
         </div>
 
@@ -144,7 +166,7 @@ export function ActionsAwaitingStrip() {
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{action.signal_title}</p>
+                  <p className="text-sm font-medium truncate">{action.signal_title}</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <Badge variant="outline" className="text-[9px] h-4">{action.domain}</Badge>
                     {action.impact_score && (
