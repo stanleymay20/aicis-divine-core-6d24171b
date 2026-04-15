@@ -1,12 +1,13 @@
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity, PlayCircle, BarChart3, Beaker, Flame } from "lucide-react";
+import { Activity, PlayCircle, BarChart3, Beaker, Flame, Shield } from "lucide-react";
 import DailyTaskPanel from "@/components/decision-engine/DailyTaskPanel";
 import ExecutionCommandCenter from "@/components/decision-engine/ExecutionCommandCenter";
 import OutcomeInputPanel from "@/components/decision-engine/OutcomeInputPanel";
 import PilotModePanel from "@/components/decision-engine/PilotModePanel";
 import OutcomeBacklogBurner from "@/components/decision-engine/OutcomeBacklogBurner";
 import MeasuredOutcomeKPI from "@/components/decision-engine/MeasuredOutcomeKPI";
+import DecisionReviewQueue from "@/components/decision-engine/DecisionReviewQueue";
 
 export default function DecisionOperations() {
   return (
@@ -22,22 +23,23 @@ export default function DecisionOperations() {
           </p>
         </div>
 
+        <DecisionReviewQueue />
         <DailyTaskPanel />
         <MeasuredOutcomeKPI />
 
         <Tabs defaultValue="execution" className="w-full">
           <TabsList className="bg-muted/50 p-0.5 h-auto flex-wrap">
             <TabsTrigger value="backlog" className="text-xs gap-1.5 data-[state=active]:bg-card">
-              <Flame className="h-3.5 w-3.5" /> Pending Actions
+              <Flame className="h-3.5 w-3.5" /> Pending
             </TabsTrigger>
             <TabsTrigger value="execution" className="text-xs gap-1.5 data-[state=active]:bg-card">
-              <PlayCircle className="h-3.5 w-3.5" /> In Progress
+              <PlayCircle className="h-3.5 w-3.5" /> Execute
             </TabsTrigger>
             <TabsTrigger value="outcomes" className="text-xs gap-1.5 data-[state=active]:bg-card">
               <BarChart3 className="h-3.5 w-3.5" /> Results
             </TabsTrigger>
             <TabsTrigger value="pilot" className="text-xs gap-1.5 data-[state=active]:bg-card">
-              <Beaker className="h-3.5 w-3.5" /> Pilot Report
+              <Beaker className="h-3.5 w-3.5" /> Pilot
             </TabsTrigger>
           </TabsList>
 

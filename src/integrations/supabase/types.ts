@@ -2494,6 +2494,7 @@ export type Database = {
           created_at: string | null
           criticality_tier: string | null
           decision_features: Json | null
+          decision_id: string | null
           domain: string | null
           event_confirmed: boolean | null
           event_confirmed_date: string | null
@@ -2565,6 +2566,7 @@ export type Database = {
           created_at?: string | null
           criticality_tier?: string | null
           decision_features?: Json | null
+          decision_id?: string | null
           domain?: string | null
           event_confirmed?: boolean | null
           event_confirmed_date?: string | null
@@ -2636,6 +2638,7 @@ export type Database = {
           created_at?: string | null
           criticality_tier?: string | null
           decision_features?: Json | null
+          decision_id?: string | null
           domain?: string | null
           event_confirmed?: boolean | null
           event_confirmed_date?: string | null
@@ -2694,7 +2697,15 @@ export type Database = {
           time_to_outcome_days?: number | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "decision_outcome_log_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "adi_decisions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       decision_recommendation_runs: {
         Row: {
@@ -10192,6 +10203,7 @@ export type Database = {
           total_breaks: number
         }[]
       }
+      auto_review_decisions: { Args: { _batch_size?: number }; Returns: Json }
       batch_expand_entities: { Args: { _batch_size?: number }; Returns: Json }
       batch_generate_event_links: {
         Args: { p_batch_size?: number }
@@ -10200,6 +10212,10 @@ export type Database = {
       batch_generate_links: { Args: { _batch_size?: number }; Returns: Json }
       batch_migrate_snapshots: { Args: { _batch_size?: number }; Returns: Json }
       batch_migrate_villages: { Args: { _batch_size?: number }; Returns: Json }
+      bridge_decision_to_outcome: {
+        Args: { _decision_id: string }
+        Returns: string
+      }
       check_ip_access: {
         Args: { _ip_address: unknown; _org_id: string }
         Returns: boolean
