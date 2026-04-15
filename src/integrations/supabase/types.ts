@@ -3392,6 +3392,13 @@ export type Database = {
             referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "entity_aliases_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
         ]
       }
       entity_event_links: {
@@ -3449,11 +3456,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "entity_event_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
+          {
             foreignKeyName: "entity_event_links_event_id_fkey"
             columns: ["event_id"]
             isOneToOne: false
             referencedRelation: "normalized_events"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_event_links_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_event_feed"
+            referencedColumns: ["event_id"]
           },
         ]
       }
@@ -3513,6 +3534,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_external_ids_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
           },
         ]
       }
@@ -3589,6 +3617,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
+          {
             foreignKeyName: "entity_links_target_entity_id_fkey"
             columns: ["target_entity_id"]
             isOneToOne: false
@@ -3615,6 +3650,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
           },
         ]
       }
@@ -3678,6 +3720,13 @@ export type Database = {
             referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "entity_merge_log_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
         ]
       }
       entity_metric_links: {
@@ -3735,11 +3784,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "entity_metric_links_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
+          {
             foreignKeyName: "entity_metric_links_metric_id_fkey"
             columns: ["metric_id"]
             isOneToOne: false
             referencedRelation: "normalized_metrics"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_metric_links_metric_id_fkey"
+            columns: ["metric_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_signals_feed"
+            referencedColumns: ["signal_id"]
           },
         ]
       }
@@ -6048,6 +6111,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "normalized_events_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
+          {
             foreignKeyName: "normalized_events_location_entity_id_fkey"
             columns: ["location_entity_id"]
             isOneToOne: false
@@ -6074,6 +6144,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_events_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
           },
           {
             foreignKeyName: "normalized_events_provider_run_id_fkey"
@@ -6191,6 +6268,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "normalized_metrics_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
+          {
             foreignKeyName: "normalized_metrics_location_entity_id_fkey"
             columns: ["location_entity_id"]
             isOneToOne: false
@@ -6217,6 +6301,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_location_entity_id_fkey"
+            columns: ["location_entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
           },
           {
             foreignKeyName: "normalized_metrics_provider_run_id_fkey"
@@ -6259,6 +6350,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "country_coverage_full"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "normalized_metrics_related_entity_id_fkey"
+            columns: ["related_entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
           },
         ]
       }
@@ -7146,6 +7244,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      quantivis_webhook_queue: {
+        Row: {
+          attempts: number
+          created_at: string
+          delivered_at: string | null
+          event_type: string
+          id: string
+          last_error: string | null
+          max_attempts: number
+          next_retry_at: string
+          payload: Json
+          status: string
+          target_url: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          delivered_at?: string | null
+          event_type: string
+          id?: string
+          last_error?: string | null
+          max_attempts?: number
+          next_retry_at?: string
+          payload?: Json
+          status?: string
+          target_url: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          delivered_at?: string | null
+          event_type?: string
+          id?: string
+          last_error?: string | null
+          max_attempts?: number
+          next_retry_at?: string
+          payload?: Json
+          status?: string
+          target_url?: string
+        }
+        Relationships: []
       }
       query_feedback: {
         Row: {
@@ -9952,6 +10092,78 @@ export type Database = {
         }
         Relationships: []
       }
+      quantivis_country_dashboard: {
+        Row: {
+          avg_freshness: number | null
+          country_name: string | null
+          domain_count: number | null
+          is_reporting_entity: boolean | null
+          iso3: string | null
+          latest_data_at: string | null
+          link_count: number | null
+          provider_count: number | null
+          sovereignty_status:
+            | Database["public"]["Enums"]["sovereignty_status"]
+            | null
+          total_metrics: number | null
+        }
+        Relationships: []
+      }
+      quantivis_entity_graph: {
+        Row: {
+          canonical_name: string | null
+          entity_id: string | null
+          entity_type: Database["public"]["Enums"]["entity_type"] | null
+          event_count: number | null
+          is_reporting_entity: boolean | null
+          iso3: string | null
+          metric_count: number | null
+          sovereignty_status:
+            | Database["public"]["Enums"]["sovereignty_status"]
+            | null
+        }
+        Relationships: []
+      }
+      quantivis_event_feed: {
+        Row: {
+          description: string | null
+          entity_name: string | null
+          entity_type: Database["public"]["Enums"]["entity_type"] | null
+          event_date: string | null
+          event_id: string | null
+          event_type: string | null
+          ingested_at: string | null
+          iso3: string | null
+          provider_name: string | null
+          severity: number | null
+          source_url: string | null
+          title: string | null
+        }
+        Relationships: []
+      }
+      quantivis_signals_feed: {
+        Row: {
+          confidence: number | null
+          domain: string | null
+          entity_name: string | null
+          entity_type: Database["public"]["Enums"]["entity_type"] | null
+          freshness_score: number | null
+          ingested_at: string | null
+          iso3: string | null
+          metric_name: string | null
+          period: string | null
+          provenance_observed_at: string | null
+          signal_id: string | null
+          source_provider: string | null
+          source_url: string | null
+          sovereignty_status:
+            | Database["public"]["Enums"]["sovereignty_status"]
+            | null
+          unit: string | null
+          value: number | null
+        }
+        Relationships: []
+      }
       system_trust_score: {
         Row: {
           acceptance_rate: number | null
@@ -9981,6 +10193,10 @@ export type Database = {
         }[]
       }
       batch_expand_entities: { Args: { _batch_size?: number }; Returns: Json }
+      batch_generate_event_links: {
+        Args: { p_batch_size?: number }
+        Returns: Json
+      }
       batch_generate_links: { Args: { _batch_size?: number }; Returns: Json }
       batch_migrate_snapshots: { Args: { _batch_size?: number }; Returns: Json }
       batch_migrate_villages: { Args: { _batch_size?: number }; Returns: Json }
@@ -10011,6 +10227,10 @@ export type Database = {
       }
       count_districts_needing_settlements: { Args: never; Returns: number }
       count_uncovered_regions: { Args: never; Returns: number }
+      enqueue_quantivis_webhook: {
+        Args: { p_event_type: string; p_payload: Json; p_target_url?: string }
+        Returns: string
+      }
       get_countries_needing_villages: {
         Args: never
         Returns: {
