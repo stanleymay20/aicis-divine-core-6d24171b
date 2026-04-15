@@ -16,6 +16,7 @@ import { SignalDrillDown } from "@/components/command-center/SignalDrillDown";
 import { useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BusinessExposureStrip } from "./BusinessExposureStrip";
+import { ActionsAwaitingStrip } from "./ActionsAwaitingStrip";
 import { ExecutiveProofPanel } from "./ExecutiveProofPanel";
 import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
 import { TopRisksWidget } from "./TopRisksWidget";
