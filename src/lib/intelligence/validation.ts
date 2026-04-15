@@ -49,7 +49,7 @@ export async function runSmallSampleValidation(
   // 1. Fetch small sample
   const { data: events, error: fetchErr } = await supabase
     .from('normalized_events')
-    .select('id, entity_id, location_entity_id, event_type, domain, severity')
+    .select('id, entity_id, location_entity_id, event_type, severity')
     .order('created_at', { ascending: false })
     .limit(sampleSize);
 
@@ -58,7 +58,7 @@ export async function runSmallSampleValidation(
     return buildEmptyReport(sampleSize, errors, counters);
   }
 
-  const rows = (events ?? []) as RawEventRow[];
+  const rows = (events ?? []) as unknown as RawEventRow[];
 
   // 2. Test event linking (no DB writes)
   const existingKeys = new Set<string>(); // Empty = treat all as new
@@ -166,12 +166,12 @@ export async function runFullEventLinkGeneration(batchSize = 500) {
   while (true) {
     const { data: batch } = await supabase
       .from('normalized_events')
-      .select('id, entity_id, location_entity_id, event_type, domain, severity')
+      .select('id, entity_id, location_entity_id, event_type, severity')
       .range(offset, offset + batchSize - 1);
 
     if (!batch || batch.length === 0) break;
 
-    const { links, counters } = prepareEventLinks(batch as RawEventRow[], existingKeys, globalCounters);
+    const { links, counters } = prepareEventLinks(batch as unknown as RawEventRow[], existingKeys, globalCounters);
 
     if (links.length > 0) {
       const { error } = await supabase
