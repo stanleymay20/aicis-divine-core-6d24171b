@@ -183,8 +183,8 @@ export default function ExecutionCommandCenter() {
 
                       {rec.execution_status === "in_progress" && (
                         <div className="flex gap-2">
-                          <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => updateExec.mutate({ id: rec.id, updates: { execution_status: "completed", execution_completed_at: new Date().toISOString() } })}>
-                            <CheckCircle className="h-3 w-3 mr-1" />Complete
+                          <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => { setCompleteDialogId(rec.id); setCompleteDialogTitle(rec.signal_title || ""); }}>
+                            <ClipboardCheck className="h-3 w-3 mr-1" />Complete & Record
                           </Button>
                           <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => updateExec.mutate({ id: rec.id, updates: { execution_status: "abandoned" } })}>
                             <XCircle className="h-3 w-3 mr-1" />Abandon
@@ -218,6 +218,12 @@ export default function ExecutionCommandCenter() {
           </TabsContent>
         </Tabs>
       </CardContent>
+      <CompleteActionDialog
+        open={!!completeDialogId}
+        onOpenChange={(open) => { if (!open) setCompleteDialogId(null); }}
+        actionId={completeDialogId}
+        actionTitle={completeDialogTitle}
+      />
     </Card>
   );
 }
