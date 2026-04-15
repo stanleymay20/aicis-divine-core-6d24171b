@@ -151,8 +151,6 @@ export function ActionsAwaitingStrip() {
             {executionRate}% execution rate
           </span>
         </div>
-          </span>
-        </div>
 
         {/* Action items */}
         <div className="space-y-2">
