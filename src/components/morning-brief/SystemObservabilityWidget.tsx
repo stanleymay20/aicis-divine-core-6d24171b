@@ -71,7 +71,7 @@ export function SystemObservabilityWidget() {
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="flex items-center gap-1.5">
             {data.cronErrors === 0 ? (
-              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+              <CheckCircle2 className="h-3 w-3 text-primary" />
             ) : (
               <AlertCircle className="h-3 w-3 text-destructive" />
             )}
@@ -81,23 +81,23 @@ export function SystemObservabilityWidget() {
           </div>
           <div className="flex items-center gap-1.5">
             {data.zombieJobs === 0 ? (
-              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+              <CheckCircle2 className="h-3 w-3 text-primary" />
             ) : (
-              <AlertCircle className="h-3 w-3 text-amber-500" />
+              <AlertCircle className="h-3 w-3 text-accent-foreground" />
             )}
             <span className="text-muted-foreground">
               <span className="font-medium text-foreground">{data.zombieJobs}</span> zombie jobs
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+            <CheckCircle2 className="h-3 w-3 text-primary" />
             <span className="text-muted-foreground">
               <span className="font-medium text-foreground">{data.successfulJobs24h}</span> jobs OK (24h)
             </span>
           </div>
           <div className="flex items-center gap-1.5">
             <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className={data.executionRate >= 50 ? "text-emerald-500 font-medium" : "text-amber-500 font-medium"}>
+            <span className={data.executionRate >= 50 ? "text-primary font-medium" : "text-destructive font-medium"}>
               {data.executionRate}% exec rate
             </span>
           </div>

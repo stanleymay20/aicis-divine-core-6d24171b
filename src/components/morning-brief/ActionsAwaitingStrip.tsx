@@ -147,7 +147,7 @@ export function ActionsAwaitingStrip() {
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">{counts?.done || 0}</span> done
           </span>
-          <span className={executionRate >= 50 ? "text-emerald-500 font-medium" : "text-amber-500 font-medium"}>
+          <span className={executionRate >= 50 ? "text-primary font-medium" : "text-destructive font-medium"}>
             {executionRate}% execution rate
           </span>
         </div>
