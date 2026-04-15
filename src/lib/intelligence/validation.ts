@@ -4,10 +4,10 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { prepareEventLinks, buildExistingKeySet, type RawEventRow } from './event-linking';
+import { prepareEventLinks, buildExistingKeySet, chunkArray, type RawEventRow } from './event-linking';
 import { evaluateTriggers, type TriggerEventInput } from './decision-triggers';
 import { assessImpact } from './impact-model';
-import { normalizeEventType, estimateUrgency } from './event-types';
+import { normalizeEventType } from './event-types';
 import { createCounters, summarizeCounters } from './observability';
 
 export interface ValidationReport {
@@ -46,10 +46,10 @@ export async function runSmallSampleValidation(
   const errors: string[] = [];
   const counters = createCounters();
 
-  // 1. Fetch small sample
+  // 1. Fetch small sample — include domain, iso3, started_at for full pipeline test
   const { data: events, error: fetchErr } = await supabase
     .from('normalized_events')
-    .select('id, entity_id, location_entity_id, event_type, severity')
+    .select('id, entity_id, location_entity_id, event_type, severity, iso3, started_at')
     .order('created_at', { ascending: false })
     .limit(sampleSize);
 
@@ -58,7 +58,7 @@ export async function runSmallSampleValidation(
     return buildEmptyReport(sampleSize, errors, counters);
   }
 
-  const rows = (events ?? []) as unknown as RawEventRow[];
+  const rows = (events ?? []) as unknown as (RawEventRow & { iso3?: string; started_at?: string })[];
 
   // 2. Test event linking (no DB writes)
   const existingKeys = new Set<string>(); // Empty = treat all as new
@@ -75,10 +75,12 @@ export async function runSmallSampleValidation(
   const normalizedTypes = rawTypes.map(t => normalizeEventType(t));
   const unmapped = normalizedTypes.filter(t => t === 'anomaly').length;
 
-  // 4. Test impact model
-  const impacts = rows
-    .filter(r => r.severity != null && r.domain)
-    .map(r => assessImpact(r.severity!, 0.6, r.domain as any));
+  // 4. Test impact model — infer domain from event_type when not available
+  const impactRows = rows.filter(r => r.severity != null);
+  const impacts = impactRows.map(r => {
+    const domain = inferDomainFromEventType(r.event_type) || 'security';
+    return assessImpact(r.severity!, r.severity! > 50 ? 0.7 : 0.5, domain as any);
+  });
 
   const impactResult = {
     actionable: impacts.filter(i => i.isActionable).length,
@@ -88,17 +90,16 @@ export async function runSmallSampleValidation(
       : 0,
   };
 
-  // 5. Test decision triggers
-  const triggerInputs: TriggerEventInput[] = rows
-    .filter(r => r.severity != null && r.domain)
-    .map(r => ({
-      id: r.id,
-      event_type: normalizeEventType(r.event_type),
-      severity: r.severity!,
-      domain: r.domain as any,
-      occurred_at: new Date().toISOString(), // approximate for sample
-      confidence: 0.6,
-    }));
+  // 5. Test decision triggers — use iso3 + started_at from actual rows
+  const triggerInputs: TriggerEventInput[] = impactRows.map(r => ({
+    id: r.id,
+    event_type: normalizeEventType(r.event_type),
+    severity: r.severity!,
+    domain: (inferDomainFromEventType(r.event_type) || 'security') as any,
+    iso3: (r as any).iso3 ?? undefined,
+    occurred_at: (r as any).started_at ?? new Date().toISOString(),
+    confidence: r.severity! > 50 ? 0.7 : 0.5,
+  }));
 
   const triggers = evaluateTriggers(triggerInputs, {}, counters);
   const triggerTypes: Record<string, number> = {};
@@ -125,6 +126,26 @@ export async function runSmallSampleValidation(
   };
 }
 
+/**
+ * Infer an intelligence domain from a raw event_type string.
+ * Used when `domain` column is absent from the DB row.
+ */
+function inferDomainFromEventType(eventType?: string | null): string | null {
+  if (!eventType) return null;
+  const lower = eventType.toLowerCase();
+  if (lower.includes('conflict') || lower.includes('security') || lower.includes('terror')) return 'security';
+  if (lower.includes('health') || lower.includes('pandemic') || lower.includes('epidemic')) return 'health';
+  if (lower.includes('market') || lower.includes('financial') || lower.includes('economic')) return 'finance';
+  if (lower.includes('climate') || lower.includes('weather') || lower.includes('flood') || lower.includes('drought')) return 'climate';
+  if (lower.includes('food') || lower.includes('famine') || lower.includes('crop')) return 'food';
+  if (lower.includes('energy') || lower.includes('oil') || lower.includes('power')) return 'energy';
+  if (lower.includes('governance') || lower.includes('policy') || lower.includes('election') || lower.includes('diplomatic')) return 'governance';
+  if (lower.includes('education') || lower.includes('school')) return 'education';
+  if (lower.includes('population') || lower.includes('migration') || lower.includes('refugee')) return 'population';
+  if (lower.includes('supply')) return 'finance';
+  return null;
+}
+
 function buildEmptyReport(
   sampleSize: number,
   errors: string[],
@@ -143,63 +164,67 @@ function buildEmptyReport(
 }
 
 /**
- * Post-72h: Run full event link generation.
- * Call this ONLY after DB load has dropped.
- * Uses batched reads and writes to avoid overwhelming the DB.
+ * Post-72h: Run full event link generation via edge function (server-side, service role).
+ * This is the SAFE path — calls the planetary-backfill edge function
+ * which uses service role and can write to entity_event_links.
+ * 
+ * For client-side dry-run validation, use runSmallSampleValidation() instead.
  */
-export async function runFullEventLinkGeneration(batchSize = 500) {
-  console.log('[AICIS] Starting full event link generation...');
+export async function runFullEventLinkGeneration(batchSize = 200): Promise<{
+  totalLinks: number;
+  totalSkipped: number;
+  errors: string[];
+}> {
+  console.log('[AICIS] Triggering server-side event link generation...');
 
-  let offset = 0;
-  let totalLinks = 0;
-  let totalSkipped = 0;
-  const globalCounters = createCounters();
+  const { data, error } = await supabase.functions.invoke('planetary-backfill', {
+    body: { action: 'generate_event_links', batch_size: batchSize },
+  });
 
-  // Build existing key set from current links
-  const { data: existingLinks } = await supabase
-    .from('entity_event_links')
-    .select('event_id, entity_id, link_role');
-
-  const existingKeys = buildExistingKeySet(existingLinks ?? []);
-  console.log(`[AICIS] Existing links in DB: ${existingKeys.size}`);
-
-  while (true) {
-    const { data: batch } = await supabase
-      .from('normalized_events')
-      .select('id, entity_id, location_entity_id, event_type, severity')
-      .range(offset, offset + batchSize - 1);
-
-    if (!batch || batch.length === 0) break;
-
-    const { links, counters } = prepareEventLinks(batch as unknown as RawEventRow[], existingKeys, globalCounters);
-
-    if (links.length > 0) {
-      const { error } = await supabase
-        .from('entity_event_links')
-        .upsert(links.map(l => ({
-          event_id: l.event_id,
-          entity_id: l.entity_id,
-          link_role: l.link_role,
-        })), { onConflict: 'event_id,entity_id,link_role' });
-
-      if (error) {
-        console.error(`[AICIS] Batch insert error at offset ${offset}:`, error.message);
-      } else {
-        totalLinks += links.length;
-        // Add new links to existing set to prevent duplicates in subsequent batches
-        for (const l of links) {
-          existingKeys.add(`${l.event_id}|${l.entity_id}|${l.link_role}`);
-        }
-      }
-    }
-
-    totalSkipped += counters.recordsSkipped;
-    offset += batchSize;
-
-    if (batch.length < batchSize) break; // Last batch
+  if (error) {
+    console.error('[AICIS] Event link generation failed:', error.message);
+    return { totalLinks: 0, totalSkipped: 0, errors: [error.message] };
   }
 
-  const summary = summarizeCounters(globalCounters);
-  console.log('[AICIS] Full event link generation complete:', summary);
-  return { totalLinks, totalSkipped, ...summary };
+  console.log('[AICIS] Event link generation result:', data);
+  return {
+    totalLinks: data?.links_created ?? 0,
+    totalSkipped: data?.skipped ?? 0,
+    errors: data?.errors ?? [],
+  };
+}
+
+/**
+ * Client-side dry-run: prepare links without writing to DB.
+ * Useful for validating logic before committing.
+ */
+export async function dryRunEventLinks(sampleSize = 100): Promise<{
+  wouldCreate: number;
+  wouldSkip: number;
+  sampleEvents: number;
+  existingLinks: number;
+}> {
+  const { data: events } = await supabase
+    .from('normalized_events')
+    .select('id, entity_id, location_entity_id, event_type, severity')
+    .order('created_at', { ascending: false })
+    .limit(sampleSize);
+
+  const { data: existingLinks } = await supabase
+    .from('entity_event_links')
+    .select('event_id, entity_id, link_role')
+    .limit(1000);
+
+  const existingKeys = buildExistingKeySet(existingLinks ?? []);
+  const { links, counters } = prepareEventLinks(
+    (events ?? []) as unknown as RawEventRow[],
+    existingKeys,
+  );
+
+  return {
+    wouldCreate: links.length,
+    wouldSkip: counters.recordsSkipped,
+    sampleEvents: (events ?? []).length,
+    existingLinks: existingKeys.size,
+  };
 }

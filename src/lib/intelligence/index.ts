@@ -36,6 +36,6 @@ export {
 
 // Validation
 export {
-  runSmallSampleValidation, runFullEventLinkGeneration,
+  runSmallSampleValidation, runFullEventLinkGeneration, dryRunEventLinks,
   type ValidationReport,
 } from './validation';

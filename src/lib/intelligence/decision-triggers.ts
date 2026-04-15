@@ -6,7 +6,7 @@
 
 import {
   type EventType, type IntelligenceDomain, type SeverityBand,
-  classifySeverity, isEscalatory,
+  classifySeverity, isEscalatory, isRecovery,
 } from './event-types';
 import { type ImpactAssessment } from './impact-model';
 import { incrementCounter, type PipelineCounters } from './observability';
@@ -42,6 +42,8 @@ export interface TriggerConfig {
   propagationRiskThreshold: number;     // default 60
   structuralBreakMinCount: number;      // default 2
   minConfidence: number;                // default 0.4
+  recoveryMinCount: number;             // default 2
+  recoveryWindowHours: number;          // default 72
 }
 
 const DEFAULT_CONFIG: TriggerConfig = {
@@ -52,6 +54,8 @@ const DEFAULT_CONFIG: TriggerConfig = {
   propagationRiskThreshold: 60,
   structuralBreakMinCount: 2,
   minConfidence: 0.4,
+  recoveryMinCount: 2,
+  recoveryWindowHours: 72,
 };
 
 // ── Event Input (lightweight) ──────────────────────────────────────
@@ -217,6 +221,60 @@ function evaluateStructuralBreakCluster(
   }];
 }
 
+/**
+ * Recovery Opportunity: detects positive trend reversals worth surfacing.
+ * Fires when multiple recovery/risk_decrease events cluster in a country+domain.
+ */
+function evaluateRecoveryOpportunity(
+  events: TriggerEventInput[],
+  cfg: TriggerConfig,
+): DecisionTrigger[] {
+  const triggers: DecisionTrigger[] = [];
+  const windowMs = cfg.recoveryWindowHours * 3600_000;
+  const now = Date.now();
+
+  const recoveries = events.filter(e => {
+    if (!isRecovery(e.event_type)) return false;
+    const elapsed = now - new Date(e.occurred_at).getTime();
+    return elapsed <= windowMs;
+  });
+
+  // Group by domain+country
+  const groups = new Map<string, TriggerEventInput[]>();
+  for (const e of recoveries) {
+    if (!e.iso3) continue;
+    const key = `${e.domain}|${e.iso3}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(e);
+  }
+
+  for (const [key, group] of groups) {
+    if (group.length >= cfg.recoveryMinCount) {
+      const [domain, iso3] = key.split('|');
+      const avgSev = group.reduce((s, e) => s + e.severity, 0) / group.length;
+      // Recovery score: higher count + lower severity = stronger recovery signal
+      const recoveryScore = Math.min(100, 40 + group.length * 10 + (100 - avgSev) * 0.3);
+      triggers.push({
+        triggerType: 'recovery_opportunity',
+        severity: classifySeverity(avgSev),
+        score: Math.round(recoveryScore),
+        confidence: Math.min(1, 0.4 + group.length * 0.1),
+        domains: [domain as IntelligenceDomain],
+        countries: [iso3],
+        eventIds: group.map(e => e.id),
+        reason: 'positive_trend_reversal_detected',
+        metadata: {
+          recovery_count: group.length,
+          avg_severity: Math.round(avgSev),
+          window_hours: cfg.recoveryWindowHours,
+        },
+        generatedAt: new Date().toISOString(),
+      });
+    }
+  }
+  return triggers;
+}
+
 // ── Main Evaluator ─────────────────────────────────────────────────
 
 /**
@@ -237,14 +295,47 @@ export function evaluateTriggers(
     ...evaluateMultiDomainCompounding(events, cfg),
     ...evaluatePropagationRisk(events, cfg),
     ...evaluateStructuralBreakCluster(events, cfg),
+    ...evaluateRecoveryOpportunity(events, cfg),
   ];
 
+  // Deduplicate: if same eventIds set appears in multiple triggers, keep highest score
+  const deduped = deduplicateTriggers(all);
+
   // Sort by score descending
-  all.sort((a, b) => b.score - a.score);
+  deduped.sort((a, b) => b.score - a.score);
 
   if (c) {
-    incrementCounter(c, 'triggersGenerated', all.length);
+    incrementCounter(c, 'triggersGenerated', deduped.length);
+    incrementCounter(c, 'triggersSuppressed', all.length - deduped.length);
   }
 
-  return all;
+  return deduped;
+}
+
+/**
+ * Dedup triggers sharing >50% of eventIds — keep highest score.
+ */
+function deduplicateTriggers(triggers: DecisionTrigger[]): DecisionTrigger[] {
+  if (triggers.length <= 1) return triggers;
+
+  // Sort by score desc so we keep the best
+  const sorted = [...triggers].sort((a, b) => b.score - a.score);
+  const kept: DecisionTrigger[] = [];
+  const consumedEventSets: Set<string>[] = [];
+
+  for (const t of sorted) {
+    const tSet = new Set(t.eventIds);
+    const isDuplicate = consumedEventSets.some(existing => {
+      const overlap = [...tSet].filter(id => existing.has(id)).length;
+      const smaller = Math.min(tSet.size, existing.size);
+      return smaller > 0 && overlap / smaller > 0.5;
+    });
+
+    if (!isDuplicate) {
+      kept.push(t);
+      consumedEventSets.push(tSet);
+    }
+  }
+
+  return kept;
 }
