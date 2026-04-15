@@ -134,15 +134,23 @@ export function ActionsAwaitingStrip() {
         </div>
 
         {/* Metrics strip */}
-        <div className="flex gap-3 text-[11px]">
+        <div className="flex flex-wrap gap-3 text-xs">
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">{counts?.pending || 0}</span> pending
           </span>
           <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">{counts?.active || 0}</span> in progress
+            <span className="font-medium text-foreground">{overdueTotal || 0}</span> overdue
           </span>
           <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">{counts?.done || 0}</span> completed
+            <span className="font-medium text-foreground">{counts?.active || 0}</span> active
+          </span>
+          <span className="text-muted-foreground">
+            <span className="font-medium text-foreground">{counts?.done || 0}</span> done
+          </span>
+          <span className={executionRate >= 50 ? "text-emerald-500 font-medium" : "text-amber-500 font-medium"}>
+            {executionRate}% execution rate
+          </span>
+        </div>
           </span>
         </div>
 
