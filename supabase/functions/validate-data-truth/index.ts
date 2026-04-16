@@ -256,8 +256,33 @@ serve(async (req) => {
       tpAccuracy * 0.4 + maeScore * 0.3 + coverageScore * 0.3
     ));
 
+    // ── DUAL FORECAST SCORES ──
+    // Score A: Prospective (clean, from locked evaluations only)
+    const { data: prospectiveData } = await supabase
+      .from('forecast_prospective_evaluations')
+      .select('direction_hit, absolute_error, realized_direction, domain')
+      .eq('evaluation_locked', true)
+      .limit(1000);
+
+    const prospective = prospectiveData ?? [];
+    const prospTP = prospective.filter(p => p.realized_direction !== 'stable');
+    const prospTPHits = prospTP.filter(p => p.direction_hit).length;
+    const prospTPAccuracy = prospTP.length > 0 ? Math.round((prospTPHits / prospTP.length) * 100) : null;
+    const prospMAE = prospective.length > 0 ? prospective.reduce((s, p) => s + (p.absolute_error ?? 0), 0) / prospective.length : null;
+
+    // Score B: Operational (from all validation results, includes retrofitted data)
+    const operationalGrade = tpAccuracy >= 60 ? 'ANTICIPATING' : tpAccuracy >= 40 ? 'PREDICTING' : tpAccuracy >= 20 ? 'DETECTING' : 'SENSING';
+
     audits.forecasts = {
       score: forecastScore,
+      // Dual scores clearly separated
+      operational_score: forecastScore,
+      prospective_score: prospTPAccuracy !== null ? Math.min(100, Math.round(prospTPAccuracy * 0.4 + Math.max(0, 100 - (prospMAE ?? 0) * 10) * 0.3 + Math.min(100, (prospTP.length / 50) * 100) * 0.3)) : null,
+      prospective_sample_size: prospective.length,
+      prospective_tp_accuracy: prospTPAccuracy,
+      prospective_mae: prospMAE !== null ? Math.round(prospMAE * 100) / 100 : null,
+      prospective_status: prospective.length === 0 ? 'AWAITING_DATA' : prospective.length < 50 ? 'INSUFFICIENT_SAMPLE' : 'EVALUABLE',
+      // Operational details
       turning_point_accuracy: tpAccuracy,
       turning_points_total: turningPoints.length,
       turning_point_hits: tpHits,
@@ -266,8 +291,9 @@ serve(async (req) => {
       domain_breakdown: Object.fromEntries(
         Object.entries(domainTP).map(([k, v]) => [k, { ...v, accuracy: Math.round((v.hits / v.total) * 100) }])
       ),
-      intelligence_grade: tpAccuracy >= 60 ? 'ANTICIPATING' : tpAccuracy >= 40 ? 'PREDICTING' : tpAccuracy >= 20 ? 'DETECTING' : 'SENSING',
+      intelligence_grade: operationalGrade,
       passed: tpAccuracy >= 20 && avgMAE < 10,
+      caveat: 'Operational score includes retrofitted validation edits. Prospective score is clean.',
     };
 
     await supabase.from('data_quality_audits').insert({
@@ -279,6 +305,8 @@ serve(async (req) => {
     // ═══════════════════════════════════════════
     // 5. OVERALL TRUTH SCORE
     // ═══════════════════════════════════════════
+    const HARNESS_VERSION = 'v1.0';
+
     const overallScore = Math.round(
       (linkPrecision * 0.2) +
       (eventScore * 0.25) +
@@ -299,8 +327,11 @@ serve(async (req) => {
       recall_score: metricScore,
       semantic_validity: eventScore,
       evidence: {
+        harness_version: HARNESS_VERSION,
         grade: overallGrade,
         all_passed: allPassed,
+        forecast_caveat: 'Operational score includes retrofitted edits. See prospective_score for clean evaluation.',
+        prospective_forecast_status: audits.forecasts.prospective_status,
         audits,
         duration_ms: Date.now() - start,
       },
