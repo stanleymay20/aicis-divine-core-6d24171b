@@ -4517,6 +4517,69 @@ export type Database = {
           },
         ]
       }
+      forecast_prospective_evaluations: {
+        Row: {
+          absolute_error: number | null
+          created_at: string
+          direction_hit: boolean | null
+          domain: string
+          evaluation_locked: boolean
+          evaluation_window: string
+          forecast_id: string | null
+          horizon_days: number
+          id: string
+          iso3: string | null
+          model_version: string
+          predicted_at: string
+          predicted_direction: string
+          predicted_value: number
+          realization_due_at: string
+          realized_at: string | null
+          realized_direction: string | null
+          realized_value: number | null
+        }
+        Insert: {
+          absolute_error?: number | null
+          created_at?: string
+          direction_hit?: boolean | null
+          domain: string
+          evaluation_locked?: boolean
+          evaluation_window?: string
+          forecast_id?: string | null
+          horizon_days: number
+          id?: string
+          iso3?: string | null
+          model_version: string
+          predicted_at?: string
+          predicted_direction: string
+          predicted_value: number
+          realization_due_at: string
+          realized_at?: string | null
+          realized_direction?: string | null
+          realized_value?: number | null
+        }
+        Update: {
+          absolute_error?: number | null
+          created_at?: string
+          direction_hit?: boolean | null
+          domain?: string
+          evaluation_locked?: boolean
+          evaluation_window?: string
+          forecast_id?: string | null
+          horizon_days?: number
+          id?: string
+          iso3?: string | null
+          model_version?: string
+          predicted_at?: string
+          predicted_direction?: string
+          predicted_value?: number
+          realization_due_at?: string
+          realized_at?: string | null
+          realized_direction?: string | null
+          realized_value?: number | null
+        }
+        Relationships: []
+      }
       forecast_residuals: {
         Row: {
           created_at: string
@@ -9112,6 +9175,45 @@ export type Database = {
           metric_unit?: string | null
           metric_value?: number
           signature?: string | null
+        }
+        Relationships: []
+      }
+      truth_harness_versions: {
+        Row: {
+          backfilled_layers: string[] | null
+          created_at: string
+          frozen_at: string
+          id: string
+          measurement_fixes: string[] | null
+          notes: string | null
+          sampling_strategy: Json
+          scoring_formula: Json
+          structural_fixes: string[] | null
+          version_tag: string
+        }
+        Insert: {
+          backfilled_layers?: string[] | null
+          created_at?: string
+          frozen_at?: string
+          id?: string
+          measurement_fixes?: string[] | null
+          notes?: string | null
+          sampling_strategy: Json
+          scoring_formula: Json
+          structural_fixes?: string[] | null
+          version_tag: string
+        }
+        Update: {
+          backfilled_layers?: string[] | null
+          created_at?: string
+          frozen_at?: string
+          id?: string
+          measurement_fixes?: string[] | null
+          notes?: string | null
+          sampling_strategy?: Json
+          scoring_formula?: Json
+          structural_fixes?: string[] | null
+          version_tag?: string
         }
         Relationships: []
       }
