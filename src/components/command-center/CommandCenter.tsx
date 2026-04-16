@@ -245,7 +245,10 @@ export const CommandCenter = () => {
       )}
 
       {/* Main map area */}
-      <div className="pt-[88px] pb-20 md:pb-24 h-full">
+      <div className={cn(
+        "h-full",
+        isMobile ? "pt-14 pb-16" : "pt-[88px] pb-20 md:pb-24"
+      )}>
         <GlobalMap
           ref={mapRef}
           onCountrySelect={handleMapCountrySelect}
