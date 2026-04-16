@@ -231,7 +231,7 @@ serve(async (req) => {
     const stableSample = stableResult.data ?? [];
     const forecasts = [...turningPointSample, ...stableSample];
 
-    const forecasts = forecastStats ?? [];
+    // forecasts already defined above from stratified sampling
     const turningPoints = forecasts.filter(f => f.actual_direction !== 'stable');
     const tpHits = turningPoints.filter(f => f.direction_hit).length;
     const tpAccuracy = turningPoints.length > 0 ? Math.round((tpHits / turningPoints.length) * 100) : 0;
