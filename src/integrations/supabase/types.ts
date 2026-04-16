@@ -4528,7 +4528,8 @@ export type Database = {
           forecast_id: string | null
           horizon_days: number
           id: string
-          iso3: string | null
+          iso3: string
+          metadata: Json | null
           model_version: string
           predicted_at: string
           predicted_direction: string
@@ -4548,7 +4549,8 @@ export type Database = {
           forecast_id?: string | null
           horizon_days: number
           id?: string
-          iso3?: string | null
+          iso3?: string
+          metadata?: Json | null
           model_version: string
           predicted_at?: string
           predicted_direction: string
@@ -4568,7 +4570,8 @@ export type Database = {
           forecast_id?: string | null
           horizon_days?: number
           id?: string
-          iso3?: string | null
+          iso3?: string
+          metadata?: Json | null
           model_version?: string
           predicted_at?: string
           predicted_direction?: string
@@ -10518,11 +10521,16 @@ export type Database = {
         Args: { _change_threshold?: number; _window_days?: number }
         Returns: Json
       }
+      compute_prospective_score: { Args: never; Returns: Json }
       count_districts_needing_settlements: { Args: never; Returns: number }
       count_uncovered_regions: { Args: never; Returns: number }
       enqueue_quantivis_webhook: {
         Args: { p_event_type: string; p_payload: Json; p_target_url?: string }
         Returns: string
+      }
+      evaluate_forecast_readiness: {
+        Args: { _mae_threshold?: number }
+        Returns: Json
       }
       get_countries_needing_villages: {
         Args: never
