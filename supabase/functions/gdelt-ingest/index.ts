@@ -22,9 +22,21 @@ serve(async (req) => {
     const timeWindow = body.time_window_minutes || 60;
 
     // Fetch recent GDELT events via their API
-    const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=conflict%20OR%20crisis%20OR%20attack%20OR%20protest%20OR%20earthquake%20OR%20flood%20OR%20famine&mode=ArtList&maxrecords=${batchSize}&format=json&timespan=${timeWindow}min`;
+    // GDELT requires parentheses around OR'd terms
+    const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=(conflict%20OR%20crisis%20OR%20attack%20OR%20protest%20OR%20earthquake%20OR%20flood%20OR%20famine)&mode=ArtList&maxrecords=${batchSize}&format=json&timespan=${timeWindow}min`;
 
     const gdeltResp = await fetch(gdeltUrl);
+    if (gdeltResp.status === 429) {
+      const errText = await gdeltResp.text();
+      console.warn('GDELT 429 rate-limited:', errText.slice(0, 200));
+      await supabase.from('automation_logs').insert({
+        job_name: 'gdelt-ingest', status: 'skipped',
+        message: `GDELT 429 rate-limited, will retry next cron cycle`,
+      });
+      return new Response(JSON.stringify({ ok: true, ingested: 0, message: 'GDELT rate-limited (429), skipping' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     if (!gdeltResp.ok) {
       const errText = await gdeltResp.text();
       console.error('GDELT API error:', gdeltResp.status, errText);
