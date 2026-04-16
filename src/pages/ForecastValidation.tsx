@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Loader2, ShieldCheck, AlertTriangle, Clock, CheckCircle2, Target, BarChart3, Layers, FlaskConical, Activity, Search, TrendingUp, Radio } from "lucide-react";
+import { Loader2, ShieldCheck, AlertTriangle, Clock, CheckCircle2, Target, BarChart3, Layers, FlaskConical, Activity, Search, TrendingUp, Radio, Settings2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface SummaryStats {
@@ -17,6 +17,7 @@ interface DomainRow { domain: string; sample_size: number; tp_accuracy: number; 
 interface HorizonRow { horizon: string; sample_size: number; accuracy: number; mae: number; }
 interface ModelRow { model_version: string; sample_size: number; tp_accuracy: number; mae: number; }
 interface HealthAlert { type: string; severity: string; message: string; value: number; }
+interface DomainPolicy { domain: string; match_window_days: number; direction_threshold_pct: number; preferred_period_type: string; is_active: boolean; notes: string; }
 
 export default function ForecastValidation() {
   const [stats, setStats] = useState<SummaryStats | null>(null);
@@ -29,6 +30,7 @@ export default function ForecastValidation() {
   const [matchQuality, setMatchQuality] = useState<any>(null);
   const [coverageGaps, setCoverageGaps] = useState<any>(null);
   const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [policies, setPolicies] = useState<DomainPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [testRunning, setTestRunning] = useState(false);
   const { toast } = useToast();
@@ -38,7 +40,7 @@ export default function ForecastValidation() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [statsRes, domainsRes, horizonsRes, modelsRes, readinessRes, accumRes, matchRes, gapsRes, snapshotsRes] = await Promise.all([
+      const [statsRes, domainsRes, horizonsRes, modelsRes, readinessRes, accumRes, matchRes, gapsRes, snapshotsRes, policiesRes] = await Promise.all([
         supabase.rpc("prospective_summary_stats"),
         supabase.rpc("prospective_domain_breakdown"),
         supabase.rpc("prospective_horizon_breakdown"),
@@ -48,6 +50,7 @@ export default function ForecastValidation() {
         supabase.rpc("audit_prospective_match_quality"),
         supabase.rpc("prospective_coverage_gaps"),
         supabase.from("forecast_prospective_health_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(30),
+        supabase.from("forecast_domain_match_policies").select("*").order("domain"),
       ]);
       if (statsRes.data) setStats(statsRes.data as unknown as SummaryStats);
       if (domainsRes.data) setDomains(domainsRes.data as unknown as DomainRow[]);
@@ -58,6 +61,7 @@ export default function ForecastValidation() {
       if (matchRes.data) setMatchQuality(matchRes.data);
       if (gapsRes.data) setCoverageGaps(gapsRes.data);
       if (snapshotsRes.data) setSnapshots(snapshotsRes.data);
+      if (policiesRes.data) setPolicies(policiesRes.data as unknown as DomainPolicy[]);
 
       try {
         const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
@@ -107,6 +111,13 @@ export default function ForecastValidation() {
   const accumStatusColor: Record<string, string> = {
     STALLED: "text-destructive", LOW_VOLUME: "text-yellow-400", HEALTHY: "text-blue-400", GROWING: "text-emerald-400",
   };
+
+  // Compute policy coverage stats
+  const activePolicies = policies.filter(p => p.is_active);
+  const domainNames = domains.map(d => d.domain);
+  const coveredDomains = domainNames.filter(d => activePolicies.some(p => p.domain === d));
+  const fallbackDomains = domainNames.filter(d => !activePolicies.some(p => p.domain === d));
+  const fallbackRate = domainNames.length > 0 ? Math.round((fallbackDomains.length / domainNames.length) * 100) : 0;
 
   if (loading) return <div className="flex items-center justify-center min-h-screen bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
@@ -198,6 +209,81 @@ export default function ForecastValidation() {
         <MetricCard label="Coverage" value={`${stats?.domain_count ?? 0}D / ${stats?.country_count ?? 0}C`} sub="Domains / Countries" />
       </div>
 
+      {/* Match Policy Coverage */}
+      <Card className="bg-card border-border">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Settings2 className="h-4 w-4" /> Match Policy Coverage
+            <Badge variant="outline" className={`ml-auto text-[10px] ${fallbackRate > 30 ? "text-yellow-400" : "text-emerald-400"}`}>
+              {fallbackRate === 0 ? "Full Coverage" : `${fallbackRate}% fallback`}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <MiniStat label="Active policies" value={activePolicies.length} />
+            <MiniStat label="Domains with policy" value={coveredDomains.length} />
+            <MiniStat label="Domains on fallback" value={fallbackDomains.length} warn={fallbackDomains.length > 0} />
+            <MiniStat label="Fallback rate" value={`${matchQuality?.fallback_rate_pct ?? fallbackRate}%`} warn={(matchQuality?.fallback_rate_pct ?? fallbackRate) > 30} />
+          </div>
+
+          {/* Policy table */}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs">Domain</TableHead>
+                <TableHead className="text-right text-xs">Window (days)</TableHead>
+                <TableHead className="text-right text-xs">Threshold %</TableHead>
+                <TableHead className="text-xs">Period</TableHead>
+                <TableHead className="text-xs">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {activePolicies.map((p) => (
+                <TableRow key={p.domain}>
+                  <TableCell className="text-xs font-medium">{p.domain}</TableCell>
+                  <TableCell className="text-right text-xs">{p.match_window_days}</TableCell>
+                  <TableCell className="text-right text-xs">{p.direction_threshold_pct}%</TableCell>
+                  <TableCell className="text-xs">{p.preferred_period_type ?? "—"}</TableCell>
+                  <TableCell><Badge variant="default" className="text-[10px]">Active</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {fallbackDomains.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1 font-medium">Domains needing policy tuning</p>
+              <div className="flex flex-wrap gap-1">
+                {fallbackDomains.map(d => <Badge key={d} variant="secondary" className="text-[10px]">{d}</Badge>)}
+              </div>
+            </div>
+          )}
+
+          {/* Suspicious domains from match quality */}
+          {matchQuality?.suspicious_domains?.length > 0 && (
+            <div>
+              <p className="text-xs text-destructive mb-1 font-medium">Suspicious domains (high missing rate or delay)</p>
+              <div className="space-y-1">
+                {matchQuality.suspicious_domains.map((s: any, i: number) => (
+                  <div key={i} className="text-xs bg-destructive/10 text-destructive rounded px-2 py-1">
+                    <span className="font-medium">{s.domain}</span> — {s.reason === "high_missing_actual" ? `${s.missing_rate}% missing` : `avg delay ${s.avg_delay}d`}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Policy vs fallback match breakdown */}
+          {matchQuality && matchQuality.sample_size > 0 && (
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <MiniStat label="Policy-backed matches" value={matchQuality.policy_backed_matches ?? 0} />
+              <MiniStat label="Fallback matches" value={matchQuality.fallback_matches ?? 0} warn={(matchQuality.fallback_matches ?? 0) > 0} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Match Quality */}
       {matchQuality && matchQuality.sample_size > 0 && (
         <Card className="bg-card border-border">
@@ -215,12 +301,25 @@ export default function ForecastValidation() {
               <MiniStat label="Null actuals" value={matchQuality.rows_with_null_actuals} warn={matchQuality.rows_with_null_actuals > 0} />
               <MiniStat label="Missing ISO3" value={matchQuality.rows_with_missing_iso3} warn={matchQuality.rows_with_missing_iso3 > 0} />
             </div>
+            {/* Domain delays */}
+            {matchQuality.domain_delays?.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1 font-medium">Avg match delay by domain</p>
+                <div className="flex flex-wrap gap-2">
+                  {matchQuality.domain_delays.map((dd: any) => (
+                    <div key={dd.domain} className={`bg-muted rounded px-2 py-1 text-xs ${dd.avg_delay > 5 ? "text-yellow-400" : ""}`}>
+                      <span className="font-medium">{dd.domain}</span>: {dd.avg_delay}d ({dd.count})
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {matchQuality.samples?.length > 0 && (
               <Table>
                 <TableHeader><TableRow>
                   <TableHead className="text-xs">Domain</TableHead><TableHead className="text-xs">ISO3</TableHead>
                   <TableHead className="text-xs">Due</TableHead><TableHead className="text-xs">Delay</TableHead>
-                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs">Policy</TableHead><TableHead className="text-xs">Status</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
                   {matchQuality.samples.slice(0, 5).map((s: any, i: number) => (
@@ -229,6 +328,7 @@ export default function ForecastValidation() {
                       <TableCell className="text-xs">{s.iso3}</TableCell>
                       <TableCell className="text-xs">{s.realization_due_at?.slice(0, 10)}</TableCell>
                       <TableCell className="text-xs">{s.delay_days ?? "—"}d</TableCell>
+                      <TableCell><Badge variant={s.policy_status === "domain_policy" ? "default" : "secondary"} className="text-[10px]">{s.policy_status ?? "—"}</Badge></TableCell>
                       <TableCell><Badge variant={s.status === "matched" ? "default" : "destructive"} className="text-[10px]">{s.status}</Badge></TableCell>
                     </TableRow>
                   ))}
