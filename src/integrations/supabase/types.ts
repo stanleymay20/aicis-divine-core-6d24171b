@@ -10500,6 +10500,7 @@ export type Database = {
         Args: { _ip_address: unknown; _org_id: string }
         Returns: boolean
       }
+      check_prospective_health: { Args: never; Returns: Json }
       check_rate_limit: {
         Args: {
           _endpoint: string
@@ -10651,6 +10652,10 @@ export type Database = {
         Returns: Json
       }
       planetary_batch_tick: { Args: never; Returns: Json }
+      prospective_domain_breakdown: { Args: never; Returns: Json }
+      prospective_horizon_breakdown: { Args: never; Returns: Json }
+      prospective_model_breakdown: { Args: never; Returns: Json }
+      prospective_summary_stats: { Args: never; Returns: Json }
       run_milestone_audit: { Args: { _milestone?: string }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
