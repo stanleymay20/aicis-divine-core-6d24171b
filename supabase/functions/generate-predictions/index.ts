@@ -133,13 +133,43 @@ IMPORTANT: All dates MUST be future. Confidence MUST NOT exceed 0.95. Return ONL
     }
 
     let inserted = 0;
+    let prospectiveInserted = 0;
     for (const pred of predictions) {
-      const { error } = await supabase.from('predictions').insert({
+      const { data: predRow, error } = await supabase.from('predictions').insert({
         division: pred.division, country: pred.country,
         forecast: pred.forecast, confidence: pred.confidence,
         volatility_index: pred.volatility_index, predicted_at: pred.predicted_at
-      });
-      if (!error) inserted++;
+      }).select('id').single();
+      if (!error) {
+        inserted++;
+
+        // Insert into prospective evaluation pipeline
+        const timeline = pred.forecast?.timeline;
+        const horizons = [30, 60, 90];
+        for (let i = 0; i < horizons.length; i++) {
+          const timelineEntry = timeline?.[i];
+          const predictedValue = timelineEntry?.value ?? (pred.confidence * 100);
+          const trendDir = pred.forecast?.trend === 'increasing' ? 'increasing' : pred.forecast?.trend === 'decreasing' ? 'decreasing' : 'stable';
+          const predictedAt = new Date();
+          const dueAt = new Date(predictedAt);
+          dueAt.setDate(dueAt.getDate() + horizons[i]);
+
+          const { error: prospErr } = await supabase.from('forecast_prospective_evaluations').insert({
+            forecast_id: predRow?.id ?? null,
+            domain: pred.division,
+            iso3: pred.country?.length === 3 ? pred.country : 'GLB',
+            model_version: 'gemini-2.5-flash-lite',
+            horizon_days: horizons[i],
+            predicted_value: predictedValue,
+            predicted_direction: trendDir,
+            predicted_at: predictedAt.toISOString(),
+            realization_due_at: dueAt.toISOString(),
+            evaluation_window: `${horizons[i]}d`,
+            metadata: { source: 'generate-predictions', forecast_id: predRow?.id },
+          });
+          if (!prospErr) prospectiveInserted++;
+        }
+      }
     }
 
     await supabase.from('system_logs').insert({
@@ -148,8 +178,8 @@ IMPORTANT: All dates MUST be future. Confidence MUST NOT exceed 0.95. Return ONL
       metadata: { predictions_generated: inserted, divisions_processed: divisions.length }
     });
 
-    structuredLog('info', FN, `Generated ${inserted} predictions`, undefined, start);
-    return jsonResponse({ success: true, predictions_generated: inserted, total_processed: predictions.length });
+    structuredLog('info', FN, `Generated ${inserted} predictions, ${prospectiveInserted} prospective evaluations`, undefined, start);
+    return jsonResponse({ success: true, predictions_generated: inserted, prospective_evaluations: prospectiveInserted, total_processed: predictions.length });
   } catch (error) {
     structuredLog('error', FN, (error as Error).message, undefined, start);
     return errorResponse(error);
