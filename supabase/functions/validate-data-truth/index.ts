@@ -249,9 +249,11 @@ serve(async (req) => {
       if (f.direction_hit) domainTP[d].hits++;
     }
 
+    // Balanced scoring: TP accuracy (40%), MAE quality (30%), coverage breadth (30%)
+    const maeScore = Math.max(0, 100 - avgMAE * 10); // MAE < 10 = positive score
+    const coverageScore = Math.min(100, (turningPoints.length / 50) * 100); // 50+ turning points = full marks
     const forecastScore = Math.min(100, Math.round(
-      tpAccuracy * 0.6 + // turning point accuracy is primary
-      Math.max(0, 40 - avgMAE * 5) // MAE penalty
+      tpAccuracy * 0.4 + maeScore * 0.3 + coverageScore * 0.3
     ));
 
     audits.forecasts = {
