@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ShieldCheck, AlertTriangle, Clock, CheckCircle2, Target, BarChart3, Layers } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, ShieldCheck, AlertTriangle, Clock, CheckCircle2, Target, BarChart3, Layers, FlaskConical } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
-interface ProspectiveStats {
+interface SummaryStats {
   total: number;
   locked: number;
   pending: number;
@@ -14,11 +16,11 @@ interface ProspectiveStats {
   tp_accuracy: number;
   avg_mae: number;
   direction_hit_rate: number;
-  domains: string[];
-  countries: string[];
+  domain_count: number;
+  country_count: number;
 }
 
-interface DomainBreakdown {
+interface DomainRow {
   domain: string;
   sample_size: number;
   tp_accuracy: number;
@@ -26,27 +28,37 @@ interface DomainBreakdown {
   status: string;
 }
 
-interface HorizonBreakdown {
+interface HorizonRow {
   horizon: string;
   sample_size: number;
   accuracy: number;
   mae: number;
 }
 
-interface ModelBreakdown {
+interface ModelRow {
   model_version: string;
   sample_size: number;
   tp_accuracy: number;
   mae: number;
 }
 
+interface HealthAlert {
+  type: string;
+  severity: string;
+  message: string;
+  value: number;
+}
+
 export default function ForecastValidation() {
-  const [stats, setStats] = useState<ProspectiveStats | null>(null);
-  const [domains, setDomains] = useState<DomainBreakdown[]>([]);
-  const [horizons, setHorizons] = useState<HorizonBreakdown[]>([]);
-  const [models, setModels] = useState<ModelBreakdown[]>([]);
+  const [stats, setStats] = useState<SummaryStats | null>(null);
+  const [domains, setDomains] = useState<DomainRow[]>([]);
+  const [horizons, setHorizons] = useState<HorizonRow[]>([]);
+  const [models, setModels] = useState<ModelRow[]>([]);
   const [readiness, setReadiness] = useState<any>(null);
+  const [health, setHealth] = useState<{ ok: boolean; alerts: HealthAlert[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [testRunning, setTestRunning] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadAll();
@@ -55,135 +67,67 @@ export default function ForecastValidation() {
   async function loadAll() {
     setLoading(true);
     try {
-      await Promise.all([loadStats(), loadDomains(), loadHorizons(), loadModels(), loadReadiness()]);
+      const [statsRes, domainsRes, horizonsRes, modelsRes, readinessRes] = await Promise.all([
+        supabase.rpc("prospective_summary_stats"),
+        supabase.rpc("prospective_domain_breakdown"),
+        supabase.rpc("prospective_horizon_breakdown"),
+        supabase.rpc("prospective_model_breakdown"),
+        supabase.rpc("evaluate_forecast_readiness"),
+      ]);
+
+      if (statsRes.data) setStats(statsRes.data as unknown as SummaryStats);
+      if (domainsRes.data) setDomains(domainsRes.data as unknown as DomainRow[]);
+      if (horizonsRes.data) setHorizons(horizonsRes.data as unknown as HorizonRow[]);
+      if (modelsRes.data) setModels(modelsRes.data as unknown as ModelRow[]);
+      if (readinessRes.data) setReadiness(readinessRes.data);
+
+      // Health check via edge function (needs write access for alerts)
+      try {
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        const resp = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/prospective-lifecycle-test`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+            body: JSON.stringify({ action: "health_check" }),
+          }
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.health) setHealth(data.health);
+        }
+      } catch {
+        // health check is optional
+      }
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadStats() {
-    const { data } = await supabase
-      .from("forecast_prospective_evaluations")
-      .select("evaluation_locked, realized_direction, direction_hit, absolute_error, domain, iso3")
-      .limit(1000);
-
-    if (!data) return;
-
-    const locked = data.filter((d) => d.evaluation_locked);
-    const tp = locked.filter((d) => d.realized_direction && d.realized_direction !== "stable");
-    const tpHits = tp.filter((d) => d.direction_hit).length;
-    const dirHits = locked.filter((d) => d.direction_hit).length;
-    const maes = locked.filter((d) => d.absolute_error != null).map((d) => d.absolute_error!);
-
-    setStats({
-      total: data.length,
-      locked: locked.length,
-      pending: data.length - locked.length,
-      tp_total: tp.length,
-      tp_hits: tpHits,
-      tp_accuracy: tp.length > 0 ? Math.round((tpHits / tp.length) * 100) : 0,
-      avg_mae: maes.length > 0 ? Math.round((maes.reduce((a, b) => a + Number(b), 0) / maes.length) * 100) / 100 : 0,
-      direction_hit_rate: locked.length > 0 ? Math.round((dirHits / locked.length) * 100) : 0,
-      domains: [...new Set(data.map((d) => d.domain))],
-      countries: [...new Set(data.map((d) => d.iso3).filter(Boolean))],
-    });
-  }
-
-  async function loadDomains() {
-    const { data } = await supabase
-      .from("forecast_prospective_evaluations")
-      .select("domain, direction_hit, absolute_error, realized_direction")
-      .eq("evaluation_locked", true)
-      .limit(1000);
-
-    if (!data) return;
-
-    const byDomain: Record<string, typeof data> = {};
-    data.forEach((d) => {
-      if (!byDomain[d.domain]) byDomain[d.domain] = [];
-      byDomain[d.domain].push(d);
-    });
-
-    setDomains(
-      Object.entries(byDomain).map(([domain, rows]) => {
-        const tp = rows.filter((r) => r.realized_direction && r.realized_direction !== "stable");
-        const tpHits = tp.filter((r) => r.direction_hit).length;
-        const maes = rows.filter((r) => r.absolute_error != null).map((r) => Number(r.absolute_error));
-        const accuracy = tp.length > 0 ? Math.round((tpHits / tp.length) * 100) : 0;
-        return {
-          domain,
-          sample_size: rows.length,
-          tp_accuracy: accuracy,
-          mae: maes.length > 0 ? Math.round((maes.reduce((a, b) => a + b, 0) / maes.length) * 100) / 100 : 0,
-          status: accuracy >= 60 ? "good" : accuracy >= 30 ? "moderate" : "weak",
-        };
-      }).sort((a, b) => b.sample_size - a.sample_size)
-    );
-  }
-
-  async function loadHorizons() {
-    const { data } = await supabase
-      .from("forecast_prospective_evaluations")
-      .select("horizon_days, direction_hit, absolute_error")
-      .eq("evaluation_locked", true)
-      .limit(1000);
-
-    if (!data) return;
-
-    const buckets: Record<string, typeof data> = {};
-    data.forEach((d) => {
-      const label = d.horizon_days <= 7 ? "7d" : d.horizon_days <= 14 ? "14d" : d.horizon_days <= 30 ? "30d" : d.horizon_days <= 60 ? "60d" : "90d+";
-      if (!buckets[label]) buckets[label] = [];
-      buckets[label].push(d);
-    });
-
-    setHorizons(
-      Object.entries(buckets).map(([horizon, rows]) => {
-        const hits = rows.filter((r) => r.direction_hit).length;
-        const maes = rows.filter((r) => r.absolute_error != null).map((r) => Number(r.absolute_error));
-        return {
-          horizon,
-          sample_size: rows.length,
-          accuracy: rows.length > 0 ? Math.round((hits / rows.length) * 100) : 0,
-          mae: maes.length > 0 ? Math.round((maes.reduce((a, b) => a + b, 0) / maes.length) * 100) / 100 : 0,
-        };
-      })
-    );
-  }
-
-  async function loadModels() {
-    const { data } = await supabase
-      .from("forecast_prospective_evaluations")
-      .select("model_version, direction_hit, absolute_error, realized_direction")
-      .eq("evaluation_locked", true)
-      .limit(1000);
-
-    if (!data) return;
-
-    const byModel: Record<string, typeof data> = {};
-    data.forEach((d) => {
-      if (!byModel[d.model_version]) byModel[d.model_version] = [];
-      byModel[d.model_version].push(d);
-    });
-
-    setModels(
-      Object.entries(byModel).map(([model_version, rows]) => {
-        const tp = rows.filter((r) => r.realized_direction && r.realized_direction !== "stable");
-        const tpHits = tp.filter((r) => r.direction_hit).length;
-        const maes = rows.filter((r) => r.absolute_error != null).map((r) => Number(r.absolute_error));
-        return {
-          model_version,
-          sample_size: rows.length,
-          tp_accuracy: tp.length > 0 ? Math.round((tpHits / tp.length) * 100) : 0,
-          mae: maes.length > 0 ? Math.round((maes.reduce((a, b) => a + b, 0) / maes.length) * 100) / 100 : 0,
-        };
-      }).sort((a, b) => b.sample_size - a.sample_size)
-    );
-  }
-
-  async function loadReadiness() {
-    const { data, error } = await supabase.rpc("evaluate_forecast_readiness");
-    if (!error && data) setReadiness(data);
+  async function runLifecycleTest() {
+    setTestRunning(true);
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const resp = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/prospective-lifecycle-test`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+          body: JSON.stringify({ action: "lifecycle_test" }),
+        }
+      );
+      const data = await resp.json();
+      if (data.ok) {
+        toast({ title: "Lifecycle Test Passed ✓", description: `Inserted → Realized → Locked in ${data.duration_ms}ms. Direction hit: ${data.direction_hit}` });
+        loadAll();
+      } else {
+        toast({ title: "Lifecycle Test Failed", description: data.error || "Unknown error", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Test Error", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setTestRunning(false);
+    }
   }
 
   const sampleStatus = !stats ? "AWAITING_DATA" : stats.locked === 0 ? "AWAITING_DATA" : stats.locked < 30 ? "INSUFFICIENT_SAMPLE" : stats.locked < 50 ? "EMERGING" : readiness?.ready ? "DECISION_GRADE" : "EVALUABLE";
@@ -207,12 +151,30 @@ export default function ForecastValidation() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold text-foreground tracking-tight">Prospective Forecast Validation</h1>
-        <p className="text-sm text-muted-foreground max-w-2xl">
-          Clean, forward-looking forecast evaluation. No historical backfills or edits are included in these scores.
-        </p>
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Prospective Forecast Validation</h1>
+          <p className="text-sm text-muted-foreground max-w-2xl">
+            Clean, forward-looking forecast evaluation. No historical backfills or edits are included.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={runLifecycleTest} disabled={testRunning} className="shrink-0">
+          {testRunning ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <FlaskConical className="h-3 w-3 mr-1" />}
+          Lifecycle Test
+        </Button>
       </div>
+
+      {/* Health Alerts */}
+      {health && !health.ok && (
+        <div className="space-y-2">
+          {health.alerts.map((alert, i) => (
+            <div key={i} className={`rounded-lg px-4 py-2 flex items-center gap-2 text-xs ${alert.severity === "critical" ? "bg-destructive/20 text-destructive" : "bg-yellow-500/20 text-yellow-400"}`}>
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{alert.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Status Banner */}
       <div className={`rounded-lg px-4 py-3 flex items-center gap-3 ${statusColor[sampleStatus]}`}>
@@ -237,9 +199,7 @@ export default function ForecastValidation() {
         <SummaryCard
           icon={<ShieldCheck className="h-4 w-4" />}
           label="Sample Status"
-          value={
-            (stats?.locked ?? 0) < 30 ? "Insufficient" : (stats?.locked ?? 0) < 100 ? "Emerging" : "Meaningful"
-          }
+          value={(stats?.locked ?? 0) < 30 ? "Insufficient" : (stats?.locked ?? 0) < 100 ? "Emerging" : "Meaningful"}
           valueClass={(stats?.locked ?? 0) >= 100 ? "text-emerald-400" : (stats?.locked ?? 0) >= 30 ? "text-blue-400" : "text-yellow-400"}
         />
       </div>
@@ -249,12 +209,11 @@ export default function ForecastValidation() {
         <MetricCard label="Turning Point Accuracy" value={`${stats?.tp_accuracy ?? 0}%`} sub={`${stats?.tp_hits ?? 0}/${stats?.tp_total ?? 0} hits`} />
         <MetricCard label="Average MAE" value={stats?.avg_mae?.toFixed(2) ?? "—"} sub="Mean absolute error" />
         <MetricCard label="Direction Hit Rate" value={`${stats?.direction_hit_rate ?? 0}%`} sub="All directions" />
-        <MetricCard label="Coverage" value={`${stats?.domains?.length ?? 0}D / ${stats?.countries?.length ?? 0}C`} sub="Domains / Countries" />
+        <MetricCard label="Coverage" value={`${stats?.domain_count ?? 0}D / ${stats?.country_count ?? 0}C`} sub="Domains / Countries" />
       </div>
 
       {/* Breakdown Tables */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* By Domain */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2"><Layers className="h-4 w-4" /> By Domain</CardTitle>
@@ -291,7 +250,6 @@ export default function ForecastValidation() {
           </CardContent>
         </Card>
 
-        {/* By Horizon */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2"><BarChart3 className="h-4 w-4" /> By Horizon</CardTitle>
