@@ -4419,6 +4419,48 @@ export type Database = {
           },
         ]
       }
+      forecast_domain_match_policies: {
+        Row: {
+          actual_source_table: string
+          created_at: string
+          direction_threshold_pct: number
+          domain: string
+          is_active: boolean
+          match_window_days: number
+          notes: string | null
+          preferred_period_type: string | null
+          timestamp_field: string
+          updated_at: string
+          value_field: string
+        }
+        Insert: {
+          actual_source_table?: string
+          created_at?: string
+          direction_threshold_pct?: number
+          domain: string
+          is_active?: boolean
+          match_window_days?: number
+          notes?: string | null
+          preferred_period_type?: string | null
+          timestamp_field?: string
+          updated_at?: string
+          value_field?: string
+        }
+        Update: {
+          actual_source_table?: string
+          created_at?: string
+          direction_threshold_pct?: number
+          domain?: string
+          is_active?: boolean
+          match_window_days?: number
+          notes?: string | null
+          preferred_period_type?: string | null
+          timestamp_field?: string
+          updated_at?: string
+          value_field?: string
+        }
+        Relationships: []
+      }
       forecast_jobs: {
         Row: {
           attempts: number

@@ -5,6 +5,21 @@ import { structuredLog, handleCors, errorResponse, jsonResponse } from "../_shar
 const FN = "cron-realize-prospective-forecasts";
 const BATCH_SIZE = 500;
 
+interface DomainPolicy {
+  domain: string;
+  match_window_days: number;
+  direction_threshold_pct: number;
+  preferred_period_type: string | null;
+  is_active: boolean;
+}
+
+const DEFAULT_POLICY: Omit<DomainPolicy, "domain"> = {
+  match_window_days: 7,
+  direction_threshold_pct: 1.0,
+  preferred_period_type: null,
+  is_active: true,
+};
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -18,7 +33,21 @@ serve(async (req) => {
   try {
     structuredLog("info", FN, "Starting prospective forecast realization");
 
-    // Fetch pending evaluations: due and not locked
+    // Load domain match policies
+    const { data: policies } = await supabase
+      .from("forecast_domain_match_policies")
+      .select("domain, match_window_days, direction_threshold_pct, preferred_period_type, is_active")
+      .eq("is_active", true);
+
+    const policyMap = new Map<string, DomainPolicy>();
+    if (policies) {
+      for (const p of policies) {
+        policyMap.set(p.domain, p as DomainPolicy);
+      }
+    }
+    structuredLog("info", FN, `Loaded ${policyMap.size} domain policies`);
+
+    // Fetch pending evaluations
     const { data: pending, error: fetchErr } = await supabase
       .from("forecast_prospective_evaluations")
       .select("id, domain, iso3, predicted_value, predicted_direction, realization_due_at, horizon_days, model_version")
@@ -39,13 +68,22 @@ serve(async (req) => {
     let realized = 0;
     let missing = 0;
     let errors = 0;
+    let policyUsed = 0;
+    let fallbackUsed = 0;
 
     for (const forecast of pending) {
       try {
-        // Find closest actual metric value to realization_due_at
+        const policy = policyMap.get(forecast.domain);
+        const windowDays = policy?.match_window_days ?? DEFAULT_POLICY.match_window_days;
+        const thresholdPct = policy?.direction_threshold_pct ?? DEFAULT_POLICY.direction_threshold_pct;
+        const policyStatus = policy ? "domain_policy" : "default_fallback";
+
+        if (policy) policyUsed++;
+        else fallbackUsed++;
+
         const dueDate = new Date(forecast.realization_due_at);
-        const windowStart = new Date(dueDate.getTime() - 7 * 86400000).toISOString();
-        const windowEnd = new Date(dueDate.getTime() + 7 * 86400000).toISOString();
+        const windowStart = new Date(dueDate.getTime() - windowDays * 86400000).toISOString();
+        const windowEnd = new Date(dueDate.getTime() + windowDays * 86400000).toISOString();
 
         const { data: actuals, error: metricErr } = await supabase
           .from("normalized_metrics")
@@ -64,7 +102,6 @@ serve(async (req) => {
         }
 
         if (!actuals || actuals.length === 0) {
-          // Mark as missing actual data
           await supabase
             .from("forecast_prospective_evaluations")
             .update({
@@ -72,16 +109,17 @@ serve(async (req) => {
                 status: "missing_actual",
                 searched_window: { start: windowStart, end: windowEnd },
                 checked_at: new Date().toISOString(),
+                policy_status: policyStatus,
+                match_window_days: windowDays,
               },
             })
             .eq("id", forecast.id)
-            .eq("evaluation_locked", false); // safety: never touch locked
+            .eq("evaluation_locked", false);
 
           missing++;
           continue;
         }
 
-        // Use the closest actual value
         const actual = actuals[0];
         const actualValue = Number(actual.value);
 
@@ -90,15 +128,13 @@ serve(async (req) => {
           continue;
         }
 
-        // Compute realized direction
         const predictedVal = Number(forecast.predicted_value);
         const diff = actualValue - predictedVal;
-        const threshold = Math.abs(predictedVal) * 0.01; // 1% change threshold
+        const threshold = Math.abs(predictedVal) * (thresholdPct / 100);
         const realizedDirection =
           Math.abs(diff) < threshold ? "stable" :
           diff > 0 ? "increasing" : "decreasing";
 
-        // The trigger will auto-compute: direction_hit, absolute_error, evaluation_locked=true
         const { error: updateErr } = await supabase
           .from("forecast_prospective_evaluations")
           .update({
@@ -117,10 +153,13 @@ serve(async (req) => {
               realized_value: actualValue,
               error: Math.abs(actualValue - predictedVal),
               model_version: forecast.model_version,
+              policy_status: policyStatus,
+              match_window_days: windowDays,
+              direction_threshold_pct: thresholdPct,
             },
           })
           .eq("id", forecast.id)
-          .eq("evaluation_locked", false); // safety guard
+          .eq("evaluation_locked", false);
 
         if (updateErr) {
           structuredLog("warn", FN, `Update error for ${forecast.id}`, { error: updateErr.message });
@@ -134,20 +173,47 @@ serve(async (req) => {
       }
     }
 
-    // Log summary
+    // Alert: high fallback rate in high-volume domains
+    if (fallbackUsed > 0 && pending.length >= 10) {
+      const fallbackRate = (fallbackUsed / pending.length) * 100;
+      if (fallbackRate > 30) {
+        await supabase.from("alerts").insert({
+          severity: "medium",
+          title: "High fallback rate in forecast realization",
+          message: `${fallbackRate.toFixed(0)}% of realized forecasts used default fallback policy (${fallbackUsed}/${pending.length}). Consider adding domain-specific match policies.`,
+          division: "forecast-validation",
+        });
+      }
+    }
+
+    // Alert: high missing_actual rate
+    if (missing > 0 && pending.length >= 5) {
+      const missingRate = (missing / pending.length) * 100;
+      if (missingRate > 50) {
+        await supabase.from("alerts").insert({
+          severity: "high",
+          title: "High missing_actual rate in prospective realization",
+          message: `${missingRate.toFixed(0)}% of due forecasts had no matching actual data (${missing}/${pending.length}).`,
+          division: "forecast-validation",
+        });
+      }
+    }
+
     await supabase.from("automation_logs").insert({
       job_name: FN,
       status: errors > 0 ? "warning" : "success",
-      message: `Realized: ${realized}, Missing: ${missing}, Errors: ${errors}, Batch: ${pending.length}`,
+      message: `Realized: ${realized}, Missing: ${missing}, Errors: ${errors}, Policy: ${policyUsed}, Fallback: ${fallbackUsed}, Batch: ${pending.length}`,
     });
 
-    structuredLog("info", FN, `Complete: realized=${realized} missing=${missing} errors=${errors}`, undefined, start);
+    structuredLog("info", FN, `Complete: realized=${realized} missing=${missing} errors=${errors} policy=${policyUsed} fallback=${fallbackUsed}`, undefined, start);
 
     return jsonResponse({
       ok: true,
       realized,
       missing,
       errors,
+      policy_used: policyUsed,
+      fallback_used: fallbackUsed,
       batch_size: pending.length,
       duration_ms: Date.now() - start,
     });
