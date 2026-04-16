@@ -13,12 +13,10 @@ serve(async (req) => {
   }
 
   try {
-    // P0 FIX: Require authentication
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
@@ -28,232 +26,397 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(
-      authHeader.replace('Bearer ', '')
-    );
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: authError } = await anonClient.auth.getUser();
+    if (authError || !user) {
       return new Response(JSON.stringify({ ok: false, error: 'Invalid token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
     const querySchema = z.object({
-      query: z.string().min(1).max(1000),
-      options: z.object({}).optional()
+      query: z.string().min(1).max(2000),
+      options: z.object({
+        stream: z.boolean().optional(),
+        country: z.string().optional(),
+        domain: z.string().optional(),
+      }).optional()
     });
-    
+
     const rawBody = await req.json();
     const { query, options } = querySchema.parse(rawBody);
-    
-    // Use service role for data queries (user is authenticated above)
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Intent detection
-    const intent = detectIntent(query);
-    console.log('Query:', query, 'Intent:', intent);
+    // Gather contextual data based on query
+    const context = await gatherContext(query, options, supabase);
 
-    let response: any = { ok: true, intent, query };
+    // Call Lovable AI for intelligent response
+    const aiResponse = await callLovableAI(query, context);
 
-    // Route based on intent
-    if (intent === 'critical_incidents') {
-      const { data: alerts } = await supabase
-        .from('critical_alerts')
-        .select('*, security_incidents(*)')
-        .gte('triggered_at', new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString())
-        .order('triggered_at', { ascending: false })
-        .limit(50);
-      
-      response.results = alerts || [];
-      response.message = `Found ${alerts?.length || 0} critical incidents in the last 72 hours`;
-      
-    } else if (intent === 'country_dashboard') {
-      const country = extractCountry(query);
-      const iso3 = await resolveISO3(country, supabase);
-      
-      if (!iso3) {
-        response.ok = false;
-        response.error = `Could not resolve country: ${country}`;
-      } else {
-        const dashboard = await fetchCountryDashboard(iso3, supabase);
-        response.results = dashboard;
-        response.country = country;
-        response.iso3 = iso3;
-        response.message = `Country dashboard for ${country} (${iso3})`;
-      }
-      
-    } else if (intent === 'map_query') {
-      response.message = 'Map query detected - please specify layers to view';
-      response.facets = ['vulnerability', 'incidents', 'energy', 'food'];
-      
-    } else {
-      // General query
-      const domains = detectDomain(query);
-      const dataContext = await fetchRelevantData(domains, supabase);
-      
-      response.domains = domains;
-      response.results = dataContext;
-      response.message = `Analysis across ${domains.length} domains`;
-    }
-
-    return new Response(JSON.stringify(response), {
+    return new Response(JSON.stringify({
+      ok: true,
+      query,
+      answer: aiResponse.answer,
+      intent: aiResponse.intent,
+      data: context.data,
+      sources: context.sources,
+      confidence: aiResponse.confidence,
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
     console.error('Error in aicis-query:', error);
-    
+
     if (error instanceof z.ZodError) {
-      return new Response(JSON.stringify({ 
-        ok: false,
-        error: 'Invalid input',
-        details: error.errors 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      return new Response(JSON.stringify({ ok: false, error: 'Invalid input', details: error.errors }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    
-    return new Response(JSON.stringify({ 
-      ok: false,
-      error: error instanceof Error ? error.message : 'Unknown error' 
+
+    return new Response(JSON.stringify({
+      ok: false, error: error instanceof Error ? error.message : 'Unknown error'
     }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 });
 
+// --- Context Gathering ---
+
+interface QueryContext {
+  data: Record<string, any>;
+  sources: string[];
+  summary: string;
+}
+
+async function gatherContext(
+  query: string,
+  options: { country?: string; domain?: string } | undefined,
+  supabase: any
+): Promise<QueryContext> {
+  const q = query.toLowerCase();
+  const data: Record<string, any> = {};
+  const sources: string[] = [];
+  const summaryParts: string[] = [];
+
+  // Detect country
+  const country = options?.country || extractCountry(q);
+  const iso3 = country ? await resolveISO3(country, supabase) : null;
+
+  // Detect domains
+  const domains = options?.domain ? [options.domain] : detectDomains(q);
+
+  // Parallel data fetching
+  const fetches: Promise<void>[] = [];
+
+  if (iso3) {
+    fetches.push((async () => {
+      const { data: metrics } = await supabase
+        .from('normalized_metrics')
+        .select('domain, metric_name, value, unit, period, confidence, provider_name')
+        .eq('iso3', iso3)
+        .order('period', { ascending: false })
+        .limit(100);
+      if (metrics?.length) {
+        data.country_metrics = metrics;
+        sources.push('normalized_metrics');
+        summaryParts.push(`${metrics.length} metrics for ${iso3}`);
+      }
+    })());
+
+    fetches.push((async () => {
+      const { data: vuln } = await supabase
+        .from('vulnerability_scores')
+        .select('*')
+        .eq('iso3', iso3)
+        .order('computed_at', { ascending: false })
+        .limit(1);
+      if (vuln?.length) {
+        data.vulnerability = vuln[0];
+        sources.push('vulnerability_scores');
+      }
+    })());
+
+    fetches.push((async () => {
+      const { data: profile } = await supabase
+        .from('country_profiles')
+        .select('*')
+        .eq('iso3', iso3)
+        .limit(1);
+      if (profile?.length) {
+        data.country_profile = profile[0];
+        sources.push('country_profiles');
+      }
+    })());
+
+    fetches.push((async () => {
+      const { data: snapshots } = await supabase
+        .from('country_performance_snapshots')
+        .select('domain, performance_index, risk_pressure_score, momentum_score, forecast_direction, snapshot_date')
+        .eq('iso3', iso3)
+        .order('snapshot_date', { ascending: false })
+        .limit(20);
+      if (snapshots?.length) {
+        data.performance = snapshots;
+        sources.push('country_performance_snapshots');
+      }
+    })());
+  }
+
+  // Critical incidents
+  if (q.match(/crisis|incident|attack|conflict|alert|emergency|threat|war/)) {
+    fetches.push((async () => {
+      const { data: alerts } = await supabase
+        .from('critical_alerts')
+        .select('headline, level, severity, country, iso3, event_type, triggered_at')
+        .order('triggered_at', { ascending: false })
+        .limit(25);
+      if (alerts?.length) {
+        data.critical_alerts = alerts;
+        sources.push('critical_alerts');
+        summaryParts.push(`${alerts.length} recent critical alerts`);
+      }
+    })());
+
+    fetches.push((async () => {
+      const { data: conflicts } = await supabase
+        .from('conflict_signals')
+        .select('country_iso3, region, escalation_probability, conflict_type, status, confidence')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (conflicts?.length) {
+        data.conflict_signals = conflicts;
+        sources.push('conflict_signals');
+      }
+    })());
+  }
+
+  // Domain-specific metrics
+  if (domains.length > 0 && domains[0] !== 'general') {
+    fetches.push((async () => {
+      let qb = supabase
+        .from('normalized_metrics')
+        .select('domain, metric_name, iso3, value, unit, period, confidence')
+        .in('domain', domains)
+        .order('period', { ascending: false })
+        .limit(200);
+      if (iso3) qb = qb.eq('iso3', iso3);
+      const { data: metrics } = await qb;
+      if (metrics?.length) {
+        data.domain_metrics = metrics;
+        sources.push('normalized_metrics');
+        summaryParts.push(`${metrics.length} domain metrics across ${domains.join(', ')}`);
+      }
+    })());
+  }
+
+  // Intelligence score
+  if (q.match(/intelligence|score|accuracy|prediction|forecast/)) {
+    fetches.push((async () => {
+      const { data: scores } = await supabase
+        .from('intelligence_score_snapshots')
+        .select('*')
+        .order('computed_at', { ascending: false })
+        .limit(5);
+      if (scores?.length) {
+        data.intelligence_scores = scores;
+        sources.push('intelligence_score_snapshots');
+      }
+    })());
+  }
+
+  // Decisions
+  if (q.match(/decision|recommend|action|outcome/)) {
+    fetches.push((async () => {
+      const { data: decisions } = await supabase
+        .from('adi_decisions')
+        .select('domain, signal_summary, status, confidence, severity_score, country_iso3, created_at')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (decisions?.length) {
+        data.decisions = decisions;
+        sources.push('adi_decisions');
+      }
+    })());
+  }
+
+  await Promise.all(fetches);
+
+  return {
+    data,
+    sources: [...new Set(sources)],
+    summary: summaryParts.join('; ') || 'General intelligence query'
+  };
+}
+
+// --- LLM Integration ---
+
+async function callLovableAI(query: string, context: QueryContext) {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    // Fallback to deterministic response if no API key
+    return {
+      answer: `Query processed. Found ${context.sources.length} data sources. ${context.summary}`,
+      intent: detectIntent(query),
+      confidence: 0.7,
+    };
+  }
+
+  const systemPrompt = `You are AICIS — the Autonomous Intelligence & Crisis Intervention System. You are a planetary-scale intelligence engine that monitors 229 countries across 16 domains (governance, health, energy, finance, food, climate, security, education, trade, infrastructure, demographics, technology, environment, labor, social, and political stability).
+
+Your role: Synthesize the provided data context into clear, actionable intelligence briefings. Be specific with numbers and trends. Flag risks. Recommend actions when appropriate.
+
+Response format:
+- Lead with the key finding or answer
+- Support with specific data points from the context
+- Flag any risks or anomalies
+- Suggest next steps when relevant
+- Be concise but thorough — this is for decision-makers
+
+IMPORTANT: Only use data provided in the context. Never fabricate statistics. If data is insufficient, say so explicitly and suggest what additional data to request.`;
+
+  const dataStr = JSON.stringify(context.data, null, 2);
+  const userMessage = `Query: "${query}"
+
+Available data context (${context.sources.length} sources: ${context.sources.join(', ')}):
+${dataStr.slice(0, 12000)}
+
+${context.summary}
+
+Provide an intelligence briefing answering this query.`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-3-flash-preview',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      const status = response.status;
+      const text = await response.text();
+      console.error('AI Gateway error:', status, text);
+      
+      if (status === 429) {
+        return {
+          answer: `Rate limit reached. Fallback analysis: ${context.summary}`,
+          intent: detectIntent(query),
+          confidence: 0.5,
+        };
+      }
+      
+      return {
+        answer: `AI analysis unavailable. Data summary: ${context.summary}. ${context.sources.length} data sources queried.`,
+        intent: detectIntent(query),
+        confidence: 0.5,
+      };
+    }
+
+    const result = await response.json();
+    const answer = result.choices?.[0]?.message?.content || 'No analysis generated.';
+
+    return {
+      answer,
+      intent: detectIntent(query),
+      confidence: 0.9,
+    };
+  } catch (err) {
+    console.error('AI call failed:', err);
+    return {
+      answer: `Analysis fallback: ${context.summary}`,
+      intent: detectIntent(query),
+      confidence: 0.5,
+    };
+  }
+}
+
+// --- Utilities ---
+
 function detectIntent(query: string): string {
   const q = query.toLowerCase();
-  
-  if (q.match(/kill|attack|violence|conflict|incident|crisis|shooting|bombing/)) {
-    return 'critical_incidents';
-  }
-  
-  if (q.match(/country|governance|nation|profile|dashboard/) || q.match(/for\s+\w+/)) {
-    return 'country_dashboard';
-  }
-  
-  if (q.match(/map|show|display|overlay|layer/)) {
-    return 'map_query';
-  }
-  
+  if (q.match(/kill|attack|violence|conflict|incident|crisis|shooting|bombing|war|terror/)) return 'critical_incidents';
+  if (q.match(/country|governance|nation|profile|dashboard/) || q.match(/for\s+\w+/)) return 'country_dashboard';
+  if (q.match(/map|show|display|overlay|layer/)) return 'map_query';
+  if (q.match(/predict|forecast|trend|future/)) return 'forecasting';
+  if (q.match(/decision|recommend|action|outcome/)) return 'decision_intelligence';
+  if (q.match(/compare|versus|vs|ranking|rank/)) return 'comparative';
   return 'general';
 }
 
-function extractCountry(query: string): string {
-  const forMatch = query.match(/for\s+([a-z]+)/i);
-  if (forMatch) return forMatch[1];
-  
-  const ofMatch = query.match(/of\s+([a-z]+)/i);
-  if (ofMatch) return ofMatch[1];
-  
-  return query.split(' ').pop() || query;
+function extractCountry(query: string): string | null {
+  const forMatch = query.match(/(?:for|in|of|about)\s+([a-z\s]+?)(?:\s+(?:in|on|during|over|from|since)|[?.!,]|$)/i);
+  if (forMatch) {
+    const candidate = forMatch[1].trim();
+    if (candidate.length >= 2 && candidate.length <= 50) return candidate;
+  }
+  return null;
 }
 
 async function resolveISO3(country: string, supabase: any): Promise<string | null> {
   const isoMap: Record<string, string> = {
     'nauru': 'NRU', 'usa': 'USA', 'us': 'USA', 'united states': 'USA',
     'germany': 'DEU', 'ghana': 'GHA', 'kenya': 'KEN', 'uk': 'GBR',
-    'france': 'FRA', 'japan': 'JPN', 'china': 'CHN', 'india': 'IND'
+    'united kingdom': 'GBR', 'france': 'FRA', 'japan': 'JPN', 'china': 'CHN',
+    'india': 'IND', 'brazil': 'BRA', 'russia': 'RUS', 'australia': 'AUS',
+    'canada': 'CAN', 'mexico': 'MEX', 'nigeria': 'NGA', 'south africa': 'ZAF',
+    'egypt': 'EGY', 'turkey': 'TUR', 'indonesia': 'IDN', 'pakistan': 'PAK',
+    'bangladesh': 'BGD', 'philippines': 'PHL', 'vietnam': 'VNM', 'thailand': 'THA',
+    'south korea': 'KOR', 'italy': 'ITA', 'spain': 'ESP', 'poland': 'POL',
+    'ukraine': 'UKR', 'iraq': 'IRQ', 'iran': 'IRN', 'syria': 'SYR',
+    'afghanistan': 'AFG', 'yemen': 'YEM', 'somalia': 'SOM', 'sudan': 'SDN',
+    'ethiopia': 'ETH', 'congo': 'COD', 'drc': 'COD', 'colombia': 'COL',
+    'argentina': 'ARG', 'chile': 'CHL', 'peru': 'PER', 'venezuela': 'VEN',
+    'saudi arabia': 'SAU', 'uae': 'ARE', 'israel': 'ISR', 'palestine': 'PSE',
+    'myanmar': 'MMR', 'taiwan': 'TWN', 'singapore': 'SGP', 'malaysia': 'MYS',
+    'new zealand': 'NZL', 'sweden': 'SWE', 'norway': 'NOR', 'denmark': 'DNK',
+    'finland': 'FIN', 'netherlands': 'NLD', 'belgium': 'BEL', 'switzerland': 'CHE',
+    'austria': 'AUT', 'portugal': 'PRT', 'greece': 'GRC', 'czech republic': 'CZE',
+    'romania': 'ROU', 'hungary': 'HUN', 'morocco': 'MAR', 'tunisia': 'TUN',
+    'algeria': 'DZA', 'libya': 'LBY', 'tanzania': 'TZA', 'mozambique': 'MOZ',
   };
-  
+
   const normalized = country.toLowerCase().trim();
   if (isoMap[normalized]) return isoMap[normalized];
-  if (country.length === 3) return country.toUpperCase();
-  
+  if (country.length === 3 && country === country.toUpperCase()) return country;
+
+  // Try canonical_entities lookup
+  const { data } = await supabase
+    .from('canonical_entities')
+    .select('iso3')
+    .ilike('canonical_name', `%${normalized}%`)
+    .in('entity_type', ['country', 'territory'])
+    .limit(1);
+
+  if (data?.[0]?.iso3) return data[0].iso3;
   return null;
 }
 
-async function fetchCountryDashboard(iso3: string, supabase: any) {
-  const dashboard: any = { iso3 };
-  
-  const { data: governance } = await supabase
-    .from('governance_global')
-    .select('*')
-    .eq('iso3', iso3)
-    .order('year', { ascending: false })
-    .limit(10);
-  
-  const { data: health } = await supabase
-    .from('health_metrics')
-    .select('*')
-    .eq('iso3', iso3)
-    .order('year', { ascending: false })
-    .limit(10);
-  
-  const { data: food } = await supabase
-    .from('food_data')
-    .select('*')
-    .eq('iso3', iso3)
-    .order('date', { ascending: false })
-    .limit(10);
-  
-  const { data: finance } = await supabase
-    .from('finance_data')
-    .select('*')
-    .eq('iso3', iso3)
-    .order('date', { ascending: false })
-    .limit(10);
-  
-  const { data: energy } = await supabase
-    .from('metrics')
-    .select('*')
-    .eq('iso3', iso3)
-    .eq('domain', 'energy')
-    .order('created_at', { ascending: false })
-    .limit(10);
-  
-  const { data: vulnerability } = await supabase
-    .from('vulnerability_scores')
-    .select('*')
-    .eq('iso3', iso3)
-    .order('computed_at', { ascending: false })
-    .limit(1);
-  
-  dashboard.governance = governance || [];
-  dashboard.health = health || [];
-  dashboard.food = food || [];
-  dashboard.finance = finance || [];
-  dashboard.energy = energy || [];
-  dashboard.vulnerability = vulnerability?.[0] || null;
-  
-  return dashboard;
-}
-
-async function fetchRelevantData(domains: string[], supabase: any) {
-  const data: any = {};
-  
-  for (const domain of domains) {
-    const { data: records } = await supabase
-      .from('metrics')
-      .select('*')
-      .eq('domain', domain)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    
-    data[domain] = records || [];
-  }
-  
-  return data;
-}
-
-function detectDomain(query: string): string[] {
+function detectDomains(query: string): string[] {
   const domains: string[] = [];
   const q = query.toLowerCase();
-  
-  if (q.match(/governance|government|policy|corruption/)) domains.push('governance');
-  if (q.match(/health|medical|disease|hospital/)) domains.push('health');
-  if (q.match(/education|school|literacy|student/)) domains.push('education');
-  if (q.match(/energy|power|electricity|grid/)) domains.push('energy');
-  if (q.match(/finance|economic|gdp|debt|trade/)) domains.push('finance');
-  if (q.match(/food|agriculture|hunger|crop/)) domains.push('food');
-  if (q.match(/climate|weather|temperature|rain/)) domains.push('climate');
-  if (q.match(/security|military|defense|threat/)) domains.push('security');
-  
+  if (q.match(/governance|government|policy|corruption|democracy/)) domains.push('governance');
+  if (q.match(/health|medical|disease|hospital|mortality|life expectancy/)) domains.push('health');
+  if (q.match(/education|school|literacy|student|university/)) domains.push('education');
+  if (q.match(/energy|power|electricity|grid|solar|oil|gas/)) domains.push('energy');
+  if (q.match(/finance|economic|gdp|debt|trade|inflation|currency/)) domains.push('finance');
+  if (q.match(/food|agriculture|hunger|crop|famine/)) domains.push('food');
+  if (q.match(/climate|weather|temperature|rain|drought|flood/)) domains.push('climate');
+  if (q.match(/security|military|defense|threat|conflict|terrorism/)) domains.push('security');
+  if (q.match(/infrastructure|transport|road|water|sanitation/)) domains.push('infrastructure');
+  if (q.match(/technology|internet|digital|innovation/)) domains.push('technology');
   return domains.length > 0 ? domains : ['general'];
 }
