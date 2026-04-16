@@ -27,12 +27,10 @@ serve(async (req) => {
 
     if (fetchErr) throw fetchErr;
     if (!pending || pending.length === 0) {
-      return new Response(
-        JSON.stringify({ ok: true, dispatched: 0, message: "No pending webhooks" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ ok: true, dispatched: 0, message: "No pending webhooks" });
     }
 
+    const signingKey = Deno.env.get("QUANTIVIS_WEBHOOK_SECRET") || "";
     let sent = 0;
     let failed = 0;
 
@@ -41,59 +39,56 @@ serve(async (req) => {
         const targetUrl = webhook.target_url;
         if (!targetUrl) {
           await sb.from("quantivis_webhook_queue")
-            .update({ status: "failed", error_message: "No target URL", updated_at: new Date().toISOString() })
+            .update({ status: "failed", last_error: "No target URL" })
             .eq("id", webhook.id);
           failed++;
           continue;
         }
 
-        // Create HMAC signature for payload verification
         const encoder = new TextEncoder();
         const payloadStr = JSON.stringify(webhook.payload);
-        const signingKey = Deno.env.get("QUANTIVIS_WEBHOOK_SECRET") || "aicis-default-key";
-        const key = await crypto.subtle.importKey(
-          "raw", encoder.encode(signingKey), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-        );
-        const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadStr));
-        const sigHex = Array.from(new Uint8Array(signature), b => b.toString(16).padStart(2, "0")).join("");
 
+        // Send with x-api-key header (Quantivis expects this)
         const response = await fetch(targetUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-AICIS-Signature": `sha256=${sigHex}`,
+            "x-api-key": signingKey,
+            "x-request-id": webhook.id,
             "X-AICIS-Event": webhook.event_type,
-            "X-AICIS-Delivery": webhook.id,
           },
           body: payloadStr,
         });
 
+        const attempts = (webhook.attempts || 0) + 1;
+
         if (response.ok) {
           await sb.from("quantivis_webhook_queue")
-            .update({ status: "sent", sent_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .update({ status: "sent", delivered_at: new Date().toISOString(), attempts })
             .eq("id", webhook.id);
           sent++;
         } else {
-          const retries = (webhook.retry_count || 0) + 1;
           const errMsg = `HTTP ${response.status}: ${await response.text().catch(() => "no body")}`.substring(0, 500);
+          const maxAttempts = webhook.max_attempts || 5;
           await sb.from("quantivis_webhook_queue")
             .update({
-              status: retries >= 3 ? "failed" : "pending",
-              retry_count: retries,
-              error_message: errMsg,
-              updated_at: new Date().toISOString(),
+              status: attempts >= maxAttempts ? "failed" : "pending",
+              attempts,
+              last_error: errMsg,
+              next_retry_at: new Date(Date.now() + attempts * 60000).toISOString(),
             })
             .eq("id", webhook.id);
           failed++;
         }
       } catch (e) {
-        const retries = (webhook.retry_count || 0) + 1;
+        const attempts = (webhook.attempts || 0) + 1;
+        const maxAttempts = webhook.max_attempts || 5;
         await sb.from("quantivis_webhook_queue")
           .update({
-            status: retries >= 3 ? "failed" : "pending",
-            retry_count: retries,
-            error_message: (e as Error).message.substring(0, 500),
-            updated_at: new Date().toISOString(),
+            status: attempts >= maxAttempts ? "failed" : "pending",
+            attempts,
+            last_error: (e as Error).message.substring(0, 500),
+            next_retry_at: new Date(Date.now() + attempts * 60000).toISOString(),
           })
           .eq("id", webhook.id);
         failed++;
@@ -107,15 +102,16 @@ serve(async (req) => {
       message: `Dispatched ${sent} webhooks, ${failed} failed out of ${pending.length}`,
     });
 
-    return new Response(
-      JSON.stringify({ ok: true, dispatched: sent, failed, total: pending.length }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ ok: true, dispatched: sent, failed, total: pending.length });
   } catch (e) {
     console.error("dispatch-quantivis-webhooks error:", e);
-    return new Response(
-      JSON.stringify({ error: (e as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ error: (e as Error).message }, 500);
   }
 });
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
