@@ -10297,6 +10297,10 @@ export type Database = {
       }
       auto_review_decisions: { Args: { _batch_size?: number }; Returns: Json }
       batch_expand_entities: { Args: { _batch_size?: number }; Returns: Json }
+      batch_generate_entity_links: {
+        Args: { _batch_size?: number }
+        Returns: Json
+      }
       batch_generate_event_links: {
         Args: { p_batch_size?: number }
         Returns: Json
