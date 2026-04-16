@@ -2087,6 +2087,39 @@ export type Database = {
         }
         Relationships: []
       }
+      data_quality_audits: {
+        Row: {
+          audit_type: string
+          created_at: string | null
+          findings: Json | null
+          id: string
+          layer: string
+          passed: boolean | null
+          sample_size: number | null
+          score: number | null
+        }
+        Insert: {
+          audit_type: string
+          created_at?: string | null
+          findings?: Json | null
+          id?: string
+          layer: string
+          passed?: boolean | null
+          sample_size?: number | null
+          score?: number | null
+        }
+        Update: {
+          audit_type?: string
+          created_at?: string | null
+          findings?: Json | null
+          id?: string
+          layer?: string
+          passed?: boolean | null
+          sample_size?: number | null
+          score?: number | null
+        }
+        Relationships: []
+      }
       data_retention_policies: {
         Row: {
           auto_delete: boolean | null
@@ -8307,6 +8340,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      signal_truth_scores: {
+        Row: {
+          country_mapping_accuracy: number | null
+          created_at: string | null
+          domain: string | null
+          evidence: Json | null
+          id: string
+          iso3: string | null
+          overall_truth_score: number | null
+          precision_score: number | null
+          recall_score: number | null
+          semantic_validity: number | null
+          signal_id: string
+          signal_type: string
+        }
+        Insert: {
+          country_mapping_accuracy?: number | null
+          created_at?: string | null
+          domain?: string | null
+          evidence?: Json | null
+          id?: string
+          iso3?: string | null
+          overall_truth_score?: number | null
+          precision_score?: number | null
+          recall_score?: number | null
+          semantic_validity?: number | null
+          signal_id: string
+          signal_type: string
+        }
+        Update: {
+          country_mapping_accuracy?: number | null
+          created_at?: string | null
+          domain?: string | null
+          evidence?: Json | null
+          id?: string
+          iso3?: string | null
+          overall_truth_score?: number | null
+          precision_score?: number | null
+          recall_score?: number | null
+          semantic_validity?: number | null
+          signal_id?: string
+          signal_type?: string
+        }
+        Relationships: []
       }
       silent_failure_state: {
         Row: {
