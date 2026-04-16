@@ -8,10 +8,10 @@ serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-  );
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+  const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
     structuredLog('info', FN, 'Starting global data collection cycle');
@@ -19,43 +19,70 @@ serve(async (req) => {
       job_name: FN, status: "running", message: "Starting global data collection cycle",
     });
 
-    const results: { finance: any; security: any; health: any; food: any; governance: any; errors: string[] } = {
-      finance: null, security: null, health: null, food: null, governance: null, errors: []
-    };
+    const results: Record<string, any> = {};
+    const errors: string[] = [];
 
-    const [financeRes, securityRes, healthRes, foodRes, governanceRes] = await Promise.allSettled([
-      supabase.functions.invoke("fetch-finance-global"),
-      supabase.functions.invoke("fetch-security-global"),
-      supabase.functions.invoke("fetch-health-global"),
-      supabase.functions.invoke("fetch-food-global"),
-      supabase.functions.invoke("fetch-governance-global")
-    ]);
+    // Use direct HTTP calls to avoid nested invocation timeouts
+    const functions = [
+      "fetch-finance-global",
+      "fetch-security-global",
+      "fetch-health-global",
+      "fetch-food-global",
+      "fetch-governance-global",
+    ];
 
-    if (financeRes.status === 'fulfilled') results.finance = financeRes.value.data;
-    else results.errors.push(`Finance: ${financeRes.reason}`);
-    if (securityRes.status === 'fulfilled') results.security = securityRes.value.data;
-    else results.errors.push(`Security: ${securityRes.reason}`);
-    if (healthRes.status === 'fulfilled') results.health = healthRes.value.data;
-    else results.errors.push(`Health: ${healthRes.reason}`);
-    if (foodRes.status === 'fulfilled') results.food = foodRes.value.data;
-    else results.errors.push(`Food: ${foodRes.reason}`);
-    if (governanceRes.status === 'fulfilled') results.governance = governanceRes.value.data;
-    else results.errors.push(`Governance: ${governanceRes.reason}`);
+    const calls = functions.map(async (fn) => {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 25000);
+        const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceKey}`,
+          },
+          body: "{}",
+        });
+        clearTimeout(timer);
+        const body = await res.text();
+        if (res.ok) {
+          try { results[fn] = JSON.parse(body); } catch { results[fn] = body; }
+        } else {
+          errors.push(`${fn}: HTTP ${res.status}`);
+        }
+      } catch (e) {
+        errors.push(`${fn}: ${(e as Error).message}`);
+      }
+    });
 
-    // Trigger vulnerability calculation (now uses service_role_key internally)
-    await supabase.functions.invoke("calculate-vulnerability").catch(e =>
-      structuredLog('warn', FN, `Vulnerability calc failed: ${(e as Error).message}`)
-    );
+    await Promise.allSettled(calls);
 
-    // ─── PHASE 3: Freshness Guardrails ──────────────────────────────
+    // Trigger vulnerability calculation
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      await fetch(`${supabaseUrl}/functions/v1/calculate-vulnerability`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: "{}",
+      });
+      clearTimeout(timer);
+    } catch (e) {
+      structuredLog('warn', FN, `Vulnerability calc failed: ${(e as Error).message}`);
+    }
+
+    // Freshness guardrails
     try {
       const freshnessChecks = [
-        { table: 'finance_data', label: 'Finance' },
-        { table: 'health_metrics', label: 'Health' },
-        { table: 'food_data', label: 'Food' },
-        { table: 'security_events', label: 'Security' },
+        { table: 'normalized_metrics', label: 'Metrics' },
+        { table: 'normalized_events', label: 'Events' },
+        { table: 'country_performance_snapshots', label: 'Snapshots' },
         { table: 'crisis_events', label: 'Crisis' },
-        { table: 'intelligence_signals', label: 'Intelligence' },
       ];
 
       for (const check of freshnessChecks) {
@@ -72,13 +99,6 @@ serve(async (req) => {
         if (hoursAgo > 48) {
           const msg = `STALE: ${check.label} (${check.table}) — no data in ${hoursAgo === Infinity ? '∞' : Math.round(hoursAgo)}h`;
           structuredLog('warn', FN, msg);
-
-          await supabase.from('automation_logs').insert({
-            job_name: `freshness-${check.table}`,
-            status: 'warning',
-            message: msg,
-          });
-
           await supabase.from('alerts').insert({
             title: `Data Freshness Alert: ${check.label}`,
             message: msg,
@@ -94,12 +114,12 @@ serve(async (req) => {
 
     await supabase.from("automation_logs").insert({
       job_name: FN,
-      status: results.errors.length === 0 ? "success" : "partial",
-      message: `Global data collection complete. Errors: ${results.errors.length}`,
+      status: errors.length === 0 ? "success" : "partial",
+      message: `Global collection done. ${Object.keys(results).length} OK, ${errors.length} errors. ${errors.slice(0,3).join('; ')}`.slice(0, 500),
     });
 
-    structuredLog('info', FN, `Complete. Errors: ${results.errors.length}`);
-    return jsonResponse({ ok: true, results });
+    structuredLog('info', FN, `Complete. Errors: ${errors.length}`);
+    return jsonResponse({ ok: true, results, errors });
   } catch (e) {
     structuredLog('error', FN, (e as Error).message);
     await supabase.from("automation_logs").insert({
