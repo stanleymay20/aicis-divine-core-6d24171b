@@ -217,6 +217,7 @@ const Auth = () => {
             </Button>
           )}
 
+          <div className="flex flex-col gap-2">
             {!isReset && (
               <>
                 <button
