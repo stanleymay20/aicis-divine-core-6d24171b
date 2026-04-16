@@ -155,11 +155,19 @@ serve(async (req) => {
     // ═══════════════════════════════════════════
     const { data: metricStats } = await supabase.rpc('run_milestone_audit');
     
+    // Use aggregate query for true domain/country counts instead of small sample
+    const { data: domainCounts } = await supabase
+      .from('normalized_metrics')
+      .select('domain')
+      .limit(1000);
+    
+    const { data: countryCounts } = await supabase.rpc('run_milestone_audit');
+    
     const { data: recentMetrics } = await supabase
       .from('normalized_metrics')
       .select('domain, iso3, confidence, freshness_score, provenance_source')
       .order('created_at', { ascending: false })
-      .limit(500);
+      .limit(2000);
 
     const metrics = recentMetrics ?? [];
     const metricDomains = new Set(metrics.map(m => m.domain));
@@ -168,10 +176,14 @@ serve(async (req) => {
     const avgFreshness = metrics.length > 0 ? metrics.reduce((s, m) => s + (m.freshness_score ?? 0), 0) / metrics.length : 0;
     const hasProvenance = metrics.filter(m => m.provenance_source).length;
 
+    // Use actual DB domain count from milestone audit if available
+    const actualDomainCount = metricStats?.domains_with_data ?? metricDomains.size;
+    const actualCountryCount = metricStats?.countries_with_data ?? metricCountries.size;
+
     const metricScore = Math.round(
       Math.min(100,
-        (metricDomains.size / 9) * 30 + // domain diversity (target: 9 domains)
-        (metricCountries.size / 150) * 30 + // country coverage
+        (Math.min(actualDomainCount, 9) / 9) * 30 + // domain diversity (target: 9 domains)
+        (Math.min(actualCountryCount, 150) / 150) * 30 + // country coverage
         (hasProvenance / Math.max(metrics.length, 1)) * 20 + // provenance
         avgFreshness * 20 // freshness
       )
@@ -180,7 +192,9 @@ serve(async (req) => {
     audits.metrics = {
       score: metricScore,
       domains: [...metricDomains],
+      domain_count_actual: actualDomainCount,
       countries_in_sample: metricCountries.size,
+      countries_actual: actualCountryCount,
       avg_confidence: Math.round(avgConfidence * 100) / 100,
       avg_freshness: Math.round(avgFreshness * 100) / 100,
       provenance_pct: Math.round((hasProvenance / Math.max(metrics.length, 1)) * 100),
@@ -197,11 +211,25 @@ serve(async (req) => {
     // ═══════════════════════════════════════════
     // 4. FORECAST USEFULNESS
     // ═══════════════════════════════════════════
-    const { data: forecastStats } = await supabase
-      .from('forecast_validation_results')
-      .select('direction_hit, absolute_error, actual_direction, domain')
-      .gte('realized_date', new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0])
-      .limit(1000);
+    // Stratified sampling: get turning points specifically to avoid dilution by stable forecasts
+    const cutoffDate = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    
+    const [tpResult, stableResult] = await Promise.all([
+      supabase.from('forecast_validation_results')
+        .select('direction_hit, absolute_error, actual_direction, domain')
+        .gte('realized_date', cutoffDate)
+        .neq('actual_direction', 'stable')
+        .limit(500),
+      supabase.from('forecast_validation_results')
+        .select('direction_hit, absolute_error, actual_direction, domain')
+        .gte('realized_date', cutoffDate)
+        .eq('actual_direction', 'stable')
+        .limit(500),
+    ]);
+    
+    const turningPointSample = tpResult.data ?? [];
+    const stableSample = stableResult.data ?? [];
+    const forecasts = [...turningPointSample, ...stableSample];
 
     const forecasts = forecastStats ?? [];
     const turningPoints = forecasts.filter(f => f.actual_direction !== 'stable');
