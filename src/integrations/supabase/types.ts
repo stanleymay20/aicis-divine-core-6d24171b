@@ -3885,6 +3885,47 @@ export type Database = {
           },
         ]
       }
+      ethics_review_log: {
+        Row: {
+          approved: boolean
+          assessment: string | null
+          created_at: string
+          decision_id: string | null
+          flags: string[] | null
+          id: string
+          review_type: string
+          reviewer_id: string | null
+        }
+        Insert: {
+          approved?: boolean
+          assessment?: string | null
+          created_at?: string
+          decision_id?: string | null
+          flags?: string[] | null
+          id?: string
+          review_type?: string
+          reviewer_id?: string | null
+        }
+        Update: {
+          approved?: boolean
+          assessment?: string | null
+          created_at?: string
+          decision_id?: string | null
+          flags?: string[] | null
+          id?: string
+          review_type?: string
+          reviewer_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ethics_review_log_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "adi_decisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ethics_reviewers: {
         Row: {
           cert_level: string
