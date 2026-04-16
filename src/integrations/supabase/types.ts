@@ -4583,6 +4583,63 @@ export type Database = {
         }
         Relationships: []
       }
+      forecast_prospective_health_snapshots: {
+        Row: {
+          accumulation_status: string
+          avg_mae: number | null
+          countries_covered: number
+          created_at: string
+          domains_covered: number
+          id: string
+          missing_actual_count: number
+          new_24h: number
+          new_7d: number
+          overdue_count: number
+          pending_count: number
+          readiness_status: string
+          realized_count: number
+          snapshot_date: string
+          total_forecasts: number
+          tp_accuracy: number | null
+        }
+        Insert: {
+          accumulation_status?: string
+          avg_mae?: number | null
+          countries_covered?: number
+          created_at?: string
+          domains_covered?: number
+          id?: string
+          missing_actual_count?: number
+          new_24h?: number
+          new_7d?: number
+          overdue_count?: number
+          pending_count?: number
+          readiness_status?: string
+          realized_count?: number
+          snapshot_date?: string
+          total_forecasts?: number
+          tp_accuracy?: number | null
+        }
+        Update: {
+          accumulation_status?: string
+          avg_mae?: number | null
+          countries_covered?: number
+          created_at?: string
+          domains_covered?: number
+          id?: string
+          missing_actual_count?: number
+          new_24h?: number
+          new_7d?: number
+          overdue_count?: number
+          pending_count?: number
+          readiness_status?: string
+          realized_count?: number
+          snapshot_date?: string
+          total_forecasts?: number
+          tp_accuracy?: number | null
+        }
+        Relationships: []
+      }
       forecast_residuals: {
         Row: {
           created_at: string
@@ -10478,6 +10535,7 @@ export type Database = {
           total_breaks: number
         }[]
       }
+      audit_prospective_match_quality: { Args: never; Returns: Json }
       auto_review_decisions: { Args: { _batch_size?: number }; Returns: Json }
       batch_expand_entities: { Args: { _batch_size?: number }; Returns: Json }
       batch_generate_entity_links: {
@@ -10652,6 +10710,8 @@ export type Database = {
         Returns: Json
       }
       planetary_batch_tick: { Args: never; Returns: Json }
+      prospective_accumulation_monitor: { Args: never; Returns: Json }
+      prospective_coverage_gaps: { Args: never; Returns: Json }
       prospective_domain_breakdown: { Args: never; Returns: Json }
       prospective_horizon_breakdown: { Args: never; Returns: Json }
       prospective_model_breakdown: { Args: never; Returns: Json }
@@ -10681,6 +10741,7 @@ export type Database = {
         }[]
       }
       snap_planetary_stats: { Args: never; Returns: undefined }
+      snapshot_prospective_health: { Args: never; Returns: Json }
       traverse_entity_graph: {
         Args: { _depth?: number; _entity_id: string }
         Returns: {
