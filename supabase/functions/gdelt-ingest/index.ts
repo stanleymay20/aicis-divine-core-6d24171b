@@ -22,7 +22,8 @@ serve(async (req) => {
     const timeWindow = body.time_window_minutes || 60;
 
     // Fetch recent GDELT events via their API
-    const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=conflict%20OR%20crisis%20OR%20attack%20OR%20protest%20OR%20earthquake%20OR%20flood%20OR%20famine&mode=ArtList&maxrecords=${batchSize}&format=json&timespan=${timeWindow}min`;
+    // GDELT requires parentheses around OR'd terms
+    const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=(conflict%20OR%20crisis%20OR%20attack%20OR%20protest%20OR%20earthquake%20OR%20flood%20OR%20famine)&mode=ArtList&maxrecords=${batchSize}&format=json&timespan=${timeWindow}min`;
 
     const gdeltResp = await fetch(gdeltUrl);
     if (!gdeltResp.ok) {

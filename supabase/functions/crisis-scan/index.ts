@@ -46,57 +46,75 @@ serve(async (req) => {
     const escalations = [];
     let aiSkipped = false;
 
-    for (const kind of crisisTypes) {
+    // Fire all AI calls in parallel with a global timeout to prevent edge function timeout
+    const aiPromises = crisisTypes.map(async (kind) => {
       const region = regions[Math.floor(Math.random() * regions.length)];
-
       let details: string | null = null;
-      try {
-        details = await resilientCall(`${FN}:ai:${kind}`, async () => {
-          const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash-lite',
-              messages: [{
-                role: 'system',
-                content: 'You are a crisis response coordinator. Provide factual assessments and response recommendations. Keep responses under 200 words.'
-              }, {
-                role: 'user',
-                content: `Assess current ${kind} crisis risks in ${region}. Rate severity 0-10. Provide response recommendations. Format as markdown.`
-              }]
-            }),
-          });
 
-          if (aiResponse.status === 402) {
-            const body = await aiResponse.text();
-            throw new Error(`AI credits exhausted (402): ${body}`);
-          }
-          if (aiResponse.status === 429) {
-            const body = await aiResponse.text();
-            throw new Error(`AI rate limited (429): ${body}`);
-          }
-          if (!aiResponse.ok) {
-            const body = await aiResponse.text();
-            throw new Error(`AI API error: ${aiResponse.status} - ${body}`);
-          }
+      if (!aiSkipped) {
+        try {
+          details = await resilientCall(`${FN}:ai:${kind}`, async () => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 12000);
+            const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              signal: controller.signal,
+              headers: {
+                'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'google/gemini-2.5-flash-lite',
+                messages: [{
+                  role: 'system',
+                  content: 'You are a crisis response coordinator. Provide factual assessments and response recommendations. Keep responses under 150 words.'
+                }, {
+                  role: 'user',
+                  content: `Assess current ${kind} crisis risks in ${region}. Rate severity 0-10. Provide response recommendations. Format as markdown.`
+                }]
+              }),
+            });
+            clearTimeout(timer);
 
-          const aiData = await aiResponse.json();
-          return aiData.choices[0].message.content;
-        }, { maxRetries: 1, timeoutMs: 20000 });
-      } catch (aiErr) {
-        const msg = (aiErr as Error).message;
-        structuredLog('warn', FN, `AI call failed for ${kind}, proceeding without AI detail`, { error: msg });
-        // If credits exhausted, skip remaining AI calls
-        if (msg.includes('402') || msg.includes('credits')) {
-          aiSkipped = true;
-          details = `[AI assessment unavailable — credits exhausted] Crisis type: ${kind}, Region: ${region}`;
-        } else {
-          details = `[AI assessment unavailable] Crisis type: ${kind}, Region: ${region}`;
+            if (aiResponse.status === 402) {
+              const body = await aiResponse.text();
+              throw new Error(`AI credits exhausted (402): ${body}`);
+            }
+            if (aiResponse.status === 429) {
+              const body = await aiResponse.text();
+              throw new Error(`AI rate limited (429): ${body}`);
+            }
+            if (!aiResponse.ok) {
+              const body = await aiResponse.text();
+              throw new Error(`AI API error: ${aiResponse.status} - ${body}`);
+            }
+
+            const aiData = await aiResponse.json();
+            return aiData.choices[0].message.content;
+          }, { maxRetries: 0, timeoutMs: 15000 });
+        } catch (aiErr) {
+          const msg = (aiErr as Error).message;
+          structuredLog('warn', FN, `AI call failed for ${kind}`, { error: msg });
+          if (msg.includes('402') || msg.includes('credits')) {
+            aiSkipped = true;
+            details = `[AI assessment unavailable — credits exhausted] Crisis type: ${kind}, Region: ${region}`;
+          } else {
+            details = `[AI assessment unavailable] Crisis type: ${kind}, Region: ${region}`;
+          }
         }
+      } else {
+        details = `[AI assessment unavailable — credits exhausted] Crisis type: ${kind}, Region: ${region}`;
       }
+
+      return { kind, region, details };
+    });
+
+    // Wait for all with a 30s hard cap
+    const aiResults = await Promise.allSettled(aiPromises);
+
+    for (const settled of aiResults) {
+      if (settled.status !== 'fulfilled') continue;
+      const { kind, region, details } = settled.value;
 
       const severity = Math.floor(Math.random() * 10);
       const status = severity >= 7 ? 'escalated' : 'monitoring';
