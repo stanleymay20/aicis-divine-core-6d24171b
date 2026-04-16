@@ -6068,7 +6068,9 @@ export type Database = {
       }
       normalized_events: {
         Row: {
+          category: string | null
           confidence: number | null
+          country_iso3: string | null
           created_at: string
           dedup_key: string
           description: string | null
@@ -6081,16 +6083,22 @@ export type Database = {
           last_verified_at: string | null
           location_entity_id: string | null
           metadata: Json | null
+          occurred_at: string | null
           provenance_source: string | null
           provider_name: string
           provider_run_id: string | null
+          raw_data: Json | null
           raw_payload_id: string | null
           severity: number | null
+          source_name: string | null
+          source_url: string | null
           started_at: string | null
           title: string
         }
         Insert: {
+          category?: string | null
           confidence?: number | null
+          country_iso3?: string | null
           created_at?: string
           dedup_key: string
           description?: string | null
@@ -6103,16 +6111,22 @@ export type Database = {
           last_verified_at?: string | null
           location_entity_id?: string | null
           metadata?: Json | null
+          occurred_at?: string | null
           provenance_source?: string | null
           provider_name: string
           provider_run_id?: string | null
+          raw_data?: Json | null
           raw_payload_id?: string | null
           severity?: number | null
+          source_name?: string | null
+          source_url?: string | null
           started_at?: string | null
           title: string
         }
         Update: {
+          category?: string | null
           confidence?: number | null
+          country_iso3?: string | null
           created_at?: string
           dedup_key?: string
           description?: string | null
@@ -6125,11 +6139,15 @@ export type Database = {
           last_verified_at?: string | null
           location_entity_id?: string | null
           metadata?: Json | null
+          occurred_at?: string | null
           provenance_source?: string | null
           provider_name?: string
           provider_run_id?: string | null
+          raw_data?: Json | null
           raw_payload_id?: string | null
           severity?: number | null
+          source_name?: string | null
+          source_url?: string | null
           started_at?: string | null
           title?: string
         }
