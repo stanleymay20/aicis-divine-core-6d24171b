@@ -142,9 +142,6 @@ serve(async (req) => {
           if (approval) escalations.push(approval);
         }
       }
-
-      // If AI credits exhausted, skip remaining AI calls but still insert events
-      if (aiSkipped) continue;
     }
 
     await supabaseClient.from('automation_logs').insert({
