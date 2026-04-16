@@ -33,7 +33,20 @@ serve(async (req) => {
       });
     }
 
-    const gdeltData = await gdeltResp.json();
+    const responseText = await gdeltResp.text();
+    let gdeltData: any;
+    try {
+      gdeltData = JSON.parse(responseText);
+    } catch {
+      console.warn('GDELT returned non-JSON (rate-limited?):', responseText.slice(0, 200));
+      await supabase.from('automation_logs').insert({
+        job_name: 'ingest-gdelt', status: 'skipped',
+        message: `GDELT rate-limited: ${responseText.slice(0, 100)}`,
+      });
+      return new Response(JSON.stringify({ ok: true, ingested: 0, message: 'GDELT rate-limited, skipping' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     const articles = gdeltData?.articles || [];
 
     if (articles.length === 0) {
