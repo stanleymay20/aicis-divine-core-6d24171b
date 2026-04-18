@@ -27,7 +27,7 @@ serve(async (req) => {
       .from("system_health")
       .select("component, status, error_message")
       .eq("status", "down")
-      .gte("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+      .gte("checked_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
 
     let incidentCreated = false;
     if (downComponents && downComponents.length > 0) {
@@ -70,7 +70,7 @@ serve(async (req) => {
           .select("component")
           .eq("status", "down")
           .in("component", inc.affected_components)
-          .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString());
+          .gte("checked_at", new Date(Date.now() - 10 * 60 * 1000).toISOString());
 
         if (!stillDown || stillDown.length === 0) {
           await supabase.from("status_incidents")
