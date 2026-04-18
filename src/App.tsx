@@ -122,7 +122,8 @@ const App = () => (
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </IntelligenceMemoryProvider>
+            </IntelligenceMemoryProvider>
+          </DemoModeProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
