@@ -6,10 +6,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { IntelligenceMemoryProvider } from "@/contexts/IntelligenceMemoryContext";
+import { DemoModeProvider } from "@/contexts/DemoModeContext";
+import { DemoBanner } from "@/components/demo/DemoBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Loader2 } from "lucide-react";
 
-// Eager-load: landing redirect, auth, not-found
+// Eager-load: public landing, auth gate, not-found
+import Landing from "./pages/Landing";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -79,11 +82,14 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <IntelligenceMemoryProvider>
-            <Routes>
-              {/* ── Public routes ───────────────────────────── */}
-              <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
+          <DemoModeProvider>
+            <IntelligenceMemoryProvider>
+              <DemoBanner />
+              <Routes>
+                {/* ── Public routes ───────────────────────────── */}
+                <Route path="/" element={<Landing />} />
+                <Route path="/app" element={<Index />} />
+                <Route path="/auth" element={<Auth />} />
               <Route path="/terms" element={<Lazy><Terms /></Lazy>} />
               <Route path="/privacy" element={<Lazy><Privacy /></Lazy>} />
               <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
@@ -116,7 +122,8 @@ const App = () => (
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </IntelligenceMemoryProvider>
+            </IntelligenceMemoryProvider>
+          </DemoModeProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

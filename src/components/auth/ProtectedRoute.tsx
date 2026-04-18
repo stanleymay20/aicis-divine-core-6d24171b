@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/contexts/DemoModeContext";
 import { Shield, Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
@@ -9,13 +10,15 @@ interface ProtectedRouteProps {
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { user, loading } = useAuth();
+  const { isDemo } = useDemoMode();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !user) {
+    // Demo mode bypasses auth — read-only access to UI surfaces
+    if (!loading && !user && !isDemo) {
       navigate("/auth", { replace: true });
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, isDemo, navigate]);
 
   if (loading) {
     return (
@@ -33,7 +36,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  if (!user) return null;
+  if (!user && !isDemo) return null;
 
   return <>{children}</>;
 };
