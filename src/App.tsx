@@ -41,6 +41,7 @@ const SystemStatus = lazy(() => import("./pages/SystemStatus"));
 const InfraOps = lazy(() => import("./pages/InfraOps"));
 const DeveloperPortal = lazy(() => import("./pages/DeveloperPortal"));
 const ForecastValidation = lazy(() => import("./pages/ForecastValidation"));
+const Status = lazy(() => import("./pages/Status"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -86,6 +87,7 @@ const App = () => (
               <Route path="/terms" element={<Lazy><Terms /></Lazy>} />
               <Route path="/privacy" element={<Lazy><Privacy /></Lazy>} />
               <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
+              <Route path="/status" element={<Lazy><Status /></Lazy>} />
 
               {/* ── Core pilot routes (6 nav items) ──────────── */}
               <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />

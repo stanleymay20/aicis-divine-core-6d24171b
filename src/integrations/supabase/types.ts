@@ -5685,6 +5685,39 @@ export type Database = {
           },
         ]
       }
+      ip_auto_block_rules: {
+        Row: {
+          block_duration_hours: number
+          created_at: string
+          enabled: boolean
+          id: string
+          rule_name: string
+          threshold_count: number
+          trigger_type: string
+          window_minutes: number
+        }
+        Insert: {
+          block_duration_hours?: number
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          rule_name: string
+          threshold_count?: number
+          trigger_type: string
+          window_minutes?: number
+        }
+        Update: {
+          block_duration_hours?: number
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          rule_name?: string
+          threshold_count?: number
+          trigger_type?: string
+          window_minutes?: number
+        }
+        Relationships: []
+      }
       ledger_entries: {
         Row: {
           block_number: number
@@ -8312,6 +8345,84 @@ export type Database = {
         }
         Relationships: []
       }
+      siem_forward_config: {
+        Row: {
+          auth_header: string | null
+          created_at: string
+          destination: string
+          enabled: boolean
+          endpoint_url: string
+          filter_event_types: string[] | null
+          id: string
+          min_severity: string
+          updated_at: string
+        }
+        Insert: {
+          auth_header?: string | null
+          created_at?: string
+          destination: string
+          enabled?: boolean
+          endpoint_url: string
+          filter_event_types?: string[] | null
+          id?: string
+          min_severity?: string
+          updated_at?: string
+        }
+        Update: {
+          auth_header?: string | null
+          created_at?: string
+          destination?: string
+          enabled?: boolean
+          endpoint_url?: string
+          filter_event_types?: string[] | null
+          id?: string
+          min_severity?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      siem_forward_queue: {
+        Row: {
+          created_at: string
+          event_type: string
+          forward_attempts: number
+          forwarded: boolean
+          forwarded_at: string | null
+          id: string
+          last_error: string | null
+          payload: Json
+          severity: string
+          source_id: string | null
+          source_table: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          forward_attempts?: number
+          forwarded?: boolean
+          forwarded_at?: string | null
+          id?: string
+          last_error?: string | null
+          payload: Json
+          severity?: string
+          source_id?: string | null
+          source_table?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          forward_attempts?: number
+          forwarded?: boolean
+          forwarded_at?: string | null
+          id?: string
+          last_error?: string | null
+          payload?: Json
+          severity?: string
+          source_id?: string | null
+          source_table?: string | null
+        }
+        Relationships: []
+      }
       signal_audit_chain: {
         Row: {
           data_sources: Json | null
@@ -8737,6 +8848,87 @@ export type Database = {
           rolling_mean?: number | null
           rolling_std?: number | null
           upper_control?: number | null
+        }
+        Relationships: []
+      }
+      status_incidents: {
+        Row: {
+          affected_components: string[]
+          created_at: string
+          description: string | null
+          id: string
+          impact: string
+          resolved_at: string | null
+          started_at: string
+          status: string
+          title: string
+          updated_at: string
+          updates: Json
+        }
+        Insert: {
+          affected_components?: string[]
+          created_at?: string
+          description?: string | null
+          id?: string
+          impact?: string
+          resolved_at?: string | null
+          started_at?: string
+          status?: string
+          title: string
+          updated_at?: string
+          updates?: Json
+        }
+        Update: {
+          affected_components?: string[]
+          created_at?: string
+          description?: string | null
+          id?: string
+          impact?: string
+          resolved_at?: string | null
+          started_at?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          updates?: Json
+        }
+        Relationships: []
+      }
+      status_uptime_daily: {
+        Row: {
+          avg_response_ms: number | null
+          component: string
+          created_at: string
+          day: string
+          degraded_checks: number
+          down_checks: number
+          healthy_checks: number
+          id: string
+          total_checks: number
+          uptime_pct: number
+        }
+        Insert: {
+          avg_response_ms?: number | null
+          component: string
+          created_at?: string
+          day: string
+          degraded_checks?: number
+          down_checks?: number
+          healthy_checks?: number
+          id?: string
+          total_checks?: number
+          uptime_pct?: number
+        }
+        Update: {
+          avg_response_ms?: number | null
+          component?: string
+          created_at?: string
+          day?: string
+          degraded_checks?: number
+          down_checks?: number
+          healthy_checks?: number
+          id?: string
+          total_checks?: number
+          uptime_pct?: number
         }
         Relationships: []
       }
@@ -10623,12 +10815,14 @@ export type Database = {
         Returns: Json
       }
       compute_prospective_score: { Args: never; Returns: Json }
+      compute_uptime_snapshot: { Args: never; Returns: Json }
       count_districts_needing_settlements: { Args: never; Returns: number }
       count_uncovered_regions: { Args: never; Returns: number }
       enqueue_quantivis_webhook: {
         Args: { p_event_type: string; p_payload: Json; p_target_url?: string }
         Returns: string
       }
+      evaluate_auto_block: { Args: never; Returns: Json }
       evaluate_forecast_readiness: {
         Args: { _mae_threshold?: number }
         Returns: Json
@@ -10651,6 +10845,7 @@ export type Database = {
           population_est: number
         }[]
       }
+      get_public_status: { Args: never; Returns: Json }
       get_region_hierarchy: {
         Args: { _country_iso3: string; _max_level?: number }
         Returns: {
