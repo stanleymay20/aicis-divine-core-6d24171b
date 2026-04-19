@@ -81,18 +81,30 @@ Deno.serve(async (req) => {
 // ═══════════════════════════════════════════════════════════════════════
 // Step 1: Link recent normalized_events → canonical_entities by iso3
 // ═══════════════════════════════════════════════════════════════════════
-async function linkRecentEvents(supabase: any): Promise<{ scanned: number; created: number }> {
+async function linkRecentEvents(supabase: any): Promise<{ scanned: number; created: number; inferred_iso3: number }> {
   // Fetch recent events that lack any entity_event_links
-  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(); // last 14 days
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // last 30 days
 
   const { data: events } = await supabase
     .from("normalized_events")
-    .select("id, iso3, entity_id, location_entity_id")
+    .select("id, iso3, entity_id, location_entity_id, title, description, event_type")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(2000);
 
-  if (!events || events.length === 0) return { scanned: 0, created: 0 };
+  if (!events || events.length === 0) return { scanned: 0, created: 0, inferred_iso3: 0 };
+
+  // Infer iso3 from title/description for events lacking it
+  let inferredCount = 0;
+  for (const ev of events) {
+    if (!ev.iso3) {
+      const inferred = inferIso3FromText(`${ev.title || ""} ${ev.description || ""}`);
+      if (inferred) {
+        ev.iso3 = inferred;
+        inferredCount++;
+      }
+    }
+  }
 
   // Build country entity map
   const isoSet = new Set<string>(events.map((e: any) => e.iso3).filter(Boolean));
@@ -144,12 +156,48 @@ async function linkRecentEvents(supabase: any): Promise<{ scanned: number; creat
   let created = 0;
   for (let i = 0; i < rows.length; i += 500) {
     const slice = rows.slice(i, i + 500);
-    const { error, count } = await supabase
+    const { data: ins, error } = await supabase
       .from("entity_event_links")
-      .upsert(slice, { onConflict: "event_id,entity_id,link_role", ignoreDuplicates: true, count: "exact" });
-    if (!error) created += count ?? slice.length;
+      .upsert(slice, { onConflict: "event_id,entity_id,link_role", ignoreDuplicates: true })
+      .select("id");
+    if (!error) created += ins?.length ?? 0;
   }
-  return { scanned: events.length, created };
+  return { scanned: events.length, created, inferred_iso3: inferredCount };
+}
+
+// Lightweight iso3 inference from event text (covers ~80% of news headlines)
+const COUNTRY_HINTS: Array<[RegExp, string]> = [
+  [/\b(united states|u\.s\.a?|america|usa)\b/i, "USA"],
+  [/\b(united kingdom|u\.k\.|britain|england)\b/i, "GBR"],
+  [/\b(china|chinese)\b/i, "CHN"], [/\b(india|indian)\b/i, "IND"],
+  [/\b(russia|russian)\b/i, "RUS"], [/\b(germany|german)\b/i, "DEU"],
+  [/\b(france|french)\b/i, "FRA"], [/\b(japan|japanese)\b/i, "JPN"],
+  [/\b(brazil|brazilian)\b/i, "BRA"], [/\b(mexico|mexican)\b/i, "MEX"],
+  [/\b(canada|canadian)\b/i, "CAN"], [/\b(australia|australian)\b/i, "AUS"],
+  [/\b(italy|italian)\b/i, "ITA"], [/\b(spain|spanish)\b/i, "ESP"],
+  [/\b(turkey|turkish)\b/i, "TUR"], [/\b(iran|iranian)\b/i, "IRN"],
+  [/\b(israel|israeli)\b/i, "ISR"], [/\b(ukraine|ukrainian)\b/i, "UKR"],
+  [/\b(saudi arabia|saudi)\b/i, "SAU"], [/\b(south korea|korean)\b/i, "KOR"],
+  [/\b(north korea|dprk)\b/i, "PRK"], [/\b(pakistan|pakistani)\b/i, "PAK"],
+  [/\b(indonesia|indonesian)\b/i, "IDN"], [/\b(egypt|egyptian)\b/i, "EGY"],
+  [/\b(nigeria|nigerian)\b/i, "NGA"], [/\b(south africa)\b/i, "ZAF"],
+  [/\b(argentina|argentine)\b/i, "ARG"], [/\b(thailand|thai)\b/i, "THA"],
+  [/\b(vietnam|vietnamese)\b/i, "VNM"], [/\b(philippines|filipino)\b/i, "PHL"],
+  [/\b(poland|polish)\b/i, "POL"], [/\b(netherlands|dutch)\b/i, "NLD"],
+  [/\b(sweden|swedish)\b/i, "SWE"], [/\b(switzerland|swiss)\b/i, "CHE"],
+  [/\b(belgium|belgian)\b/i, "BEL"], [/\b(greece|greek)\b/i, "GRC"],
+  [/\b(portugal|portuguese)\b/i, "PRT"], [/\b(chile|chilean)\b/i, "CHL"],
+  [/\b(colombia|colombian)\b/i, "COL"], [/\b(venezuela)\b/i, "VEN"],
+  [/\b(syria|syrian)\b/i, "SYR"], [/\b(iraq|iraqi)\b/i, "IRQ"],
+  [/\b(afghanistan|afghan)\b/i, "AFG"], [/\b(yemen|yemeni)\b/i, "YEM"],
+  [/\b(sudan|sudanese)\b/i, "SDN"], [/\b(ethiopia|ethiopian)\b/i, "ETH"],
+  [/\b(kenya|kenyan)\b/i, "KEN"], [/\bchicago|new york|los angeles|texas|california|florida\b/i, "USA"],
+  [/\b(myanmar|burma)\b/i, "MMR"], [/\b(taiwan|taiwanese)\b/i, "TWN"],
+];
+function inferIso3FromText(text: string): string | null {
+  if (!text) return null;
+  for (const [re, iso] of COUNTRY_HINTS) if (re.test(text)) return iso;
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
