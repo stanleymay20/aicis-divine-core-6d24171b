@@ -201,30 +201,41 @@ function inferIso3FromText(text: string): string | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Step 3: Promote next 1000 admin_regions to canonical_entities
+// Step 3: Promote next batch of admin_regions to canonical_entities.
+// Targets unpromoted regions (skip those already linked via metadata.admin_region_id).
 // ═══════════════════════════════════════════════════════════════════════
-async function promoteRegionsBatch(supabase: any): Promise<{ offset: number; promoted: number; has_more: boolean }> {
-  const { data: state } = await supabase
-    .from("backfill_state").select("value_int").eq("key", "region_offset").maybeSingle();
-  const offset = state?.value_int ?? 0;
-  const limit = 1000;
+async function promoteRegionsBatch(supabase: any): Promise<{ scanned: number; promoted: number; admin_levels: number[] }> {
+  // Get list of admin_region_ids already promoted (cap at 30k for memory)
+  const { data: promotedIds } = await supabase
+    .from("canonical_entities")
+    .select("metadata")
+    .eq("entity_type", "city")
+    .not("metadata->>admin_region_id", "is", null)
+    .limit(30000);
+  const alreadyPromoted = new Set<string>((promotedIds || []).map((r: any) => r.metadata?.admin_region_id).filter(Boolean));
 
+  // Pull a batch of regions, prioritising deep admin levels (L4 = villages)
   const { data: regions } = await supabase
     .from("admin_regions")
     .select("id, name, admin_level, lat, lon, country_iso3, population_est, urban_rural")
     .not("lat", "is", null)
     .not("lon", "is", null)
+    .order("admin_level", { ascending: false })
     .order("id")
-    .range(offset, offset + limit - 1);
+    .limit(2000);
 
-  if (!regions || regions.length === 0) {
-    return { offset, promoted: 0, has_more: false };
-  }
+  if (!regions || regions.length === 0) return { scanned: 0, promoted: 0, admin_levels: [] };
 
-  const rows = regions.map((r: any) => ({
-    canonical_name: `${r.name}, ${r.country_iso3}`,
+  const newRegions = regions.filter((r: any) => !alreadyPromoted.has(r.id)).slice(0, 500);
+  if (newRegions.length === 0) return { scanned: regions.length, promoted: 0, admin_levels: [] };
+
+  const adminLevels = Array.from(new Set(newRegions.map((r: any) => r.admin_level)));
+
+  const rows = newRegions.map((r: any) => ({
+    canonical_name: `${r.name}, ${r.country_iso3} L${r.admin_level}`,
     entity_type: "city" as const,
     display_name: r.name,
+    iso3: r.country_iso3,
     lat: r.lat,
     lon: r.lon,
     trust_score: 0.8,
@@ -244,19 +255,12 @@ async function promoteRegionsBatch(supabase: any): Promise<{ offset: number; pro
     const slice = rows.slice(i, i + 200);
     const { data: ins } = await supabase
       .from("canonical_entities")
-      .upsert(slice, { onConflict: "canonical_name,entity_type", ignoreDuplicates: true })
+      .upsert(slice, { onConflict: "entity_type,normalized_name", ignoreDuplicates: true })
       .select("id");
     promoted += ins?.length ?? 0;
   }
 
-  await supabase
-    .from("backfill_state")
-    .upsert(
-      { key: "region_offset", value_int: offset + regions.length, updated_at: new Date().toISOString() },
-      { onConflict: "key" },
-    );
-
-  return { offset, promoted, has_more: regions.length === limit };
+  return { scanned: regions.length, promoted, admin_levels: adminLevels };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
