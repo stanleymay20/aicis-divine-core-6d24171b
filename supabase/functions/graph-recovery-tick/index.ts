@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     if (logRow?.id) {
       await supabase.from("automation_logs").update({
         status: "success",
-        message: `tick ok in ${ms}ms — ev_links:${result.event_links?.created || 0}, m_links:${(linkRes as any)?.inserted || 0}, regions:${result.canonical_entities?.promoted || 0}, signals:${result.signal_drain?.migrated || 0}`,
+        message: `tick ok in ${ms}ms — ev_links:${result.event_links?.created || 0} (inferred:${result.event_links?.inferred_iso3 || 0}), m_links:${(linkRes as any)?.inserted || 0}, regions:${result.canonical_entities?.promoted || 0}, signals:${result.signal_drain?.migrated || 0}`,
       }).eq("id", logRow.id);
     }
     result.duration_ms = ms;
