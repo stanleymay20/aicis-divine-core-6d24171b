@@ -10788,6 +10788,7 @@ export type Database = {
         Returns: string
       }
       check_accumulation_health: { Args: never; Returns: Json }
+      check_daily_accumulation_misses: { Args: never; Returns: Json }
       check_ip_access: {
         Args: { _ip_address: unknown; _org_id: string }
         Returns: boolean
