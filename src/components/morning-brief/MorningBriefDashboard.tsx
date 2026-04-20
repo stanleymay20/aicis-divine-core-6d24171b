@@ -21,6 +21,7 @@ import { TopRisksWidget } from "./TopRisksWidget";
 import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidget";
 import { SystemStatusStrip } from "./SystemStatusStrip";
 import { DomainMixStrip } from "./DomainMixStrip";
+import { LayerTrustTiersPanel } from "./LayerTrustTiersPanel";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
@@ -107,6 +108,7 @@ export const MorningBriefDashboard = () => {
         <CollapsibleContent className="space-y-5 pt-3">
           <WatchlistBriefWidget />
           <RecentDecisionsWidget />
+          <LayerTrustTiersPanel />
           <ExecutiveProofPanel />
           <TopRisksWidget />
           <SystemStatusStrip />
