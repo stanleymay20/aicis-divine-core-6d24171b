@@ -3297,6 +3297,39 @@ export type Database = {
         }
         Relationships: []
       }
+      domain_trust_scores: {
+        Row: {
+          accuracy: number | null
+          brier_score: number | null
+          calibration_error: number | null
+          domain: string
+          model_version: string | null
+          sample_size: number
+          trust_score: number
+          updated_at: string
+        }
+        Insert: {
+          accuracy?: number | null
+          brier_score?: number | null
+          calibration_error?: number | null
+          domain: string
+          model_version?: string | null
+          sample_size?: number
+          trust_score?: number
+          updated_at?: string
+        }
+        Update: {
+          accuracy?: number | null
+          brier_score?: number | null
+          calibration_error?: number | null
+          domain?: string
+          model_version?: string | null
+          sample_size?: number
+          trust_score?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       domain_weights: {
         Row: {
           created_at: string
@@ -6403,6 +6436,63 @@ export type Database = {
         }
         Relationships: []
       }
+      model_performance_log: {
+        Row: {
+          accuracy: number | null
+          bias: number | null
+          brier_score: number | null
+          calibration_error: number | null
+          computed_at: string
+          domain: string
+          id: string
+          log_loss: number | null
+          model_version: string
+          positive_rate_actual: number | null
+          positive_rate_predicted: number | null
+          sample_size: number
+          surprise_rate: number | null
+          trust_score: number | null
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          accuracy?: number | null
+          bias?: number | null
+          brier_score?: number | null
+          calibration_error?: number | null
+          computed_at?: string
+          domain: string
+          id?: string
+          log_loss?: number | null
+          model_version: string
+          positive_rate_actual?: number | null
+          positive_rate_predicted?: number | null
+          sample_size: number
+          surprise_rate?: number | null
+          trust_score?: number | null
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          accuracy?: number | null
+          bias?: number | null
+          brier_score?: number | null
+          calibration_error?: number | null
+          computed_at?: string
+          domain?: string
+          id?: string
+          log_loss?: number | null
+          model_version?: string
+          positive_rate_actual?: number | null
+          positive_rate_predicted?: number | null
+          sample_size?: number
+          surprise_rate?: number | null
+          trust_score?: number | null
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       model_registry: {
         Row: {
           alpha_default: number
@@ -8177,6 +8267,71 @@ export type Database = {
             foreignKeyName: "risk_action_recommendations_ranking_id_fkey"
             columns: ["ranking_id"]
             isOneToOne: false
+            referencedRelation: "risk_ranking_predictions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      risk_prediction_realizations: {
+        Row: {
+          actual_label: number
+          brier_score: number
+          country_iso3: string
+          created_at: string
+          delta_performance: number | null
+          domain: string
+          error: number
+          horizon_days: number
+          id: string
+          performance_index_at_pred: number | null
+          performance_index_at_realize: number | null
+          predicted_at: string
+          predicted_probability: number
+          prediction_id: string
+          realized_at: string
+          surprise: boolean
+        }
+        Insert: {
+          actual_label: number
+          brier_score: number
+          country_iso3: string
+          created_at?: string
+          delta_performance?: number | null
+          domain: string
+          error: number
+          horizon_days?: number
+          id?: string
+          performance_index_at_pred?: number | null
+          performance_index_at_realize?: number | null
+          predicted_at: string
+          predicted_probability: number
+          prediction_id: string
+          realized_at?: string
+          surprise?: boolean
+        }
+        Update: {
+          actual_label?: number
+          brier_score?: number
+          country_iso3?: string
+          created_at?: string
+          delta_performance?: number | null
+          domain?: string
+          error?: number
+          horizon_days?: number
+          id?: string
+          performance_index_at_pred?: number | null
+          performance_index_at_realize?: number | null
+          predicted_at?: string
+          predicted_probability?: number
+          prediction_id?: string
+          realized_at?: string
+          surprise?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "risk_prediction_realizations_prediction_id_fkey"
+            columns: ["prediction_id"]
+            isOneToOne: true
             referencedRelation: "risk_ranking_predictions"
             referencedColumns: ["id"]
           },
@@ -11662,6 +11817,14 @@ export type Database = {
       prospective_horizon_breakdown: { Args: never; Returns: Json }
       prospective_model_breakdown: { Args: never; Returns: Json }
       prospective_summary_stats: { Args: never; Returns: Json }
+      realize_risk_predictions: {
+        Args: { p_horizon_days?: number }
+        Returns: {
+          perf_rows: number
+          realized: number
+          trust_rows: number
+        }[]
+      }
       register_pipeline_heartbeat: {
         Args: {
           _error?: string
