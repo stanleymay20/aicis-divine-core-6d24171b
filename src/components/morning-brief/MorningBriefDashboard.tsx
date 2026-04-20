@@ -53,18 +53,18 @@ export const MorningBriefDashboard = () => {
   };
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* ── HERO: What + When + System Health ── */}
+    <div className="space-y-4 sm:space-y-5 animate-fade-in">
+      {/* ── HERO: greeting + system health (compact on mobile) ── */}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg sm:text-xl font-semibold leading-tight">
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-xl font-semibold leading-tight truncate">
             {greeting}, {firstName}.
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
             Here's what needs your attention.
           </p>
-          <p className="text-xs text-muted-foreground">
-            {format(new Date(), "EEEE, MMMM d · HH:mm")} UTC
+          <p className="text-[10px] sm:text-xs text-muted-foreground">
+            {format(new Date(), "EEE, MMM d · HH:mm")} UTC
           </p>
         </div>
         <SystemHealthBadge />

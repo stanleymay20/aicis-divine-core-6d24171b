@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface PendingAction {
   id: string;
@@ -257,12 +258,13 @@ export function ActionsAwaitingStrip() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive"
                     onClick={() => dismissAction.mutate(action.id)}
                     disabled={dismissAction.isPending}
+                    aria-label="Dismiss — not applicable"
                     title="Dismiss — not applicable"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
