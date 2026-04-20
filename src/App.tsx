@@ -137,6 +137,9 @@ const App = () => (
               <Route path="/risk-ranking" element={<Protected><RiskRanking /></Protected>} />
               <Route path="/learning-loop" element={<Protected><LearningLoop /></Protected>} />
               <Route path="/intelligence-engine" element={<Protected><IntelligenceEngine /></Protected>} />
+              <Route path="/simulation" element={<Protected><Simulation /></Protected>} />
+              <Route path="/predictions" element={<Protected><Predictions /></Protected>} />
+              <Route path="/api-audit" element={<Protected><ApiAudit /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
