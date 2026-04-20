@@ -184,28 +184,43 @@ export const AlertsPanel = ({ isOpen, onClose, onAlertClick }: AlertsPanelProps)
       </div>
 
       {/* Filters */}
-      <div className="flex gap-1 p-2 border-b border-border/50">
-        {[
-          { key: "all", label: "All" },
-          { key: "critical", label: "Critical", count: criticalCount },
-          { key: "unread", label: "Unread", count: unreadCount },
-        ].map(({ key, label, count }) => (
-          <Button
-            key={key}
-            variant={filter === key ? "default" : "ghost"}
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={() => setFilter(key as typeof filter)}
-          >
-            {label}
-            {count !== undefined && count > 0 && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                {count}
-              </Badge>
-            )}
-          </Button>
-        ))}
+      <div className="flex items-center gap-1 p-2 border-b border-border/50">
+        <div className="flex gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
+          {[
+            { key: "all", label: "All" },
+            { key: "critical", label: "Critical", count: criticalCount },
+            { key: "unread", label: "Unread", count: unreadCount },
+          ].map(({ key, label, count }) => (
+            <Button
+              key={key}
+              variant={filter === key ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs gap-1 shrink-0"
+              onClick={() => setFilter(key as typeof filter)}
+            >
+              {label}
+              {count !== undefined && count > 0 && (
+                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                  {count}
+                </Badge>
+              )}
+            </Button>
+          ))}
+        </div>
+        <AlertPreferencesPopover
+          prefs={prefs}
+          onChange={savePrefs}
+          availableDivisions={availableDivisions}
+          availableCountries={availableCountries}
+        />
       </div>
+
+      {hiddenByPrefs > 0 && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted/30 border-b border-border/50 text-[10px] text-muted-foreground">
+          <Filter className="h-3 w-3" />
+          {hiddenByPrefs} alert{hiddenByPrefs === 1 ? "" : "s"} hidden by your filters
+        </div>
+      )}
 
       {/* Alert list */}
       <ScrollArea className="h-[calc(100vh-140px)]">
