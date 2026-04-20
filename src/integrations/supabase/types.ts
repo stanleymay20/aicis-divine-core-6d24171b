@@ -713,6 +713,51 @@ export type Database = {
           },
         ]
       }
+      api_request_audit: {
+        Row: {
+          api_key_id: string | null
+          chain_hash: string
+          created_at: string | null
+          endpoint: string
+          id: string
+          latency_ms: number | null
+          method: string
+          org_id: string | null
+          previous_chain_hash: string | null
+          request_hash: string
+          response_hash: string | null
+          response_status: number
+        }
+        Insert: {
+          api_key_id?: string | null
+          chain_hash: string
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          latency_ms?: number | null
+          method: string
+          org_id?: string | null
+          previous_chain_hash?: string | null
+          request_hash: string
+          response_hash?: string | null
+          response_status: number
+        }
+        Update: {
+          api_key_id?: string | null
+          chain_hash?: string
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          latency_ms?: number | null
+          method?: string
+          org_id?: string | null
+          previous_chain_hash?: string | null
+          request_hash?: string
+          response_hash?: string | null
+          response_status?: number
+        }
+        Relationships: []
+      }
       approvals: {
         Row: {
           action: string
@@ -1676,6 +1721,42 @@ export type Database = {
           metadata?: Json | null
           origin_iso3?: string
           signal_type?: string
+        }
+        Relationships: []
+      }
+      cross_domain_influence: {
+        Row: {
+          computed_at: string | null
+          generation_batch_id: string | null
+          id: string
+          lag_days: number | null
+          region: string | null
+          sample_size: number
+          source_domain: string
+          target_domain: string
+          transfer_strength: number
+        }
+        Insert: {
+          computed_at?: string | null
+          generation_batch_id?: string | null
+          id?: string
+          lag_days?: number | null
+          region?: string | null
+          sample_size?: number
+          source_domain: string
+          target_domain: string
+          transfer_strength: number
+        }
+        Update: {
+          computed_at?: string | null
+          generation_batch_id?: string | null
+          id?: string
+          lag_days?: number | null
+          region?: string | null
+          sample_size?: number
+          source_domain?: string
+          target_domain?: string
+          transfer_strength?: number
         }
         Relationships: []
       }
@@ -4251,6 +4332,44 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_lineage: {
+        Row: {
+          computation_ts: string | null
+          feature_version: string | null
+          id: string
+          notes: Json | null
+          source_event_ids: string[] | null
+          source_metric_ids: string[] | null
+          training_row_id: string | null
+        }
+        Insert: {
+          computation_ts?: string | null
+          feature_version?: string | null
+          id?: string
+          notes?: Json | null
+          source_event_ids?: string[] | null
+          source_metric_ids?: string[] | null
+          training_row_id?: string | null
+        }
+        Update: {
+          computation_ts?: string | null
+          feature_version?: string | null
+          id?: string
+          notes?: Json | null
+          source_event_ids?: string[] | null
+          source_metric_ids?: string[] | null
+          training_row_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_lineage_training_row_id_fkey"
+            columns: ["training_row_id"]
+            isOneToOne: false
+            referencedRelation: "training_dataset_aicis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       federation_inbound_signals: {
         Row: {
           id: string
@@ -6317,6 +6436,47 @@ export type Database = {
         }
         Relationships: []
       }
+      ml_inference_audit: {
+        Row: {
+          combined_hash: string
+          feature_hash: string
+          generated_at: string | null
+          id: string
+          model_version: string
+          prediction_id: string | null
+          previous_audit_hash: string | null
+          weights_hash: string
+        }
+        Insert: {
+          combined_hash: string
+          feature_hash: string
+          generated_at?: string | null
+          id?: string
+          model_version: string
+          prediction_id?: string | null
+          previous_audit_hash?: string | null
+          weights_hash: string
+        }
+        Update: {
+          combined_hash?: string
+          feature_hash?: string
+          generated_at?: string | null
+          id?: string
+          model_version?: string
+          prediction_id?: string | null
+          previous_audit_hash?: string | null
+          weights_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ml_inference_audit_prediction_id_fkey"
+            columns: ["prediction_id"]
+            isOneToOne: false
+            referencedRelation: "risk_ml_predictions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ml_model_weights: {
         Row: {
           active: boolean | null
@@ -6350,6 +6510,42 @@ export type Database = {
           training_rows?: number | null
           validation_auc?: number | null
           weights?: Json
+        }
+        Relationships: []
+      }
+      model_calibration_bins: {
+        Row: {
+          bin_lower: number
+          bin_upper: number
+          computed_at: string | null
+          domain: string
+          empirical_rate: number
+          id: string
+          model_version: string
+          predicted_mean: number
+          sample_count: number
+        }
+        Insert: {
+          bin_lower: number
+          bin_upper: number
+          computed_at?: string | null
+          domain: string
+          empirical_rate: number
+          id?: string
+          model_version: string
+          predicted_mean: number
+          sample_count?: number
+        }
+        Update: {
+          bin_lower?: number
+          bin_upper?: number
+          computed_at?: string | null
+          domain?: string
+          empirical_rate?: number
+          id?: string
+          model_version?: string
+          predicted_mean?: number
+          sample_count?: number
         }
         Relationships: []
       }
@@ -6475,16 +6671,20 @@ export type Database = {
       model_performance_log: {
         Row: {
           accuracy: number | null
+          auc: number | null
           bias: number | null
+          bias_by_region: Json | null
           brier_score: number | null
           calibration_error: number | null
           computed_at: string
           domain: string
+          ece: number | null
           id: string
           log_loss: number | null
           model_version: string
           positive_rate_actual: number | null
           positive_rate_predicted: number | null
+          realization_count: number | null
           sample_size: number
           surprise_rate: number | null
           trust_score: number | null
@@ -6493,16 +6693,20 @@ export type Database = {
         }
         Insert: {
           accuracy?: number | null
+          auc?: number | null
           bias?: number | null
+          bias_by_region?: Json | null
           brier_score?: number | null
           calibration_error?: number | null
           computed_at?: string
           domain: string
+          ece?: number | null
           id?: string
           log_loss?: number | null
           model_version: string
           positive_rate_actual?: number | null
           positive_rate_predicted?: number | null
+          realization_count?: number | null
           sample_size: number
           surprise_rate?: number | null
           trust_score?: number | null
@@ -6511,21 +6715,79 @@ export type Database = {
         }
         Update: {
           accuracy?: number | null
+          auc?: number | null
           bias?: number | null
+          bias_by_region?: Json | null
           brier_score?: number | null
           calibration_error?: number | null
           computed_at?: string
           domain?: string
+          ece?: number | null
           id?: string
           log_loss?: number | null
           model_version?: string
           positive_rate_actual?: number | null
           positive_rate_predicted?: number | null
+          realization_count?: number | null
           sample_size?: number
           surprise_rate?: number | null
           trust_score?: number | null
           window_end?: string
           window_start?: string
+        }
+        Relationships: []
+      }
+      model_promotion_decisions: {
+        Row: {
+          challenger_auc: number | null
+          challenger_brier: number | null
+          challenger_ece: number | null
+          challenger_version: string
+          champion_auc: number | null
+          champion_brier: number | null
+          champion_ece: number | null
+          champion_version: string
+          decided_at: string | null
+          decision: string
+          domain: string
+          id: string
+          notes: Json | null
+          p_value: number | null
+          realization_count: number
+        }
+        Insert: {
+          challenger_auc?: number | null
+          challenger_brier?: number | null
+          challenger_ece?: number | null
+          challenger_version: string
+          champion_auc?: number | null
+          champion_brier?: number | null
+          champion_ece?: number | null
+          champion_version: string
+          decided_at?: string | null
+          decision: string
+          domain: string
+          id?: string
+          notes?: Json | null
+          p_value?: number | null
+          realization_count?: number
+        }
+        Update: {
+          challenger_auc?: number | null
+          challenger_brier?: number | null
+          challenger_ece?: number | null
+          challenger_version?: string
+          champion_auc?: number | null
+          champion_brier?: number | null
+          champion_ece?: number | null
+          champion_version?: string
+          decided_at?: string | null
+          decision?: string
+          domain?: string
+          id?: string
+          notes?: Json | null
+          p_value?: number | null
+          realization_count?: number
         }
         Relationships: []
       }
@@ -8225,22 +8487,30 @@ export type Database = {
           accepted_by: string | null
           batch_id: string
           confidence: number | null
+          counterfactual_md: string | null
           country_iso3: string
           created_at: string
           domain: string
           estimated_cost_eur: number | null
           estimated_roi_eur: number | null
+          evidence_chain: Json | null
           executed_at: string | null
+          expected_roi_lower: number | null
+          expected_roi_upper: number | null
+          first_approver: string | null
           generated_at: string
           id: string
           intervention_title: string
           intervention_type: string
+          lifecycle_audit_hash: string | null
           outcome_notes_md: string | null
           rank_position: number | null
           ranking_id: string | null
           rationale_md: string | null
+          requires_dual_approval: boolean | null
           responsible_domain: string
           risk_probability: number
+          second_approver: string | null
           status: string
           updated_at: string
           urgency_hours: number
@@ -8251,22 +8521,30 @@ export type Database = {
           accepted_by?: string | null
           batch_id: string
           confidence?: number | null
+          counterfactual_md?: string | null
           country_iso3: string
           created_at?: string
           domain: string
           estimated_cost_eur?: number | null
           estimated_roi_eur?: number | null
+          evidence_chain?: Json | null
           executed_at?: string | null
+          expected_roi_lower?: number | null
+          expected_roi_upper?: number | null
+          first_approver?: string | null
           generated_at?: string
           id?: string
           intervention_title: string
           intervention_type: string
+          lifecycle_audit_hash?: string | null
           outcome_notes_md?: string | null
           rank_position?: number | null
           ranking_id?: string | null
           rationale_md?: string | null
+          requires_dual_approval?: boolean | null
           responsible_domain: string
           risk_probability: number
+          second_approver?: string | null
           status?: string
           updated_at?: string
           urgency_hours: number
@@ -8277,22 +8555,30 @@ export type Database = {
           accepted_by?: string | null
           batch_id?: string
           confidence?: number | null
+          counterfactual_md?: string | null
           country_iso3?: string
           created_at?: string
           domain?: string
           estimated_cost_eur?: number | null
           estimated_roi_eur?: number | null
+          evidence_chain?: Json | null
           executed_at?: string | null
+          expected_roi_lower?: number | null
+          expected_roi_upper?: number | null
+          first_approver?: string | null
           generated_at?: string
           id?: string
           intervention_title?: string
           intervention_type?: string
+          lifecycle_audit_hash?: string | null
           outcome_notes_md?: string | null
           rank_position?: number | null
           ranking_id?: string | null
           rationale_md?: string | null
+          requires_dual_approval?: boolean | null
           responsible_domain?: string
           risk_probability?: number
+          second_approver?: string | null
           status?: string
           updated_at?: string
           urgency_hours?: number
@@ -8310,42 +8596,60 @@ export type Database = {
       }
       risk_ml_predictions: {
         Row: {
+          audit_hash: string | null
           baseline_score: number | null
+          calibrated_score: number | null
           country_iso3: string
           created_at: string | null
           domain: string
+          feature_contributions: Json | null
           feature_snapshot: Json | null
           generated_at: string
           generation_batch_id: string
           horizon_days: number
           id: string
           model_version: string
+          prediction_interval_lower: number | null
+          prediction_interval_upper: number | null
+          raw_score: number | null
           risk_probability: number
         }
         Insert: {
+          audit_hash?: string | null
           baseline_score?: number | null
+          calibrated_score?: number | null
           country_iso3: string
           created_at?: string | null
           domain: string
+          feature_contributions?: Json | null
           feature_snapshot?: Json | null
           generated_at?: string
           generation_batch_id: string
           horizon_days?: number
           id?: string
           model_version: string
+          prediction_interval_lower?: number | null
+          prediction_interval_upper?: number | null
+          raw_score?: number | null
           risk_probability: number
         }
         Update: {
+          audit_hash?: string | null
           baseline_score?: number | null
+          calibrated_score?: number | null
           country_iso3?: string
           created_at?: string | null
           domain?: string
+          feature_contributions?: Json | null
           feature_snapshot?: Json | null
           generated_at?: string
           generation_batch_id?: string
           horizon_days?: number
           id?: string
           model_version?: string
+          prediction_interval_lower?: number | null
+          prediction_interval_upper?: number | null
+          raw_score?: number | null
           risk_probability?: number
         }
         Relationships: []
@@ -8354,6 +8658,7 @@ export type Database = {
         Row: {
           actual_label: number
           brier_score: number
+          chain_hash: string | null
           country_iso3: string
           created_at: string
           delta_performance: number | null
@@ -8365,13 +8670,16 @@ export type Database = {
           performance_index_at_realize: number | null
           predicted_at: string
           predicted_probability: number
+          prediction_hash: string | null
           prediction_id: string
+          previous_realization_hash: string | null
           realized_at: string
           surprise: boolean
         }
         Insert: {
           actual_label: number
           brier_score: number
+          chain_hash?: string | null
           country_iso3: string
           created_at?: string
           delta_performance?: number | null
@@ -8383,13 +8691,16 @@ export type Database = {
           performance_index_at_realize?: number | null
           predicted_at: string
           predicted_probability: number
+          prediction_hash?: string | null
           prediction_id: string
+          previous_realization_hash?: string | null
           realized_at?: string
           surprise?: boolean
         }
         Update: {
           actual_label?: number
           brier_score?: number
+          chain_hash?: string | null
           country_iso3?: string
           created_at?: string
           delta_performance?: number | null
@@ -8401,7 +8712,9 @@ export type Database = {
           performance_index_at_realize?: number | null
           predicted_at?: string
           predicted_probability?: number
+          prediction_hash?: string | null
           prediction_id?: string
+          previous_realization_hash?: string | null
           realized_at?: string
           surprise?: boolean
         }
@@ -8473,6 +8786,7 @@ export type Database = {
         Row: {
           computed_at: string | null
           contagion_path: Json | null
+          decay_factor: number | null
           domain: string
           generation_batch_id: string
           hop_count: number | null
@@ -8484,6 +8798,7 @@ export type Database = {
         Insert: {
           computed_at?: string | null
           contagion_path?: Json | null
+          decay_factor?: number | null
           domain: string
           generation_batch_id: string
           hop_count?: number | null
@@ -8495,6 +8810,7 @@ export type Database = {
         Update: {
           computed_at?: string | null
           contagion_path?: Json | null
+          decay_factor?: number | null
           domain?: string
           generation_batch_id?: string
           hop_count?: number | null
@@ -8507,40 +8823,82 @@ export type Database = {
       }
       risk_ranking_predictions: {
         Row: {
+          confidence_lower: number | null
+          confidence_upper: number | null
           country_iso3: string
           domain: string
+          evidence_count: number | null
           factors: Json
           generated_at: string
           generation_batch_id: string
           horizon_days: number
           id: string
           model_version: string
+          proxy_share: number | null
           rank_position: number | null
           risk_probability: number
         }
         Insert: {
+          confidence_lower?: number | null
+          confidence_upper?: number | null
           country_iso3: string
           domain: string
+          evidence_count?: number | null
           factors?: Json
           generated_at?: string
           generation_batch_id?: string
           horizon_days?: number
           id?: string
           model_version?: string
+          proxy_share?: number | null
           rank_position?: number | null
           risk_probability: number
         }
         Update: {
+          confidence_lower?: number | null
+          confidence_upper?: number | null
           country_iso3?: string
           domain?: string
+          evidence_count?: number | null
           factors?: Json
           generated_at?: string
           generation_batch_id?: string
           horizon_days?: number
           id?: string
           model_version?: string
+          proxy_share?: number | null
           rank_position?: number | null
           risk_probability?: number
+        }
+        Relationships: []
+      }
+      risk_scores: {
+        Row: {
+          components: Json | null
+          computed_at: string | null
+          country_iso3: string
+          domain: string
+          generation_batch_id: string | null
+          id: string
+          score: number
+        }
+        Insert: {
+          components?: Json | null
+          computed_at?: string | null
+          country_iso3: string
+          domain: string
+          generation_batch_id?: string | null
+          id?: string
+          score: number
+        }
+        Update: {
+          components?: Json | null
+          computed_at?: string | null
+          country_iso3?: string
+          domain?: string
+          generation_batch_id?: string | null
+          id?: string
+          score?: number
         }
         Relationships: []
       }
@@ -9426,52 +9784,114 @@ export type Database = {
         }
         Relationships: []
       }
+      simulation_iterations: {
+        Row: {
+          affected_count: number | null
+          created_at: string | null
+          global_impact: number
+          id: string
+          iteration_index: number
+          per_country: Json | null
+          simulation_id: string | null
+        }
+        Insert: {
+          affected_count?: number | null
+          created_at?: string | null
+          global_impact: number
+          id?: string
+          iteration_index: number
+          per_country?: Json | null
+          simulation_id?: string | null
+        }
+        Update: {
+          affected_count?: number | null
+          created_at?: string | null
+          global_impact?: number
+          id?: string
+          iteration_index?: number
+          per_country?: Json | null
+          simulation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulation_iterations_simulation_id_fkey"
+            columns: ["simulation_id"]
+            isOneToOne: false
+            referencedRelation: "simulation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       simulation_runs: {
         Row: {
           affected_countries: Json | null
           baseline_snapshot: Json | null
+          cascade_depth: number | null
           cascade_results: Json | null
           confidence: number | null
           created_at: string | null
           created_by: string | null
           estimated_global_impact: number | null
           id: string
+          n_iterations: number | null
+          p10: number | null
+          p50: number | null
+          p90: number | null
+          result_distribution: Json | null
           scenario_name: string
           scenario_type: string
+          seed: number | null
           shock_direction: string
           shock_domain: string
+          shock_input: Json | null
           shock_iso3: string | null
           shock_magnitude: number
         }
         Insert: {
           affected_countries?: Json | null
           baseline_snapshot?: Json | null
+          cascade_depth?: number | null
           cascade_results?: Json | null
           confidence?: number | null
           created_at?: string | null
           created_by?: string | null
           estimated_global_impact?: number | null
           id?: string
+          n_iterations?: number | null
+          p10?: number | null
+          p50?: number | null
+          p90?: number | null
+          result_distribution?: Json | null
           scenario_name: string
           scenario_type?: string
+          seed?: number | null
           shock_direction?: string
           shock_domain: string
+          shock_input?: Json | null
           shock_iso3?: string | null
           shock_magnitude: number
         }
         Update: {
           affected_countries?: Json | null
           baseline_snapshot?: Json | null
+          cascade_depth?: number | null
           cascade_results?: Json | null
           confidence?: number | null
           created_at?: string | null
           created_by?: string | null
           estimated_global_impact?: number | null
           id?: string
+          n_iterations?: number | null
+          p10?: number | null
+          p50?: number | null
+          p90?: number | null
+          result_distribution?: Json | null
           scenario_name?: string
           scenario_type?: string
+          seed?: number | null
           shock_direction?: string
           shock_domain?: string
+          shock_input?: Json | null
           shock_iso3?: string | null
           shock_magnitude?: number
         }
@@ -10228,12 +10648,16 @@ export type Database = {
           event_velocity: number | null
           events_count_30d: number | null
           events_count_7d: number | null
+          feature_hash: string | null
+          feature_version: string | null
           forecast_confidence_avg: number | null
           freshness_score: number | null
           horizon_days: number
           id: string
+          is_leakage_safe: boolean | null
           is_real_data: boolean
           label_did_deteriorate: number | null
+          label_horizon_end_at: string | null
           label_metric_value_at_horizon: number | null
           label_zscore_at_horizon: number | null
           metric_sample_count_30d: number | null
@@ -10258,12 +10682,16 @@ export type Database = {
           event_velocity?: number | null
           events_count_30d?: number | null
           events_count_7d?: number | null
+          feature_hash?: string | null
+          feature_version?: string | null
           forecast_confidence_avg?: number | null
           freshness_score?: number | null
           horizon_days?: number
           id?: string
+          is_leakage_safe?: boolean | null
           is_real_data?: boolean
           label_did_deteriorate?: number | null
+          label_horizon_end_at?: string | null
           label_metric_value_at_horizon?: number | null
           label_zscore_at_horizon?: number | null
           metric_sample_count_30d?: number | null
@@ -10288,12 +10716,16 @@ export type Database = {
           event_velocity?: number | null
           events_count_30d?: number | null
           events_count_7d?: number | null
+          feature_hash?: string | null
+          feature_version?: string | null
           forecast_confidence_avg?: number | null
           freshness_score?: number | null
           horizon_days?: number
           id?: string
+          is_leakage_safe?: boolean | null
           is_real_data?: boolean
           label_did_deteriorate?: number | null
+          label_horizon_end_at?: string | null
           label_metric_value_at_horizon?: number | null
           label_zscore_at_horizon?: number | null
           metric_sample_count_30d?: number | null
@@ -10307,6 +10739,47 @@ export type Database = {
           snapshot_date?: string
         }
         Relationships: []
+      }
+      training_dataset_splits: {
+        Row: {
+          created_at: string | null
+          feature_version: string | null
+          fold_index: number
+          id: string
+          period_end: string
+          period_start: string
+          split_name: string
+          training_row_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          feature_version?: string | null
+          fold_index?: number
+          id?: string
+          period_end: string
+          period_start: string
+          split_name: string
+          training_row_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          feature_version?: string | null
+          fold_index?: number
+          id?: string
+          period_end?: string
+          period_start?: string
+          split_name?: string
+          training_row_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_dataset_splits_training_row_id_fkey"
+            columns: ["training_row_id"]
+            isOneToOne: false
+            referencedRelation: "training_dataset_aicis"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transparency_reports: {
         Row: {
@@ -11708,6 +12181,24 @@ export type Database = {
         }
         Relationships: []
       }
+      risk_rankings_current: {
+        Row: {
+          confidence_lower: number | null
+          confidence_upper: number | null
+          country_iso3: string | null
+          domain: string | null
+          evidence_count: number | null
+          factors: Json | null
+          generated_at: string | null
+          generation_batch_id: string | null
+          horizon_days: number | null
+          model_version: string | null
+          proxy_share: number | null
+          rank_position: number | null
+          risk_probability: number | null
+        }
+        Relationships: []
+      }
       system_trust_score: {
         Row: {
           acceptance_rate: number | null
@@ -11810,6 +12301,7 @@ export type Database = {
       cleanup_expired_exports: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
       cleanup_zombie_jobs: { Args: never; Returns: undefined }
+      compute_cross_domain_influence: { Args: never; Returns: Json }
       compute_intelligence_score: {
         Args: { _change_threshold?: number; _window_days?: number }
         Returns: Json
@@ -11833,6 +12325,7 @@ export type Database = {
           rows_inserted: number
         }[]
       }
+      compute_risk_scores: { Args: never; Returns: Json }
       compute_uptime_snapshot: { Args: never; Returns: Json }
       count_districts_needing_settlements: { Args: never; Returns: number }
       count_uncovered_regions: { Args: never; Returns: number }
@@ -12004,6 +12497,7 @@ export type Database = {
           trust_rows: number
         }[]
       }
+      refresh_risk_rankings_current: { Args: never; Returns: undefined }
       register_pipeline_heartbeat: {
         Args: {
           _error?: string
@@ -12063,6 +12557,7 @@ export type Database = {
       }
       snap_planetary_stats: { Args: never; Returns: undefined }
       snapshot_prospective_health: { Args: never; Returns: Json }
+      timeout_zombie_jobs: { Args: never; Returns: Json }
       traverse_entity_graph: {
         Args: { _depth?: number; _entity_id: string }
         Returns: {
@@ -12083,6 +12578,10 @@ export type Database = {
       trigger_signals_unify: { Args: never; Returns: undefined }
       trigger_village_unify: { Args: never; Returns: undefined }
       trigger_wb_ingest: { Args: never; Returns: undefined }
+      wilson_interval: {
+        Args: { p_successes: number; p_total: number; p_z?: number }
+        Returns: Json
+      }
     }
     Enums: {
       access_tier: "public" | "institutional" | "administrative"
