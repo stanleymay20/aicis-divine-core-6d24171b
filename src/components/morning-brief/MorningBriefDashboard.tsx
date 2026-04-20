@@ -76,14 +76,8 @@ export const MorningBriefDashboard = () => {
       {/* ── 🚨 ACTIONS AWAITING: Execution activation ── */}
       <ActionsAwaitingStrip />
 
-      {/* ── TOP RISKS: 3-5 critical signals with impact + action ── */}
-      <GlobalSignalsBrief onSignalClick={handleSignalClick} />
-
-      {/* ── PRIORITY ACTIONS: What to do now ── */}
+      {/* ── PRIORITY ACTIONS: Top risks WITH actions (single source of truth) ── */}
       <PriorityDecisionsPanel />
-
-      {/* ── SYSTEM HEALTH: Observability ── */}
-      <SystemObservabilityWidget />
 
       {/* ── PROGRESSIVE DISCLOSURE: Everything else ── */}
       <Collapsible open={showMore} onOpenChange={setShowMore}>
