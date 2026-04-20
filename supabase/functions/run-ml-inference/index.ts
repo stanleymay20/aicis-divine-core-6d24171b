@@ -57,14 +57,37 @@ serve(async (req) => {
 
     if (mode === "infer") {
       // Pull latest training rows (features) per country-domain
-      const { data: rows, error: rowErr } = await sb
+      const { data: trainRows, error: rowErr } = await sb
         .from("training_dataset_aicis")
         .select("country_iso3, domain, metric_zscore_vs_90d, metric_trend_7d, metric_trend_30d, metric_volatility_30d, events_count_7d, event_severity_avg_7d, neighbor_risk_score, cross_domain_pressure, feature_hash, snapshot_date")
         .eq("horizon_days", horizon)
-        .eq("is_leakage_safe", true)
         .order("snapshot_date", { ascending: false })
         .limit(2000);
       if (rowErr) throw rowErr;
+
+      // Fallback to country_performance_snapshots when training set is empty/sparse
+      let rows: any[] = trainRows ?? [];
+      if (rows.length < 50) {
+        const { data: perf } = await sb
+          .from("country_performance_snapshots")
+          .select("iso3, domain, momentum_score, volatility_index, performance_index, snapshot_date")
+          .order("snapshot_date", { ascending: false })
+          .limit(2000);
+        rows = (perf ?? []).map((p: any) => ({
+          country_iso3: p.iso3,
+          domain: p.domain,
+          metric_zscore_vs_90d: -Number(p.momentum_score ?? 0),
+          metric_trend_7d: Number(p.momentum_score ?? 0),
+          metric_trend_30d: Number(p.momentum_score ?? 0) * 0.7,
+          metric_volatility_30d: Number(p.volatility_index ?? 0),
+          events_count_7d: 0,
+          event_severity_avg_7d: 0,
+          neighbor_risk_score: 0,
+          cross_domain_pressure: (100 - Number(p.performance_index ?? 50)) / 100,
+          feature_hash: null,
+          snapshot_date: p.snapshot_date,
+        }));
+      }
 
       // Pull calibration bins for this model+domain
       const { data: cal } = await sb
