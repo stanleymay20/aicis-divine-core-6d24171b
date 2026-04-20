@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Database, Download, Play, Target, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+
 
 type Stats = {
   ok: boolean;
@@ -84,6 +84,7 @@ export default function TrainingDataset() {
   }
 
   useEffect(() => {
+    document.title = "AICIS Training Dataset — ML Model Foundation";
     loadSummary();
   }, []);
 
@@ -112,13 +113,6 @@ export default function TrainingDataset() {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
-      <Helmet>
-        <title>AICIS Training Dataset — ML Model Foundation</title>
-        <meta
-          name="description"
-          content="Trainable feature/label dataset for predicting country-domain risk deterioration."
-        />
-      </Helmet>
 
       <header className="mb-6">
         <div className="flex items-center gap-2 mb-2">
