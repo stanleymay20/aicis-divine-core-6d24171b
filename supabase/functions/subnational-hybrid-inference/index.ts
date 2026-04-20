@@ -110,8 +110,8 @@ serve(async (req) => {
 
         inserts.push({
           domain: nat.domain,
-          metric: nat.metric,
-          geo_id: region.id,
+          metric: `${nat.metric}.subnat.l${targetLevel}`,
+          // geo_id intentionally NULL — geo_catalog is unused; region is in raw
           iso3: region.country_iso3,
           period: nat.period,
           value,
@@ -122,9 +122,12 @@ serve(async (req) => {
             origin: "subnational-hybrid-inference",
             method: isStock && weight !== null ? "population_weight" : "carry_over",
             weight,
+            region_id: region.id,
             region_name: region.name,
             admin_level: targetLevel,
+            national_metric: nat.metric,
             national_source: nat.source,
+            inferred: true,
           },
         });
         inferred++;
