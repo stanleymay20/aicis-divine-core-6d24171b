@@ -52,6 +52,7 @@ const Accumulation = lazy(() => import("./pages/Accumulation"));
 const TrainingDataset = lazy(() => import("./pages/TrainingDataset"));
 const RiskRanking = lazy(() => import("./pages/RiskRanking"));
 const LearningLoop = lazy(() => import("./pages/LearningLoop"));
+const IntelligenceEngine = lazy(() => import("./pages/IntelligenceEngine"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -132,6 +133,7 @@ const App = () => (
               <Route path="/training-dataset" element={<Protected><TrainingDataset /></Protected>} />
               <Route path="/risk-ranking" element={<Protected><RiskRanking /></Protected>} />
               <Route path="/learning-loop" element={<Protected><LearningLoop /></Protected>} />
+              <Route path="/intelligence-engine" element={<Protected><IntelligenceEngine /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
