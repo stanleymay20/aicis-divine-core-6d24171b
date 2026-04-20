@@ -22,47 +22,44 @@ serve(async (req) => {
     structuredLog('info', FN, 'Starting security data collection');
     const results: { security: number; errors: string[] } = { security: 0, errors: [] };
 
-    // NVD - Recent CVEs (NVD requires User-Agent; rejects empty UA with 403/404)
-    await resilientCall(`${FN}:nvd`, async () => {
-      const nvdHeaders: Record<string, string> = {
-        'User-Agent': 'AICIS-Intelligence/1.0 (planetary-coordination)',
-        'Accept': 'application/json',
-      };
-      if (NVD_KEY) nvdHeaders['apiKey'] = NVD_KEY;
-      // Pull last 7 days of CVEs (NVD requires .000 ms suffix, no Z, properly URL-encoded)
-      const nvdEnd = new Date();
-      const nvdStart = new Date(nvdEnd.getTime() - 7 * 24 * 3600 * 1000);
-      const fmt = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, '.000');
-      const nvdResponse = await fetch(
-        `https://services.nvd.nist.gov/rest/json/cves/2.0?lastModStartDate=${encodeURIComponent(fmt(nvdStart))}&lastModEndDate=${encodeURIComponent(fmt(nvdEnd))}&resultsPerPage=50`,
-        { headers: nvdHeaders }
-      );
-      if (!nvdResponse.ok) throw new Error(`NVD API: ${nvdResponse.status}`);
-      const nvdData = await nvdResponse.json();
-
-      if (nvdData.vulnerabilities) {
-        const cveRecords = nvdData.vulnerabilities.map((v: any) => {
-          const cve = v.cve;
-          const severity = cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity ||
-                          cve.metrics?.cvssMetricV2?.[0]?.baseSeverity || 'UNKNOWN';
-          return {
-            source: 'nvd', event_type: 'vulnerability',
-            severity: severity.toLowerCase(),
-            title: cve.id,
-            description: cve.descriptions?.[0]?.value || 'No description',
-            cve_id: cve.id,
-            threat_score: Math.round((cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore || 0) * 10),
-            metadata: { published: cve.published, modified: cve.lastModified }
-          };
-        });
-
+    // CISA KEV — gold-standard free CVE feed, no auth, no rate limit, allowed from edge IPs.
+    // Replaces NVD which 404s consistently from Deno egress.
+    await resilientCall(`${FN}:cisa-kev`, async () => {
+      const resp = await fetch('https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json', {
+        headers: { 'User-Agent': 'AICIS-Intelligence/1.0', 'Accept': 'application/json' },
+      });
+      if (!resp.ok) throw new Error(`CISA KEV: ${resp.status}`);
+      const data = await resp.json();
+      const cutoff = Date.now() - 30 * 86400000; // last 30 days
+      const recent = (data.vulnerabilities || []).filter((v: any) => {
+        const t = Date.parse(v.dateAdded || '');
+        return Number.isFinite(t) && t >= cutoff;
+      });
+      if (recent.length > 0) {
+        const cveRecords = recent.map((v: any) => ({
+          source: 'cisa_kev',
+          event_type: 'vulnerability',
+          severity: 'critical', // KEV inclusion implies active exploitation
+          title: v.cveID,
+          description: `${v.vulnerabilityName || ''} — ${v.shortDescription || ''}`.slice(0, 1000),
+          cve_id: v.cveID,
+          threat_score: 95,
+          metadata: {
+            vendor: v.vendorProject,
+            product: v.product,
+            date_added: v.dateAdded,
+            due_date: v.dueDate,
+            ransomware_use: v.knownRansomwareCampaignUse,
+            required_action: v.requiredAction,
+          },
+        }));
         const { error } = await supabase.from('security_events').insert(cveRecords);
         if (error) throw new Error(`DB insert: ${error.message}`);
         results.security += cveRecords.length;
-        structuredLog('info', FN, `NVD: ${cveRecords.length} CVEs`);
+        structuredLog('info', FN, `CISA KEV: ${cveRecords.length} actively-exploited CVEs`);
       }
     }, { timeoutMs: TIMEOUT_MS }).catch(e => {
-      const msg = `NVD: ${(e as Error).message}`;
+      const msg = `CISA-KEV: ${(e as Error).message}`;
       results.errors.push(msg);
       structuredLog('warn', FN, msg);
     });

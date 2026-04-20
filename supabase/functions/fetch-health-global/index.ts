@@ -53,42 +53,35 @@ serve(async (req) => {
       structuredLog('warn', FN, msg);
     });
 
-    // CDC - Weekly hospital admissions (active dataset aemt-mg7g, correct column: week_end_date)
-    await resilientCall(`${FN}:cdc`, async () => {
-      const cdcResponse = await fetch(
-        'https://data.cdc.gov/resource/aemt-mg7g.json?$limit=100&$order=week_end_date%20DESC',
+    // OpenFDA drug adverse-event signals — free, no auth, reliable from edge IPs.
+    // Replaces broken CDC SOQL endpoints.
+    await resilientCall(`${FN}:openfda`, async () => {
+      const resp = await fetch(
+        'https://api.fda.gov/drug/event.json?count=patient.reaction.reactionmeddrapt.exact&limit=50',
         { headers: { 'Accept': 'application/json', 'User-Agent': 'AICIS/1.0' } }
       );
-      if (!cdcResponse.ok) throw new Error(`CDC API: ${cdcResponse.status}`);
-      const cdcData = await cdcResponse.json();
-
-      if (Array.isArray(cdcData) && cdcData.length > 0) {
-        const cdcRecords = cdcData
-          .filter((item: any) => item.jurisdiction && item.num_hospitals_previous_day_admission_adult_covid_confirmed)
-          .map((item: any) => ({
-            country: 'United States',
-            iso_code: 'USA',
-            source: 'cdc',
-            metric_name: 'covid_adult_admissions_weekly',
-            value: parseFloat(item.num_hospitals_previous_day_admission_adult_covid_confirmed) || 0,
-            unit: 'admissions',
-            date: item.week_end_date?.split('T')[0] || new Date().toISOString().split('T')[0],
-            metadata: {
-              jurisdiction: item.jurisdiction,
-              pediatric_admissions: item.num_hospitals_previous_day_admission_pediatric_covid_confirmed,
-              influenza_admissions: item.num_hospitals_previous_day_admission_influenza_confirmed
-            }
-          }));
-
-        if (cdcRecords.length > 0) {
-          const { error } = await supabase.from('health_metrics').insert(cdcRecords);
-          if (error) throw new Error(`DB insert: ${error.message}`);
-          results.health += cdcRecords.length;
-          structuredLog('info', FN, `CDC: ${cdcRecords.length} records`);
-        }
+      if (!resp.ok) throw new Error(`OpenFDA: ${resp.status}`);
+      const data = await resp.json();
+      const items: { term: string; count: number }[] = data.results || [];
+      if (items.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        const records = items.slice(0, 50).map((it) => ({
+          country: 'United States',
+          iso_code: 'USA',
+          source: 'openfda',
+          metric_name: `adverse_event_${it.term.toLowerCase().replace(/\s+/g, '_').slice(0, 60)}`,
+          value: it.count,
+          unit: 'reports',
+          date: today,
+          metadata: { reaction: it.term, dataset: 'drug_event' },
+        }));
+        const { error } = await supabase.from('health_metrics').insert(records);
+        if (error) throw new Error(`DB insert: ${error.message}`);
+        results.health += records.length;
+        structuredLog('info', FN, `OpenFDA: ${records.length} adverse-event signals`);
       }
     }, { timeoutMs: TIMEOUT_MS }).catch(e => {
-      const msg = `CDC: ${(e as Error).message}`;
+      const msg = `OpenFDA: ${(e as Error).message}`;
       results.errors.push(msg);
       structuredLog('warn', FN, msg);
     });
