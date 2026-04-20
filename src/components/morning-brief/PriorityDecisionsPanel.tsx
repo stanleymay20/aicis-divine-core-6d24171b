@@ -120,6 +120,8 @@ export function PriorityDecisionsPanel() {
 
   const executeMutation = useMutation({
     mutationFn: async (signal: any) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Sign in required to log decisions.");
       const { error } = await supabase.from("decision_outcome_log").insert({
         signal_id: signal.id,
         signal_title: `[SIGNAL] ${signal.title}`,
@@ -129,6 +131,7 @@ export function PriorityDecisionsPanel() {
         action_taken: true,
         impact_score: signal.impact_score,
         evidence_type: "hypothetical",
+        recorded_by: user.id,
       });
       if (error) throw error;
     },
