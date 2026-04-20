@@ -209,53 +209,76 @@ serve(async (req) => {
       }
     }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`NVD: ${(e as Error).message}`));
 
-    // 7. FAO GIEWS — Food security & crop monitoring (ReliefWeb-mediated; FAO doesn't expose direct API)
-    await resilientCall(`${FN}:fao-giews`, async () => {
-      // ReliefWeb reports filtered by food-security theme (current working v1 endpoint)
-      const resp = await fetch("https://api.reliefweb.int/v1/reports?appname=aicis&limit=15&filter[field]=theme.name&filter[value]=Food%20and%20Nutrition&fields[include][]=title&fields[include][]=date&fields[include][]=country&fields[include][]=primary_country&sort[]=date.created:desc", { headers: { "Accept": "application/json" } });
-      if (!resp.ok) throw new Error(`FAO/GIEWS: ${resp.status}`);
-      const data = await resp.json();
-      const reports = (data.data || []).map((r: any) => ({
-        id: r.id,
-        fields: {
-          name: r.fields.title,
-          description: `Food security report: ${r.fields.title}. Country: ${r.fields.primary_country?.name || r.fields.country?.[0]?.name || "Global"}.`,
-          country: r.fields.country || (r.fields.primary_country ? [r.fields.primary_country] : []),
-          date: r.fields.date,
-          status: 'ongoing',
-          primary_type: { name: 'Food Security' },
-        },
-      }));
+    // 7. World Bank Food Production Index — staple food output trend (FAO data, served via World Bank)
+    // FAOSTAT direct API (fenixservices) is unreliable from edge runtime — use WB-hosted FAO indicator instead.
+    await resilientCall(`${FN}:wb-food`, async () => {
+      const countries = [
+        { iso3: "GHA", name: "Ghana" }, { iso3: "NGA", name: "Nigeria" },
+        { iso3: "KEN", name: "Kenya" }, { iso3: "ZAF", name: "South Africa" },
+        { iso3: "IND", name: "India" }, { iso3: "ETH", name: "Ethiopia" },
+        { iso3: "PAK", name: "Pakistan" }, { iso3: "EGY", name: "Egypt" },
+        { iso3: "BGD", name: "Bangladesh" }, { iso3: "PHL", name: "Philippines" },
+      ];
+      const isoList = countries.map(c => c.iso3).join(";");
+      const url = `https://api.worldbank.org/v2/country/${isoList}/indicator/AG.PRD.FOOD.XD?format=json&date=2020:2023&per_page=200`;
+      const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!resp.ok) throw new Error(`WB food: ${resp.status}`);
+      const arr = await resp.json();
+      const rows: any[] = Array.isArray(arr) && arr.length > 1 ? arr[1] : [];
 
-      for (const r of reports.slice(0, 15)) {
-        const country = r.fields.country?.[0]?.name || "Global";
-        const iso3 = r.fields.country?.[0]?.iso3?.toUpperCase() || null;
-        const title = (r.fields.name || "Food security / drought update").slice(0, 240);
-        const body = (r.fields.description || `${r.fields.primary_type?.name || "Drought/Food crisis"} affecting ${country}. Status: ${r.fields.status || "monitoring"}.`).slice(0, 800);
+      // Group by country, get latest non-null value + previous value to detect drop
+      const byCountry = new Map<string, { latest: number; latestYear: string; prev: number | null; name: string }>();
+      for (const r of rows) {
+        if (r.value === null) continue;
+        const iso3 = r.countryiso3code;
+        const name = countries.find(c => c.iso3 === iso3)?.name || r.country?.value || iso3;
+        const cur = byCountry.get(iso3);
+        if (!cur || r.date > cur.latestYear) {
+          byCountry.set(iso3, { latest: r.value, latestYear: r.date, prev: cur?.latest ?? null, name });
+        } else if (cur && (cur.prev === null || r.date < cur.latestYear)) {
+          cur.prev = r.value;
+        }
+      }
+
+      for (const [iso3, d] of byCountry) {
+        const delta = d.prev !== null ? ((d.latest - d.prev) / d.prev) * 100 : 0;
+        const declining = delta < -2;
+        const stagnating = Math.abs(delta) < 2;
+        const impact = declining ? 7 : stagnating ? 4 : 3;
+        const urgency = declining ? 6 : 3;
+        const trend = declining ? "Declining" : stagnating ? "Stagnant" : "Growing";
+        const title = `${d.name} food production index ${d.latestYear}: ${d.latest.toFixed(1)} (${delta >= 0 ? "+" : ""}${delta.toFixed(1)}% YoY)`;
+        const summary = `${trend} food output trajectory for ${d.name}. ${declining ? "Year-on-year decline in the food production index signals supply-side stress — monitor for downstream food security risk." : stagnating ? "Output stable but flat — limited buffer for population growth or climate shocks." : "Healthy production growth supports food security baseline."} Source: World Bank / FAO (AG.PRD.FOOD.XD, 2014–16 = 100).`;
 
         const { error } = await supabase.from("global_signals").insert({
-          title,
-          summary: body,
+          title: title.slice(0, 240),
+          summary: summary.slice(0, 800),
           category: "food_agriculture",
-          subcategory: "food_security",
+          subcategory: "food_production_index",
           status: "developing",
-          confidence_score: 85,
-          impact_score: title.toLowerCase().match(/(famine|crisis|emergency|ipc\s*[45])/) ? 8 : 5,
-          urgency_score: 6,
-          primary_source: "FAO/GIEWS via ReliefWeb",
+          confidence_score: 90,
+          impact_score: impact,
+          urgency_score: urgency,
+          primary_source: "World Bank / FAO",
           source_count: 1,
-          ingestion_source: "fao_giews",
-          first_detected_at: r.fields.date?.created || new Date().toISOString(),
+          ingestion_source: "worldbank_food",
+          first_detected_at: new Date().toISOString(),
           latest_update_at: new Date().toISOString(),
-          occurred_at: r.fields.date?.original || new Date().toISOString(),
-          affected_countries: iso3 ? [iso3] : [],
+          occurred_at: new Date(`${d.latestYear}-12-31T00:00:00Z`).toISOString(),
+          affected_countries: [iso3],
           source_trust_tier: "official",
           official_source: true,
-          dedup_key: `fao-giews-${r.id}`,
+          dedup_key: `wb-food-${iso3}-${d.latestYear}`,
         });
-        if (error) { results.errors.push(`fao_insert: ${error.message}`); } else { results.intel_events++; }
+        if (error) {
+          if (!error.message.includes("duplicate")) {
+            results.errors.push(`wb_food_insert: ${error.message}`);
+          }
+        } else {
+          results.intel_events++;
+        }
       }
-    }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`FAO/GIEWS: ${(e as Error).message}`));
+    }, { maxRetries: 2, timeoutMs: 15000 }).catch(e => results.errors.push(`WB-food: ${(e as Error).message}`));
 
     // 8. USGS WaterWatch — Streamflow & drought conditions
     await resilientCall(`${FN}:usgs-water`, async () => {
