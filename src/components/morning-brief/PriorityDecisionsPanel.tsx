@@ -169,7 +169,7 @@ export function PriorityDecisionsPanel() {
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium">No urgent actions required</p>
-              <p className="text-xs text-muted-foreground">All high-impact supply chain risks have been addressed.</p>
+              <p className="text-xs text-muted-foreground">All high-impact risks across 12 domains have been addressed.</p>
             </div>
             <Button size="sm" variant="outline" onClick={() => navigate("/live")} className="shrink-0 gap-1">
               View Risks <ArrowRight className="h-3 w-3" />

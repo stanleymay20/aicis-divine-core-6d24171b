@@ -20,6 +20,7 @@ import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
 import { TopRisksWidget } from "./TopRisksWidget";
 import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidget";
 import { SystemStatusStrip } from "./SystemStatusStrip";
+import { DomainMixStrip } from "./DomainMixStrip";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
@@ -73,6 +74,9 @@ export const MorningBriefDashboard = () => {
       {/* ── EXPOSURE: 3-4 compact KPIs ── */}
       <BusinessExposureStrip />
 
+      {/* ── DOMAIN MIX: prove planetary coverage across 12 domains ── */}
+      <DomainMixStrip />
+
       {/* ── 🚨 ACTIONS AWAITING: Execution activation ── */}
       <ActionsAwaitingStrip />
 
@@ -115,7 +119,7 @@ export const MorningBriefDashboard = () => {
                 <ActionCard
                   icon={<Radio className="h-4 w-4 text-primary" />}
                   title="Review Risks"
-                  desc="Check new supply chain risks"
+                  desc="All domains: geo, econ, health, climate, cyber"
                   onClick={() => navigate("/live")}
                 />
                 <ActionCard
