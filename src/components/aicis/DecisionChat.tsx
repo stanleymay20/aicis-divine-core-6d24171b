@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -50,6 +51,7 @@ export const DecisionChat = () => {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -120,6 +122,19 @@ export const DecisionChat = () => {
       setLoading(false);
     }
   }, [input, loading]);
+
+  // Auto-submit any inbound ?q= query (e.g. handoff from PersistentAskBar)
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && !loading && messages.length === 0) {
+      handleSubmit(q);
+      // Clear the param so reloads don't re-fire
+      const next = new URLSearchParams(searchParams);
+      next.delete("q");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleAction = async (msgId: string, action: "accepted" | "rejected") => {
     setMessages((prev) =>
