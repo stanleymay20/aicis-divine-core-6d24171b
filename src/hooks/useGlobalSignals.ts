@@ -145,17 +145,29 @@ export function useTopSignals(limit = 5) {
   return useQuery({
     queryKey: ["top-signals", limit],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("global_signals")
-        .select("*")
-        .eq("enrichment_status", "enriched")
-        .gte("impact_score", 50)
-        .order("impact_score", { ascending: false })
-        .order("urgency_score", { ascending: false })
-        .limit(limit);
+      // "Today's Critical Risks" must be genuinely recent. Primary window: 72h.
+      // Fallback: 7d so the panel isn't empty during quiet periods, but we
+      // never surface 2-3 week old signals as "today's" critical risks.
+      const window72h = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+      const window7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-      if (error) throw error;
-      return (data || []) as GlobalSignal[];
+      const fetchWithin = async (sinceIso: string) => {
+        const { data, error } = await supabase
+          .from("global_signals")
+          .select("*")
+          .eq("enrichment_status", "enriched")
+          .gte("impact_score", 50)
+          .gte("first_detected_at", sinceIso)
+          .order("impact_score", { ascending: false })
+          .order("urgency_score", { ascending: false })
+          .limit(limit);
+        if (error) throw error;
+        return (data || []) as GlobalSignal[];
+      };
+
+      const recent = await fetchWithin(window72h);
+      if (recent.length > 0) return recent;
+      return await fetchWithin(window7d);
     },
     staleTime: 30000,
     refetchInterval: 60000,
