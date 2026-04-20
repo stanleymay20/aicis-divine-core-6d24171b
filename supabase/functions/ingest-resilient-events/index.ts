@@ -28,6 +28,7 @@ function hash(s: string): string {
 }
 
 interface NormEvent {
+  provider_name: string;
   event_type: string;
   category: string;
   title: string;
@@ -51,6 +52,7 @@ async function pullUSGS(): Promise<NormEvent[]> {
     const mag = f.properties?.mag ?? 0;
     const sev = mag >= 7 ? 9 : mag >= 6 ? 8 : mag >= 5 ? 7 : mag >= 4 ? 5 : 3;
     return {
+      provider_name: "usgs",
       event_type: "natural_disaster",
       category: "climate",
       title: (f.properties?.title || `M${mag} earthquake`).slice(0, 500),
@@ -68,8 +70,19 @@ async function pullUSGS(): Promise<NormEvent[]> {
 }
 
 async function pullReliefWeb(): Promise<NormEvent[]> {
-  const url = "https://api.reliefweb.int/v1/disasters?appname=aicis&limit=50&sort[]=date:desc&filter[field]=status&filter[value]=ongoing&fields[include][]=name&fields[include][]=date&fields[include][]=primary_country&fields[include][]=type&fields[include][]=url";
-  const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  // ReliefWeb v1 API — POST request with JSON body is the supported path.
+  const url = "https://api.reliefweb.int/v1/disasters?appname=aicis";
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      limit: 50,
+      sort: ["date:desc"],
+      filter: { field: "status", value: "ongoing" },
+      fields: { include: ["name", "date", "primary_country", "type", "url"] },
+    }),
+    signal: AbortSignal.timeout(10000),
+  });
   if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
   const j = await r.json();
   return (j.data || []).map((d: any) => {
@@ -79,6 +92,7 @@ async function pullReliefWeb(): Promise<NormEvent[]> {
               : typeName.includes("epidemic") || typeName.includes("disease") ? "health"
               : typeName.includes("conflict") ? "security" : "general";
     return {
+      provider_name: "reliefweb",
       event_type: typeName.replace(/\s+/g, "_") || "humanitarian_crisis",
       category: cat,
       title: (f.name || "Active disaster").slice(0, 500),
