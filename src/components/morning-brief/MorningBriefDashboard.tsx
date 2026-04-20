@@ -22,6 +22,8 @@ import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidge
 import { SystemStatusStrip } from "./SystemStatusStrip";
 import { DomainMixStrip } from "./DomainMixStrip";
 import { LayerTrustTiersPanel } from "./LayerTrustTiersPanel";
+import { PersistentAskBar } from "./PersistentAskBar";
+import { FirstRunTour } from "@/components/onboarding/FirstRunTour";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
@@ -56,6 +58,12 @@ export const MorningBriefDashboard = () => {
 
   return (
     <div className="space-y-4 sm:space-y-5 animate-fade-in">
+      {/* ── PERSISTENT ASK BAR: front door for non-technical users ── */}
+      <PersistentAskBar />
+
+      {/* ── First-run guided tour (shown once) ── */}
+      <FirstRunTour />
+
       {/* ── HERO: greeting + system health (compact on mobile) ── */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
