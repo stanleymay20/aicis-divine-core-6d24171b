@@ -55,15 +55,19 @@ serve(async (req) => {
         ? "neutral_impact"
         : "negative_impact_observed";
 
+      // Governance trigger blocks `executed` for severity >= 5 — those need human approval.
+      // For sev<5 we mark executed; for sev>=5 we record outcome but keep status approved.
+      const updatePayload: Record<string, unknown> = {
+        executed_at: new Date().toISOString(),
+        outcome_score: Number(score.toFixed(3)),
+        outcome_assessment: assessment,
+        updated_at: new Date().toISOString(),
+      };
+      if (sev < 5) updatePayload.status = "executed";
+
       const { error: upErr } = await supabase
         .from("adi_decisions")
-        .update({
-          status: "executed",
-          executed_at: new Date().toISOString(),
-          outcome_score: Number(score.toFixed(3)),
-          outcome_assessment: assessment,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq("id", d.id);
 
       if (!upErr) {
