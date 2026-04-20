@@ -25,10 +25,12 @@ serve(async (req) => {
     const csv = await r.text();
     const lines = csv.trim().split(/\r?\n/);
     const header = lines.shift()!.split(",");
-    const idxEntity = header.indexOf("Entity");
     const idxCode = header.indexOf("Code");
     const idxYear = header.indexOf("Year");
-    const idxValue = header.findIndex((h) => h.toLowerCase().includes("electdem"));
+    // Value column = first column whose header is not Entity/Code/Year/region
+    const idxValue = header.findIndex(
+      (h, i) => i !== idxCode && i !== idxYear && h !== "Entity" && !h.toLowerCase().includes("region")
+    );
 
     const currentYear = new Date().getUTCFullYear();
     const minYear = currentYear - 6;
