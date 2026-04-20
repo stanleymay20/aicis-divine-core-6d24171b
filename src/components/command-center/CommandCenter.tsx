@@ -273,6 +273,14 @@ export const CommandCenter = () => {
         <LocationSearch onLocationSelect={handleLocationSelect} />
       </div>
 
+      {/* Always-visible "Ask anything" front door — UX rescue for non-technical users */}
+      <div className={cn(
+        "fixed z-30",
+        isMobile ? "top-16 left-1/2 -translate-x-1/2" : "top-[100px] left-1/2 -translate-x-1/2"
+      )}>
+        <AskAnythingPill />
+      </div>
+
       {/* MiniMap - hidden on mobile */}
       {!isMobile && <MiniMap mainMap={mainMap} />}
 
