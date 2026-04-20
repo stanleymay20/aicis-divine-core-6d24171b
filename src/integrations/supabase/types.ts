@@ -1190,6 +1190,73 @@ export type Database = {
         }
         Relationships: []
       }
+      community_metrics: {
+        Row: {
+          captured_at: string
+          country_iso3: string
+          created_at: string
+          domain: string
+          id: string
+          indicator_key: string
+          metadata: Json | null
+          region_id: string | null
+          reporter_node_id: string | null
+          source: string | null
+          unit: string | null
+          value: number
+        }
+        Insert: {
+          captured_at?: string
+          country_iso3: string
+          created_at?: string
+          domain: string
+          id?: string
+          indicator_key: string
+          metadata?: Json | null
+          region_id?: string | null
+          reporter_node_id?: string | null
+          source?: string | null
+          unit?: string | null
+          value: number
+        }
+        Update: {
+          captured_at?: string
+          country_iso3?: string
+          created_at?: string
+          domain?: string
+          id?: string
+          indicator_key?: string
+          metadata?: Json | null
+          region_id?: string | null
+          reporter_node_id?: string | null
+          source?: string | null
+          unit?: string | null
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_metrics_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "admin_regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_metrics_reporter_node_id_fkey"
+            columns: ["reporter_node_id"]
+            isOneToOne: false
+            referencedRelation: "accountability_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_metrics_reporter_node_id_fkey"
+            columns: ["reporter_node_id"]
+            isOneToOne: false
+            referencedRelation: "accountability_nodes_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       compliance_audit: {
         Row: {
           action_description: string
@@ -1534,6 +1601,45 @@ export type Database = {
           id?: string
           requires_dual_approval?: boolean
           severity_threshold?: number
+        }
+        Relationships: []
+      }
+      cross_border_signals: {
+        Row: {
+          affected_iso3: string[]
+          created_at: string
+          description: string | null
+          detected_at: string
+          domain: string
+          id: string
+          intensity: number | null
+          metadata: Json | null
+          origin_iso3: string
+          signal_type: string
+        }
+        Insert: {
+          affected_iso3?: string[]
+          created_at?: string
+          description?: string | null
+          detected_at?: string
+          domain: string
+          id?: string
+          intensity?: number | null
+          metadata?: Json | null
+          origin_iso3: string
+          signal_type: string
+        }
+        Update: {
+          affected_iso3?: string[]
+          created_at?: string
+          description?: string | null
+          detected_at?: string
+          domain?: string
+          id?: string
+          intensity?: number | null
+          metadata?: Json | null
+          origin_iso3?: string
+          signal_type?: string
         }
         Relationships: []
       }
@@ -4119,6 +4225,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      federation_learning_broadcasts: {
+        Row: {
+          broadcast_at: string
+          broadcast_type: string
+          created_at: string
+          delivered_count: number | null
+          id: string
+          payload: Json
+          source_tier: string
+          target_tiers: string[]
+        }
+        Insert: {
+          broadcast_at?: string
+          broadcast_type?: string
+          created_at?: string
+          delivered_count?: number | null
+          id?: string
+          payload: Json
+          source_tier?: string
+          target_tiers?: string[]
+        }
+        Update: {
+          broadcast_at?: string
+          broadcast_type?: string
+          created_at?: string
+          delivered_count?: number | null
+          id?: string
+          payload?: Json
+          source_tier?: string
+          target_tiers?: string[]
+        }
+        Relationships: []
       }
       federation_outbound_queue: {
         Row: {
@@ -7732,6 +7871,51 @@ export type Database = {
         }
         Relationships: []
       }
+      regional_insights: {
+        Row: {
+          computed_at: string
+          confidence: number | null
+          countries_included: string[]
+          created_at: string
+          domain: string
+          id: string
+          metadata: Json | null
+          metric_key: string
+          metric_value: number
+          region_code: string | null
+          region_name: string
+          trend: string | null
+        }
+        Insert: {
+          computed_at?: string
+          confidence?: number | null
+          countries_included?: string[]
+          created_at?: string
+          domain: string
+          id?: string
+          metadata?: Json | null
+          metric_key: string
+          metric_value: number
+          region_code?: string | null
+          region_name: string
+          trend?: string | null
+        }
+        Update: {
+          computed_at?: string
+          confidence?: number | null
+          countries_included?: string[]
+          created_at?: string
+          domain?: string
+          id?: string
+          metadata?: Json | null
+          metric_key?: string
+          metric_value?: number
+          region_code?: string | null
+          region_name?: string
+          trend?: string | null
+        }
+        Relationships: []
+      }
       revenue_metrics: {
         Row: {
           active_subscriptions: number | null
@@ -9628,6 +9812,59 @@ export type Database = {
         }
         Relationships: []
       }
+      urban_metrics: {
+        Row: {
+          city_name: string
+          computed_at: string
+          country_iso3: string
+          created_at: string
+          domain: string
+          id: string
+          indicator_key: string
+          metadata: Json | null
+          region_id: string | null
+          source_count: number | null
+          unit: string | null
+          value: number
+        }
+        Insert: {
+          city_name: string
+          computed_at?: string
+          country_iso3: string
+          created_at?: string
+          domain: string
+          id?: string
+          indicator_key: string
+          metadata?: Json | null
+          region_id?: string | null
+          source_count?: number | null
+          unit?: string | null
+          value: number
+        }
+        Update: {
+          city_name?: string
+          computed_at?: string
+          country_iso3?: string
+          created_at?: string
+          domain?: string
+          id?: string
+          indicator_key?: string
+          metadata?: Json | null
+          region_id?: string | null
+          source_count?: number | null
+          unit?: string | null
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "urban_metrics_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "admin_regions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       usage_metrics: {
         Row: {
           created_at: string | null
@@ -11091,6 +11328,8 @@ export type Database = {
         }
         Returns: undefined
       }
+      rollup_community_to_urban: { Args: never; Returns: number }
+      rollup_country_to_regional: { Args: never; Returns: number }
       run_canary_probe: { Args: never; Returns: Json }
       run_milestone_audit: { Args: { _milestone?: string }; Returns: Json }
       show_limit: { Args: never; Returns: number }
