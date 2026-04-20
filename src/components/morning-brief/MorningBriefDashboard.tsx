@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight, ChevronDown, ChevronUp, Radio, Activity, TrendingUp, Layers,
@@ -10,7 +9,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PriorityDecisionsPanel } from "./PriorityDecisionsPanel";
-import { GlobalSignalsBrief } from "./GlobalSignalsBrief";
 import { SystemHealthBadge } from "./SystemHealthBadge";
 import { SignalDrillDown } from "@/components/command-center/SignalDrillDown";
 import { useNavigate } from "react-router-dom";
@@ -22,7 +20,6 @@ import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
 import { TopRisksWidget } from "./TopRisksWidget";
 import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidget";
 import { SystemStatusStrip } from "./SystemStatusStrip";
-import { SystemObservabilityWidget } from "./SystemObservabilityWidget";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
