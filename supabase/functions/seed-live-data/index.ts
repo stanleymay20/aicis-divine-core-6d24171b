@@ -209,76 +209,76 @@ serve(async (req) => {
       }
     }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`NVD: ${(e as Error).message}`));
 
-    // 7. FAOSTAT — Crop production & food supply (direct API, no key)
-    await resilientCall(`${FN}:faostat`, async () => {
+    // 7. World Bank Food Production Index — staple food output trend (FAO data, served via World Bank)
+    // FAOSTAT direct API (fenixservices) is unreliable from edge runtime — use WB-hosted FAO indicator instead.
+    await resilientCall(`${FN}:wb-food`, async () => {
       const countries = [
-        { code: 288, iso3: "GHA", name: "Ghana" },
-        { code: 566, iso3: "NGA", name: "Nigeria" },
-        { code: 404, iso3: "KEN", name: "Kenya" },
-        { code: 710, iso3: "ZAF", name: "South Africa" },
-        { code: 356, iso3: "IND", name: "India" },
-        { code: 231, iso3: "ETH", name: "Ethiopia" },
+        { iso3: "GHA", name: "Ghana" }, { iso3: "NGA", name: "Nigeria" },
+        { iso3: "KEN", name: "Kenya" }, { iso3: "ZAF", name: "South Africa" },
+        { iso3: "IND", name: "India" }, { iso3: "ETH", name: "Ethiopia" },
+        { iso3: "PAK", name: "Pakistan" }, { iso3: "EGY", name: "Egypt" },
+        { iso3: "BGD", name: "Bangladesh" }, { iso3: "PHL", name: "Philippines" },
       ];
-      const items = [
-        { code: 56, name: "Maize" },
-        { code: 27, name: "Rice" },
-        { code: 15, name: "Wheat" },
-      ];
-      const year = new Date().getUTCFullYear() - 2;
+      const isoList = countries.map(c => c.iso3).join(";");
+      const url = `https://api.worldbank.org/v2/country/${isoList}/indicator/AG.PRD.FOOD.XD?format=json&date=2020:2023&per_page=200`;
+      const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!resp.ok) throw new Error(`WB food: ${resp.status}`);
+      const arr = await resp.json();
+      const rows: any[] = Array.isArray(arr) && arr.length > 1 ? arr[1] : [];
 
-      for (const c of countries) {
-        for (const it of items) {
-          try {
-            const url = `https://fenixservices.fao.org/faostat/api/v1/en/data/QCL?area_codes=${c.code}&item_codes=${it.code}&element_codes=5510&years=${year}`;
-            const r = await fetch(url, { headers: { "Accept": "application/json" } });
-            if (!r.ok) continue;
-            const j = await r.json();
-            const rows = j?.data ?? [];
-            if (rows.length === 0) continue;
-
-            const row = rows[0];
-            const tonnes = Number(row.Value ?? 0);
-            if (tonnes <= 0) continue;
-
-            const lowProduction = tonnes < 100_000;
-            const impact = lowProduction ? 7 : 4;
-            const urgency = lowProduction ? 6 : 3;
-            const title = `FAOSTAT ${year} — ${it.name} production in ${c.name}: ${(tonnes / 1000).toFixed(0)}k tonnes`;
-            const summary = `Annual ${it.name.toLowerCase()} output for ${c.name} reported at ${tonnes.toLocaleString()} tonnes (${year}). ${lowProduction ? "Below regional staple-crop benchmark — monitor for food-supply shortfall risk." : "Within expected production band for staple crop."} Source: FAO QCL dataset.`;
-
-            const { error } = await supabase.from("global_signals").insert({
-              title: title.slice(0, 240),
-              summary: summary.slice(0, 800),
-              category: "food_agriculture",
-              subcategory: "crop_production",
-              status: "developing",
-              confidence_score: 92,
-              impact_score: impact,
-              urgency_score: urgency,
-              primary_source: "FAOSTAT (FAO)",
-              source_count: 1,
-              ingestion_source: "faostat",
-              first_detected_at: new Date().toISOString(),
-              latest_update_at: new Date().toISOString(),
-              occurred_at: new Date(`${year}-12-31T00:00:00Z`).toISOString(),
-              affected_countries: [c.iso3],
-              source_trust_tier: "official",
-              official_source: true,
-              dedup_key: `faostat-qcl-${c.iso3}-${it.code}-${year}`,
-            });
-            if (error) {
-              if (!error.message.includes("duplicate")) {
-                results.errors.push(`faostat_insert: ${error.message}`);
-              }
-            } else {
-              results.intel_events++;
-            }
-          } catch (e) {
-            console.warn(`FAOSTAT ${c.iso3}/${it.name}: ${(e as Error).message}`);
-          }
+      // Group by country, get latest non-null value + previous value to detect drop
+      const byCountry = new Map<string, { latest: number; latestYear: string; prev: number | null; name: string }>();
+      for (const r of rows) {
+        if (r.value === null) continue;
+        const iso3 = r.countryiso3code;
+        const name = countries.find(c => c.iso3 === iso3)?.name || r.country?.value || iso3;
+        const cur = byCountry.get(iso3);
+        if (!cur || r.date > cur.latestYear) {
+          byCountry.set(iso3, { latest: r.value, latestYear: r.date, prev: cur?.latest ?? null, name });
+        } else if (cur && (cur.prev === null || r.date < cur.latestYear)) {
+          cur.prev = r.value;
         }
       }
-    }, { maxRetries: 1, timeoutMs: 30000 }).catch(e => results.errors.push(`FAOSTAT: ${(e as Error).message}`));
+
+      for (const [iso3, d] of byCountry) {
+        const delta = d.prev !== null ? ((d.latest - d.prev) / d.prev) * 100 : 0;
+        const declining = delta < -2;
+        const stagnating = Math.abs(delta) < 2;
+        const impact = declining ? 7 : stagnating ? 4 : 3;
+        const urgency = declining ? 6 : 3;
+        const trend = declining ? "Declining" : stagnating ? "Stagnant" : "Growing";
+        const title = `${d.name} food production index ${d.latestYear}: ${d.latest.toFixed(1)} (${delta >= 0 ? "+" : ""}${delta.toFixed(1)}% YoY)`;
+        const summary = `${trend} food output trajectory for ${d.name}. ${declining ? "Year-on-year decline in the food production index signals supply-side stress — monitor for downstream food security risk." : stagnating ? "Output stable but flat — limited buffer for population growth or climate shocks." : "Healthy production growth supports food security baseline."} Source: World Bank / FAO (AG.PRD.FOOD.XD, 2014–16 = 100).`;
+
+        const { error } = await supabase.from("global_signals").insert({
+          title: title.slice(0, 240),
+          summary: summary.slice(0, 800),
+          category: "food_agriculture",
+          subcategory: "food_production_index",
+          status: "developing",
+          confidence_score: 90,
+          impact_score: impact,
+          urgency_score: urgency,
+          primary_source: "World Bank / FAO",
+          source_count: 1,
+          ingestion_source: "worldbank_food",
+          first_detected_at: new Date().toISOString(),
+          latest_update_at: new Date().toISOString(),
+          occurred_at: new Date(`${d.latestYear}-12-31T00:00:00Z`).toISOString(),
+          affected_countries: [iso3],
+          source_trust_tier: "official",
+          official_source: true,
+          dedup_key: `wb-food-${iso3}-${d.latestYear}`,
+        });
+        if (error) {
+          if (!error.message.includes("duplicate")) {
+            results.errors.push(`wb_food_insert: ${error.message}`);
+          }
+        } else {
+          results.intel_events++;
+        }
+      }
+    }, { maxRetries: 2, timeoutMs: 15000 }).catch(e => results.errors.push(`WB-food: ${(e as Error).message}`));
 
     // 8. USGS WaterWatch — Streamflow & drought conditions
     await resilientCall(`${FN}:usgs-water`, async () => {
