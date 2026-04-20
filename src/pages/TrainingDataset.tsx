@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Database, Download, Play, Target, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { Helmet } from "react-helmet-async";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type Stats = {
   ok: boolean;
