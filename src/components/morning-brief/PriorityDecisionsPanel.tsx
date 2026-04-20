@@ -210,8 +210,10 @@ export function PriorityDecisionsPanel() {
                     "h-4 w-4 shrink-0",
                     p.urgency === "critical" ? "text-destructive" : p.urgency === "high" ? "text-amber-500" : "text-primary"
                   )} />
-                  <Badge variant={p.urgency === "critical" ? "destructive" : "secondary"} className="text-[10px] uppercase">
-                    {p.urgency} risk
+                  <Badge variant={p.urgency === "critical" ? "destructive" : "secondary"} className="text-[10px]">
+                    {p.urgency === "critical" ? "Critical · Act today"
+                      : p.urgency === "high" ? "High · Act this week"
+                      : "Moderate · Monitor"}
                   </Badge>
                   <Badge variant="outline" className="text-[10px] gap-0.5">
                     <Package className="h-2.5 w-2.5" />
@@ -241,22 +243,27 @@ export function PriorityDecisionsPanel() {
               </p>
             </div>
 
-            {/* Impact + ROI + Confidence strip */}
+            {/* Impact + ROI + Confidence strip — humanized labels */}
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-md bg-muted/50 p-2 text-center">
                 <DollarSign className="h-3.5 w-3.5 mx-auto mb-0.5 text-emerald-500" />
                 <p className="text-xs font-bold text-emerald-500">{p.estimatedImpact}</p>
-                <p className="text-[9px] text-muted-foreground">Potential loss avoided</p>
+                <p className="text-[9px] text-muted-foreground">Loss avoided</p>
               </div>
               <div className="rounded-md bg-muted/50 p-2 text-center">
                 <TrendingUp className="h-3.5 w-3.5 mx-auto mb-0.5 text-primary" />
-                <p className="text-xs font-bold text-primary">{p.estimatedROI.toFixed(1)}x</p>
-                <p className="text-[9px] text-muted-foreground">Est. ROI</p>
+                <p className="text-xs font-bold text-primary">{p.estimatedROI.toFixed(1)}× return</p>
+                <p className="text-[9px] text-muted-foreground">Value vs. cost</p>
               </div>
               <div className="rounded-md bg-muted/50 p-2 text-center">
                 <Shield className="h-3.5 w-3.5 mx-auto mb-0.5 text-foreground" />
-                <p className="text-xs font-bold">{p.confidence_score || 50}%</p>
-                <p className="text-[9px] text-muted-foreground">Confidence</p>
+                <p className="text-xs font-bold">
+                  {(p.confidence_score || 50) >= 85 ? "Very confident"
+                    : (p.confidence_score || 50) >= 70 ? "Confident"
+                    : (p.confidence_score || 50) >= 50 ? "Likely"
+                    : "Early signal"}
+                </p>
+                <p className="text-[9px] text-muted-foreground">How sure we are</p>
               </div>
             </div>
 

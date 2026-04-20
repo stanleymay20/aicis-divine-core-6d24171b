@@ -117,11 +117,15 @@ export const TopRisksWidget = () => {
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className={`text-lg font-semibold ${getRiskColor(risk.overall_score)}`}>
-                      {Math.round(risk.overall_score)}
-                    </span>
-                    <Badge variant={getRiskBadge(risk.overall_score) as any} className="text-[10px] ml-1.5">
-                      {risk.overall_score >= 75 ? "CRITICAL" : risk.overall_score >= 50 ? "HIGH" : "MODERATE"}
+                    <Badge
+                      variant={getRiskBadge(risk.overall_score) as any}
+                      className="text-[10px]"
+                    >
+                      {risk.overall_score >= 75
+                        ? "Critical · Act today"
+                        : risk.overall_score >= 50
+                        ? "High · Act this week"
+                        : "Moderate · Monitor"}
                     </Badge>
                   </div>
                 </div>
