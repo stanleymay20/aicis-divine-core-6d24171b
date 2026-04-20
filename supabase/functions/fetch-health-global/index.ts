@@ -53,24 +53,27 @@ serve(async (req) => {
       structuredLog('warn', FN, msg);
     });
 
-    // CDC - COVID data
+    // CDC - Weekly respiratory virus hospitalizations (active dataset, replaces retired COVID 9mfq-cb36)
     await resilientCall(`${FN}:cdc`, async () => {
-      const cdcResponse = await fetch('https://data.cdc.gov/resource/9mfq-cb36.json?$limit=50');
+      const cdcResponse = await fetch(
+        'https://data.cdc.gov/resource/aemt-mg7g.json?$limit=50&$order=weekendingdate%20DESC',
+        { headers: { 'Accept': 'application/json', 'User-Agent': 'AICIS/1.0' } }
+      );
       if (!cdcResponse.ok) throw new Error(`CDC API: ${cdcResponse.status}`);
       const cdcData = await cdcResponse.json();
 
       if (Array.isArray(cdcData) && cdcData.length > 0) {
         const cdcRecords = cdcData
-          .filter((item: any) => item.state && item.tot_cases)
+          .filter((item: any) => item.jurisdiction && item.totalconfc19newadm)
           .map((item: any) => ({
             country: 'United States',
             iso_code: 'USA',
             source: 'cdc',
-            metric_name: 'covid_cases',
-            value: parseFloat(item.tot_cases),
-            unit: 'cases',
-            date: item.submission_date || new Date().toISOString().split('T')[0],
-            metadata: { state: item.state, deaths: item.tot_death, new_cases: item.new_case }
+            metric_name: 'covid_hospitalizations_weekly',
+            value: parseFloat(item.totalconfc19newadm),
+            unit: 'admissions',
+            date: item.weekendingdate?.split('T')[0] || new Date().toISOString().split('T')[0],
+            metadata: { jurisdiction: item.jurisdiction, flu_admissions: item.totalconffluneadm }
           }));
 
         if (cdcRecords.length > 0) {
