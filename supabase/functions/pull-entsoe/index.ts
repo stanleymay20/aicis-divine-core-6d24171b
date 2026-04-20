@@ -11,11 +11,17 @@ const corsHeaders = {
 
 const FN = "pull-entsoe";
 
-const COUNTRIES: Record<string, string> = {
-  de: "DEU", fr: "FRA", es: "ESP", it: "ITA", nl: "NLD",
-  be: "BEL", at: "AUT", pl: "POL", se: "SWE", no: "NOR",
-  dk: "DNK", fi: "FIN", pt: "PRT", ie: "IRL", gr: "GRC",
-};
+// energy-charts.info supports per-bidding-zone queries via the `bzn` param.
+const ZONES: { bzn: string; iso3: string }[] = [
+  { bzn: "DE-LU", iso3: "DEU" }, { bzn: "FR", iso3: "FRA" },
+  { bzn: "ES", iso3: "ESP" }, { bzn: "IT-North", iso3: "ITA" },
+  { bzn: "NL", iso3: "NLD" }, { bzn: "BE", iso3: "BEL" },
+  { bzn: "AT", iso3: "AUT" }, { bzn: "PL", iso3: "POL" },
+  { bzn: "SE4", iso3: "SWE" }, { bzn: "NO2", iso3: "NOR" },
+  { bzn: "DK1", iso3: "DNK" }, { bzn: "FI", iso3: "FIN" },
+  { bzn: "PT", iso3: "PRT" }, { bzn: "IE-SEM", iso3: "IRL" },
+  { bzn: "GR", iso3: "GRC" },
+];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -25,9 +31,9 @@ serve(async (req) => {
   const errors: string[] = [];
 
   try {
-    for (const [code, iso3] of Object.entries(COUNTRIES)) {
+    for (const { bzn, iso3 } of ZONES) {
       try {
-        const url = `https://api.energy-charts.info/total_power?country=${code}`;
+        const url = `https://api.energy-charts.info/total_power?bzn=${encodeURIComponent(bzn)}`;
         const r = await fetch(url, {
           headers: { "User-Agent": "AICIS/1.0", Accept: "application/json" },
           signal: AbortSignal.timeout(8000),
