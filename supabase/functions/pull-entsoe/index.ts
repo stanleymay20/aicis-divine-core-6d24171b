@@ -96,7 +96,6 @@ serve(async (req) => {
           }
           continue;
         }
-        const data = await r.json();
         const ts: number[] = data.unix_seconds || [];
         const series: { name: string; data: number[] }[] = data.production_types || [];
         if (!ts.length || !series.length) continue;
@@ -124,12 +123,13 @@ serve(async (req) => {
 
     const { inserted, errors: writeErrs } = await writeNormalized(supabase, rows);
     const allErrs = [...errors, ...writeErrs];
+    // Treat fallback-only runs as 'partial' — data still flows during upstream outages.
     const status = inserted > 0 ? (allErrs.length ? "partial" : "success") : "error";
     await logRun(
       supabase,
       FN,
       status,
-      `Inserted ${inserted}/${rows.length} ENTSO-E rows in ${Date.now() - start}ms${allErrs.length ? " — " + allErrs.slice(0, 3).join("; ") : ""}`
+      `Inserted ${inserted}/${rows.length} ENTSO-E rows (${fallbackUsed} fallback) in ${Date.now() - start}ms${allErrs.length ? " — " + allErrs.slice(0, 3).join("; ") : ""}`
     );
 
     return new Response(JSON.stringify({ ok: true, inserted, total: rows.length, errors: allErrs }), {
