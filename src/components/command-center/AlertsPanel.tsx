@@ -1,13 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  AlertTriangle, X, Bell, ChevronRight, 
-  Clock, MapPin, Shield, Activity, CheckCircle2
+import {
+  AlertTriangle, X, Bell, ChevronRight,
+  Clock, MapPin, Shield, Activity, CheckCircle2, Filter
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { useAlertPreferences, applyAlertPreferences } from "@/hooks/useAlertPreferences";
+import { AlertPreferencesPopover } from "./AlertPreferencesPopover";
 
 interface Alert {
   id: string;
@@ -30,6 +32,7 @@ export const AlertsPanel = ({ isOpen, onClose, onAlertClick }: AlertsPanelProps)
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [filter, setFilter] = useState<"all" | "critical" | "unread">("all");
   const [loading, setLoading] = useState(true);
+  const { prefs, save: savePrefs } = useAlertPreferences();
 
   useEffect(() => {
     const fetchAlerts = async () => {
@@ -86,14 +89,31 @@ export const AlertsPanel = ({ isOpen, onClose, onAlertClick }: AlertsPanelProps)
     };
   }, []);
 
-  const filteredAlerts = alerts.filter(alert => {
+  // Apply saved per-user preferences first, then the quick-filter chip
+  const prefFiltered = useMemo(
+    () => applyAlertPreferences(alerts, prefs),
+    [alerts, prefs]
+  );
+
+  const filteredAlerts = prefFiltered.filter((alert) => {
     if (filter === "critical") return alert.severity === "critical";
     if (filter === "unread") return !alert.acknowledged;
     return true;
   });
 
-  const criticalCount = alerts.filter(a => a.severity === "critical" && !a.acknowledged).length;
-  const unreadCount = alerts.filter(a => !a.acknowledged).length;
+  // Build option lists from the live data so the popover only offers real choices
+  const availableDivisions = useMemo(
+    () => Array.from(new Set(alerts.map((a) => a.division).filter(Boolean))).sort(),
+    [alerts]
+  );
+  const availableCountries = useMemo(
+    () => Array.from(new Set(alerts.map((a) => a.country).filter(Boolean) as string[])).sort(),
+    [alerts]
+  );
+
+  const criticalCount = prefFiltered.filter(a => a.severity === "critical" && !a.acknowledged).length;
+  const unreadCount = prefFiltered.filter(a => !a.acknowledged).length;
+  const hiddenByPrefs = alerts.length - prefFiltered.length;
 
   const getSeverityColor = (severity: Alert["severity"]) => {
     switch (severity) {
@@ -164,28 +184,43 @@ export const AlertsPanel = ({ isOpen, onClose, onAlertClick }: AlertsPanelProps)
       </div>
 
       {/* Filters */}
-      <div className="flex gap-1 p-2 border-b border-border/50">
-        {[
-          { key: "all", label: "All" },
-          { key: "critical", label: "Critical", count: criticalCount },
-          { key: "unread", label: "Unread", count: unreadCount },
-        ].map(({ key, label, count }) => (
-          <Button
-            key={key}
-            variant={filter === key ? "default" : "ghost"}
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={() => setFilter(key as typeof filter)}
-          >
-            {label}
-            {count !== undefined && count > 0 && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                {count}
-              </Badge>
-            )}
-          </Button>
-        ))}
+      <div className="flex items-center gap-1 p-2 border-b border-border/50">
+        <div className="flex gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-none">
+          {[
+            { key: "all", label: "All" },
+            { key: "critical", label: "Critical", count: criticalCount },
+            { key: "unread", label: "Unread", count: unreadCount },
+          ].map(({ key, label, count }) => (
+            <Button
+              key={key}
+              variant={filter === key ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs gap-1 shrink-0"
+              onClick={() => setFilter(key as typeof filter)}
+            >
+              {label}
+              {count !== undefined && count > 0 && (
+                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                  {count}
+                </Badge>
+              )}
+            </Button>
+          ))}
+        </div>
+        <AlertPreferencesPopover
+          prefs={prefs}
+          onChange={savePrefs}
+          availableDivisions={availableDivisions}
+          availableCountries={availableCountries}
+        />
       </div>
+
+      {hiddenByPrefs > 0 && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted/30 border-b border-border/50 text-[10px] text-muted-foreground">
+          <Filter className="h-3 w-3" />
+          {hiddenByPrefs} alert{hiddenByPrefs === 1 ? "" : "s"} hidden by your filters
+        </div>
+      )}
 
       {/* Alert list */}
       <ScrollArea className="h-[calc(100vh-140px)]">
@@ -194,9 +229,14 @@ export const AlertsPanel = ({ isOpen, onClose, onAlertClick }: AlertsPanelProps)
             <div className="animate-pulse text-muted-foreground">Loading alerts...</div>
           </div>
         ) : filteredAlerts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground px-4 text-center">
             <CheckCircle2 className="h-8 w-8 mb-2 text-success" />
             <span className="text-sm">No alerts to show</span>
+            {hiddenByPrefs > 0 && (
+              <span className="text-[11px] mt-1">
+                {hiddenByPrefs} hidden by your filters — open <strong>Filters</strong> to adjust
+              </span>
+            )}
           </div>
         ) : (
           <div className="p-2 space-y-2">

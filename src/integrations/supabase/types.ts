@@ -508,6 +508,42 @@ export type Database = {
         }
         Relationships: []
       }
+      alert_preferences: {
+        Row: {
+          countries: string[]
+          created_at: string
+          divisions: string[]
+          id: string
+          min_severity: string
+          mute_keywords: string[]
+          show_acknowledged: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          countries?: string[]
+          created_at?: string
+          divisions?: string[]
+          id?: string
+          min_severity?: string
+          mute_keywords?: string[]
+          show_acknowledged?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          countries?: string[]
+          created_at?: string
+          divisions?: string[]
+          id?: string
+          min_severity?: string
+          mute_keywords?: string[]
+          show_acknowledged?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       alerts: {
         Row: {
           acknowledged: boolean | null
