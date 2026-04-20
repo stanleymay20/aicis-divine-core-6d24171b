@@ -45,6 +45,9 @@ serve(async (req) => {
     const results = [];
     const escalations = [];
     let aiSkipped = false;
+    // Enterprise hard-cap: edge functions hard-die at 60s. Reserve 10s for DB writes/log flush.
+    const HARD_DEADLINE_MS = 50000;
+    const deadlineExceeded = () => (Date.now() - start) > HARD_DEADLINE_MS;
 
     // Pre-flight AI probe: if credits are exhausted, skip AI loop entirely (saves ~30s of timeouts).
     try {
@@ -121,11 +124,17 @@ serve(async (req) => {
       return { kind, region, details };
     });
 
-    // Wait for all with a 30s hard cap
-    const aiResults = await Promise.allSettled(aiPromises);
+    // Race AI batch against deadline — guarantees we exit before 60s edge timeout.
+    const aiResults = await Promise.race([
+      Promise.allSettled(aiPromises),
+      new Promise<PromiseSettledResult<any>[]>((resolve) =>
+        setTimeout(() => resolve(crisisTypes.map(() => ({ status: 'rejected', reason: 'deadline' } as PromiseRejectedResult))), HARD_DEADLINE_MS - (Date.now() - start))
+      ),
+    ]);
 
     for (const settled of aiResults) {
       if (settled.status !== 'fulfilled') continue;
+      if (deadlineExceeded()) { structuredLog('warn', FN, 'deadline reached, skipping remaining writes'); break; }
       const { kind, region, details } = settled.value;
 
       const severity = Math.floor(Math.random() * 10);
