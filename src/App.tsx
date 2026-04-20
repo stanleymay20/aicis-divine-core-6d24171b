@@ -48,6 +48,7 @@ const Status = lazy(() => import("./pages/Status"));
 const SystemPulse = lazy(() => import("./pages/SystemPulse"));
 const RegionDrillDown = lazy(() => import("./pages/RegionDrillDown"));
 const RegisterNode = lazy(() => import("./pages/RegisterNode"));
+const Accumulation = lazy(() => import("./pages/Accumulation"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -124,6 +125,7 @@ const App = () => (
               <Route path="/system-pulse" element={<Protected><SystemPulse /></Protected>} />
               <Route path="/atlas/region/:id" element={<Protected><RegionDrillDown /></Protected>} />
               <Route path="/register-node" element={<Protected><RegisterNode /></Protected>} />
+              <Route path="/accumulation" element={<Protected><Accumulation /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
