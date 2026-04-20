@@ -69,42 +69,34 @@ async function pullUSGS(): Promise<NormEvent[]> {
   });
 }
 
-async function pullReliefWeb(): Promise<NormEvent[]> {
-  // ReliefWeb v1 API — POST request with JSON body is the supported path.
-  const url = "https://api.reliefweb.int/v1/disasters?appname=aicis";
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      limit: 50,
-      sort: ["date:desc"],
-      filter: { field: "status", value: "ongoing" },
-      fields: { include: ["name", "date", "primary_country", "type", "url"] },
-    }),
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
+async function pullGDACS(): Promise<NormEvent[]> {
+  // GDACS — Global Disaster Alert and Coordination System (EU-JRC). Open, no key, JSON.
+  const url = "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventlist=EQ;TC;FL;VO;DR;WF&alertlevel=Green;Orange;Red&fromDate=&toDate=";
+  const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error(`GDACS HTTP ${r.status}`);
   const j = await r.json();
-  return (j.data || []).map((d: any) => {
-    const f = d.fields || {};
-    const typeName = f.type?.[0]?.name?.toLowerCase() || "";
-    const cat = typeName.includes("flood") || typeName.includes("storm") || typeName.includes("drought") ? "climate"
-              : typeName.includes("epidemic") || typeName.includes("disease") ? "health"
-              : typeName.includes("conflict") ? "security" : "general";
+  const features = j.features || [];
+  return features.map((f: any) => {
+    const p = f.properties || {};
+    const alert = (p.alertlevel || "Green").toLowerCase();
+    const sev = alert === "red" ? 9 : alert === "orange" ? 7 : 4;
+    const eventType = p.eventtype || "disaster";
+    const cat = ["EQ", "VO"].includes(eventType) ? "climate"
+              : ["TC", "FL", "DR", "WF"].includes(eventType) ? "climate" : "general";
     return {
-      provider_name: "reliefweb",
-      event_type: typeName.replace(/\s+/g, "_") || "humanitarian_crisis",
+      provider_name: "gdacs",
+      event_type: eventType.toLowerCase(),
       category: cat,
-      title: (f.name || "Active disaster").slice(0, 500),
-      description: typeName,
-      source_url: f.url || null,
-      source_name: "ReliefWeb",
-      country_iso3: f.primary_country?.iso3?.toUpperCase() || null,
-      severity: 7,
-      confidence: 0.9,
-      occurred_at: new Date(f.date?.created || Date.now()).toISOString(),
-      raw_data: { type: typeName, country: f.primary_country?.name },
-      dedup_key: `rw_${d.id || hash(f.url || f.name || "")}`,
+      title: (p.name || p.htmldescription || `GDACS ${eventType}`).slice(0, 500),
+      description: p.description || null,
+      source_url: p.url?.report || null,
+      source_name: "GDACS",
+      country_iso3: p.iso3 || null,
+      severity: sev,
+      confidence: 0.95,
+      occurred_at: new Date(p.fromdate || Date.now()).toISOString(),
+      raw_data: { alert, eventid: p.eventid, episodeid: p.episodeid },
+      dedup_key: `gdacs_${p.eventid || p.episodeid || hash(p.url?.report || "")}`,
     };
   });
 }
@@ -130,13 +122,13 @@ serve(async (req) => {
     summary.usgs_error = (e as Error).message;
   }
 
-  // Source 2: ReliefWeb (isolated)
+  // Source 2: GDACS (isolated)
   try {
-    const ev = await pullReliefWeb();
+    const ev = await pullGDACS();
     allEvents.push(...ev);
-    summary.reliefweb = ev.length;
+    summary.gdacs = ev.length;
   } catch (e) {
-    summary.reliefweb_error = (e as Error).message;
+    summary.gdacs_error = (e as Error).message;
   }
 
   let inserted = 0;
@@ -151,7 +143,7 @@ serve(async (req) => {
 
   await supabase.from("automation_logs").insert({
     job_name: FN,
-    status: summary.insert_error ? "error" : (summary.usgs_error && summary.reliefweb_error ? "partial" : "success"),
+    status: summary.insert_error ? "error" : (summary.usgs_error && summary.gdacs_error ? "partial" : "success"),
     message: `Ingested ${inserted}/${allEvents.length} events. ${JSON.stringify(summary)} (${Date.now() - start}ms)`,
   });
 
