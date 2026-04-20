@@ -58,6 +58,7 @@ serve(async (req) => {
       const { error: upErr } = await supabase
         .from("adi_decisions")
         .update({
+          status: "executed",
           executed_at: new Date().toISOString(),
           outcome_score: Number(score.toFixed(3)),
           outcome_assessment: assessment,
