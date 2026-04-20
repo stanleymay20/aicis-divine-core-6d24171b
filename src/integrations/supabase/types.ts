@@ -9767,6 +9767,99 @@ export type Database = {
         }
         Relationships: []
       }
+      training_dataset_aicis: {
+        Row: {
+          built_at: string
+          country_iso3: string
+          cross_domain_pressure: number | null
+          data_density_score: number | null
+          dataset_split: string
+          domain: string
+          event_severity_avg_7d: number | null
+          event_severity_max_7d: number | null
+          event_velocity: number | null
+          events_count_30d: number | null
+          events_count_7d: number | null
+          forecast_confidence_avg: number | null
+          freshness_score: number | null
+          horizon_days: number
+          id: string
+          is_real_data: boolean
+          label_did_deteriorate: number | null
+          label_metric_value_at_horizon: number | null
+          label_zscore_at_horizon: number | null
+          metric_sample_count_30d: number | null
+          metric_trend_30d: number | null
+          metric_trend_7d: number | null
+          metric_value_t: number | null
+          metric_volatility_30d: number | null
+          metric_zscore_vs_90d: number | null
+          neighbor_risk_score: number | null
+          past_forecast_error_30d: number | null
+          snapshot_date: string
+        }
+        Insert: {
+          built_at?: string
+          country_iso3: string
+          cross_domain_pressure?: number | null
+          data_density_score?: number | null
+          dataset_split?: string
+          domain: string
+          event_severity_avg_7d?: number | null
+          event_severity_max_7d?: number | null
+          event_velocity?: number | null
+          events_count_30d?: number | null
+          events_count_7d?: number | null
+          forecast_confidence_avg?: number | null
+          freshness_score?: number | null
+          horizon_days?: number
+          id?: string
+          is_real_data?: boolean
+          label_did_deteriorate?: number | null
+          label_metric_value_at_horizon?: number | null
+          label_zscore_at_horizon?: number | null
+          metric_sample_count_30d?: number | null
+          metric_trend_30d?: number | null
+          metric_trend_7d?: number | null
+          metric_value_t?: number | null
+          metric_volatility_30d?: number | null
+          metric_zscore_vs_90d?: number | null
+          neighbor_risk_score?: number | null
+          past_forecast_error_30d?: number | null
+          snapshot_date: string
+        }
+        Update: {
+          built_at?: string
+          country_iso3?: string
+          cross_domain_pressure?: number | null
+          data_density_score?: number | null
+          dataset_split?: string
+          domain?: string
+          event_severity_avg_7d?: number | null
+          event_severity_max_7d?: number | null
+          event_velocity?: number | null
+          events_count_30d?: number | null
+          events_count_7d?: number | null
+          forecast_confidence_avg?: number | null
+          freshness_score?: number | null
+          horizon_days?: number
+          id?: string
+          is_real_data?: boolean
+          label_did_deteriorate?: number | null
+          label_metric_value_at_horizon?: number | null
+          label_zscore_at_horizon?: number | null
+          metric_sample_count_30d?: number | null
+          metric_trend_30d?: number | null
+          metric_trend_7d?: number | null
+          metric_value_t?: number | null
+          metric_volatility_30d?: number | null
+          metric_zscore_vs_90d?: number | null
+          neighbor_risk_score?: number | null
+          past_forecast_error_30d?: number | null
+          snapshot_date?: string
+        }
+        Relationships: []
+      }
       transparency_reports: {
         Row: {
           avg_trust_score: number | null
@@ -11236,6 +11329,18 @@ export type Database = {
       bridge_decision_to_outcome: {
         Args: { _decision_id: string }
         Returns: string
+      }
+      build_training_dataset_aicis: {
+        Args: {
+          p_end_date: string
+          p_horizon_days?: number
+          p_start_date: string
+        }
+        Returns: {
+          build_seconds: number
+          rows_inserted: number
+          rows_with_label: number
+        }[]
       }
       check_accumulation_health: { Args: never; Returns: Json }
       check_daily_accumulation_misses: { Args: never; Returns: Json }
