@@ -127,33 +127,65 @@ serve(async (req) => {
 
       if (insertError) {
         structuredLog('warn', FN, `Insert failed for ${kind}`, { error: insertError.message });
-      } else {
-        results.push(crisis);
-        if (severity >= 7) {
-          const { data: approval } = await supabaseClient
-            .from('approvals')
-            .insert({
-              requester: userId, division: 'crisis',
-              action: `Escalate ${kind} crisis in ${region}`,
-              payload: { crisis_id: crisis.id, severity, region, kind },
-              status: 'pending',
-            })
-            .select().single();
-          if (approval) escalations.push(approval);
-        }
+        continue;
+      }
+      results.push(crisis);
+
+      // DETERMINISTIC DECISION (no LLM required) — always emit so the engine isn't starved
+      const domain = kind === 'health' ? 'health'
+        : kind === 'weather' ? 'climate'
+        : kind === 'seismic' ? 'climate'
+        : 'infrastructure';
+      const usedAI = !!details && !details.startsWith('[AI assessment unavailable');
+      const playbook = {
+        weather: ['Activate regional met-office advisory', 'Pre-position relief supplies', 'Issue early-warning alert to civic nodes'],
+        seismic: ['Trigger USGS shake-map review', 'Open humanitarian coordination channel', 'Pre-stage urban search-and-rescue assets'],
+        outage:  ['Notify utility operators', 'Activate backup grid corridors', 'Issue conservation guidance to high-load regions'],
+        health:  ['Notify WHO regional office', 'Issue surveillance ramp-up to clinics', 'Pre-deploy diagnostic kits'],
+      } as Record<string, string[]>;
+      const options = (playbook[kind] || ['Monitor', 'Notify partners', 'Escalate to division lead']).map((label, i) => ({
+        rank: i + 1,
+        label,
+        expected_impact: severity >= 7 ? 'high' : severity >= 4 ? 'medium' : 'low',
+      }));
+
+      await supabaseClient.from('adi_decisions').insert({
+        signal_source: 'crisis-scan',
+        signal_summary: `${kind} risk in ${region} (severity ${severity}/10)`,
+        domain,
+        region,
+        severity_score: severity,
+        confidence: usedAI ? 0.7 : 0.55,
+        options,
+        recommended_option_rank: 1,
+        reasoning_md: details ?? `Deterministic playbook for ${kind} crisis in ${region}.`,
+        status: severity >= 7 ? 'pending_review' : 'auto_approved',
+      });
+
+      if (severity >= 7) {
+        const { data: approval } = await supabaseClient
+          .from('approvals')
+          .insert({
+            requester: userId, division: 'crisis',
+            action: `Escalate ${kind} crisis in ${region}`,
+            payload: { crisis_id: crisis.id, severity, region, kind },
+            status: 'pending',
+          })
+          .select().single();
+        if (approval) escalations.push(approval);
       }
     }
 
     await supabaseClient.from('automation_logs').insert({
       job_name: 'crisis-scan',
       status: escalations.length > 0 ? 'warning' : 'success',
-      message: `Detected ${results.length} crisis events, ${escalations.length} escalations${aiSkipped ? ' (AI skipped: credits exhausted)' : ''} (${Date.now() - start}ms)`,
+      message: `Detected ${results.length} crisis events, ${escalations.length} escalations, ${results.length} decisions emitted${aiSkipped ? ' (deterministic fallback — AI credits exhausted)' : ''} (${Date.now() - start}ms)`,
     });
 
-    structuredLog('info', FN, `Scan complete: ${results.length} events`, undefined, start);
+    structuredLog('info', FN, `Scan complete: ${results.length} events, ${results.length} decisions`, undefined, start);
     return jsonResponse({
       success: true,
-      message: `Scanned: ${results.length} events, ${escalations.length} escalated`,
+      message: `Scanned: ${results.length} events, ${escalations.length} escalated, ${results.length} decisions`,
       events: results, escalations, ai_skipped: aiSkipped, execution_time_ms: Date.now() - start
     });
   } catch (error) {
