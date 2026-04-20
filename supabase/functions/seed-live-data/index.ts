@@ -149,7 +149,7 @@ serve(async (req) => {
           payload: { source: "WHO", link: outbreak.link, pubDate: outbreak.pubDate },
           source_system: "WHO DON",
         });
-        if (!error) results.intel_events++;
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
       }
     }, { maxRetries: 1, timeoutMs: 15000 }).catch(e => results.errors.push(`WHO: ${(e as Error).message}`));
 
@@ -243,7 +243,7 @@ serve(async (req) => {
           official_source: true,
           dedup_key: `fao-giews-${r.id}`,
         });
-        if (!error) results.intel_events++;
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
       }
     }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`FAO/GIEWS: ${(e as Error).message}`));
 
@@ -295,7 +295,7 @@ serve(async (req) => {
           official_source: true,
           dedup_key: `usgs-water-${state}-${new Date().toISOString().split("T")[0]}`,
         });
-        if (!error) results.intel_events++;
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
       }
     }, { maxRetries: 1, timeoutMs: 25000 }).catch(e => results.errors.push(`USGS Water: ${(e as Error).message}`));
 
@@ -349,7 +349,7 @@ serve(async (req) => {
           official_source: true,
           dedup_key: `unhcr-${flow.iso3}-${yearNow}`,
         });
-        if (!error) results.intel_events++;
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
       }
     }, { maxRetries: 1, timeoutMs: 25000 }).catch(e => results.errors.push(`UNHCR: ${(e as Error).message}`));
 
@@ -383,7 +383,7 @@ serve(async (req) => {
           payload: { source: "AI_Analysis", country: event.country },
           source_system: "AICIS Intelligence",
         });
-        if (!error) results.intel_events++;
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
       }
     }, { maxRetries: 1, timeoutMs: 25000 }).catch(e => results.errors.push(`AI Diplomacy: ${(e as Error).message}`));
 
