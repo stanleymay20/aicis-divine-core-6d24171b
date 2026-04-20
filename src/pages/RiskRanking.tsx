@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Flame, RefreshCw, Loader2, Search, TrendingDown, Activity, Zap } from "lucide-react";
+import { Flame, RefreshCw, Loader2, Search, TrendingDown, Activity, Zap, Target } from "lucide-react";
+import { RecommendedActionsPanel } from "@/components/risk-ranking/RecommendedActionsPanel";
 
 interface Row {
   id: string;
@@ -110,8 +111,13 @@ export default function RiskRankingPage() {
         <Tabs defaultValue="leaderboard">
           <TabsList>
             <TabsTrigger value="leaderboard" className="gap-2"><Flame className="h-3.5 w-3.5" /> Top emerging risks</TabsTrigger>
+            <TabsTrigger value="actions" className="gap-2"><Target className="h-3.5 w-3.5" /> Recommended actions</TabsTrigger>
             <TabsTrigger value="query" className="gap-2"><Search className="h-3.5 w-3.5" /> Per-country forecast</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="actions" className="space-y-3">
+            <RecommendedActionsPanel topN={50} />
+          </TabsContent>
 
           {/* ── Leaderboard tab ── */}
           <TabsContent value="leaderboard" className="space-y-3">
