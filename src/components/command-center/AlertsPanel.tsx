@@ -229,9 +229,14 @@ export const AlertsPanel = ({ isOpen, onClose, onAlertClick }: AlertsPanelProps)
             <div className="animate-pulse text-muted-foreground">Loading alerts...</div>
           </div>
         ) : filteredAlerts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground px-4 text-center">
             <CheckCircle2 className="h-8 w-8 mb-2 text-success" />
             <span className="text-sm">No alerts to show</span>
+            {hiddenByPrefs > 0 && (
+              <span className="text-[11px] mt-1">
+                {hiddenByPrefs} hidden by your filters — open <strong>Filters</strong> to adjust
+              </span>
+            )}
           </div>
         ) : (
           <div className="p-2 space-y-2">
