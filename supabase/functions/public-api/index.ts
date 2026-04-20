@@ -68,6 +68,14 @@ serve(async (req) => {
         return await handleOutcomes(supabaseAdmin, url, orgId);
       case "priority-decisions":
         return await handlePriorityDecisions(supabaseAdmin, orgId);
+      case "ml-predictions":
+        return await handleMLPredictions(supabaseAdmin, url);
+      case "propagation":
+        return await handlePropagation(supabaseAdmin, url);
+      case "simulations":
+        return await handleSimulations(supabaseAdmin, url);
+      case "risk-ranking":
+        return await handleRiskRanking(supabaseAdmin, url);
       case "health":
         return await handleHealth(supabaseAdmin);
       case "domains":
@@ -75,15 +83,12 @@ serve(async (req) => {
       default:
         return json({
           api: "AICIS Public API",
-          version: "1.0",
+          version: "1.1",
           endpoints: [
-            "GET /signals",
-            "GET /decisions",
-            "POST /decisions",
-            "GET /outcomes",
-            "GET /priority-decisions",
-            "GET /domains",
-            "GET /health",
+            "GET /signals", "GET /decisions", "POST /decisions",
+            "GET /outcomes", "GET /priority-decisions",
+            "GET /ml-predictions", "GET /propagation", "GET /simulations",
+            "GET /risk-ranking", "GET /domains", "GET /health",
           ],
         });
     }
