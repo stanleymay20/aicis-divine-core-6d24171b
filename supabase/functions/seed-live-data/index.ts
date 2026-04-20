@@ -211,8 +211,8 @@ serve(async (req) => {
 
     // 7. FAO GIEWS — Food security & crop monitoring (ReliefWeb-mediated; FAO doesn't expose direct API)
     await resilientCall(`${FN}:fao-giews`, async () => {
-      // ReliefWeb tagged with FAO + food-security gives us GIEWS-equivalent feed
-      const resp = await fetch("https://api.reliefweb.int/v1/reports?appname=aicis&limit=20&query[value]=FAO%20food%20security&query[fields][]=source.name&query[fields][]=theme.name&fields[include][]=title&fields[include][]=body&fields[include][]=date&fields[include][]=country&fields[include][]=source&sort[]=date.created:desc");
+      // ReliefWeb disasters tagged with food-security / drought (FAO/GIEWS-equivalent)
+      const resp = await fetch("https://api.reliefweb.int/v1/disasters?appname=aicis&limit=20&filter[field]=primary_type.code&filter[value][]=DR&filter[value][]=FA&fields[include][]=name&fields[include][]=description&fields[include][]=date&fields[include][]=country&fields[include][]=primary_type&fields[include][]=status&sort[]=date.created:desc");
       if (!resp.ok) throw new Error(`FAO/GIEWS: ${resp.status}`);
       const data = await resp.json();
       const reports = data.data || [];
@@ -220,8 +220,8 @@ serve(async (req) => {
       for (const r of reports.slice(0, 15)) {
         const country = r.fields.country?.[0]?.name || "Global";
         const iso3 = r.fields.country?.[0]?.iso3?.toUpperCase() || null;
-        const title = r.fields.title?.slice(0, 240) || "Food security update";
-        const body = (r.fields.body || "").slice(0, 800);
+        const title = (r.fields.name || "Food security / drought update").slice(0, 240);
+        const body = (r.fields.description || `${r.fields.primary_type?.name || "Drought/Food crisis"} affecting ${country}. Status: ${r.fields.status || "monitoring"}.`).slice(0, 800);
 
         const { error } = await supabase.from("global_signals").insert({
           title,
@@ -229,7 +229,7 @@ serve(async (req) => {
           category: "food_agriculture",
           subcategory: "food_security",
           status: "developing",
-          confidence_score: 0.85,
+          confidence_score: 85,
           impact_score: title.toLowerCase().match(/(famine|crisis|emergency|ipc\s*[45])/) ? 8 : 5,
           urgency_score: 6,
           primary_source: "FAO/GIEWS via ReliefWeb",
@@ -243,7 +243,7 @@ serve(async (req) => {
           official_source: true,
           dedup_key: `fao-giews-${r.id}`,
         });
-        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
+        if (error) { results.errors.push(`fao_insert: ${error.message}`); } else { results.intel_events++; }
       }
     }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`FAO/GIEWS: ${(e as Error).message}`));
 
