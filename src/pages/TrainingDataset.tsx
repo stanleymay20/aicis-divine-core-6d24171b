@@ -216,7 +216,7 @@ export default function TrainingDataset() {
               {lastBuild && (
                 <div className="border rounded p-4 bg-muted/30 space-y-2 text-sm">
                   <div className="flex items-center gap-2 font-medium">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
                     Built in {lastBuild.stats.build_seconds.toFixed(1)}s
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
