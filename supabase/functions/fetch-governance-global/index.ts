@@ -81,29 +81,56 @@ serve(async (req) => {
       structuredLog('warn', FN, msg);
     });
 
-    // GDELT Events
-    await resilientCall(`${FN}:gdelt`, async () => {
-      const resp = await fetch('https://api.gdeltproject.org/api/v2/doc/doc?query=governance%20reform&mode=ArtList&format=json&maxrecords=20');
-      if (!resp.ok) throw new Error(`GDELT API: ${resp.status}`);
+    // World Bank — Voice & Accountability (replaces GDELT 429-prone source)
+    await resilientCall(`${FN}:worldbank-va`, async () => {
+      const resp = await fetch('https://api.worldbank.org/v2/en/indicator/VA.EST?format=json&per_page=100');
+      if (!resp.ok) throw new Error(`World Bank VA API: ${resp.status}`);
       const data = await resp.json();
-
-      if (data.articles) {
-        const records = data.articles.slice(0, 20).map((article: any) => ({
-          country: article.sourcecountry || 'Unknown',
-          iso_code: article.sourcecountry || 'UNK',
-          source: 'gdelt', indicator_name: 'governance_events',
-          value: parseFloat(article.tone) || 0, category: 'events',
-          year: currentYear,
-          metadata: { title: article.title?.slice(0, 200), domain: article.domain }
-        }));
-
-        const { error } = await supabase.from('governance_global').insert(records);
-        if (error) throw new Error(`DB insert: ${error.message}`);
-        results.governance += records.length;
-        structuredLog('info', FN, `GDELT: ${records.length} records`);
+      if (Array.isArray(data) && data[1]) {
+        const records = data[1]
+          .filter((item: any) => item.value && item.date >= (currentYear - 3))
+          .slice(0, 50)
+          .map((item: any) => ({
+            country: item.country.value, iso_code: item.countryiso3code,
+            source: 'worldbank', indicator_name: 'voice_accountability',
+            value: parseFloat(item.value), category: 'governance',
+            year: parseInt(item.date),
+            metadata: { indicator_code: 'VA.EST' }
+          }));
+        if (records.length > 0) {
+          const { error } = await supabase.from('governance_global').insert(records);
+          if (!error) results.governance += records.length;
+        }
       }
     }, { timeoutMs: TIMEOUT_MS }).catch(e => {
-      const msg = `GDELT: ${(e as Error).message}`;
+      const msg = `World Bank VA: ${(e as Error).message}`;
+      results.errors.push(msg);
+      structuredLog('warn', FN, msg);
+    });
+
+    // World Bank — Control of Corruption
+    await resilientCall(`${FN}:worldbank-cc`, async () => {
+      const resp = await fetch('https://api.worldbank.org/v2/en/indicator/CC.EST?format=json&per_page=100');
+      if (!resp.ok) throw new Error(`World Bank CC API: ${resp.status}`);
+      const data = await resp.json();
+      if (Array.isArray(data) && data[1]) {
+        const records = data[1]
+          .filter((item: any) => item.value && item.date >= (currentYear - 3))
+          .slice(0, 50)
+          .map((item: any) => ({
+            country: item.country.value, iso_code: item.countryiso3code,
+            source: 'worldbank', indicator_name: 'control_of_corruption',
+            value: parseFloat(item.value), category: 'governance',
+            year: parseInt(item.date),
+            metadata: { indicator_code: 'CC.EST' }
+          }));
+        if (records.length > 0) {
+          const { error } = await supabase.from('governance_global').insert(records);
+          if (!error) results.governance += records.length;
+        }
+      }
+    }, { timeoutMs: TIMEOUT_MS }).catch(e => {
+      const msg = `World Bank CC: ${(e as Error).message}`;
       results.errors.push(msg);
       structuredLog('warn', FN, msg);
     });

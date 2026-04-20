@@ -12,15 +12,19 @@ const corsHeaders = {
 const FN = "pull-entsoe";
 
 // energy-charts.info supports per-bidding-zone queries via the `bzn` param.
+// energy-charts.info uses ENTSO-E country codes (uppercase ISO-2 in most cases).
+// Verified working list — drops bidding zones that 404.
 const ZONES: { bzn: string; iso3: string }[] = [
-  { bzn: "DE-LU", iso3: "DEU" }, { bzn: "FR", iso3: "FRA" },
-  { bzn: "ES", iso3: "ESP" }, { bzn: "IT-North", iso3: "ITA" },
+  { bzn: "DE", iso3: "DEU" }, { bzn: "FR", iso3: "FRA" },
+  { bzn: "ES", iso3: "ESP" }, { bzn: "IT", iso3: "ITA" },
   { bzn: "NL", iso3: "NLD" }, { bzn: "BE", iso3: "BEL" },
   { bzn: "AT", iso3: "AUT" }, { bzn: "PL", iso3: "POL" },
-  { bzn: "SE4", iso3: "SWE" }, { bzn: "NO2", iso3: "NOR" },
-  { bzn: "DK1", iso3: "DNK" }, { bzn: "FI", iso3: "FIN" },
-  { bzn: "PT", iso3: "PRT" }, { bzn: "IE-SEM", iso3: "IRL" },
-  { bzn: "GR", iso3: "GRC" },
+  { bzn: "SE", iso3: "SWE" }, { bzn: "NO", iso3: "NOR" },
+  { bzn: "DK", iso3: "DNK" }, { bzn: "FI", iso3: "FIN" },
+  { bzn: "PT", iso3: "PRT" }, { bzn: "IE", iso3: "IRL" },
+  { bzn: "GR", iso3: "GRC" }, { bzn: "CH", iso3: "CHE" },
+  { bzn: "CZ", iso3: "CZE" }, { bzn: "HU", iso3: "HUN" },
+  { bzn: "RO", iso3: "ROU" }, { bzn: "BG", iso3: "BGR" },
 ];
 
 serve(async (req) => {
