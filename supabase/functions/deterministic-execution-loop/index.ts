@@ -30,14 +30,16 @@ serve(async (req) => {
   const start = Date.now();
 
   try {
-    // 1. Find approved decisions awaiting execution (last 7 days, capped).
+    // 1. Find approved decisions awaiting execution (last 30 days, large cap).
+    // Widened from 7d/200 → 30d/1000 to drain backlog and keep pace with capture rate.
     const { data: pending, error: fetchErr } = await supabase
       .from("adi_decisions")
       .select("id, severity_score, confidence, domain, status, recommended_option_rank")
       .in("status", ["approved", "auto_approved"])
       .is("executed_at", null)
-      .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString())
-      .limit(200);
+      .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString())
+      .order("created_at", { ascending: true }) // FIFO drain — oldest first
+      .limit(1000);
 
     if (fetchErr) throw fetchErr;
 
