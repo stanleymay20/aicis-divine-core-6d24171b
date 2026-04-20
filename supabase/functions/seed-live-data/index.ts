@@ -211,20 +211,19 @@ serve(async (req) => {
 
     // 7. FAO GIEWS — Food security & crop monitoring (ReliefWeb-mediated; FAO doesn't expose direct API)
     await resilientCall(`${FN}:fao-giews`, async () => {
-      // WFP HungerMap public country-level food insecurity API
-      const resp = await fetch("https://api.hungermapdata.org/v2/adm0/countries.json", { headers: { "Accept": "application/json" } });
+      // ReliefWeb reports filtered by food-security theme (current working v1 endpoint)
+      const resp = await fetch("https://api.reliefweb.int/v1/reports?appname=aicis&limit=15&filter[field]=theme.name&filter[value]=Food%20and%20Nutrition&fields[include][]=title&fields[include][]=date&fields[include][]=country&fields[include][]=primary_country&sort[]=date.created:desc", { headers: { "Accept": "application/json" } });
       if (!resp.ok) throw new Error(`FAO/GIEWS: ${resp.status}`);
       const data = await resp.json();
-      const countries = (data.body?.countries || data.countries || []).filter((c: any) => (c.population?.fcs?.people ?? 0) > 1_000_000).slice(0, 15);
-      const reports = countries.map((c: any) => ({
-        id: c.adm0_code || c.iso3,
+      const reports = (data.data || []).map((r: any) => ({
+        id: r.id,
         fields: {
-          name: `${c.adm0_name || c.country}: ${(c.population.fcs.people / 1e6).toFixed(1)}M food-insecure`,
-          description: `WFP HungerMap: ${c.population.fcs.prevalence ? (c.population.fcs.prevalence * 100).toFixed(0) + '%' : 'significant share'} of population in IPC food crisis. Source: WFP/FAO joint monitoring.`,
-          country: [{ name: c.adm0_name || c.country, iso3: c.iso3 }],
-          date: { created: new Date().toISOString(), original: new Date().toISOString() },
+          name: r.fields.title,
+          description: `Food security report: ${r.fields.title}. Country: ${r.fields.primary_country?.name || r.fields.country?.[0]?.name || "Global"}.`,
+          country: r.fields.country || (r.fields.primary_country ? [r.fields.primary_country] : []),
+          date: r.fields.date,
           status: 'ongoing',
-          primary_type: { name: 'Food Insecurity' },
+          primary_type: { name: 'Food Security' },
         },
       }));
 
