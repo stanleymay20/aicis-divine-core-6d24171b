@@ -8,6 +8,7 @@ import PilotModePanel from "@/components/decision-engine/PilotModePanel";
 import OutcomeBacklogBurner from "@/components/decision-engine/OutcomeBacklogBurner";
 import MeasuredOutcomeKPI from "@/components/decision-engine/MeasuredOutcomeKPI";
 import DecisionReviewQueue from "@/components/decision-engine/DecisionReviewQueue";
+import { RecommendedActionsPanel } from "@/components/risk-ranking/RecommendedActionsPanel";
 
 export default function DecisionOperations() {
   return (
@@ -23,6 +24,7 @@ export default function DecisionOperations() {
           </p>
         </div>
 
+        <RecommendedActionsPanel topN={20} />
         <DecisionReviewQueue />
         <DailyTaskPanel />
         <MeasuredOutcomeKPI />

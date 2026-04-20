@@ -8093,6 +8093,95 @@ export type Database = {
         }
         Relationships: []
       }
+      risk_action_recommendations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          batch_id: string
+          confidence: number | null
+          country_iso3: string
+          created_at: string
+          domain: string
+          estimated_cost_eur: number | null
+          estimated_roi_eur: number | null
+          executed_at: string | null
+          generated_at: string
+          id: string
+          intervention_title: string
+          intervention_type: string
+          outcome_notes_md: string | null
+          rank_position: number | null
+          ranking_id: string | null
+          rationale_md: string | null
+          responsible_domain: string
+          risk_probability: number
+          status: string
+          updated_at: string
+          urgency_hours: number
+          urgency_window: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          batch_id: string
+          confidence?: number | null
+          country_iso3: string
+          created_at?: string
+          domain: string
+          estimated_cost_eur?: number | null
+          estimated_roi_eur?: number | null
+          executed_at?: string | null
+          generated_at?: string
+          id?: string
+          intervention_title: string
+          intervention_type: string
+          outcome_notes_md?: string | null
+          rank_position?: number | null
+          ranking_id?: string | null
+          rationale_md?: string | null
+          responsible_domain: string
+          risk_probability: number
+          status?: string
+          updated_at?: string
+          urgency_hours: number
+          urgency_window: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          batch_id?: string
+          confidence?: number | null
+          country_iso3?: string
+          created_at?: string
+          domain?: string
+          estimated_cost_eur?: number | null
+          estimated_roi_eur?: number | null
+          executed_at?: string | null
+          generated_at?: string
+          id?: string
+          intervention_title?: string
+          intervention_type?: string
+          outcome_notes_md?: string | null
+          rank_position?: number | null
+          ranking_id?: string | null
+          rationale_md?: string | null
+          responsible_domain?: string
+          risk_probability?: number
+          status?: string
+          updated_at?: string
+          urgency_hours?: number
+          urgency_window?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "risk_action_recommendations_ranking_id_fkey"
+            columns: ["ranking_id"]
+            isOneToOne: false
+            referencedRelation: "risk_ranking_predictions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       risk_predictions: {
         Row: {
           affected_divisions: string[]
@@ -11438,6 +11527,13 @@ export type Database = {
           pipeline_name: string
           severity: string
           target_function: string
+        }[]
+      }
+      generate_risk_action_recommendations: {
+        Args: { p_top_n?: number }
+        Returns: {
+          batch_id: string
+          generated: number
         }[]
       }
       get_countries_needing_villages: {
