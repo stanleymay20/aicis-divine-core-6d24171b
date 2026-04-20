@@ -12199,6 +12199,24 @@ export type Database = {
         }
         Relationships: []
       }
+      risk_rankings_current_v: {
+        Row: {
+          confidence_lower: number | null
+          confidence_upper: number | null
+          country_iso3: string | null
+          domain: string | null
+          evidence_count: number | null
+          factors: Json | null
+          generated_at: string | null
+          generation_batch_id: string | null
+          horizon_days: number | null
+          model_version: string | null
+          proxy_share: number | null
+          rank_position: number | null
+          risk_probability: number | null
+        }
+        Relationships: []
+      }
       system_trust_score: {
         Row: {
           acceptance_rate: number | null
