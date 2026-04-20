@@ -112,13 +112,15 @@ serve(async (req) => {
       bootstrapped = await bootstrapAdminRegions(supabase);
     }
 
-    // 1. Pull eligible regions — cap at 5,000/run to stay within edge limits.
+    // 1. Pull eligible regions across ALL admin levels (0-3) — was limited to <=1.
+    // The system has 24k+ regions across L1/L2/L3 from overpass; tap them all.
     const { data: regions, error } = await supabase
       .from("admin_regions")
       .select("id,country_iso3,admin_level,population_est,area_km2,urban_rural")
-      .lte("admin_level", 1)
+      .lte("admin_level", 3)
       .not("population_est", "is", null)
-      .limit(5000);
+      .gt("population_est", 0)
+      .limit(8000);
 
     if (error) throw error;
     if (!regions || regions.length === 0) {
