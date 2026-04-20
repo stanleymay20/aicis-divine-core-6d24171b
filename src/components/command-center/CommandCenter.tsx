@@ -14,6 +14,7 @@ import { MiniMap } from "./MiniMap";
 import { MobileNav } from "./MobileNav";
 import { LocationSearch } from "./LocationSearch";
 import { KeyboardShortcutsModal, useKeyboardShortcuts } from "./KeyboardShortcuts";
+import { AskAnythingPill } from "./AskAnythingPill";
 import { type Country, getCountryCoordinates, searchCountries } from "@/lib/geo/all-countries";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
