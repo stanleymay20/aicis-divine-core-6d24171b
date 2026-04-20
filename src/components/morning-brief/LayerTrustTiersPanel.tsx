@@ -43,7 +43,7 @@ export const LayerTrustTiersPanel = () => {
         .select("*")
         .order("display_order");
       if (error) throw error;
-      return data as { layer: string; tier: Tier; rationale: string }[];
+      return (data as unknown) as { layer: string; tier: Tier; rationale: string }[];
     },
     staleTime: 300_000,
   });
@@ -56,7 +56,7 @@ export const LayerTrustTiersPanel = () => {
         .select("*")
         .single();
       if (error) throw error;
-      return data as {
+      return (data as unknown) as {
         score_a_measured_accuracy: number;
         score_a_sample_size: number;
         score_a_untampered_validation_count: number;
