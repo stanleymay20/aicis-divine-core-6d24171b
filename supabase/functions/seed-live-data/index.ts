@@ -209,53 +209,76 @@ serve(async (req) => {
       }
     }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`NVD: ${(e as Error).message}`));
 
-    // 7. FAO GIEWS — Food security & crop monitoring (ReliefWeb-mediated; FAO doesn't expose direct API)
-    await resilientCall(`${FN}:fao-giews`, async () => {
-      // ReliefWeb reports filtered by food-security theme (current working v1 endpoint)
-      const resp = await fetch("https://api.reliefweb.int/v1/reports?appname=aicis&limit=15&filter[field]=theme.name&filter[value]=Food%20and%20Nutrition&fields[include][]=title&fields[include][]=date&fields[include][]=country&fields[include][]=primary_country&sort[]=date.created:desc", { headers: { "Accept": "application/json" } });
-      if (!resp.ok) throw new Error(`FAO/GIEWS: ${resp.status}`);
-      const data = await resp.json();
-      const reports = (data.data || []).map((r: any) => ({
-        id: r.id,
-        fields: {
-          name: r.fields.title,
-          description: `Food security report: ${r.fields.title}. Country: ${r.fields.primary_country?.name || r.fields.country?.[0]?.name || "Global"}.`,
-          country: r.fields.country || (r.fields.primary_country ? [r.fields.primary_country] : []),
-          date: r.fields.date,
-          status: 'ongoing',
-          primary_type: { name: 'Food Security' },
-        },
-      }));
+    // 7. FAOSTAT — Crop production & food supply (direct API, no key)
+    await resilientCall(`${FN}:faostat`, async () => {
+      const countries = [
+        { code: 288, iso3: "GHA", name: "Ghana" },
+        { code: 566, iso3: "NGA", name: "Nigeria" },
+        { code: 404, iso3: "KEN", name: "Kenya" },
+        { code: 710, iso3: "ZAF", name: "South Africa" },
+        { code: 356, iso3: "IND", name: "India" },
+        { code: 231, iso3: "ETH", name: "Ethiopia" },
+      ];
+      const items = [
+        { code: 56, name: "Maize" },
+        { code: 27, name: "Rice" },
+        { code: 15, name: "Wheat" },
+      ];
+      const year = new Date().getUTCFullYear() - 2;
 
-      for (const r of reports.slice(0, 15)) {
-        const country = r.fields.country?.[0]?.name || "Global";
-        const iso3 = r.fields.country?.[0]?.iso3?.toUpperCase() || null;
-        const title = (r.fields.name || "Food security / drought update").slice(0, 240);
-        const body = (r.fields.description || `${r.fields.primary_type?.name || "Drought/Food crisis"} affecting ${country}. Status: ${r.fields.status || "monitoring"}.`).slice(0, 800);
+      for (const c of countries) {
+        for (const it of items) {
+          try {
+            const url = `https://fenixservices.fao.org/faostat/api/v1/en/data/QCL?area_codes=${c.code}&item_codes=${it.code}&element_codes=5510&years=${year}`;
+            const r = await fetch(url, { headers: { "Accept": "application/json" } });
+            if (!r.ok) continue;
+            const j = await r.json();
+            const rows = j?.data ?? [];
+            if (rows.length === 0) continue;
 
-        const { error } = await supabase.from("global_signals").insert({
-          title,
-          summary: body,
-          category: "food_agriculture",
-          subcategory: "food_security",
-          status: "developing",
-          confidence_score: 85,
-          impact_score: title.toLowerCase().match(/(famine|crisis|emergency|ipc\s*[45])/) ? 8 : 5,
-          urgency_score: 6,
-          primary_source: "FAO/GIEWS via ReliefWeb",
-          source_count: 1,
-          ingestion_source: "fao_giews",
-          first_detected_at: r.fields.date?.created || new Date().toISOString(),
-          latest_update_at: new Date().toISOString(),
-          occurred_at: r.fields.date?.original || new Date().toISOString(),
-          affected_countries: iso3 ? [iso3] : [],
-          source_trust_tier: "official",
-          official_source: true,
-          dedup_key: `fao-giews-${r.id}`,
-        });
-        if (error) { results.errors.push(`fao_insert: ${error.message}`); } else { results.intel_events++; }
+            const row = rows[0];
+            const tonnes = Number(row.Value ?? 0);
+            if (tonnes <= 0) continue;
+
+            const lowProduction = tonnes < 100_000;
+            const impact = lowProduction ? 7 : 4;
+            const urgency = lowProduction ? 6 : 3;
+            const title = `FAOSTAT ${year} — ${it.name} production in ${c.name}: ${(tonnes / 1000).toFixed(0)}k tonnes`;
+            const summary = `Annual ${it.name.toLowerCase()} output for ${c.name} reported at ${tonnes.toLocaleString()} tonnes (${year}). ${lowProduction ? "Below regional staple-crop benchmark — monitor for food-supply shortfall risk." : "Within expected production band for staple crop."} Source: FAO QCL dataset.`;
+
+            const { error } = await supabase.from("global_signals").insert({
+              title: title.slice(0, 240),
+              summary: summary.slice(0, 800),
+              category: "food_agriculture",
+              subcategory: "crop_production",
+              status: "developing",
+              confidence_score: 92,
+              impact_score: impact,
+              urgency_score: urgency,
+              primary_source: "FAOSTAT (FAO)",
+              source_count: 1,
+              ingestion_source: "faostat",
+              first_detected_at: new Date().toISOString(),
+              latest_update_at: new Date().toISOString(),
+              occurred_at: new Date(`${year}-12-31T00:00:00Z`).toISOString(),
+              affected_countries: [c.iso3],
+              source_trust_tier: "official",
+              official_source: true,
+              dedup_key: `faostat-qcl-${c.iso3}-${it.code}-${year}`,
+            });
+            if (error) {
+              if (!error.message.includes("duplicate")) {
+                results.errors.push(`faostat_insert: ${error.message}`);
+              }
+            } else {
+              results.intel_events++;
+            }
+          } catch (e) {
+            console.warn(`FAOSTAT ${c.iso3}/${it.name}: ${(e as Error).message}`);
+          }
+        }
       }
-    }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`FAO/GIEWS: ${(e as Error).message}`));
+    }, { maxRetries: 1, timeoutMs: 30000 }).catch(e => results.errors.push(`FAOSTAT: ${(e as Error).message}`));
 
     // 8. USGS WaterWatch — Streamflow & drought conditions
     await resilientCall(`${FN}:usgs-water`, async () => {
