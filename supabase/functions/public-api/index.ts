@@ -239,3 +239,60 @@ function json(body: unknown, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+async function handleMLPredictions(sb: any, url: URL) {
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
+  const domain = url.searchParams.get("domain");
+  const { data: latest } = await sb.from("risk_ml_predictions")
+    .select("generation_batch_id").order("generated_at", { ascending: false }).limit(1).maybeSingle();
+  if (!latest) return json({ data: [], count: 0 });
+  let q = sb.from("risk_ml_predictions")
+    .select("country_iso3, domain, risk_probability, horizon_days, model_version, generated_at")
+    .eq("generation_batch_id", latest.generation_batch_id)
+    .order("risk_probability", { ascending: false }).limit(limit);
+  if (domain) q = q.eq("domain", domain);
+  const { data, error } = await q;
+  if (error) throw error;
+  return json({ data, count: data?.length || 0 });
+}
+
+async function handlePropagation(sb: any, url: URL) {
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
+  const domain = url.searchParams.get("domain");
+  const { data: latest } = await sb.from("risk_propagation_score")
+    .select("generation_batch_id").order("computed_at", { ascending: false }).limit(1).maybeSingle();
+  if (!latest) return json({ data: [], count: 0 });
+  let q = sb.from("risk_propagation_score")
+    .select("origin_iso3, target_iso3, domain, propagation_score, hop_count, computed_at")
+    .eq("generation_batch_id", latest.generation_batch_id)
+    .order("propagation_score", { ascending: false }).limit(limit);
+  if (domain) q = q.eq("domain", domain);
+  const { data, error } = await q;
+  if (error) throw error;
+  return json({ data, count: data?.length || 0 });
+}
+
+async function handleSimulations(sb: any, url: URL) {
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 100);
+  const { data, error } = await sb.from("simulation_runs")
+    .select("id, scenario_name, shock_domain, shock_iso3, shock_magnitude, shock_direction, estimated_global_impact, affected_countries, created_at")
+    .order("created_at", { ascending: false }).limit(limit);
+  if (error) throw error;
+  return json({ data, count: data?.length || 0 });
+}
+
+async function handleRiskRanking(sb: any, url: URL) {
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 200);
+  const domain = url.searchParams.get("domain");
+  const { data: latest } = await sb.from("risk_ranking_predictions")
+    .select("generation_batch_id").order("generated_at", { ascending: false }).limit(1).maybeSingle();
+  if (!latest) return json({ data: [], count: 0 });
+  let q = sb.from("risk_ranking_predictions")
+    .select("country_iso3, domain, risk_score, rank_position, momentum_score, volatility, generated_at")
+    .eq("generation_batch_id", latest.generation_batch_id)
+    .order("rank_position", { ascending: true }).limit(limit);
+  if (domain) q = q.eq("domain", domain);
+  const { data, error } = await q;
+  if (error) throw error;
+  return json({ data, count: data?.length || 0 });
+}
