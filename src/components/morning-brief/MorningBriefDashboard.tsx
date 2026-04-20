@@ -24,6 +24,7 @@ import { DomainMixStrip } from "./DomainMixStrip";
 import { LayerTrustTiersPanel } from "./LayerTrustTiersPanel";
 import { PersistentAskBar } from "./PersistentAskBar";
 import { FirstRunTour } from "@/components/onboarding/FirstRunTour";
+import { TopEmergingRisksPanel } from "@/components/risk-ranking/TopEmergingRisksPanel";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
@@ -85,6 +86,9 @@ export const MorningBriefDashboard = () => {
 
       {/* ── DOMAIN MIX: prove planetary coverage across 12 domains ── */}
       <DomainMixStrip />
+
+      {/* ── 🔥 TOP EMERGING RISKS · AI Risk Ranking Engine ── */}
+      <TopEmergingRisksPanel />
 
       {/* ── 🚨 ACTIONS AWAITING: Execution activation ── */}
       <ActionsAwaitingStrip />
