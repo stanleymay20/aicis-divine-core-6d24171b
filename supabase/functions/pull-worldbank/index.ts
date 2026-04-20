@@ -64,15 +64,16 @@ serve(async (req) => {
         if (item.value !== null && item.value !== undefined) {
           records.push({
             country: item.country.value,
-            indicator_code: item.indicator.id,
             indicator_name: item.indicator.value,
             value: parseFloat(item.value),
-            year: parseInt(item.date),
+            date: `${item.date}-01-01`,
             unit: item.unit || '',
             source: 'WorldBank',
             metadata: {
               country_code: item.countryiso3code,
-              decimal: item.decimal
+              indicator_code: item.indicator.id,
+              decimal: item.decimal,
+              year: parseInt(item.date)
             }
           });
         }
