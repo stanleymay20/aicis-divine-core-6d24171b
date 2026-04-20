@@ -39,7 +39,7 @@ serve(async (req) => {
           signal: AbortSignal.timeout(8000),
         });
         if (!r.ok) {
-          errors.push(`${code}:${r.status}`);
+          errors.push(`${bzn}:${r.status}`);
           continue;
         }
         const data = await r.json();
@@ -64,7 +64,7 @@ serve(async (req) => {
           { provider_name: "entsoe", domain: "energy", metric_name: "renewable_share_pct", iso3, period, value: (renewable / total) * 100, unit: "pct", provenance_source: "ENTSO-E via energy-charts" }
         );
       } catch (e) {
-        errors.push(`${code}:${(e as Error).message}`);
+        errors.push(`${bzn}:${(e as Error).message}`);
       }
     }
 
