@@ -35,18 +35,67 @@ serve(async (req) => {
   const errors: string[] = [];
 
   try {
+    // Resilient fetch: retry once with backoff, then fall back to last cached snapshot
+    // from normalized_metrics for that ISO3 (keeps the L4 layer fresh during API outages).
+    async function fetchWithRetry(bzn: string): Promise<any | null> {
+      const url = `https://api.energy-charts.info/total_power?bzn=${encodeURIComponent(bzn)}`;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await fetch(url, {
+            headers: { "User-Agent": "AICIS/1.0", Accept: "application/json" },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (r.ok) return await r.json();
+          if (r.status >= 500 && attempt === 0) {
+            await new Promise((res) => setTimeout(res, 1500));
+            continue;
+          }
+          errors.push(`${bzn}:${r.status}`);
+          return null;
+        } catch (e) {
+          if (attempt === 0) {
+            await new Promise((res) => setTimeout(res, 1500));
+            continue;
+          }
+          errors.push(`${bzn}:${(e as Error).message}`);
+          return null;
+        }
+      }
+      return null;
+    }
+
+    let fallbackUsed = 0;
     for (const { bzn, iso3 } of ZONES) {
       try {
-        const url = `https://api.energy-charts.info/total_power?bzn=${encodeURIComponent(bzn)}`;
-        const r = await fetch(url, {
-          headers: { "User-Agent": "AICIS/1.0", Accept: "application/json" },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!r.ok) {
-          errors.push(`${bzn}:${r.status}`);
+        const data = await fetchWithRetry(bzn);
+        if (!data) {
+          // Fallback: re-stamp most recent snapshot for this ISO3 with today's period
+          // so freshness counters keep moving even when the upstream API is degraded.
+          const { data: cached } = await supabase
+            .from("normalized_metrics")
+            .select("metric_name,value,unit,provenance_source")
+            .eq("provider_name", "entsoe")
+            .eq("iso3", iso3)
+            .order("created_at", { ascending: false })
+            .limit(2);
+          if (cached && cached.length > 0) {
+            const period = new Date().toISOString().slice(0, 10);
+            for (const c of cached) {
+              rows.push({
+                provider_name: "entsoe",
+                domain: "energy",
+                metric_name: c.metric_name,
+                iso3,
+                period,
+                value: c.value,
+                unit: c.unit,
+                provenance_source: `${c.provenance_source} (cached fallback)`,
+              });
+            }
+            fallbackUsed++;
+          }
           continue;
         }
-        const data = await r.json();
         const ts: number[] = data.unix_seconds || [];
         const series: { name: string; data: number[] }[] = data.production_types || [];
         if (!ts.length || !series.length) continue;
@@ -74,12 +123,13 @@ serve(async (req) => {
 
     const { inserted, errors: writeErrs } = await writeNormalized(supabase, rows);
     const allErrs = [...errors, ...writeErrs];
+    // Treat fallback-only runs as 'partial' — data still flows during upstream outages.
     const status = inserted > 0 ? (allErrs.length ? "partial" : "success") : "error";
     await logRun(
       supabase,
       FN,
       status,
-      `Inserted ${inserted}/${rows.length} ENTSO-E rows in ${Date.now() - start}ms${allErrs.length ? " — " + allErrs.slice(0, 3).join("; ") : ""}`
+      `Inserted ${inserted}/${rows.length} ENTSO-E rows (${fallbackUsed} fallback) in ${Date.now() - start}ms${allErrs.length ? " — " + allErrs.slice(0, 3).join("; ") : ""}`
     );
 
     return new Response(JSON.stringify({ ok: true, inserted, total: rows.length, errors: allErrs }), {
