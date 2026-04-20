@@ -53,10 +53,10 @@ serve(async (req) => {
       structuredLog('warn', FN, msg);
     });
 
-    // CDC - Weekly respiratory virus hospitalizations (active dataset, replaces retired COVID 9mfq-cb36)
+    // CDC - Weekly hospital admissions (active dataset aemt-mg7g, correct column: week_end_date)
     await resilientCall(`${FN}:cdc`, async () => {
       const cdcResponse = await fetch(
-        'https://data.cdc.gov/resource/aemt-mg7g.json?$limit=50&$order=weekendingdate%20DESC',
+        'https://data.cdc.gov/resource/aemt-mg7g.json?$limit=100&$order=week_end_date%20DESC',
         { headers: { 'Accept': 'application/json', 'User-Agent': 'AICIS/1.0' } }
       );
       if (!cdcResponse.ok) throw new Error(`CDC API: ${cdcResponse.status}`);
@@ -64,16 +64,20 @@ serve(async (req) => {
 
       if (Array.isArray(cdcData) && cdcData.length > 0) {
         const cdcRecords = cdcData
-          .filter((item: any) => item.jurisdiction && item.totalconfc19newadm)
+          .filter((item: any) => item.jurisdiction && item.num_hospitals_previous_day_admission_adult_covid_confirmed)
           .map((item: any) => ({
             country: 'United States',
             iso_code: 'USA',
             source: 'cdc',
-            metric_name: 'covid_hospitalizations_weekly',
-            value: parseFloat(item.totalconfc19newadm),
+            metric_name: 'covid_adult_admissions_weekly',
+            value: parseFloat(item.num_hospitals_previous_day_admission_adult_covid_confirmed) || 0,
             unit: 'admissions',
-            date: item.weekendingdate?.split('T')[0] || new Date().toISOString().split('T')[0],
-            metadata: { jurisdiction: item.jurisdiction, flu_admissions: item.totalconffluneadm }
+            date: item.week_end_date?.split('T')[0] || new Date().toISOString().split('T')[0],
+            metadata: {
+              jurisdiction: item.jurisdiction,
+              pediatric_admissions: item.num_hospitals_previous_day_admission_pediatric_covid_confirmed,
+              influenza_admissions: item.num_hospitals_previous_day_admission_influenza_confirmed
+            }
           }));
 
         if (cdcRecords.length > 0) {
