@@ -29,12 +29,12 @@ serve(async (req) => {
         'Accept': 'application/json',
       };
       if (NVD_KEY) nvdHeaders['apiKey'] = NVD_KEY;
-      // Pull last 7 days of CVEs to get a real flow rather than the same top-20 each run
-      const end = new Date();
-      const start = new Date(end.getTime() - 7 * 24 * 3600 * 1000);
+      // Pull last 7 days of CVEs (NVD requires .000 ms suffix, no Z, properly URL-encoded)
+      const nvdEnd = new Date();
+      const nvdStart = new Date(nvdEnd.getTime() - 7 * 24 * 3600 * 1000);
       const fmt = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, '.000');
       const nvdResponse = await fetch(
-        `https://services.nvd.nist.gov/rest/json/cves/2.0?lastModStartDate=${fmt(start)}&lastModEndDate=${fmt(end)}&resultsPerPage=50`,
+        `https://services.nvd.nist.gov/rest/json/cves/2.0?lastModStartDate=${encodeURIComponent(fmt(nvdStart))}&lastModEndDate=${encodeURIComponent(fmt(nvdEnd))}&resultsPerPage=50`,
         { headers: nvdHeaders }
       );
       if (!nvdResponse.ok) throw new Error(`NVD API: ${nvdResponse.status}`);
