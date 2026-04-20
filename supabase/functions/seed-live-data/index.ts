@@ -227,10 +227,6 @@ serve(async (req) => {
           primary_type: { name: 'Food Insecurity' },
         },
       }));
-      data.data = reports;
-      if (!resp.ok) throw new Error(`FAO/GIEWS: ${resp.status}`);
-      const data = await resp.json();
-      const reports = data.data || [];
 
       for (const r of reports.slice(0, 15)) {
         const country = r.fields.country?.[0]?.name || "Global";
