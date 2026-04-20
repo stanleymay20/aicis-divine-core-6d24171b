@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight, ChevronDown, ChevronUp, Radio, Activity, TrendingUp, Layers,
@@ -10,7 +9,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PriorityDecisionsPanel } from "./PriorityDecisionsPanel";
-import { GlobalSignalsBrief } from "./GlobalSignalsBrief";
 import { SystemHealthBadge } from "./SystemHealthBadge";
 import { SignalDrillDown } from "@/components/command-center/SignalDrillDown";
 import { useNavigate } from "react-router-dom";
@@ -22,7 +20,6 @@ import { RecentDecisionsWidget } from "./RecentDecisionsWidget";
 import { TopRisksWidget } from "./TopRisksWidget";
 import { WatchlistBriefWidget } from "@/components/watchlist/WatchlistBriefWidget";
 import { SystemStatusStrip } from "./SystemStatusStrip";
-import { SystemObservabilityWidget } from "./SystemObservabilityWidget";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
@@ -56,18 +53,18 @@ export const MorningBriefDashboard = () => {
   };
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* ── HERO: What + When + System Health ── */}
+    <div className="space-y-4 sm:space-y-5 animate-fade-in">
+      {/* ── HERO: greeting + system health (compact on mobile) ── */}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg sm:text-xl font-semibold leading-tight">
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-xl font-semibold leading-tight truncate">
             {greeting}, {firstName}.
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
             Here's what needs your attention.
           </p>
-          <p className="text-xs text-muted-foreground">
-            {format(new Date(), "EEEE, MMMM d · HH:mm")} UTC
+          <p className="text-[10px] sm:text-xs text-muted-foreground">
+            {format(new Date(), "EEE, MMM d · HH:mm")} UTC
           </p>
         </div>
         <SystemHealthBadge />
@@ -79,14 +76,8 @@ export const MorningBriefDashboard = () => {
       {/* ── 🚨 ACTIONS AWAITING: Execution activation ── */}
       <ActionsAwaitingStrip />
 
-      {/* ── TOP RISKS: 3-5 critical signals with impact + action ── */}
-      <GlobalSignalsBrief onSignalClick={handleSignalClick} />
-
-      {/* ── PRIORITY ACTIONS: What to do now ── */}
+      {/* ── PRIORITY ACTIONS: Top risks WITH actions (single source of truth) ── */}
       <PriorityDecisionsPanel />
-
-      {/* ── SYSTEM HEALTH: Observability ── */}
-      <SystemObservabilityWidget />
 
       {/* ── PROGRESSIVE DISCLOSURE: Everything else ── */}
       <Collapsible open={showMore} onOpenChange={setShowMore}>

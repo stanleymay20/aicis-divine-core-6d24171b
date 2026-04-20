@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface PendingAction {
   id: string;
@@ -149,47 +150,44 @@ export function ActionsAwaitingStrip() {
   return (
     <Card className={overdueCount > 0 ? "border-destructive/40 bg-destructive/5" : "border-primary/30 bg-primary/5"}>
       <CardContent className="p-4 space-y-3">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Flame className="h-4 w-4 text-destructive" />
-            <span className="text-sm font-semibold">Actions Awaiting You</span>
-            <Badge variant="destructive" className="text-[10px] h-5">
-              {counts?.pending || actions.length} pending
-            </Badge>
-            {overdueCount > 0 && (
-              <Badge variant="destructive" className="text-[10px] h-5 animate-pulse">
-                <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
-                {counts?.overdue || overdueCount} overdue
-              </Badge>
-            )}
+        {/* Header — single source of truth for counts */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Flame className="h-4 w-4 text-destructive shrink-0" />
+            <span className="text-sm font-semibold truncate">Actions Awaiting You</span>
           </div>
           <Button
             variant="ghost"
             size="sm"
-            className="text-xs gap-1 h-7"
+            className="text-xs gap-1 h-7 shrink-0"
             onClick={() => navigate("/evidence-command")}
           >
             View all <ChevronRight className="h-3 w-3" />
           </Button>
         </div>
 
-        {/* Metrics strip */}
-        <div className="flex flex-wrap gap-3 text-xs">
-          <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">{counts?.pending || 0}</span> pending
+        {/* Compact metrics row — pending · overdue · active · done · rate */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <span className="font-semibold text-destructive">
+            {counts?.pending || 0} pending
           </span>
-          <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">{counts?.overdue || 0}</span> overdue
-          </span>
+          {(counts?.overdue || 0) > 0 && (
+            <span className="font-semibold text-destructive flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {counts?.overdue} overdue
+            </span>
+          )}
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">{counts?.active || 0}</span> active
           </span>
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">{counts?.done || 0}</span> done
           </span>
-          <span className={executionRate >= 50 ? "text-primary font-medium" : "text-destructive font-medium"}>
-            {executionRate}% execution rate
+          <span className={cn(
+            "ml-auto font-medium",
+            executionRate >= 50 ? "text-primary" : "text-destructive"
+          )}>
+            {executionRate}% executed
           </span>
         </div>
 
@@ -260,12 +258,13 @@ export function ActionsAwaitingStrip() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                    className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive"
                     onClick={() => dismissAction.mutate(action.id)}
                     disabled={dismissAction.isPending}
+                    aria-label="Dismiss — not applicable"
                     title="Dismiss — not applicable"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
