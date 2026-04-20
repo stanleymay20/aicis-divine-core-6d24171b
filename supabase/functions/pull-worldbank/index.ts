@@ -18,24 +18,39 @@ serve(async (req) => {
 
     console.log("Fetching World Bank data...");
     
-    // Key development indicators
+    // Expanded indicator coverage — all free, no key required
     const indicators = [
-      'NY.GDP.MKTP.CD', // GDP
-      'SP.POP.TOTL', // Population
-      'SL.UEM.TOTL.ZS', // Unemployment rate
-      'SE.XPD.TOTL.GD.ZS', // Education expenditure
-      'SH.XPD.CHEX.GD.ZS', // Health expenditure
-      'EG.USE.ELEC.KH.PC' // Electric power consumption
+      'NY.GDP.MKTP.CD',          // GDP (current US$)
+      'NY.GDP.PCAP.CD',          // GDP per capita
+      'NY.GDP.MKTP.KD.ZG',       // GDP growth (annual %)
+      'SP.POP.TOTL',             // Population, total
+      'SP.POP.GROW',             // Population growth (annual %)
+      'SL.UEM.TOTL.ZS',          // Unemployment, total
+      'FP.CPI.TOTL.ZG',          // Inflation (consumer prices)
+      'SE.XPD.TOTL.GD.ZS',       // Education expenditure (% of GDP)
+      'SH.XPD.CHEX.GD.ZS',       // Health expenditure (% of GDP)
+      'EG.USE.ELEC.KH.PC',       // Electric power consumption
+      'IT.NET.USER.ZS',          // Internet users (% of pop)
+      'EN.ATM.CO2E.PC',          // CO2 emissions per capita
     ];
 
-    const countries = ['GHA', 'NGA', 'KEN', 'ZAF', 'ETH', 'UGA'];
-    const year = new Date().getFullYear() - 1;
-    
+    // 50 priority countries spanning all regions for planetary signal density
+    const countries = [
+      'USA','CHN','JPN','DEU','GBR','FRA','IND','ITA','BRA','CAN',
+      'RUS','KOR','AUS','ESP','MEX','IDN','NLD','SAU','TUR','CHE',
+      'POL','SWE','BEL','ARG','THA','NOR','ARE','ISR','EGY','ZAF',
+      'NGA','KEN','GHA','ETH','UGA','MAR','DZA','TZA','VNM','PHL',
+      'BGD','PAK','IRN','IRQ','UKR','COL','CHL','PER','VEN','PRT'
+    ];
+    // Use a 5-year rolling window (server caches anyway)
+    const currentYear = new Date().getFullYear();
+    const dateRange = `${currentYear - 5}:${currentYear - 1}`;
+
     const records: any[] = [];
 
     for (const indicator of indicators) {
-      const url = `https://api.worldbank.org/v2/country/${countries.join(';')}/indicator/${indicator}?date=${year}&format=json&per_page=100`;
-      
+      const url = `https://api.worldbank.org/v2/country/${countries.join(';')}/indicator/${indicator}?date=${dateRange}&format=json&per_page=2000`;
+
       const response = await fetch(url);
       if (!response.ok) {
         console.error(`World Bank API error for ${indicator}:`, response.status);
@@ -46,7 +61,7 @@ serve(async (req) => {
       const values = data[1] || [];
 
       for (const item of values) {
-        if (item.value !== null) {
+        if (item.value !== null && item.value !== undefined) {
           records.push({
             country: item.country.value,
             indicator_code: item.indicator.id,
