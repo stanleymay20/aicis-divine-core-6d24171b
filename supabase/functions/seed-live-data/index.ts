@@ -250,7 +250,7 @@ serve(async (req) => {
     // 8. USGS WaterWatch — Streamflow & drought conditions
     await resilientCall(`${FN}:usgs-water`, async () => {
       // USGS Water Services: current streamflow conditions, focus on drought (low flow) sites
-      const resp = await fetch("https://waterservices.usgs.gov/nwis/iv/?format=json&stateCd=ca,tx,fl,az,nm&parameterCd=00060&siteStatus=active&siteType=ST");
+      const resp = await fetch("https://waterservices.usgs.gov/nwis/iv/?format=json&stateCd=ca&parameterCd=00060&siteStatus=active");
       if (!resp.ok) throw new Error(`USGS Water: ${resp.status}`);
       const data = await resp.json();
       const series = data.value?.timeSeries || [];
