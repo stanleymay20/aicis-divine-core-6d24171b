@@ -46,6 +46,18 @@ serve(async (req) => {
     const escalations = [];
     let aiSkipped = false;
 
+    // Pre-flight AI probe: if credits are exhausted, skip AI loop entirely (saves ~30s of timeouts).
+    try {
+      const probe = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        signal: AbortSignal.timeout(4000),
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'google/gemini-2.5-flash-lite', messages: [{ role: 'user', content: 'ok' }], max_tokens: 1 }),
+      });
+      if (probe.status === 402 || probe.status === 429) aiSkipped = true;
+      await probe.text().catch(() => {});
+    } catch { /* probe failure → still attempt loop */ }
+
     // Fire all AI calls in parallel with a global timeout to prevent edge function timeout
     const aiPromises = crisisTypes.map(async (kind) => {
       const region = regions[Math.floor(Math.random() * regions.length)];
