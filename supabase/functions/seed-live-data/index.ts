@@ -335,7 +335,7 @@ serve(async (req) => {
           category: "migration_displacement",
           subcategory: "refugee_flow",
           status: "developing",
-          confidence_score: 0.95,
+          confidence_score: 95,
           impact_score: severity,
           urgency_score: flow.total > 500_000 ? 8 : 5,
           primary_source: "UNHCR",
