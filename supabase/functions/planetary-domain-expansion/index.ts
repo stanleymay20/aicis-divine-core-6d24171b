@@ -10,38 +10,39 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Domain → list of pull-* edge functions that feed it
-// All 15 AICIS domains with their data pull orchestrators
+// Domain → list of edge functions that feed it.
+// Only functions that ACTUALLY EXIST in supabase/functions/ are listed here.
+// World Bank carries 1500+ indicators spanning finance, governance, health,
+// population, education, food, water, energy, and gender — so it appears in
+// multiple domains as a legitimate primary or secondary source.
 const DOMAIN_PULLS: Record<string, string[]> = {
   // Economic & Financial
-  finance: ["pull-worldbank", "pull-coingecko", "pull-alpha-vantage", "pull-imf"],
-  economic: ["pull-worldbank", "pull-imf", "pull-un-trade"],
-  
-  // Governance & Stability  
-  governance: ["pull-vdem", "pull-freedom-house", "pull-worldbank", "pull-fragile-states"],
-  
+  finance: ["pull-worldbank", "pull-coingecko", "pull-alpha-vantage", "fetch-finance-global"],
+  economic: ["pull-worldbank", "fetch-finance-global"],
+
+  // Governance & Stability
+  governance: ["pull-vdem", "pull-freedom-house", "pull-worldbank", "fetch-governance-global"],
+
   // Human Systems
-  health: ["pull-owid-health", "pull-who", "pull-worldbank-health"],
-  population: ["pull-worldpop", "pull-worldbank", "pull-un-population"],
-  migration: ["pull-worldbank-migration", "pull-un-migration", "pull-iom"],
-  education: ["pull-worldbank", "pull-unesco"],
-  
+  health: ["pull-owid-health", "pull-worldbank", "fetch-health-global"],
+  population: ["pull-worldpop", "pull-worldbank"],
+  migration: ["pull-worldbank"],
+  education: ["pull-worldbank"],
+
   // Resources & Environment
-  food: ["pull-worldbank-food", "pull-fao-nutrition"],
-  water: ["pull-world-resources", "pull-aqueduct", "pull-worldbank-water"],
-  energy: ["pull-owid-energy", "pull-eia-energy", "pull-entsoe", "pull-iea"],
-  climate: ["pull-nasa-power", "pull-copernicus", "pull-noaa"],
-  
+  food: ["pull-faostat-food", "pull-worldbank", "fetch-food-global"],
+  water: ["pull-worldbank"],
+  energy: ["pull-owid-energy", "pull-eia-energy", "pull-entsoe", "pull-worldbank"],
+  climate: ["pull-nasa-power", "fetch-satellite-global"],
+
   // Security & Technology
-  security: ["pull-nvd-security", "pull-acled", "pull-gdelt"],
-  cyber: ["pull-cisa-kev", "pull-enisa", "pull-cyber-incidents"],
-  technology: ["pull-itu-internet", "pull-wipo-patents", "pull-digitization"],
-  
-  // Supply Chain & Infrastructure
-  supply_chain: ["pull-wto-trade", "pull-container-shipping", "pull-port-congestion"],
-  
-  // Geopolitical
-  geopolitical: ["pull-gdelt-events", "pull-icews", "pull-crisiswatch"],
+  security: ["pull-nvd-security", "fetch-security-global", "fetch-security-incidents"],
+  cyber: ["pull-nvd-security", "fetch-security-incidents"],
+  technology: ["pull-worldbank"],
+
+  // Supply Chain & Geopolitical
+  supply_chain: ["pull-worldbank", "fetch-finance-global"],
+  geopolitical: ["gdelt-ingest", "ingest-gdelt", "fetch-governance-global"],
 };
 
 serve(async (req) => {
