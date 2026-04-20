@@ -8147,6 +8147,45 @@ export type Database = {
         }
         Relationships: []
       }
+      risk_ranking_predictions: {
+        Row: {
+          country_iso3: string
+          domain: string
+          factors: Json
+          generated_at: string
+          generation_batch_id: string
+          horizon_days: number
+          id: string
+          model_version: string
+          rank_position: number | null
+          risk_probability: number
+        }
+        Insert: {
+          country_iso3: string
+          domain: string
+          factors?: Json
+          generated_at?: string
+          generation_batch_id?: string
+          horizon_days?: number
+          id?: string
+          model_version?: string
+          rank_position?: number | null
+          risk_probability: number
+        }
+        Update: {
+          country_iso3?: string
+          domain?: string
+          factors?: Json
+          generated_at?: string
+          generation_batch_id?: string
+          horizon_days?: number
+          id?: string
+          model_version?: string
+          rank_position?: number | null
+          risk_probability?: number
+        }
+        Relationships: []
+      }
       routing_threshold_config: {
         Row: {
           created_at: string | null
@@ -11371,6 +11410,13 @@ export type Database = {
         Returns: Json
       }
       compute_prospective_score: { Args: never; Returns: Json }
+      compute_risk_ranking_baseline: {
+        Args: { p_top_n?: number }
+        Returns: {
+          batch_id: string
+          rows_inserted: number
+        }[]
+      }
       compute_uptime_snapshot: { Args: never; Returns: Json }
       count_districts_needing_settlements: { Args: never; Returns: number }
       count_uncovered_regions: { Args: never; Returns: number }
@@ -11533,6 +11579,17 @@ export type Database = {
       rollup_country_to_regional: { Args: never; Returns: number }
       run_canary_probe: { Args: never; Returns: Json }
       run_milestone_audit: { Args: { _milestone?: string }; Returns: Json }
+      score_country_domain_risk: {
+        Args: { p_domain: string; p_iso3: string }
+        Returns: {
+          factors: Json
+          momentum_score: number
+          risk_probability: number
+          trend_score: number
+          volatility_score: number
+          zscore_recent: number
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       similarity_search_entities: {
