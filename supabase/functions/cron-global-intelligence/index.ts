@@ -34,7 +34,7 @@ serve(async (req) => {
     const calls = functions.map(async (fn) => {
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 25000);
+        const timer = setTimeout(() => controller.abort(), 45000); // raised from 25s
         const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
           method: "POST",
           signal: controller.signal,

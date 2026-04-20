@@ -20,13 +20,24 @@ const corsHeaders = {
 
 const FN = "autonomous-accumulator";
 
-// Provider → expected cadence (hours) and ingestor function name.
-const PROVIDERS: { provider: string; max_age_hours: number; fn: string }[] = [
-  { provider: "vdem",          max_age_hours: 168, fn: "pull-vdem" },          // weekly
-  { provider: "freedom_house", max_age_hours: 168, fn: "pull-freedom-house" }, // weekly
-  { provider: "nasa_power",    max_age_hours: 26,  fn: "pull-nasa-power" },    // daily
-  { provider: "entsoe",        max_age_hours: 8,   fn: "pull-entsoe" },        // 6h
-  { provider: "worldbank",     max_age_hours: 26,  fn: "pull-worldbank" },     // daily
+// Provider → expected cadence (hours), ingestor function, and freshness table.
+// Some ingestors write to specialty tables (e.g., worldbank → economic_indicators)
+// rather than normalized_metrics, so the probe must follow the actual sink.
+const PROVIDERS: {
+  provider: string;
+  max_age_hours: number;
+  fn: string;
+  table: "normalized_metrics" | "economic_indicators" | "community_metrics";
+  filter_col?: string;
+  filter_val?: string;
+}[] = [
+  { provider: "vdem",          max_age_hours: 168, fn: "pull-vdem",          table: "normalized_metrics", filter_col: "provider_name", filter_val: "vdem" },
+  { provider: "freedom_house", max_age_hours: 168, fn: "pull-freedom-house", table: "normalized_metrics", filter_col: "provider_name", filter_val: "freedom_house" },
+  { provider: "nasa_power",    max_age_hours: 26,  fn: "pull-nasa-power",    table: "normalized_metrics", filter_col: "provider_name", filter_val: "nasa_power" },
+  { provider: "entsoe",        max_age_hours: 8,   fn: "pull-entsoe",        table: "normalized_metrics", filter_col: "provider_name", filter_val: "entsoe" },
+  { provider: "worldbank",     max_age_hours: 26,  fn: "pull-worldbank",     table: "economic_indicators", filter_col: "source",       filter_val: "WorldBank" },
+  { provider: "satellite",     max_age_hours: 26,  fn: "fetch-satellite-global", table: "normalized_metrics", filter_col: "provider_name", filter_val: "satellite_inference" },
+  { provider: "community",     max_age_hours: 14,  fn: "seed-community-metrics", table: "community_metrics" },
 ];
 
 serve(async (req) => {
@@ -44,13 +55,13 @@ serve(async (req) => {
 
   for (const p of PROVIDERS) {
     try {
-      const { data: latest } = await supabase
-        .from("normalized_metrics")
+      let q = supabase
+        .from(p.table)
         .select("created_at")
-        .eq("provider_name", p.provider)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+      if (p.filter_col && p.filter_val) q = q.eq(p.filter_col, p.filter_val);
+      const { data: latest } = await q.maybeSingle();
 
       const lastTs = latest?.created_at ? new Date(latest.created_at).getTime() : 0;
       const ageHours = lastTs ? (Date.now() - lastTs) / 3600000 : 9999;
