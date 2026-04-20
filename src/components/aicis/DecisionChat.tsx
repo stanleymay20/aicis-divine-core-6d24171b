@@ -123,6 +123,19 @@ export const DecisionChat = () => {
     }
   }, [input, loading]);
 
+  // Auto-submit any inbound ?q= query (e.g. handoff from PersistentAskBar)
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && !loading && messages.length === 0) {
+      handleSubmit(q);
+      // Clear the param so reloads don't re-fire
+      const next = new URLSearchParams(searchParams);
+      next.delete("q");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const handleAction = async (msgId: string, action: "accepted" | "rejected") => {
     setMessages((prev) =>
       prev.map((m) => (m.id === msgId ? { ...m, status: action } : m))
