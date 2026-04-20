@@ -67,17 +67,20 @@ serve(async (req) => {
       structuredLog('warn', FN, msg);
     });
 
-    // EIA - Oil prices
+    // EIA v2 - WTI crude oil daily spot price (free, no key needed for public series)
     await resilientCall(`${FN}:eia`, async () => {
-      const resp = await fetch(`https://api.eia.gov/series/?api_key=${EIA_KEY}&series_id=PET.RWTC.D`);
+      const eiaUrl = EIA_KEY
+        ? `https://api.eia.gov/v2/petroleum/pri/spt/data/?api_key=${EIA_KEY}&frequency=daily&data[0]=value&facets[series][]=RWTC&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=30`
+        : `https://api.eia.gov/v2/petroleum/pri/spt/data/?frequency=daily&data[0]=value&facets[series][]=RWTC&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=30`;
+      const resp = await fetch(eiaUrl);
       if (!resp.ok) throw new Error(`EIA API: ${resp.status}`);
       const data = await resp.json();
-
-      if (data.series?.[0]?.data) {
-        const records = data.series[0].data.slice(0, 30).map((item: any) => ({
+      const rows = data?.response?.data ?? [];
+      if (rows.length > 0) {
+        const records = rows.map((item: any) => ({
           country: 'Global', iso_code: 'WORLD', source: 'eia',
-          indicator_name: 'crude_oil_wti', value: parseFloat(item[1]),
-          currency: 'USD', date: item[0], metadata: { unit: 'dollars_per_barrel' }
+          indicator_name: 'crude_oil_wti', value: parseFloat(item.value),
+          currency: 'USD', date: `${item.period}`, metadata: { unit: 'dollars_per_barrel', series: item.series }
         }));
         const { error } = await supabase.from('finance_data').insert(records);
         if (error) throw new Error(`DB insert: ${error.message}`);
