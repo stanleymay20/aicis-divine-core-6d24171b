@@ -1064,6 +1064,42 @@ export type Database = {
           },
         ]
       }
+      canary_probes: {
+        Row: {
+          details: Json | null
+          id: string
+          inserted_at: string
+          probe_type: string
+          propagated_to_links: boolean | null
+          propagated_to_links_at: string | null
+          propagation_lag_seconds: number | null
+          source_record_id: string | null
+          status: string
+        }
+        Insert: {
+          details?: Json | null
+          id?: string
+          inserted_at?: string
+          probe_type: string
+          propagated_to_links?: boolean | null
+          propagated_to_links_at?: string | null
+          propagation_lag_seconds?: number | null
+          source_record_id?: string | null
+          status?: string
+        }
+        Update: {
+          details?: Json | null
+          id?: string
+          inserted_at?: string
+          probe_type?: string
+          propagated_to_links?: boolean | null
+          propagated_to_links_at?: string | null
+          propagation_lag_seconds?: number | null
+          source_record_id?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       canonical_entities: {
         Row: {
           canonical_name: string
@@ -7131,6 +7167,48 @@ export type Database = {
         }
         Relationships: []
       }
+      pipeline_heartbeats: {
+        Row: {
+          consecutive_failures: number
+          created_at: string
+          enabled: boolean
+          expected_interval_minutes: number
+          last_attempt_at: string | null
+          last_error: string | null
+          last_success_at: string | null
+          metadata: Json | null
+          pipeline_name: string
+          target_function: string | null
+          updated_at: string
+        }
+        Insert: {
+          consecutive_failures?: number
+          created_at?: string
+          enabled?: boolean
+          expected_interval_minutes?: number
+          last_attempt_at?: string | null
+          last_error?: string | null
+          last_success_at?: string | null
+          metadata?: Json | null
+          pipeline_name: string
+          target_function?: string | null
+          updated_at?: string
+        }
+        Update: {
+          consecutive_failures?: number
+          created_at?: string
+          enabled?: boolean
+          expected_interval_minutes?: number
+          last_attempt_at?: string | null
+          last_error?: string | null
+          last_success_at?: string | null
+          metadata?: Json | null
+          pipeline_name?: string
+          target_function?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       planetary_stats_snapshots: {
         Row: {
           canonical_mismatches: number
@@ -8728,6 +8806,45 @@ export type Database = {
           slo_response_minutes?: number | null
           target_uptime_pct?: number
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      slo_violations: {
+        Row: {
+          actual_value: number | null
+          auto_remediated: boolean | null
+          created_at: string
+          expected_value: number | null
+          id: string
+          pipeline_name: string
+          remediation_action: string | null
+          resolved_at: string | null
+          severity: string
+          violation_type: string
+        }
+        Insert: {
+          actual_value?: number | null
+          auto_remediated?: boolean | null
+          created_at?: string
+          expected_value?: number | null
+          id?: string
+          pipeline_name: string
+          remediation_action?: string | null
+          resolved_at?: string | null
+          severity?: string
+          violation_type: string
+        }
+        Update: {
+          actual_value?: number | null
+          auto_remediated?: boolean | null
+          created_at?: string
+          expected_value?: number | null
+          id?: string
+          pipeline_name?: string
+          remediation_action?: string | null
+          resolved_at?: string | null
+          severity?: string
+          violation_type?: string
         }
         Relationships: []
       }
@@ -10828,6 +10945,17 @@ export type Database = {
         Args: { _mae_threshold?: number }
         Returns: Json
       }
+      find_stalled_pipelines: {
+        Args: never
+        Returns: {
+          consecutive_failures: number
+          expected_interval_minutes: number
+          minutes_since_success: number
+          pipeline_name: string
+          severity: string
+          target_function: string
+        }[]
+      }
       get_countries_needing_villages: {
         Args: never
         Returns: {
@@ -10954,6 +11082,16 @@ export type Database = {
       prospective_horizon_breakdown: { Args: never; Returns: Json }
       prospective_model_breakdown: { Args: never; Returns: Json }
       prospective_summary_stats: { Args: never; Returns: Json }
+      register_pipeline_heartbeat: {
+        Args: {
+          _error?: string
+          _metadata?: Json
+          _pipeline_name: string
+          _success?: boolean
+        }
+        Returns: undefined
+      }
+      run_canary_probe: { Args: never; Returns: Json }
       run_milestone_audit: { Args: { _milestone?: string }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

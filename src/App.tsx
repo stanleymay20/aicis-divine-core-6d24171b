@@ -45,6 +45,7 @@ const InfraOps = lazy(() => import("./pages/InfraOps"));
 const DeveloperPortal = lazy(() => import("./pages/DeveloperPortal"));
 const ForecastValidation = lazy(() => import("./pages/ForecastValidation"));
 const Status = lazy(() => import("./pages/Status"));
+const SystemPulse = lazy(() => import("./pages/SystemPulse"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -118,6 +119,7 @@ const App = () => (
               <Route path="/infra-ops" element={<Protected><InfraOps /></Protected>} />
               <Route path="/developers" element={<Protected><DeveloperPortal /></Protected>} />
               <Route path="/forecast-validation" element={<Protected><Lazy><ForecastValidation /></Lazy></Protected>} />
+              <Route path="/system-pulse" element={<Protected><SystemPulse /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
