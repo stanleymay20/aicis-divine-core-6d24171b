@@ -14,6 +14,7 @@ import { MiniMap } from "./MiniMap";
 import { MobileNav } from "./MobileNav";
 import { LocationSearch } from "./LocationSearch";
 import { KeyboardShortcutsModal, useKeyboardShortcuts } from "./KeyboardShortcuts";
+import { AskAnythingPill } from "./AskAnythingPill";
 import { type Country, getCountryCoordinates, searchCountries } from "@/lib/geo/all-countries";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -270,6 +271,14 @@ export const CommandCenter = () => {
       {/* Location search button */}
       <div className="fixed bottom-24 md:bottom-28 left-4 z-20">
         <LocationSearch onLocationSelect={handleLocationSelect} />
+      </div>
+
+      {/* Always-visible "Ask anything" front door — UX rescue for non-technical users */}
+      <div className={cn(
+        "fixed z-30",
+        isMobile ? "top-16 left-1/2 -translate-x-1/2" : "top-[100px] left-1/2 -translate-x-1/2"
+      )}>
+        <AskAnythingPill />
       </div>
 
       {/* MiniMap - hidden on mobile */}

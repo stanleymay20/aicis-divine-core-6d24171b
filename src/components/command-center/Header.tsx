@@ -111,7 +111,7 @@ export const Header = ({
                 AICIS
               </h1>
               <p className="text-[10px] text-muted-foreground -mt-0.5 tracking-wide">
-                AI Civilization Intelligence System
+                Decision Intelligence Platform
               </p>
             </div>
 
