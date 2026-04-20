@@ -11,16 +11,37 @@ const corsHeaders = {
 };
 
 // Domain → list of pull-* edge functions that feed it
+// All 15 AICIS domains with their data pull orchestrators
 const DOMAIN_PULLS: Record<string, string[]> = {
-  finance: ["pull-worldbank", "pull-coingecko", "pull-alpha-vantage"],
-  governance: ["pull-vdem", "pull-freedom-house", "pull-worldbank"],
-  health: ["pull-owid-health"],
-  food: ["pull-faostat-food"],
-  energy: ["pull-owid-energy", "pull-eia-energy", "pull-entsoe"],
-  climate: ["pull-nasa-power"],
-  population: ["pull-worldpop", "pull-worldbank"],
-  security: ["pull-nvd-security"],
-  education: ["pull-worldbank"],
+  // Economic & Financial
+  finance: ["pull-worldbank", "pull-coingecko", "pull-alpha-vantage", "pull-imf"],
+  economic: ["pull-worldbank", "pull-imf", "pull-un-trade"],
+  
+  // Governance & Stability  
+  governance: ["pull-vdem", "pull-freedom-house", "pull-worldbank", "pull-fragile-states"],
+  
+  // Human Systems
+  health: ["pull-owid-health", "pull-who", "pull-worldbank-health"],
+  population: ["pull-worldpop", "pull-worldbank", "pull-un-population"],
+  migration: ["pull-worldbank-migration", "pull-un-migration", "pull-iom"],
+  education: ["pull-worldbank", "pull-unesco"],
+  
+  // Resources & Environment
+  food: ["pull-worldbank-food", "pull-fao-nutrition"],
+  water: ["pull-world-resources", "pull-aqueduct", "pull-worldbank-water"],
+  energy: ["pull-owid-energy", "pull-eia-energy", "pull-entsoe", "pull-iea"],
+  climate: ["pull-nasa-power", "pull-copernicus", "pull-noaa"],
+  
+  // Security & Technology
+  security: ["pull-nvd-security", "pull-acled", "pull-gdelt"],
+  cyber: ["pull-cisa-kev", "pull-enisa", "pull-cyber-incidents"],
+  technology: ["pull-itu-internet", "pull-wipo-patents", "pull-digitization"],
+  
+  // Supply Chain & Infrastructure
+  supply_chain: ["pull-wto-trade", "pull-container-shipping", "pull-port-congestion"],
+  
+  // Geopolitical
+  geopolitical: ["pull-gdelt-events", "pull-icews", "pull-crisiswatch"],
 };
 
 serve(async (req) => {
