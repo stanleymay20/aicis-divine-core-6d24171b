@@ -4899,6 +4899,42 @@ export type Database = {
         }
         Relationships: []
       }
+      forecast_validation_edit_attempts: {
+        Row: {
+          attempted_at: string
+          attempted_by: string | null
+          blocked: boolean
+          id: string
+          new_row: Json | null
+          old_row: Json | null
+          operation: string
+          reason: string | null
+          target_id: string | null
+        }
+        Insert: {
+          attempted_at?: string
+          attempted_by?: string | null
+          blocked?: boolean
+          id?: string
+          new_row?: Json | null
+          old_row?: Json | null
+          operation: string
+          reason?: string | null
+          target_id?: string | null
+        }
+        Update: {
+          attempted_at?: string
+          attempted_by?: string | null
+          blocked?: boolean
+          id?: string
+          new_row?: Json | null
+          old_row?: Json | null
+          operation?: string
+          reason?: string | null
+          target_id?: string | null
+        }
+        Relationships: []
+      }
       forecast_validation_results: {
         Row: {
           absolute_error: number | null
@@ -11103,6 +11139,30 @@ export type Database = {
           model_version: string | null
           outcome_maturity_ratio: number | null
           trust_score: number | null
+        }
+        Relationships: []
+      }
+      v_forecast_truth_split: {
+        Row: {
+          days_since_harness_freeze: number | null
+          harness_v1_frozen_at: string | null
+          score_a_locked_prospective_count: number | null
+          score_a_maturity: string | null
+          score_a_measured_accuracy: number | null
+          score_a_sample_size: number | null
+          score_a_untampered_validation_count: number | null
+          score_b_mean_absolute_error: number | null
+          score_b_operational_confidence: number | null
+          score_b_sample_size: number | null
+        }
+        Relationships: []
+      }
+      v_layer_trust_tiers: {
+        Row: {
+          display_order: number | null
+          layer: string | null
+          rationale: string | null
+          tier: string | null
         }
         Relationships: []
       }
