@@ -149,7 +149,7 @@ serve(async (req) => {
           payload: { source: "WHO", link: outbreak.link, pubDate: outbreak.pubDate },
           source_system: "WHO DON",
         });
-        if (!error) results.intel_events++;
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
       }
     }, { maxRetries: 1, timeoutMs: 15000 }).catch(e => results.errors.push(`WHO: ${(e as Error).message}`));
 
@@ -209,7 +209,161 @@ serve(async (req) => {
       }
     }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`NVD: ${(e as Error).message}`));
 
-    // 7. AI Geopolitical
+    // 7. FAO GIEWS — Food security & crop monitoring (ReliefWeb-mediated; FAO doesn't expose direct API)
+    await resilientCall(`${FN}:fao-giews`, async () => {
+      // ReliefWeb reports filtered by food-security theme (current working v1 endpoint)
+      const resp = await fetch("https://api.reliefweb.int/v1/reports?appname=aicis&limit=15&filter[field]=theme.name&filter[value]=Food%20and%20Nutrition&fields[include][]=title&fields[include][]=date&fields[include][]=country&fields[include][]=primary_country&sort[]=date.created:desc", { headers: { "Accept": "application/json" } });
+      if (!resp.ok) throw new Error(`FAO/GIEWS: ${resp.status}`);
+      const data = await resp.json();
+      const reports = (data.data || []).map((r: any) => ({
+        id: r.id,
+        fields: {
+          name: r.fields.title,
+          description: `Food security report: ${r.fields.title}. Country: ${r.fields.primary_country?.name || r.fields.country?.[0]?.name || "Global"}.`,
+          country: r.fields.country || (r.fields.primary_country ? [r.fields.primary_country] : []),
+          date: r.fields.date,
+          status: 'ongoing',
+          primary_type: { name: 'Food Security' },
+        },
+      }));
+
+      for (const r of reports.slice(0, 15)) {
+        const country = r.fields.country?.[0]?.name || "Global";
+        const iso3 = r.fields.country?.[0]?.iso3?.toUpperCase() || null;
+        const title = (r.fields.name || "Food security / drought update").slice(0, 240);
+        const body = (r.fields.description || `${r.fields.primary_type?.name || "Drought/Food crisis"} affecting ${country}. Status: ${r.fields.status || "monitoring"}.`).slice(0, 800);
+
+        const { error } = await supabase.from("global_signals").insert({
+          title,
+          summary: body,
+          category: "food_agriculture",
+          subcategory: "food_security",
+          status: "developing",
+          confidence_score: 85,
+          impact_score: title.toLowerCase().match(/(famine|crisis|emergency|ipc\s*[45])/) ? 8 : 5,
+          urgency_score: 6,
+          primary_source: "FAO/GIEWS via ReliefWeb",
+          source_count: 1,
+          ingestion_source: "fao_giews",
+          first_detected_at: r.fields.date?.created || new Date().toISOString(),
+          latest_update_at: new Date().toISOString(),
+          occurred_at: r.fields.date?.original || new Date().toISOString(),
+          affected_countries: iso3 ? [iso3] : [],
+          source_trust_tier: "official",
+          official_source: true,
+          dedup_key: `fao-giews-${r.id}`,
+        });
+        if (error) { results.errors.push(`fao_insert: ${error.message}`); } else { results.intel_events++; }
+      }
+    }, { maxRetries: 1, timeoutMs: 20000 }).catch(e => results.errors.push(`FAO/GIEWS: ${(e as Error).message}`));
+
+    // 8. USGS WaterWatch — Streamflow & drought conditions
+    await resilientCall(`${FN}:usgs-water`, async () => {
+      // USGS Water Services: current streamflow conditions, focus on drought (low flow) sites
+      const resp = await fetch("https://waterservices.usgs.gov/nwis/iv/?format=json&stateCd=ca&parameterCd=00060&siteStatus=active");
+      if (!resp.ok) throw new Error(`USGS Water: ${resp.status}`);
+      const data = await resp.json();
+      const series = data.value?.timeSeries || [];
+
+      // Aggregate by state into one signal per anomaly cluster
+      const stateAnomalies: Record<string, { low: number; total: number; sites: string[] }> = {};
+      for (const ts of series.slice(0, 200)) {
+        const siteName = ts.sourceInfo?.siteName || "";
+        const stateCode = ts.sourceInfo?.siteCode?.[0]?.value?.slice(0, 2) || "??";
+        const value = parseFloat(ts.values?.[0]?.value?.[0]?.value || "0");
+        if (!stateAnomalies[stateCode]) stateAnomalies[stateCode] = { low: 0, total: 0, sites: [] };
+        stateAnomalies[stateCode].total++;
+        if (value < 10) {
+          stateAnomalies[stateCode].low++;
+          if (stateAnomalies[stateCode].sites.length < 3) stateAnomalies[stateCode].sites.push(siteName);
+        }
+      }
+
+      for (const [state, stats] of Object.entries(stateAnomalies)) {
+        if (stats.total < 3) continue;
+        const lowPct = (stats.low / stats.total) * 100;
+        const severity = lowPct > 50 ? 8 : lowPct > 25 ? 6 : 4;
+        const title = `USGS Streamflow Anomaly — ${stats.low}/${stats.total} sites below normal`;
+
+        const { error } = await supabase.from("global_signals").insert({
+          title,
+          summary: `Hydrological monitoring shows ${lowPct.toFixed(0)}% of monitored streamflow sites in region ${state} below normal flow. Sample sites: ${stats.sites.join("; ")}.`,
+          category: "water_hydrology",
+          subcategory: "streamflow_drought",
+          status: "developing",
+          confidence_score: 90,
+          impact_score: severity,
+          urgency_score: lowPct > 50 ? 7 : 4,
+          primary_source: "USGS Water Services",
+          source_count: stats.total,
+          ingestion_source: "usgs_waterwatch",
+          first_detected_at: new Date().toISOString(),
+          latest_update_at: new Date().toISOString(),
+          occurred_at: new Date().toISOString(),
+          affected_countries: ["USA"],
+          source_trust_tier: "official",
+          official_source: true,
+          dedup_key: `usgs-water-${state}-${new Date().toISOString().split("T")[0]}`,
+        });
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
+      }
+    }, { maxRetries: 1, timeoutMs: 25000 }).catch(e => results.errors.push(`USGS Water: ${(e as Error).message}`));
+
+    // 9. UNHCR — Refugee & displacement movements
+    await resilientCall(`${FN}:unhcr`, async () => {
+      // UNHCR Refugee Population Statistics public API
+      const yearNow = new Date().getFullYear();
+      const resp = await fetch(`https://api.unhcr.org/population/v1/population/?yearFrom=${yearNow - 1}&yearTo=${yearNow}&coo_all=true&limit=30`);
+      if (!resp.ok) throw new Error(`UNHCR: ${resp.status}`);
+      const data = await resp.json();
+      const items = data.items || [];
+
+      // Group by origin country and surface major flows
+      const flows: Record<string, { refugees: number; asylum: number; idps: number; coo_name: string }> = {};
+      for (const item of items) {
+        const coo = item.coo_iso || item.coo;
+        if (!coo) continue;
+        if (!flows[coo]) flows[coo] = { refugees: 0, asylum: 0, idps: 0, coo_name: item.coo_name || coo };
+        flows[coo].refugees += parseInt(item.refugees || "0");
+        flows[coo].asylum += parseInt(item.asylum_seekers || "0");
+        flows[coo].idps += parseInt(item.idps || "0");
+      }
+
+      const topFlows = Object.entries(flows)
+        .map(([iso3, f]) => ({ iso3, ...f, total: f.refugees + f.asylum + f.idps }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 10);
+
+      for (const flow of topFlows) {
+        if (flow.total < 1000) continue;
+        const severity = flow.total > 1_000_000 ? 9 : flow.total > 100_000 ? 7 : 5;
+        const title = `${flow.coo_name}: ${(flow.total / 1000).toFixed(0)}K displaced persons tracked`;
+
+        const { error } = await supabase.from("global_signals").insert({
+          title,
+          summary: `UNHCR latest data: ${flow.refugees.toLocaleString()} refugees, ${flow.asylum.toLocaleString()} asylum seekers, ${flow.idps.toLocaleString()} internally displaced from ${flow.coo_name}.`,
+          category: "migration_displacement",
+          subcategory: "refugee_flow",
+          status: "developing",
+          confidence_score: 95,
+          impact_score: severity,
+          urgency_score: flow.total > 500_000 ? 8 : 5,
+          primary_source: "UNHCR",
+          source_count: 1,
+          ingestion_source: "unhcr",
+          first_detected_at: new Date().toISOString(),
+          latest_update_at: new Date().toISOString(),
+          occurred_at: new Date().toISOString(),
+          affected_countries: [flow.iso3?.toUpperCase()].filter(Boolean) as string[],
+          source_trust_tier: "official",
+          official_source: true,
+          dedup_key: `unhcr-${flow.iso3}-${yearNow}`,
+        });
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
+      }
+    }, { maxRetries: 1, timeoutMs: 25000 }).catch(e => results.errors.push(`UNHCR: ${(e as Error).message}`));
+
+    // 10. AI Geopolitical
     await resilientCall(`${FN}:ai-diplo`, async () => {
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (!LOVABLE_API_KEY) throw new Error("No LOVABLE_API_KEY");
@@ -239,7 +393,7 @@ serve(async (req) => {
           payload: { source: "AI_Analysis", country: event.country },
           source_system: "AICIS Intelligence",
         });
-        if (!error) results.intel_events++;
+        if (error) { results.errors.push(`insert: ${error.message}`); } else { results.intel_events++; }
       }
     }, { maxRetries: 1, timeoutMs: 25000 }).catch(e => results.errors.push(`AI Diplomacy: ${(e as Error).message}`));
 

@@ -11523,6 +11523,9 @@ export type Database = {
         | "elections"
         | "social_unrest"
         | "infrastructure"
+        | "food_agriculture"
+        | "water_hydrology"
+        | "migration_displacement"
       signal_status:
         | "new"
         | "developing"
@@ -11764,6 +11767,9 @@ export const Constants = {
         "elections",
         "social_unrest",
         "infrastructure",
+        "food_agriculture",
+        "water_hydrology",
+        "migration_displacement",
       ],
       signal_status: [
         "new",
