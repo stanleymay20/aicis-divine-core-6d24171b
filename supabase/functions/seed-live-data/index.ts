@@ -281,7 +281,7 @@ serve(async (req) => {
           category: "water_hydrology",
           subcategory: "streamflow_drought",
           status: "developing",
-          confidence_score: 0.9,
+          confidence_score: 90,
           impact_score: severity,
           urgency_score: lowPct > 50 ? 7 : 4,
           primary_source: "USGS Water Services",
