@@ -211,8 +211,23 @@ serve(async (req) => {
 
     // 7. FAO GIEWS — Food security & crop monitoring (ReliefWeb-mediated; FAO doesn't expose direct API)
     await resilientCall(`${FN}:fao-giews`, async () => {
-      // ReliefWeb disasters tagged with food-security / drought (FAO/GIEWS-equivalent)
-      const resp = await fetch("https://api.reliefweb.int/v1/disasters?appname=aicis&limit=20&filter[field]=primary_type.code&filter[value][]=DR&filter[value][]=FA&fields[include][]=name&fields[include][]=description&fields[include][]=date&fields[include][]=country&fields[include][]=primary_type&fields[include][]=status&sort[]=date.created:desc");
+      // WFP HungerMap public country-level food insecurity API
+      const resp = await fetch("https://api.hungermapdata.org/v2/adm0/countries.json", { headers: { "Accept": "application/json" } });
+      if (!resp.ok) throw new Error(`FAO/GIEWS: ${resp.status}`);
+      const data = await resp.json();
+      const countries = (data.body?.countries || data.countries || []).filter((c: any) => (c.population?.fcs?.people ?? 0) > 1_000_000).slice(0, 15);
+      const reports = countries.map((c: any) => ({
+        id: c.adm0_code || c.iso3,
+        fields: {
+          name: `${c.adm0_name || c.country}: ${(c.population.fcs.people / 1e6).toFixed(1)}M food-insecure`,
+          description: `WFP HungerMap: ${c.population.fcs.prevalence ? (c.population.fcs.prevalence * 100).toFixed(0) + '%' : 'significant share'} of population in IPC food crisis. Source: WFP/FAO joint monitoring.`,
+          country: [{ name: c.adm0_name || c.country, iso3: c.iso3 }],
+          date: { created: new Date().toISOString(), original: new Date().toISOString() },
+          status: 'ongoing',
+          primary_type: { name: 'Food Insecurity' },
+        },
+      }));
+      data.data = reports;
       if (!resp.ok) throw new Error(`FAO/GIEWS: ${resp.status}`);
       const data = await resp.json();
       const reports = data.data || [];
