@@ -67,12 +67,28 @@ Deno.serve(async (req) => {
       }).eq("id", logRow.id);
     }
     result.duration_ms = ms;
+    await supabase.rpc("register_pipeline_heartbeat", {
+      _pipeline_name: "graph-recovery-tick",
+      _success: true,
+      _metadata: {
+        event_links: result.event_links?.created || 0,
+        metric_links: (linkRes as any)?.inserted || 0,
+        regions: result.canonical_entities?.promoted || 0,
+        signals: result.signal_drain?.migrated || 0,
+        duration_ms: ms,
+      },
+    });
     return jsonRes({ ok: true, ...result });
   } catch (e) {
     const msg = (e as Error).message;
     if (logRow?.id) {
       await supabase.from("automation_logs").update({ status: "error", message: msg }).eq("id", logRow.id);
     }
+    await supabase.rpc("register_pipeline_heartbeat", {
+      _pipeline_name: "graph-recovery-tick",
+      _success: false,
+      _error: msg,
+    });
     console.error("graph-recovery-tick error:", e);
     return jsonRes({ ok: false, error: msg, partial: result }, 500);
   }

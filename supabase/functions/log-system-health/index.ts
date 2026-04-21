@@ -101,6 +101,16 @@ serve(async (req) => {
 
     console.log('Diagnostics complete:', diagnostics);
 
+    await supabase.rpc("register_pipeline_heartbeat", {
+      _pipeline_name: "log-system-health",
+      _success: diagnostics.status === 'healthy',
+      _metadata: {
+        failed_apis: failedAPIs.length,
+        failed_tables: failedTables.length,
+        missing_env: missingEnv.length,
+      },
+    });
+
     return new Response(JSON.stringify({
       ok: diagnostics.status === 'healthy',
       ...diagnostics,
@@ -111,7 +121,19 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in log-system-health:', error);
-    
+
+    try {
+      const sb = createClient(
+        Deno.env.get("SUPABASE_URL") ?? '',
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ''
+      );
+      await sb.rpc("register_pipeline_heartbeat", {
+        _pipeline_name: "log-system-health",
+        _success: false,
+        _error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } catch (_) { /* ignore */ }
+
     return new Response(JSON.stringify({
       ok: false,
       error: error instanceof Error ? error.message : 'Unknown error'
