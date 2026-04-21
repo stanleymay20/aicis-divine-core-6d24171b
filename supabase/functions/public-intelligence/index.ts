@@ -19,10 +19,10 @@ serve(async (req) => {
     );
 
     // ── Parallel fetch — all sanitized aggregate views ──
-    const [topRisks, topPredictions, recentSims, auditSamples, snapshots] = await Promise.all([
+    const [topRisks, topPredictions, recentSims, auditSamples] = await Promise.all([
       sb.from("risk_ranking_predictions")
-        .select("country_iso3, domain, risk_score, confidence_lower, confidence_upper, generated_at, horizon_days")
-        .order("risk_score", { ascending: false })
+        .select("country_iso3, domain, risk_probability, confidence_lower, confidence_upper, generated_at, horizon_days, rank_position")
+        .order("risk_probability", { ascending: false })
         .limit(8),
       sb.from("risk_ml_predictions")
         .select("country_iso3, domain, calibrated_score, raw_score, prediction_interval_lower, prediction_interval_upper, horizon_days, audit_hash, model_version")
@@ -33,11 +33,9 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(3),
       sb.from("ml_inference_audit")
-        .select("model_version, weights_hash, combined_hash, previous_chain_hash, created_at")
-        .order("created_at", { ascending: false })
+        .select("model_version, weights_hash, combined_hash, previous_audit_hash, generated_at")
+        .order("generated_at", { ascending: false })
         .limit(5),
-      sb.from("country_performance_snapshots")
-        .select("iso3", { count: "exact", head: true }),
     ]);
 
     // Counts for the "live stats" strip
