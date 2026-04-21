@@ -138,6 +138,9 @@ const Landing = () => {
         </div>
       </section>
 
+      {/* Live Intelligence Showcase — real data from production engines */}
+      <PublicIntelligenceShowcase />
+
       {/* Capabilities */}
       <section className="max-w-7xl mx-auto px-6 py-24">
         <div className="text-center mb-16">
