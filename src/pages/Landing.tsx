@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
+import { PublicIntelligenceShowcase } from "@/components/landing/PublicIntelligenceShowcase";
 import {
   Shield,
   Activity,
@@ -136,6 +137,9 @@ const Landing = () => {
           ))}
         </div>
       </section>
+
+      {/* Live Intelligence Showcase — real data from production engines */}
+      <PublicIntelligenceShowcase />
 
       {/* Capabilities */}
       <section className="max-w-7xl mx-auto px-6 py-24">

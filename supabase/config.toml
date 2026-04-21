@@ -430,3 +430,6 @@ verify_jwt = false
 
 [functions.batch-village-inference]
 verify_jwt = false
+
+[functions.public-intelligence]
+verify_jwt = false
