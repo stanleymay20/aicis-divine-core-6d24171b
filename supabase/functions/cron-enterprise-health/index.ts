@@ -41,6 +41,12 @@ serve(async (req) => {
       // In production: send alert to ops team
     }
 
+    await supabase.rpc("register_pipeline_heartbeat", {
+      _pipeline_name: "cron-enterprise-health",
+      _success: true,
+      _metadata: { critical_events: criticalEvents?.length || 0 },
+    });
+
     return new Response(
       JSON.stringify({
         ok: true,
@@ -51,6 +57,17 @@ serve(async (req) => {
     );
   } catch (e) {
     console.error("Error in cron-enterprise-health:", e);
+    try {
+      const sb = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      );
+      await sb.rpc("register_pipeline_heartbeat", {
+        _pipeline_name: "cron-enterprise-health",
+        _success: false,
+        _error: (e as Error).message,
+      });
+    } catch (_) { /* ignore */ }
     return new Response(
       JSON.stringify({ error: (e as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

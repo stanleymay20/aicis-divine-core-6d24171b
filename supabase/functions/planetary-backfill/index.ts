@@ -36,23 +36,39 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  let action: string | undefined;
   try {
     const body = await req.json().catch(() => ({}));
-    const { action, ...params } = body;
+    const { action: act, ...params } = body;
+    action = act;
 
+    let response: Response;
     switch (action) {
-      case "seed_countries": return await seedCountries(supabase, params);
-      case "bulk_ingest": return await bulkIngest(supabase, params);
-      case "promote_regions": return await promoteRegions(supabase, params);
-      case "seed_entities": return await seedEntities(supabase, params);
-      case "generate_links": return await generateLinks(supabase, params);
-      case "unify_legacy": return await unifyLegacy(supabase, params);
-      case "status": return await getStatus(supabase);
+      case "seed_countries": response = await seedCountries(supabase, params); break;
+      case "bulk_ingest": response = await bulkIngest(supabase, params); break;
+      case "promote_regions": response = await promoteRegions(supabase, params); break;
+      case "seed_entities": response = await seedEntities(supabase, params); break;
+      case "generate_links": response = await generateLinks(supabase, params); break;
+      case "unify_legacy": response = await unifyLegacy(supabase, params); break;
+      case "status": response = await getStatus(supabase); break;
       default:
         return jsonRes({ error: `Unknown action: ${action}` }, 400);
     }
+
+    await supabase.rpc("register_pipeline_heartbeat", {
+      _pipeline_name: "planetary-backfill",
+      _success: true,
+      _metadata: { action },
+    });
+    return response;
   } catch (e) {
     console.error("planetary-backfill error:", e);
+    await supabase.rpc("register_pipeline_heartbeat", {
+      _pipeline_name: "planetary-backfill",
+      _success: false,
+      _error: (e as Error).message,
+      _metadata: { action },
+    });
     return jsonRes({ error: (e as Error).message }, 500);
   }
 });
