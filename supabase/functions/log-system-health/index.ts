@@ -78,24 +78,33 @@ serve(async (req) => {
       }
     }
 
+    const apiHealthy = apiTests.filter((t) => t.ok).length;
+    const criticalFailure = missingEnv.length > 0 || failedTables.length > 0 || apiHealthy === 0;
+    const degraded = !criticalFailure && failedAPIs.length > 0;
+
     const diagnostics = {
-      status: missingEnv.length === 0 && failedAPIs.length === 0 && failedTables.length === 0 ? 'healthy' : 'degraded',
+      status: criticalFailure ? 'down' : degraded ? 'degraded' : 'healthy',
       missing_env: missingEnv,
       failed_apis: failedAPIs,
       failed_tables: failedTables,
+      api_summary: {
+        total: apiTests.length,
+        healthy: apiHealthy,
+        degraded: failedAPIs.length,
+      },
       latency_ms: Math.round(performance.now() - start)
     };
 
     // Log diagnostics
     await supabase.from("diagnostics_log").insert(diagnostics);
 
-    // Log errors if system is degraded
-    if (diagnostics.status === 'degraded') {
+    // Log errors if system is degraded or down
+    if (diagnostics.status !== 'healthy') {
       await supabase.from("system_errors").insert({
         component: "diagnostic",
-        message: "System issues detected",
+        message: diagnostics.status === 'down' ? "Critical system issues detected" : "External dependency degradation detected",
         details: diagnostics,
-        severity: failedTables.length > 0 ? 'high' : 'medium'
+        severity: criticalFailure ? 'high' : 'medium'
       });
     }
 
@@ -103,16 +112,18 @@ serve(async (req) => {
 
     await supabase.rpc("register_pipeline_heartbeat", {
       _pipeline_name: "log-system-health",
-      _success: diagnostics.status === 'healthy',
+      _success: !criticalFailure,
       _metadata: {
+        status: diagnostics.status,
         failed_apis: failedAPIs.length,
         failed_tables: failedTables.length,
         missing_env: missingEnv.length,
+        healthy_apis: apiHealthy,
       },
     });
 
     return new Response(JSON.stringify({
-      ok: diagnostics.status === 'healthy',
+      ok: !criticalFailure,
       ...diagnostics,
       timestamp: new Date().toISOString()
     }, null, 2), {

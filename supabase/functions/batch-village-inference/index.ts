@@ -30,23 +30,38 @@ serve(async (req) => {
 
     // Get total remaining count
     const { data: remainingCount } = await supabase.rpc("count_uncovered_regions");
-    const totalRemaining = remainingCount || 0;
+    const totalRemaining = Number(remainingCount || 0);
 
     if (!uncovered || uncovered.length === 0) {
+      await supabase.rpc("register_pipeline_heartbeat", {
+        _pipeline_name: FN,
+        _success: true,
+        _metadata: { processed: 0, indicators: 0, remaining: 0, mode: "idle" },
+      });
+
       return new Response(JSON.stringify({
         success: true,
-        message: "All regions have indicators!",
+        message: "All regions have fresh indicators!",
         remaining: 0,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     console.log(`[${FN}] Processing ${uncovered.length} regions, ${totalRemaining} total remaining`);
 
-    const results = { processed: 0, indicators: 0, errors: [] as string[] };
+    const results = { processed: 0, refreshed: 0, indicators: 0, errors: [] as string[] };
 
     for (const region of uncovered) {
       try {
+        const { error: cleanupError } = await supabase
+          .from("village_indicators")
+          .delete()
+          .eq("region_id", region.id);
+
+        if (cleanupError) throw cleanupError;
+
         const indicators = await generateIndicators(region);
+        const observedAt = new Date().toISOString();
+
         for (const ind of indicators) {
           const { error } = await supabase.from("village_indicators").insert({
             region_id: region.id,
@@ -57,22 +72,41 @@ serve(async (req) => {
             confidence: ind.confidence,
             data_source: "satellite_inference",
             inference_model: ind.model,
+            observed_at: observedAt,
             raw: ind.raw || null,
           });
-          if (!error) results.indicators++;
+          if (error) throw error;
+          results.indicators++;
         }
+
         results.processed++;
+        results.refreshed++;
       } catch (e) {
         results.errors.push(`${region.name}: ${(e as Error).message}`);
       }
       await new Promise(r => setTimeout(r, 600));
     }
 
-    const remaining = totalRemaining - results.processed;
+    const remaining = Math.max(0, totalRemaining - results.processed);
+    const success = results.errors.length === 0 && (results.processed > 0 || remaining === 0);
 
     await supabase.from("automation_logs").insert({
-      job_name: FN, status: results.errors.length > 0 ? "partial" : "success",
-      message: `${results.processed}/${uncovered.length} regions, ${results.indicators} ind. Remaining: ${remaining}`,
+      job_name: FN,
+      status: success ? "success" : results.processed > 0 ? "partial" : "failed",
+      message: `${results.processed}/${uncovered.length} regions refreshed, ${results.indicators} indicators. Remaining: ${remaining}`,
+    });
+
+    await supabase.rpc("register_pipeline_heartbeat", {
+      _pipeline_name: FN,
+      _success: success,
+      _error: results.errors.length > 0 ? results.errors.slice(0, 3).join(" | ") : null,
+      _metadata: {
+        processed: results.processed,
+        refreshed: results.refreshed,
+        indicators: results.indicators,
+        remaining,
+        errors: results.errors.length,
+      },
     });
 
     if (remaining > 0) {
@@ -84,7 +118,9 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      success: true, results, remaining,
+      success,
+      results,
+      remaining,
       auto_continuing: remaining > 0,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
