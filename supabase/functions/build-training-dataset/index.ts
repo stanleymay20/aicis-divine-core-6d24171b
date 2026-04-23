@@ -1,5 +1,5 @@
 // AICIS Training Dataset Builder
-// Triggers the build_training_dataset_aicis SQL function and returns stats.
+// Triggers the build_training_dataset_aicis SQL function in safe chunks and returns stats.
 // Also supports ?export=csv to stream the dataset as CSV for external Python training.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -19,6 +19,20 @@ function csvEscape(v: unknown): string {
   return s;
 }
 
+function toIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return toIsoDate(d);
+}
+
+function compareIsoDates(a: string, b: string): number {
+  return a.localeCompare(b);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -32,9 +46,8 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const isExport = url.searchParams.get("export") === "csv";
 
-    // ----- CSV EXPORT MODE -----
     if (isExport) {
-      const split = url.searchParams.get("split"); // train | val | test | all
+      const split = url.searchParams.get("split");
       let q = supabase
         .from("training_dataset_aicis")
         .select("*")
@@ -49,7 +62,7 @@ Deno.serve(async (req) => {
       const cols = Object.keys(data[0]);
       const header = cols.join(",");
       const rows = data
-        .map((r: any) => cols.map((c) => csvEscape(r[c])).join(","))
+        .map((r: Record<string, unknown>) => cols.map((c) => csvEscape(r[c])).join(","))
         .join("\n");
       return new Response(`${header}\n${rows}\n`, {
         headers: {
@@ -60,32 +73,64 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ----- BUILD MODE -----
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const horizon = Number(body.horizon_days ?? 7);
-    const endDate: string =
-      body.end_date ?? new Date().toISOString().slice(0, 10);
-    // default: build last 90 days (so the most recent ~horizon days won't have full labels yet)
+    const endDate: string = body.end_date ?? new Date().toISOString().slice(0, 10);
     const startDate: string =
       body.start_date ??
       new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10);
+    const chunkDays = Math.max(1, Math.min(Number(body.chunk_days ?? 1), 7));
 
     console.log(
-      `[build-training-dataset] Building ${startDate} → ${endDate}, horizon=${horizon}d`,
+      `[build-training-dataset] Building ${startDate} → ${endDate}, horizon=${horizon}d, chunk_days=${chunkDays}`,
     );
 
-    const { data, error } = await supabase.rpc("build_training_dataset_aicis", {
-      p_start_date: startDate,
-      p_end_date: endDate,
-      p_horizon_days: horizon,
-    });
-    if (error) throw error;
+    const aggregate = {
+      rows_inserted: 0,
+      rows_with_label: 0,
+      build_seconds: 0,
+      chunks_completed: 0,
+      chunk_days: chunkDays,
+      failures: [] as Array<{ start: string; end: string; error: string }>,
+    };
 
-    const stats = Array.isArray(data) ? data[0] : data;
+    let cursor = startDate;
+    while (compareIsoDates(cursor, endDate) <= 0) {
+      const chunkEndCandidate = addDays(cursor, chunkDays - 1);
+      const chunkEnd = compareIsoDates(chunkEndCandidate, endDate) <= 0 ? chunkEndCandidate : endDate;
 
-    // Quick distribution snapshot
+      const { data, error } = await supabase.rpc("build_training_dataset_aicis", {
+        p_start_date: cursor,
+        p_end_date: chunkEnd,
+        p_horizon_days: horizon,
+      });
+
+      if (error) {
+        aggregate.failures.push({
+          start: cursor,
+          end: chunkEnd,
+          error: error.message ?? String(error),
+        });
+      } else {
+        const stats = Array.isArray(data) ? data[0] : data;
+        aggregate.rows_inserted += Number(stats?.rows_inserted ?? 0);
+        aggregate.rows_with_label += Number(stats?.rows_with_label ?? 0);
+        aggregate.build_seconds += Number(stats?.build_seconds ?? 0);
+        aggregate.chunks_completed += 1;
+      }
+
+      cursor = addDays(chunkEnd, 1);
+    }
+
+    if (aggregate.chunks_completed === 0) {
+      return new Response(JSON.stringify({ ok: false, error: "all chunks failed", details: aggregate.failures }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: distRows } = await supabase
       .from("training_dataset_aicis")
       .select("dataset_split, label_did_deteriorate")
@@ -104,14 +149,16 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        ok: true,
-        window: { start: startDate, end: endDate, horizon_days: horizon },
-        stats,
+        ok: aggregate.failures.length === 0,
+        partial: aggregate.failures.length > 0,
+        window: { start: startDate, end: endDate, horizon_days: horizon, chunk_days: chunkDays },
+        stats: aggregate,
         distribution: dist,
         positive_rate: dist.total > 0 ? dist.positives / dist.total : 0,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: aggregate.failures.length > 0 ? 207 : 200,
       },
     );
   } catch (e) {
