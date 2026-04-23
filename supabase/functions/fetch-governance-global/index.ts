@@ -63,6 +63,13 @@ serve(async (req) => {
           }));
 
         if (records.length > 0) {
+          // Delete existing rows for this indicator+year set, then insert (idempotent)
+          const years = Array.from(new Set(records.map((r: any) => r.year)));
+          await supabase.from("governance_global")
+            .delete()
+            .eq("source", "worldbank")
+            .eq("indicator_name", indicator.name)
+            .in("year", years);
           const { error } = await supabase.from("governance_global").insert(records);
           if (error) throw new Error(`DB insert ${indicator.code}: ${error.message}`);
         }
