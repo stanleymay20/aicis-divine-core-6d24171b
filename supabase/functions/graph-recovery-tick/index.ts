@@ -246,21 +246,28 @@ async function drainGlobalSignals(supabase: any): Promise<{ offset: number; migr
     return { offset, migrated: 0, has_more: false };
   }
 
-  const rows = signals.map((s: any) => ({
-    provider_name: "aicis_signals",
-    event_type: s.category || s.event_type || "signal",
-    title: s.title || s.headline || "Signal",
-    description: s.summary || s.description || "",
-    iso3: Array.isArray(s.affected_regions) ? s.affected_regions[0] : (s.iso3 || s.country_iso3 || null),
-    started_at: s.detected_at || s.created_at,
-    severity: s.impact_score ?? s.severity ?? null,
-    confidence: s.confidence_score ?? s.confidence ?? 0.5,
-    provenance_source: "global_signals",
-    dedup_key: `e:signals:${s.id}`,
-    freshness_score: 0.8,
-    last_verified_at: s.created_at,
-    metadata: { category: s.category, urgency: s.urgency_score, source_tier: s.source_tier },
-  }));
+  const seen = new Set<string>();
+  const rows = signals
+    .map((s: any) => ({
+      provider_name: "aicis_signals",
+      event_type: s.category || s.event_type || "signal",
+      title: s.title || s.headline || "Signal",
+      description: s.summary || s.description || "",
+      iso3: Array.isArray(s.affected_regions) ? s.affected_regions[0] : (s.iso3 || s.country_iso3 || null),
+      started_at: s.detected_at || s.created_at,
+      severity: s.impact_score ?? s.severity ?? null,
+      confidence: s.confidence_score ?? s.confidence ?? 0.5,
+      provenance_source: "global_signals",
+      dedup_key: `e:signals:${s.id}`,
+      freshness_score: 0.8,
+      last_verified_at: s.created_at,
+      metadata: { category: s.category, urgency: s.urgency_score, source_tier: s.source_tier },
+    }))
+    .filter((r: any) => {
+      if (seen.has(r.dedup_key)) return false;
+      seen.add(r.dedup_key);
+      return true;
+    });
 
   let migrated = 0;
   for (let i = 0; i < rows.length; i += 500) {

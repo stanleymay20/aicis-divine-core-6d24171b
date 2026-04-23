@@ -3,19 +3,23 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
 
 const FN = "fetch-governance-global";
-const TIMEOUT_MS = 15000;
-const PER_PAGE = 400;
+const TIMEOUT_MS = 30000;
+const PER_PAGE = 20000;
+const LOOKBACK_YEARS = 6;
 
 interface IndicatorSpec {
   code: string;
   name: string;
 }
 
+// Note: World Bank WGI series (GE.EST, RL.EST, etc.) was archived from the public API in 2024.
+// We now use CPIA governance proxies (source: WDI) which are actively maintained.
 const INDICATORS: IndicatorSpec[] = [
-  { code: "GE.EST", name: "government_effectiveness" },
-  { code: "RL.EST", name: "rule_of_law" },
-  { code: "VA.EST", name: "voice_accountability" },
-  { code: "CC.EST", name: "control_of_corruption" },
+  { code: "IQ.CPA.PUBS.XQ", name: "quality_of_public_administration" },
+  { code: "IQ.CPA.TRAN.XQ", name: "transparency_accountability_corruption" },
+  { code: "IQ.CPA.PROP.XQ", name: "property_rights_rule_based_governance" },
+  { code: "VC.IHR.PSRC.P5", name: "intentional_homicides_per_100k" },
+  { code: "GC.TAX.TOTL.GD.ZS", name: "tax_revenue_pct_gdp" },
 ];
 
 serve(async (req) => {
@@ -49,7 +53,7 @@ serve(async (req) => {
 
         const records = rows
           .filter((item: any) => item?.value !== null && item?.countryiso3code && item.countryiso3code !== "")
-          .filter((item: any) => Number(item.date) >= currentYear - 3)
+          .filter((item: any) => Number(item.date) >= currentYear - LOOKBACK_YEARS)
           .map((item: any) => ({
             country: item.country.value,
             iso_code: item.countryiso3code,
@@ -62,6 +66,13 @@ serve(async (req) => {
           }));
 
         if (records.length > 0) {
+          // Delete existing rows for this indicator+year set, then insert (idempotent)
+          const years = Array.from(new Set(records.map((r: any) => r.year)));
+          await supabase.from("governance_global")
+            .delete()
+            .eq("source", "worldbank")
+            .eq("indicator_name", indicator.name)
+            .in("year", years);
           const { error } = await supabase.from("governance_global").insert(records);
           if (error) throw new Error(`DB insert ${indicator.code}: ${error.message}`);
         }

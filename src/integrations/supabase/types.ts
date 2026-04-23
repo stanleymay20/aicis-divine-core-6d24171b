@@ -12287,18 +12287,32 @@ export type Database = {
         Args: { _decision_id: string }
         Returns: string
       }
-      build_training_dataset_aicis: {
-        Args: {
-          p_end_date: string
-          p_horizon_days?: number
-          p_start_date: string
-        }
-        Returns: {
-          build_seconds: number
-          rows_inserted: number
-          rows_with_label: number
-        }[]
-      }
+      build_training_dataset_aicis:
+        | {
+            Args: {
+              p_end_date: string
+              p_horizon_days?: number
+              p_start_date: string
+            }
+            Returns: {
+              build_seconds: number
+              rows_inserted: number
+              rows_with_label: number
+            }[]
+          }
+        | {
+            Args: {
+              p_end_date: string
+              p_horizon_days: number
+              p_iso3_filter: string
+              p_start_date: string
+            }
+            Returns: {
+              build_seconds: number
+              rows_inserted: number
+              rows_with_label: number
+            }[]
+          }
       check_accumulation_health: { Args: never; Returns: Json }
       check_daily_accumulation_misses: { Args: never; Returns: Json }
       check_ip_access: {
