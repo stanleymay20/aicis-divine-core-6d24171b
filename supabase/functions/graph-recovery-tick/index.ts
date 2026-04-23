@@ -51,7 +51,14 @@ Deno.serve(async (req) => {
     result.metric_links = linkRes;
 
     // ─── Step 3: promote next batch of admin_regions to canonical_entities
-    result.canonical_entities = await promoteRegionsBatch(supabase);
+    const { data: expandRes, error: expandErr } = await supabase.rpc("batch_expand_entities", { _batch_size: 1000 });
+    if (expandErr) throw expandErr;
+    result.canonical_entities = {
+      promoted: expandRes?.inserted ?? 0,
+      updated: expandRes?.updated ?? 0,
+      remaining: expandRes?.remaining ?? null,
+      phase: expandRes?.phase ?? null,
+    };
 
     // ─── Step 4: drain global_signals into normalized_events ─────────────
     result.signal_drain = await drainGlobalSignals(supabase);
@@ -214,69 +221,6 @@ function inferIso3FromText(text: string): string | null {
   if (!text) return null;
   for (const [re, iso] of COUNTRY_HINTS) if (re.test(text)) return iso;
   return null;
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// Step 3: Promote next batch of admin_regions to canonical_entities.
-// Targets unpromoted regions (skip those already linked via metadata.admin_region_id).
-// ═══════════════════════════════════════════════════════════════════════
-async function promoteRegionsBatch(supabase: any): Promise<{ scanned: number; promoted: number; admin_levels: number[] }> {
-  // Get list of admin_region_ids already promoted (cap at 30k for memory)
-  const { data: promotedIds } = await supabase
-    .from("canonical_entities")
-    .select("metadata")
-    .eq("entity_type", "city")
-    .not("metadata->>admin_region_id", "is", null)
-    .limit(30000);
-  const alreadyPromoted = new Set<string>((promotedIds || []).map((r: any) => r.metadata?.admin_region_id).filter(Boolean));
-
-  // Pull a batch of regions, prioritising deep admin levels (L4 = villages)
-  const { data: regions } = await supabase
-    .from("admin_regions")
-    .select("id, name, admin_level, lat, lon, country_iso3, population_est, urban_rural")
-    .not("lat", "is", null)
-    .not("lon", "is", null)
-    .order("admin_level", { ascending: false })
-    .order("id")
-    .limit(2000);
-
-  if (!regions || regions.length === 0) return { scanned: 0, promoted: 0, admin_levels: [] };
-
-  const newRegions = regions.filter((r: any) => !alreadyPromoted.has(r.id)).slice(0, 500);
-  if (newRegions.length === 0) return { scanned: regions.length, promoted: 0, admin_levels: [] };
-
-  const adminLevels = Array.from(new Set(newRegions.map((r: any) => r.admin_level)));
-
-  const rows = newRegions.map((r: any) => ({
-    canonical_name: `${r.name}, ${r.country_iso3} L${r.admin_level}`,
-    entity_type: "city" as const,
-    display_name: r.name,
-    iso3: r.country_iso3,
-    lat: r.lat,
-    lon: r.lon,
-    trust_score: 0.8,
-    source_count: 1,
-    metadata: {
-      admin_level: r.admin_level,
-      country_iso3: r.country_iso3,
-      population_est: r.population_est,
-      urban_rural: r.urban_rural,
-      admin_region_id: r.id,
-    },
-    last_resolved_at: new Date().toISOString(),
-  }));
-
-  let promoted = 0;
-  for (let i = 0; i < rows.length; i += 200) {
-    const slice = rows.slice(i, i + 200);
-    const { data: ins } = await supabase
-      .from("canonical_entities")
-      .upsert(slice, { onConflict: "entity_type,normalized_name", ignoreDuplicates: true })
-      .select("id");
-    promoted += ins?.length ?? 0;
-  }
-
-  return { scanned: regions.length, promoted, admin_levels: adminLevels };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
