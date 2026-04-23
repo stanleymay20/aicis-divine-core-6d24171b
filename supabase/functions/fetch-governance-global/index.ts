@@ -12,11 +12,14 @@ interface IndicatorSpec {
   name: string;
 }
 
+// Note: World Bank WGI series (GE.EST, RL.EST, etc.) was archived from the public API in 2024.
+// We now use CPIA governance proxies (source: WDI) which are actively maintained.
 const INDICATORS: IndicatorSpec[] = [
-  { code: "GE.EST", name: "government_effectiveness" },
-  { code: "RL.EST", name: "rule_of_law" },
-  { code: "VA.EST", name: "voice_accountability" },
-  { code: "CC.EST", name: "control_of_corruption" },
+  { code: "IQ.CPA.PUBS.XQ", name: "quality_of_public_administration" },
+  { code: "IQ.CPA.TRAN.XQ", name: "transparency_accountability_corruption" },
+  { code: "IQ.CPA.PROP.XQ", name: "property_rights_rule_based_governance" },
+  { code: "VC.IHR.PSRC.P5", name: "intentional_homicides_per_100k" },
+  { code: "GC.TAX.TOTL.GD.ZS", name: "tax_revenue_pct_gdp" },
 ];
 
 serve(async (req) => {
