@@ -82,9 +82,11 @@ Deno.serve(async (req) => {
         .toISOString()
         .slice(0, 10);
     const chunkDays = Math.max(1, Math.min(Number(body.chunk_days ?? 1), 7));
+    const perCountry = body.per_country !== false; // default true
+    const maxCountries = Number(body.max_countries ?? 250);
 
     console.log(
-      `[build-training-dataset] Building ${startDate} → ${endDate}, horizon=${horizon}d, chunk_days=${chunkDays}`,
+      `[build-training-dataset] Building ${startDate} → ${endDate}, horizon=${horizon}d, chunk_days=${chunkDays}, per_country=${perCountry}`,
     );
 
     const aggregate = {
@@ -93,32 +95,53 @@ Deno.serve(async (req) => {
       build_seconds: 0,
       chunks_completed: 0,
       chunk_days: chunkDays,
-      failures: [] as Array<{ start: string; end: string; error: string }>,
+      countries_processed: 0,
+      failures: [] as Array<{ start: string; end: string; iso3?: string; error: string }>,
     };
+
+    let countries: string[] = [];
+    if (perCountry) {
+      const { data: countriesRes } = await supabase
+        .from("normalized_metrics")
+        .select("iso3")
+        .not("iso3", "is", null)
+        .gte("provenance_observed_at", new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString())
+        .limit(50000);
+      countries = Array.from(new Set((countriesRes ?? []).map((r: any) => r.iso3))).slice(0, maxCountries) as string[];
+      console.log(`[build-training-dataset] ${countries.length} countries to process`);
+    }
 
     let cursor = startDate;
     while (compareIsoDates(cursor, endDate) <= 0) {
       const chunkEndCandidate = addDays(cursor, chunkDays - 1);
       const chunkEnd = compareIsoDates(chunkEndCandidate, endDate) <= 0 ? chunkEndCandidate : endDate;
 
-      const { data, error } = await supabase.rpc("build_training_dataset_aicis", {
-        p_start_date: cursor,
-        p_end_date: chunkEnd,
-        p_horizon_days: horizon,
-      });
+      const targets: (string | null)[] = perCountry ? countries : [null];
+      for (const iso3 of targets) {
+        const params: Record<string, unknown> = {
+          p_start_date: cursor,
+          p_end_date: chunkEnd,
+          p_horizon_days: horizon,
+        };
+        if (iso3 !== null) params.p_iso3_filter = iso3;
 
-      if (error) {
-        aggregate.failures.push({
-          start: cursor,
-          end: chunkEnd,
-          error: error.message ?? String(error),
-        });
-      } else {
-        const stats = Array.isArray(data) ? data[0] : data;
-        aggregate.rows_inserted += Number(stats?.rows_inserted ?? 0);
-        aggregate.rows_with_label += Number(stats?.rows_with_label ?? 0);
-        aggregate.build_seconds += Number(stats?.build_seconds ?? 0);
-        aggregate.chunks_completed += 1;
+        const { data, error } = await supabase.rpc("build_training_dataset_aicis", params);
+
+        if (error) {
+          aggregate.failures.push({
+            start: cursor,
+            end: chunkEnd,
+            iso3: iso3 ?? undefined,
+            error: error.message ?? String(error),
+          });
+        } else {
+          const stats = Array.isArray(data) ? data[0] : data;
+          aggregate.rows_inserted += Number(stats?.rows_inserted ?? 0);
+          aggregate.rows_with_label += Number(stats?.rows_with_label ?? 0);
+          aggregate.build_seconds += Number(stats?.build_seconds ?? 0);
+          aggregate.chunks_completed += 1;
+          if (iso3) aggregate.countries_processed += 1;
+        }
       }
 
       cursor = addDays(chunkEnd, 1);
