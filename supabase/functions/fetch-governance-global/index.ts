@@ -3,8 +3,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
 
 const FN = "fetch-governance-global";
-const TIMEOUT_MS = 15000;
-const PER_PAGE = 400;
+const TIMEOUT_MS = 30000;
+const PER_PAGE = 20000;
+const LOOKBACK_YEARS = 6;
 
 interface IndicatorSpec {
   code: string;
@@ -49,7 +50,7 @@ serve(async (req) => {
 
         const records = rows
           .filter((item: any) => item?.value !== null && item?.countryiso3code && item.countryiso3code !== "")
-          .filter((item: any) => Number(item.date) >= currentYear - 3)
+          .filter((item: any) => Number(item.date) >= currentYear - LOOKBACK_YEARS)
           .map((item: any) => ({
             country: item.country.value,
             iso_code: item.countryiso3code,
