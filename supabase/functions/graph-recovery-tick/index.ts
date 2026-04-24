@@ -176,14 +176,30 @@ async function linkRecentEvents(supabase: any): Promise<{ scanned: number; creat
     }
   }
 
+  // Final defensive dedup of the full row set by composite key (the existingKey
+  // map can be incomplete when Postgres' implicit 1000-row select cap truncates
+  // the existing-link lookup, which previously caused
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time" errors).
+  const sliceSeen = new Set<string>();
+  const dedupedRows = rows.filter((r: any) => {
+    const k = `${r.event_id}|${r.entity_id}|${r.link_role}`;
+    if (sliceSeen.has(k)) return false;
+    sliceSeen.add(k);
+    return true;
+  });
+
   let created = 0;
-  for (let i = 0; i < rows.length; i += 500) {
-    const slice = rows.slice(i, i + 500);
+  for (let i = 0; i < dedupedRows.length; i += 500) {
+    const slice = dedupedRows.slice(i, i + 500);
     const { data: ins, error } = await supabase
       .from("entity_event_links")
       .upsert(slice, { onConflict: "event_id,entity_id,link_role", ignoreDuplicates: true })
       .select("id");
-    if (!error) created += ins?.length ?? 0;
+    if (error) {
+      console.error("entity_event_links upsert error:", error.message);
+      continue;
+    }
+    created += ins?.length ?? 0;
   }
   return { scanned: events.length, created, inferred_iso3: inferredCount };
 }
