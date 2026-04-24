@@ -12361,6 +12361,14 @@ export type Database = {
       compute_uptime_snapshot: { Args: never; Returns: Json }
       count_districts_needing_settlements: { Args: never; Returns: number }
       count_uncovered_regions: { Args: never; Returns: number }
+      enqueue_quantivis_event_batch: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
+      enqueue_quantivis_metric_batch: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
       enqueue_quantivis_webhook: {
         Args: { p_event_type: string; p_payload: Json; p_target_url?: string }
         Returns: string
