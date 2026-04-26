@@ -125,11 +125,13 @@ serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error(`[${FN}] Error:`, e);
-    await supabase.rpc("register_pipeline_heartbeat", {
-      _pipeline_name: FN,
-      _success: false,
-      _error: (e as Error).message,
-    }).catch(() => {});
+    await Promise.resolve(
+      supabase.rpc("register_pipeline_heartbeat", {
+        _pipeline_name: FN,
+        _success: false,
+        _error: (e as Error).message,
+      })
+    ).catch(() => {});
     return new Response(JSON.stringify({ error: (e as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

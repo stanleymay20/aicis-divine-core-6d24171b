@@ -56,12 +56,13 @@ serve(async (req) => {
 
     // Get last diagnostic check with retry
     const { data: lastCheck } = await retryCall(() =>
-      supabase.from("diagnostics_log")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-        .then(r => { if (r.error) throw r.error; return r; })
+      Promise.resolve(
+        supabase.from("diagnostics_log")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      ).then(r => { if (r.error) throw r.error; return r; })
     );
 
     if (!lastCheck || lastCheck.status === 'healthy') {
@@ -78,10 +79,11 @@ serve(async (req) => {
     if (!isCircuitOpen('system_errors')) {
       try {
         const { data: errors } = await retryCall(() =>
-          supabase.from("system_errors")
-            .select("*").eq("resolved", false)
-            .order("created_at", { ascending: false }).limit(10)
-            .then(r => { if (r.error) throw r.error; return r; })
+          Promise.resolve(
+            supabase.from("system_errors")
+              .select("*").eq("resolved", false)
+              .order("created_at", { ascending: false }).limit(10)
+          ).then(r => { if (r.error) throw r.error; return r; })
         );
 
         if (errors && errors.length > 0) {
@@ -120,7 +122,7 @@ serve(async (req) => {
       for (const tbl of lastCheck.failed_tables) {
         try {
           const { error } = await retryCall(() =>
-            supabase.from(tbl).select("id").limit(1).then(r => r)
+            Promise.resolve(supabase.from(tbl).select("id").limit(1))
           );
           if (!error) {
             repairs.push({ component: tbl, action: 'table_recovered', status: 'success' });
