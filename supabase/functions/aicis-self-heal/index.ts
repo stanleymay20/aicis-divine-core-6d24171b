@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // ─── Resilience utilities (inline — Deno can't import relative _shared in prod) ──
 
-async function retryCall<T>(fn: () => Promise<T>, retries = 2, baseMs = 400): Promise<T> {
+async function retryCall<T>(fn: () => Promise<T> | PromiseLike<T>, retries = 2, baseMs = 400): Promise<T> {
   let last: Error | undefined;
   for (let i = 0; i <= retries; i++) {
     try { return await fn(); } catch (e) {
