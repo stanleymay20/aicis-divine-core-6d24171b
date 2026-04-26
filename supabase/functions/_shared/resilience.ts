@@ -42,7 +42,7 @@ function recordFailure(key: string): void {
 // ─── Retry with Exponential Backoff ─────────────────────────────────
 
 export async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
+  fn: () => Promise<T> | PromiseLike<T>,
   maxRetries: number = 2,
   baseDelayMs: number = 400,
 ): Promise<T> {
@@ -64,12 +64,12 @@ export async function retryWithBackoff<T>(
 // ─── Timeout Wrapper ────────────────────────────────────────────────
 
 export async function timeoutWrapper<T>(
-  fn: () => Promise<T>,
+  fn: () => Promise<T> | PromiseLike<T>,
   timeoutMs: number = 25000,
   label: string = 'operation',
 ): Promise<T> {
   return Promise.race([
-    fn(),
+    Promise.resolve(fn()),
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
     ),
