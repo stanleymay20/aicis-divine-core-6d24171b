@@ -12,6 +12,29 @@ function isoDaysAgo(days: number) {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Run a single async step with isolation, timing, and error capture.
+ * Never throws — always returns a structured result so the parent chain continues.
+ */
+async function runStep<T>(
+  name: string,
+  fn: () => Promise<T>,
+  timeoutMs = 90_000,
+): Promise<{ name: string; ok: boolean; duration_ms: number; result?: T; error?: string }> {
+  const start = Date.now();
+  try {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`step "${name}" timed out after ${timeoutMs}ms`)), timeoutMs),
+    );
+    const result = await Promise.race([fn(), timeout]);
+    return { name, ok: true, duration_ms: Date.now() - start, result };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    console.error(`[cron-daily-predictions] step "${name}" failed: ${error}`);
+    return { name, ok: false, duration_ms: Date.now() - start, error };
+  }
+}
+
 async function refreshCrossBorderSignals(supabase: any) {
   const { data: latestBatch } = await supabase
     .from("risk_ranking_predictions")
@@ -42,7 +65,6 @@ async function refreshCrossBorderSignals(supabase: any) {
   if (countriesErr) throw countriesErr;
 
   const idToIso = new Map((countries ?? []).map((c: any) => [c.id, c.iso3]));
-  const isoToId = new Map((countries ?? []).map((c: any) => [c.iso3, c.id]));
   const countryIds = Array.from(idToIso.keys());
   if (countryIds.length === 0) return { created: 0, reason: "no_country_entities" };
 
@@ -108,81 +130,103 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
-  try {
-    const trainingWindow = {
-      start_date: isoDaysAgo(21),
-      end_date: isoDaysAgo(7),
-      horizon_days: 7,
-      chunk_days: 1,
-    };
+  const overallStart = Date.now();
+  const trainingWindow = {
+    start_date: isoDaysAgo(21),
+    end_date: isoDaysAgo(7),
+    horizon_days: 7,
+    chunk_days: 1,
+  };
 
-    const [forecastRun, trainingRun, rankingRun, influenceRun] = await Promise.all([
-      supabase.functions.invoke("generate-predictions"),
-      supabase.functions.invoke("build-training-dataset", { body: trainingWindow }),
-      supabase.functions.invoke("predict-risk-ranking", { body: { mode: "refresh", top_n: 200 } }),
-      supabase.rpc("compute_cross_domain_influence"),
-    ]);
+  // Sequential, isolated steps. One failure cannot kill the chain.
+  const steps: Array<{ name: string; ok: boolean; duration_ms: number; result?: any; error?: string }> = [];
 
-    if (forecastRun.error) throw forecastRun.error;
-    if (trainingRun.error) throw trainingRun.error;
-    if (rankingRun.error) throw rankingRun.error;
-    if (influenceRun.error) throw influenceRun.error;
+  steps.push(await runStep("forecast", () =>
+    supabase.functions.invoke("generate-predictions").then((r) => {
+      if (r.error) throw r.error;
+      return r.data;
+    }),
+  ));
 
-    const crossBorder = await refreshCrossBorderSignals(supabase);
-    const predictionsGenerated = forecastRun.data?.predictions_generated || 0;
-    const rankingInserted = rankingRun.data?.rows_inserted || 0;
-    const trainingInserted = trainingRun.data?.stats?.rows_inserted || trainingRun.data?.stats?.rows_inserted === 0
-      ? trainingRun.data.stats.rows_inserted
-      : 0;
-    const influenceInserted = influenceRun.data?.rows_inserted || 0;
+  steps.push(await runStep("training", () =>
+    supabase.functions.invoke("build-training-dataset", { body: trainingWindow }).then((r) => {
+      if (r.error) throw r.error;
+      return r.data;
+    }),
+  ));
 
-    await supabase.from("automation_logs").insert({
-      job_name: "cron-daily-predictions",
-      status: "success",
-      message: `predictions=${predictionsGenerated}, training=${trainingInserted}, ranking=${rankingInserted}, influence=${influenceInserted}, cross_border=${crossBorder.created}`,
-    });
+  steps.push(await runStep("ranking", () =>
+    supabase.functions.invoke("predict-risk-ranking", { body: { mode: "refresh", top_n: 200 } }).then((r) => {
+      if (r.error) throw r.error;
+      return r.data;
+    }),
+  ));
 
-    await supabase.rpc("register_pipeline_heartbeat", {
-      _pipeline_name: "cron-daily-predictions",
-      _success: true,
-      _metadata: {
-        predictions_generated: predictionsGenerated,
-        training_rows: trainingInserted,
-        risk_rows: rankingInserted,
-        cross_domain_rows: influenceInserted,
-        cross_border_rows: crossBorder.created,
-      },
-    });
+  steps.push(await runStep("cross_domain_influence", () =>
+    supabase.rpc("compute_cross_domain_influence").then((r) => {
+      if (r.error) throw r.error;
+      return r.data;
+    }),
+  ));
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        predictions: forecastRun.data,
-        training: trainingRun.data,
-        ranking: rankingRun.data,
-        cross_domain: influenceRun.data,
-        cross_border: crossBorder,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  } catch (error) {
-    console.error("Error in daily predictions:", error);
+  // Cross-border MUST run regardless of upstream failures (uses latest batch in DB).
+  steps.push(await runStep("cross_border", () => refreshCrossBorderSignals(supabase), 60_000));
 
-    await supabase.from("automation_logs").insert({
-      job_name: "cron-daily-predictions",
-      status: "error",
-      message: error instanceof Error ? error.message : "Unknown error",
-    });
+  const failed = steps.filter((s) => !s.ok);
+  const succeeded = steps.filter((s) => s.ok);
+  const overallStatus = failed.length === 0 ? "success" : (succeeded.length > 0 ? "partial" : "error");
 
-    await supabase.rpc("register_pipeline_heartbeat", {
-      _pipeline_name: "cron-daily-predictions",
-      _success: false,
-      _error: error instanceof Error ? error.message : "Unknown error",
-    });
+  // Extract metrics for log message
+  const forecast = steps.find((s) => s.name === "forecast")?.result;
+  const training = steps.find((s) => s.name === "training")?.result;
+  const ranking = steps.find((s) => s.name === "ranking")?.result;
+  const influence = steps.find((s) => s.name === "cross_domain_influence")?.result;
+  const crossBorder = steps.find((s) => s.name === "cross_border")?.result;
 
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
+  const summary = {
+    predictions: forecast?.predictions_generated ?? 0,
+    training: training?.stats?.rows_inserted ?? 0,
+    ranking: ranking?.rows_inserted ?? 0,
+    influence: influence?.rows_inserted ?? 0,
+    cross_border: crossBorder?.created ?? 0,
+    failed_steps: failed.map((s) => `${s.name}:${s.error}`),
+    duration_ms: Date.now() - overallStart,
+  };
+
+  const message = failed.length === 0
+    ? `predictions=${summary.predictions}, training=${summary.training}, ranking=${summary.ranking}, influence=${summary.influence}, cross_border=${summary.cross_border}`
+    : `partial: ok=[${succeeded.map((s) => s.name).join(",")}] failed=[${failed.map((s) => s.name).join(",")}] | ${summary.failed_steps.join(" | ")}`;
+
+  await supabase.from("automation_logs").insert({
+    job_name: "cron-daily-predictions",
+    status: overallStatus,
+    message: message.substring(0, 1000),
+  });
+
+  await supabase.rpc("register_pipeline_heartbeat", {
+    _pipeline_name: "cron-daily-predictions",
+    _success: failed.length === 0,
+    _error: failed.length > 0 ? failed.map((s) => `${s.name}:${s.error}`).join(" | ").substring(0, 500) : null,
+    _metadata: {
+      predictions_generated: summary.predictions,
+      training_rows: summary.training,
+      risk_rows: summary.ranking,
+      cross_domain_rows: summary.influence,
+      cross_border_rows: summary.cross_border,
+      step_durations_ms: Object.fromEntries(steps.map((s) => [s.name, s.duration_ms])),
+      failed_steps: summary.failed_steps,
+    },
+  });
+
+  // Always return 200 — the cron should not "fail" if partial work was done.
+  // Use HTTP body to communicate detailed status.
+  return new Response(
+    JSON.stringify({
+      success: failed.length === 0,
+      status: overallStatus,
+      summary,
+      steps: steps.map((s) => ({ name: s.name, ok: s.ok, duration_ms: s.duration_ms, error: s.error })),
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
 });
