@@ -80,7 +80,7 @@ export async function timeoutWrapper<T>(
 
 export async function resilientCall<T>(
   key: string,
-  fn: () => Promise<T>,
+  fn: () => Promise<T> | PromiseLike<T>,
   options: { maxRetries?: number; timeoutMs?: number } = {},
 ): Promise<T> {
   const { maxRetries = 2, timeoutMs = 25000 } = options;
