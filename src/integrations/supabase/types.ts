@@ -8589,6 +8589,13 @@ export type Database = {
             foreignKeyName: "risk_action_recommendations_ranking_id_fkey"
             columns: ["ranking_id"]
             isOneToOne: false
+            referencedRelation: "quantivis_risk_predictions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "risk_action_recommendations_ranking_id_fkey"
+            columns: ["ranking_id"]
+            isOneToOne: false
             referencedRelation: "risk_ranking_predictions"
             referencedColumns: ["id"]
           },
@@ -8719,6 +8726,13 @@ export type Database = {
           surprise?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "risk_prediction_realizations_prediction_id_fkey"
+            columns: ["prediction_id"]
+            isOneToOne: true
+            referencedRelation: "quantivis_risk_predictions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "risk_prediction_realizations_prediction_id_fkey"
             columns: ["prediction_id"]
@@ -12126,6 +12140,75 @@ export type Database = {
         }
         Relationships: []
       }
+      quantivis_cross_border_signals: {
+        Row: {
+          affected_iso3: string[] | null
+          description: string | null
+          detected_at: string | null
+          domain: string | null
+          id: string | null
+          intensity: number | null
+          metadata: Json | null
+          origin_iso3: string | null
+          signal_type: string | null
+        }
+        Insert: {
+          affected_iso3?: string[] | null
+          description?: string | null
+          detected_at?: string | null
+          domain?: string | null
+          id?: string | null
+          intensity?: number | null
+          metadata?: Json | null
+          origin_iso3?: string | null
+          signal_type?: string | null
+        }
+        Update: {
+          affected_iso3?: string[] | null
+          description?: string | null
+          detected_at?: string | null
+          domain?: string | null
+          id?: string | null
+          intensity?: number | null
+          metadata?: Json | null
+          origin_iso3?: string | null
+          signal_type?: string | null
+        }
+        Relationships: []
+      }
+      quantivis_cross_domain_influence: {
+        Row: {
+          computed_at: string | null
+          id: string | null
+          lag_days: number | null
+          region: string | null
+          sample_size: number | null
+          source_domain: string | null
+          target_domain: string | null
+          transfer_strength: number | null
+        }
+        Insert: {
+          computed_at?: string | null
+          id?: string | null
+          lag_days?: number | null
+          region?: string | null
+          sample_size?: number | null
+          source_domain?: string | null
+          target_domain?: string | null
+          transfer_strength?: number | null
+        }
+        Update: {
+          computed_at?: string | null
+          id?: string | null
+          lag_days?: number | null
+          region?: string | null
+          sample_size?: number | null
+          source_domain?: string | null
+          target_domain?: string | null
+          transfer_strength?: number | null
+        }
+        Relationships: []
+      }
       quantivis_entity_graph: {
         Row: {
           canonical_name: string | null
@@ -12141,6 +12224,95 @@ export type Database = {
         }
         Relationships: []
       }
+      quantivis_entity_links: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          link_source: string | null
+          link_type: Database["public"]["Enums"]["entity_link_type"] | null
+          source_entity_id: string | null
+          source_iso3: string | null
+          source_name: string | null
+          source_type: Database["public"]["Enums"]["entity_type"] | null
+          strength: number | null
+          target_entity_id: string | null
+          target_iso3: string | null
+          target_name: string | null
+          target_type: Database["public"]["Enums"]["entity_type"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_source_entity_id_fkey"
+            columns: ["source_entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_country_list"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_reporting_countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "country_coverage_full"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_links_target_entity_id_fkey"
+            columns: ["target_entity_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_entity_graph"
+            referencedColumns: ["entity_id"]
+          },
+        ]
+      }
       quantivis_event_feed: {
         Row: {
           description: string | null
@@ -12155,6 +12327,174 @@ export type Database = {
           severity: number | null
           source_url: string | null
           title: string | null
+        }
+        Relationships: []
+      }
+      quantivis_prediction_outcomes: {
+        Row: {
+          actual_label: number | null
+          brier_score: number | null
+          country_iso3: string | null
+          delta_performance: number | null
+          domain: string | null
+          error: number | null
+          horizon_days: number | null
+          id: string | null
+          predicted_at: string | null
+          predicted_probability: number | null
+          prediction_id: string | null
+          realized_at: string | null
+          surprise: boolean | null
+        }
+        Insert: {
+          actual_label?: number | null
+          brier_score?: number | null
+          country_iso3?: string | null
+          delta_performance?: number | null
+          domain?: string | null
+          error?: number | null
+          horizon_days?: number | null
+          id?: string | null
+          predicted_at?: string | null
+          predicted_probability?: number | null
+          prediction_id?: string | null
+          realized_at?: string | null
+          surprise?: boolean | null
+        }
+        Update: {
+          actual_label?: number | null
+          brier_score?: number | null
+          country_iso3?: string | null
+          delta_performance?: number | null
+          domain?: string | null
+          error?: number | null
+          horizon_days?: number | null
+          id?: string | null
+          predicted_at?: string | null
+          predicted_probability?: number | null
+          prediction_id?: string | null
+          realized_at?: string | null
+          surprise?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "risk_prediction_realizations_prediction_id_fkey"
+            columns: ["prediction_id"]
+            isOneToOne: true
+            referencedRelation: "quantivis_risk_predictions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "risk_prediction_realizations_prediction_id_fkey"
+            columns: ["prediction_id"]
+            isOneToOne: true
+            referencedRelation: "risk_ranking_predictions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quantivis_recommended_actions: {
+        Row: {
+          confidence: number | null
+          country_iso3: string | null
+          domain: string | null
+          estimated_cost_eur: number | null
+          estimated_roi_eur: number | null
+          expected_roi_lower: number | null
+          expected_roi_upper: number | null
+          generated_at: string | null
+          id: string | null
+          intervention_title: string | null
+          intervention_type: string | null
+          rationale_md: string | null
+          status: string | null
+          urgency_hours: number | null
+          urgency_window: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          country_iso3?: string | null
+          domain?: string | null
+          estimated_cost_eur?: number | null
+          estimated_roi_eur?: number | null
+          expected_roi_lower?: number | null
+          expected_roi_upper?: number | null
+          generated_at?: string | null
+          id?: string | null
+          intervention_title?: string | null
+          intervention_type?: string | null
+          rationale_md?: string | null
+          status?: string | null
+          urgency_hours?: number | null
+          urgency_window?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          country_iso3?: string | null
+          domain?: string | null
+          estimated_cost_eur?: number | null
+          estimated_roi_eur?: number | null
+          expected_roi_lower?: number | null
+          expected_roi_upper?: number | null
+          generated_at?: string | null
+          id?: string | null
+          intervention_title?: string | null
+          intervention_type?: string | null
+          rationale_md?: string | null
+          status?: string | null
+          urgency_hours?: number | null
+          urgency_window?: string | null
+        }
+        Relationships: []
+      }
+      quantivis_risk_predictions: {
+        Row: {
+          confidence_lower: number | null
+          confidence_upper: number | null
+          country_iso3: string | null
+          domain: string | null
+          evidence_count: number | null
+          factors: Json | null
+          generated_at: string | null
+          generation_batch_id: string | null
+          horizon_days: number | null
+          id: string | null
+          model_version: string | null
+          proxy_share: number | null
+          rank_position: number | null
+          risk_probability: number | null
+        }
+        Insert: {
+          confidence_lower?: number | null
+          confidence_upper?: number | null
+          country_iso3?: string | null
+          domain?: string | null
+          evidence_count?: number | null
+          factors?: Json | null
+          generated_at?: string | null
+          generation_batch_id?: string | null
+          horizon_days?: number | null
+          id?: string | null
+          model_version?: string | null
+          proxy_share?: number | null
+          rank_position?: number | null
+          risk_probability?: number | null
+        }
+        Update: {
+          confidence_lower?: number | null
+          confidence_upper?: number | null
+          country_iso3?: string | null
+          domain?: string | null
+          evidence_count?: number | null
+          factors?: Json | null
+          generated_at?: string | null
+          generation_batch_id?: string | null
+          horizon_days?: number | null
+          id?: string | null
+          model_version?: string | null
+          proxy_share?: number | null
+          rank_position?: number | null
+          risk_probability?: number | null
         }
         Relationships: []
       }
