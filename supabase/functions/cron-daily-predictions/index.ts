@@ -153,6 +153,7 @@ serve(async (req) => {
       if (r.error) throw r.error;
       return r.data;
     }),
+    140_000, // training builds 15-25k rows, needs more headroom
   ));
 
   steps.push(await runStep("ranking", () =>
