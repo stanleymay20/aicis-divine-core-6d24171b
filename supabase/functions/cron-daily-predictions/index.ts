@@ -131,8 +131,11 @@ serve(async (req) => {
   );
 
   const overallStart = Date.now();
+  // Daily incremental: build only the newest 2 days each run.
+  // Stays well under the 140s step budget; long horizons are covered by the
+  // dedicated weekly backfill (build-training-dataset full window).
   const trainingWindow = {
-    start_date: isoDaysAgo(21),
+    start_date: isoDaysAgo(9),
     end_date: isoDaysAgo(7),
     horizon_days: 7,
     chunk_days: 1,

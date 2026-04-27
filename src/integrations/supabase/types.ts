@@ -7296,6 +7296,54 @@ export type Database = {
           },
         ]
       }
+      normalized_metrics_archive: {
+        Row: {
+          archived_at: string
+          domain: string
+          id: string
+          iso3: string | null
+          last_period: string | null
+          last_value: number | null
+          max_value: number | null
+          mean_value: number | null
+          metric_name: string
+          min_value: number | null
+          month: string
+          provider_name: string
+          sample_count: number
+        }
+        Insert: {
+          archived_at?: string
+          domain: string
+          id?: string
+          iso3?: string | null
+          last_period?: string | null
+          last_value?: number | null
+          max_value?: number | null
+          mean_value?: number | null
+          metric_name: string
+          min_value?: number | null
+          month: string
+          provider_name: string
+          sample_count: number
+        }
+        Update: {
+          archived_at?: string
+          domain?: string
+          id?: string
+          iso3?: string | null
+          last_period?: string | null
+          last_value?: number | null
+          max_value?: number | null
+          mean_value?: number | null
+          metric_name?: string
+          min_value?: number | null
+          month?: string
+          provider_name?: string
+          sample_count?: number
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string | null
@@ -12609,6 +12657,10 @@ export type Database = {
           total_breaks: number
         }[]
       }
+      archive_normalized_metrics_older_than: {
+        Args: { _days?: number }
+        Returns: Json
+      }
       audit_prospective_match_quality: { Args: never; Returns: Json }
       auto_review_decisions: { Args: { _batch_size?: number }; Returns: Json }
       batch_expand_entities: { Args: { _batch_size?: number }; Returns: Json }
@@ -12869,6 +12921,7 @@ export type Database = {
       prospective_horizon_breakdown: { Args: never; Returns: Json }
       prospective_model_breakdown: { Args: never; Returns: Json }
       prospective_summary_stats: { Args: never; Returns: Json }
+      prune_retention_logs: { Args: never; Returns: Json }
       realize_risk_predictions: {
         Args: { p_horizon_days?: number }
         Returns: {
