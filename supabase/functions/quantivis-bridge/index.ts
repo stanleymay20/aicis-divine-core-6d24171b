@@ -74,8 +74,8 @@ const SURFACES: Record<string, SurfaceDef> = {
     order_by: "transfer_strength",
     order_desc: true,
     filters: ["source_domain", "target_domain", "region"],
-    default_limit: 100,
-    max_limit: 500,
+    default_limit: 50,
+    max_limit: 250,
   },
   recommendations: {
     view: "quantivis_recommended_actions",
@@ -83,8 +83,8 @@ const SURFACES: Record<string, SurfaceDef> = {
     order_desc: true,
     filters: ["country_iso3", "domain", "intervention_type", "status"],
     range_filters: [{ col: "generated_at", gte_param: "since", lte_param: "until" }],
-    default_limit: 100,
-    max_limit: 500,
+    default_limit: 50,
+    max_limit: 250,
   },
   outcomes: {
     view: "quantivis_prediction_outcomes",
