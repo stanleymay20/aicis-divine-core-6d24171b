@@ -12181,9 +12181,7 @@ export type Database = {
           latest_data_at: string | null
           link_count: number | null
           provider_count: number | null
-          sovereignty_status:
-            | Database["public"]["Enums"]["sovereignty_status"]
-            | null
+          sovereignty_status: string | null
           total_metrics: number | null
         }
         Relationships: []
@@ -12261,14 +12259,12 @@ export type Database = {
         Row: {
           canonical_name: string | null
           entity_id: string | null
-          entity_type: Database["public"]["Enums"]["entity_type"] | null
+          entity_type: string | null
           event_count: number | null
           is_reporting_entity: boolean | null
           iso3: string | null
           metric_count: number | null
-          sovereignty_status:
-            | Database["public"]["Enums"]["sovereignty_status"]
-            | null
+          sovereignty_status: string | null
         }
         Relationships: []
       }
@@ -12930,6 +12926,7 @@ export type Database = {
           trust_rows: number
         }[]
       }
+      refresh_quantivis_materialized: { Args: never; Returns: Json }
       refresh_risk_rankings_current: { Args: never; Returns: undefined }
       register_pipeline_heartbeat: {
         Args: {
