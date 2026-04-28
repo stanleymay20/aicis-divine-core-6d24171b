@@ -203,6 +203,110 @@ serve(async (req) => {
       });
     }
 
+    // ─── Incremental sync ──────────────────────────────────────────
+    // GET  /sync                  → status of all cursors for this org
+    // GET  /sync/:surface         → fetch only rows newer than last cursor
+    //   ?limit=N                  → max rows (capped by surface.max_limit)
+    //   ?since=ISO                → override stored cursor (one-shot)
+    //   ?until=ISO                → upper bound (defaults to now)
+    //   ?dry_run=1                → don't advance cursor
+    //   ?reset=1                  → reset cursor to epoch before fetching
+    if (resource === "sync") {
+      const syncSurface = pathParts[2];
+      if (!syncSurface) {
+        const { data: cursors } = await sb
+          .from("quantivis_sync_cursors")
+          .select("surface, last_synced_at, last_row_count, last_run_at")
+          .eq("org_id", keyRow.org_id)
+          .order("surface");
+        return json({
+          org_id: keyRow.org_id,
+          cursors: cursors ?? [],
+          syncable_surfaces: Object.entries(SURFACES)
+            .filter(([, d]) => d.cursor_col)
+            .map(([k, d]) => ({ surface: k, cursor_col: d.cursor_col })),
+          usage: "GET /sync/:surface?limit=N[&since=ISO][&until=ISO][&dry_run=1][&reset=1]",
+        });
+      }
+
+      const sdef = SURFACES[syncSurface];
+      if (!sdef || !sdef.cursor_col) {
+        return json({
+          error: `Surface '${syncSurface}' is not syncable`,
+          syncable: Object.entries(SURFACES).filter(([, d]) => d.cursor_col).map(([k]) => k),
+        }, 400);
+      }
+
+      const reset = url.searchParams.get("reset") === "1";
+      const dryRun = url.searchParams.get("dry_run") === "1";
+      const overrideSince = url.searchParams.get("since");
+      const until = url.searchParams.get("until") ?? new Date().toISOString();
+      const syncLimit = Math.min(
+        parseInt(url.searchParams.get("limit") || String(sdef.max_limit), 10) || sdef.max_limit,
+        sdef.max_limit,
+      );
+
+      // Load (or create) cursor
+      const { data: existing } = await sb
+        .from("quantivis_sync_cursors")
+        .select("last_synced_at")
+        .eq("org_id", keyRow.org_id)
+        .eq("surface", syncSurface)
+        .maybeSingle();
+
+      const since = overrideSince
+        ?? (reset ? "1970-01-01T00:00:00Z" : (existing?.last_synced_at ?? "1970-01-01T00:00:00Z"));
+
+      // Pull only rows in (since, until] ordered ascending by cursor for stable paging
+      const { data, error: qErr } = await sb
+        .from(sdef.view)
+        .select("*")
+        .gt(sdef.cursor_col, since)
+        .lte(sdef.cursor_col, until)
+        .order(sdef.cursor_col, { ascending: true, nullsFirst: false })
+        .limit(syncLimit);
+
+      if (qErr) throw qErr;
+
+      const rows = data ?? [];
+      const newHighWater = rows.length > 0
+        ? String(rows[rows.length - 1][sdef.cursor_col!] ?? since)
+        : since;
+
+      const hasMore = rows.length === syncLimit;
+
+      // Advance cursor unless dry-run
+      if (!dryRun && rows.length > 0) {
+        await sb.from("quantivis_sync_cursors").upsert(
+          {
+            org_id: keyRow.org_id,
+            surface: syncSurface,
+            last_synced_at: newHighWater,
+            last_row_count: rows.length,
+            last_run_at: new Date().toISOString(),
+          },
+          { onConflict: "org_id,surface" },
+        );
+      }
+
+      return json({
+        surface: syncSurface,
+        view: sdef.view,
+        cursor_col: sdef.cursor_col,
+        since,
+        until,
+        new_high_water: newHighWater,
+        row_count: rows.length,
+        has_more: hasMore,
+        next_call: hasMore
+          ? `/sync/${syncSurface}?limit=${syncLimit}` + (overrideSince ? `&since=${newHighWater}` : "")
+          : null,
+        dry_run: dryRun,
+        cursor_advanced: !dryRun && rows.length > 0,
+        data: rows,
+      });
+    }
+
     const def = SURFACES[resource];
     if (!def) {
       return json({
