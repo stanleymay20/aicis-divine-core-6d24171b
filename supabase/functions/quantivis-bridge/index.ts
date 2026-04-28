@@ -174,6 +174,7 @@ serve(async (req) => {
           pagination: "?limit=N&offset=M (use until/since for time-window paging on time-series surfaces)",
         })),
         stats_endpoint: "/stats",
+        sync_endpoint: "/sync (status) or /sync/:surface (incremental pull, advances cursor)",
       });
     }
 
