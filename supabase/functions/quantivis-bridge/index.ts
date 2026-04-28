@@ -28,6 +28,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["iso3", "domain", "metric_name", "provider_name"],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "period",
   },
   entities: {
     view: "quantivis_entity_graph",
@@ -36,6 +37,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["entity_type", "iso3", "sovereignty_status"],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "updated_at",
   },
   countries: {
     view: "quantivis_country_dashboard",
@@ -44,6 +46,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["iso3", "sovereignty_status", "is_reporting_entity"],
     default_limit: 50,
     max_limit: 250,
+    cursor_col: "last_metric_at",
   },
   events: {
     view: "quantivis_event_feed",
@@ -53,6 +56,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     range_filters: [{ col: "event_date", gte_param: "since", lte_param: "until" }],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "event_date",
   },
   predictions: {
     view: "quantivis_risk_predictions",
@@ -61,6 +65,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["country_iso3", "domain"],
     default_limit: 100,
     max_limit: 500,
+    cursor_col: "created_at",
   },
   cross_border: {
     view: "quantivis_cross_border_signals",
@@ -70,6 +75,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     range_filters: [{ col: "detected_at", gte_param: "since", lte_param: "until" }],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "detected_at",
   },
   cross_domain: {
     view: "quantivis_cross_domain_influence",
@@ -78,6 +84,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["source_domain", "target_domain", "region"],
     default_limit: 50,
     max_limit: 250,
+    cursor_col: "computed_at",
   },
   recommendations: {
     view: "quantivis_recommended_actions",
@@ -87,6 +94,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     range_filters: [{ col: "generated_at", gte_param: "since", lte_param: "until" }],
     default_limit: 50,
     max_limit: 250,
+    cursor_col: "generated_at",
   },
   outcomes: {
     view: "quantivis_prediction_outcomes",
@@ -96,6 +104,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     range_filters: [{ col: "realized_at", gte_param: "since", lte_param: "until" }],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "realized_at",
   },
   entity_links: {
     view: "quantivis_entity_links",
@@ -104,6 +113,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["link_type", "source_iso3", "target_iso3", "source_type", "target_type"],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "updated_at",
   },
 };
 
