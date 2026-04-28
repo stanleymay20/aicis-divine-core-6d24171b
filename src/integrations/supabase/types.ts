@@ -8271,6 +8271,39 @@ export type Database = {
           },
         ]
       }
+      quantivis_sync_cursors: {
+        Row: {
+          created_at: string
+          id: string
+          last_row_count: number
+          last_run_at: string
+          last_synced_at: string
+          org_id: string
+          surface: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_row_count?: number
+          last_run_at?: string
+          last_synced_at?: string
+          org_id: string
+          surface: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_row_count?: number
+          last_run_at?: string
+          last_synced_at?: string
+          org_id?: string
+          surface?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       quantivis_webhook_queue: {
         Row: {
           attempts: number

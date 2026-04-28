@@ -16,6 +16,8 @@ type SurfaceDef = {
   range_filters?: { col: string; gte_param?: string; lte_param?: string }[]; // time/value ranges
   default_limit: number;
   max_limit: number;
+  /** Column used as the high-water mark for incremental sync. Required for /sync. */
+  cursor_col?: string;
 };
 
 const SURFACES: Record<string, SurfaceDef> = {
@@ -26,6 +28,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["iso3", "domain", "metric_name", "provider_name"],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "period",
   },
   entities: {
     view: "quantivis_entity_graph",
@@ -34,6 +37,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["entity_type", "iso3", "sovereignty_status"],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "updated_at",
   },
   countries: {
     view: "quantivis_country_dashboard",
@@ -42,6 +46,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["iso3", "sovereignty_status", "is_reporting_entity"],
     default_limit: 50,
     max_limit: 250,
+    cursor_col: "last_metric_at",
   },
   events: {
     view: "quantivis_event_feed",
@@ -51,6 +56,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     range_filters: [{ col: "event_date", gte_param: "since", lte_param: "until" }],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "event_date",
   },
   predictions: {
     view: "quantivis_risk_predictions",
@@ -59,6 +65,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["country_iso3", "domain"],
     default_limit: 100,
     max_limit: 500,
+    cursor_col: "created_at",
   },
   cross_border: {
     view: "quantivis_cross_border_signals",
@@ -68,6 +75,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     range_filters: [{ col: "detected_at", gte_param: "since", lte_param: "until" }],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "detected_at",
   },
   cross_domain: {
     view: "quantivis_cross_domain_influence",
@@ -76,6 +84,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["source_domain", "target_domain", "region"],
     default_limit: 50,
     max_limit: 250,
+    cursor_col: "computed_at",
   },
   recommendations: {
     view: "quantivis_recommended_actions",
@@ -85,6 +94,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     range_filters: [{ col: "generated_at", gte_param: "since", lte_param: "until" }],
     default_limit: 50,
     max_limit: 250,
+    cursor_col: "generated_at",
   },
   outcomes: {
     view: "quantivis_prediction_outcomes",
@@ -94,6 +104,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     range_filters: [{ col: "realized_at", gte_param: "since", lte_param: "until" }],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "realized_at",
   },
   entity_links: {
     view: "quantivis_entity_links",
@@ -102,6 +113,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["link_type", "source_iso3", "target_iso3", "source_type", "target_type"],
     default_limit: 100,
     max_limit: 1000,
+    cursor_col: "updated_at",
   },
 };
 
@@ -162,6 +174,7 @@ serve(async (req) => {
           pagination: "?limit=N&offset=M (use until/since for time-window paging on time-series surfaces)",
         })),
         stats_endpoint: "/stats",
+        sync_endpoint: "/sync (status) or /sync/:surface (incremental pull, advances cursor)",
       });
     }
 
@@ -188,6 +201,110 @@ serve(async (req) => {
         cross_domain_influences_60d: crossDomain.count || 0,
         entity_links_total: links.count || 0,
         timestamp: new Date().toISOString(),
+      });
+    }
+
+    // ─── Incremental sync ──────────────────────────────────────────
+    // GET  /sync                  → status of all cursors for this org
+    // GET  /sync/:surface         → fetch only rows newer than last cursor
+    //   ?limit=N                  → max rows (capped by surface.max_limit)
+    //   ?since=ISO                → override stored cursor (one-shot)
+    //   ?until=ISO                → upper bound (defaults to now)
+    //   ?dry_run=1                → don't advance cursor
+    //   ?reset=1                  → reset cursor to epoch before fetching
+    if (resource === "sync") {
+      const syncSurface = pathParts[2];
+      if (!syncSurface) {
+        const { data: cursors } = await sb
+          .from("quantivis_sync_cursors")
+          .select("surface, last_synced_at, last_row_count, last_run_at")
+          .eq("org_id", keyRow.org_id)
+          .order("surface");
+        return json({
+          org_id: keyRow.org_id,
+          cursors: cursors ?? [],
+          syncable_surfaces: Object.entries(SURFACES)
+            .filter(([, d]) => d.cursor_col)
+            .map(([k, d]) => ({ surface: k, cursor_col: d.cursor_col })),
+          usage: "GET /sync/:surface?limit=N[&since=ISO][&until=ISO][&dry_run=1][&reset=1]",
+        });
+      }
+
+      const sdef = SURFACES[syncSurface];
+      if (!sdef || !sdef.cursor_col) {
+        return json({
+          error: `Surface '${syncSurface}' is not syncable`,
+          syncable: Object.entries(SURFACES).filter(([, d]) => d.cursor_col).map(([k]) => k),
+        }, 400);
+      }
+
+      const reset = url.searchParams.get("reset") === "1";
+      const dryRun = url.searchParams.get("dry_run") === "1";
+      const overrideSince = url.searchParams.get("since");
+      const until = url.searchParams.get("until") ?? new Date().toISOString();
+      const syncLimit = Math.min(
+        parseInt(url.searchParams.get("limit") || String(sdef.max_limit), 10) || sdef.max_limit,
+        sdef.max_limit,
+      );
+
+      // Load (or create) cursor
+      const { data: existing } = await sb
+        .from("quantivis_sync_cursors")
+        .select("last_synced_at")
+        .eq("org_id", keyRow.org_id)
+        .eq("surface", syncSurface)
+        .maybeSingle();
+
+      const since = overrideSince
+        ?? (reset ? "1970-01-01T00:00:00Z" : (existing?.last_synced_at ?? "1970-01-01T00:00:00Z"));
+
+      // Pull only rows in (since, until] ordered ascending by cursor for stable paging
+      const { data, error: qErr } = await sb
+        .from(sdef.view)
+        .select("*")
+        .gt(sdef.cursor_col, since)
+        .lte(sdef.cursor_col, until)
+        .order(sdef.cursor_col, { ascending: true, nullsFirst: false })
+        .limit(syncLimit);
+
+      if (qErr) throw qErr;
+
+      const rows = data ?? [];
+      const newHighWater = rows.length > 0
+        ? String(rows[rows.length - 1][sdef.cursor_col!] ?? since)
+        : since;
+
+      const hasMore = rows.length === syncLimit;
+
+      // Advance cursor unless dry-run
+      if (!dryRun && rows.length > 0) {
+        await sb.from("quantivis_sync_cursors").upsert(
+          {
+            org_id: keyRow.org_id,
+            surface: syncSurface,
+            last_synced_at: newHighWater,
+            last_row_count: rows.length,
+            last_run_at: new Date().toISOString(),
+          },
+          { onConflict: "org_id,surface" },
+        );
+      }
+
+      return json({
+        surface: syncSurface,
+        view: sdef.view,
+        cursor_col: sdef.cursor_col,
+        since,
+        until,
+        new_high_water: newHighWater,
+        row_count: rows.length,
+        has_more: hasMore,
+        next_call: hasMore
+          ? `/sync/${syncSurface}?limit=${syncLimit}` + (overrideSince ? `&since=${newHighWater}` : "")
+          : null,
+        dry_run: dryRun,
+        cursor_advanced: !dryRun && rows.length > 0,
+        data: rows,
       });
     }
 
