@@ -16,6 +16,8 @@ type SurfaceDef = {
   range_filters?: { col: string; gte_param?: string; lte_param?: string }[]; // time/value ranges
   default_limit: number;
   max_limit: number;
+  /** Column used as the high-water mark for incremental sync. Required for /sync. */
+  cursor_col?: string;
 };
 
 const SURFACES: Record<string, SurfaceDef> = {
