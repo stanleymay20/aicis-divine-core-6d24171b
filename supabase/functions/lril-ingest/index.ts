@@ -43,17 +43,16 @@ interface RawSignal {
 }
 
 async function pullGDELT(): Promise<RawSignal[]> {
-  // Broad query covering the keyword domains we seeded
-  const q = encodeURIComponent(
-    '(protest OR riot OR attack OR blackout OR "load shedding" OR dumsor OR flood OR outbreak OR coup OR famine OR displaced)'
-  );
-  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=ArtList&maxrecords=250&format=json&sort=DateDesc&timespan=2h`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  // Single conservative query (rate limit: 1 req / 5s — we run every 30 min so OK)
+  const q = encodeURIComponent('(protest OR blackout OR flood OR outbreak OR coup)');
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=ArtList&maxrecords=100&format=json&sort=DateDesc`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
   if (!r.ok) throw new Error(`GDELT HTTP ${r.status}`);
-  const j = await r.json();
+  const text = await r.text();
+  if (!text.trim().startsWith("{")) throw new Error(`GDELT non-JSON: ${text.slice(0, 80)}`);
+  const j = JSON.parse(text);
   const articles = (j.articles || []) as any[];
   return articles.map((a) => {
-    const text = `${a.title || ""}. ${a.seendate || ""}`;
     const iso3 = (a.sourcecountry || "").toUpperCase().slice(0, 3) || null;
     return {
       source_type: "aggregator",
@@ -72,35 +71,34 @@ async function pullGDELT(): Promise<RawSignal[]> {
 }
 
 function parseGDELTDate(s: string): string | null {
-  // GDELT format: YYYYMMDDTHHMMSSZ
   const m = s.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
   if (!m) return null;
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
-async function pullReliefWeb(): Promise<RawSignal[]> {
-  const url = "https://api.reliefweb.int/v1/reports?appname=aicis-lril&limit=100&sort[]=date:desc&fields[include][]=title&fields[include][]=body&fields[include][]=country&fields[include][]=date&fields[include][]=url&fields[include][]=language";
+async function pullGDACS(): Promise<RawSignal[]> {
+  // GDACS — Global Disaster Alert (EU JRC). Open, no key, no rate limit.
+  const url = "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventlist=EQ;TC;FL;VO;DR;WF&alertlevel=Green;Orange;Red";
   const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
+  if (!r.ok) throw new Error(`GDACS HTTP ${r.status}`);
   const j = await r.json();
-  const data = (j.data || []) as any[];
-  return data.map((d) => {
-    const f = d.fields || {};
-    const country = Array.isArray(f.country) && f.country[0] ? f.country[0] : null;
-    const iso3 = country?.iso3?.toUpperCase() || null;
-    const language = Array.isArray(f.language) && f.language[0] ? f.language[0].code : "en";
+  const features = (j.features || []) as any[];
+  return features.map((f) => {
+    const p = f.properties || {};
+    const eventType = (p.eventtype || "disaster").toString();
+    const text = (p.name || p.htmldescription || `GDACS ${eventType}`).toString();
     return {
       source_type: "ngo",
-      source_name: "reliefweb",
-      source_reliability: 0.85,
-      raw_text: `${f.title || ""}. ${(f.body || "").slice(0, 1500)}`,
-      raw_payload: f,
-      language: language.toLowerCase().slice(0, 2),
-      url: f.url || null,
-      published_at: f.date?.created || null,
-      country_hint: iso3,
-      region_hint: country?.name || null,
-      dedup_key: `reliefweb_${d.id}`,
+      source_name: "gdacs",
+      source_reliability: 0.92,
+      raw_text: text,
+      raw_payload: p,
+      language: "en",
+      url: p.url?.report || null,
+      published_at: p.fromdate || null,
+      country_hint: (p.iso3 || "").toUpperCase().slice(0, 3) || null,
+      region_hint: p.country || null,
+      dedup_key: `gdacs_${p.eventid || p.episodeid || hash(p.url?.report || text)}`,
     } satisfies RawSignal;
   });
 }
