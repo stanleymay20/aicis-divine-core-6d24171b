@@ -113,7 +113,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["link_type", "source_iso3", "target_iso3", "source_type", "target_type"],
     default_limit: 100,
     max_limit: 1000,
-    cursor_col: "updated_at",
+    cursor_col: "created_at",
   },
 };
 
