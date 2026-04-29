@@ -37,7 +37,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["entity_type", "iso3", "sovereignty_status"],
     default_limit: 100,
     max_limit: 1000,
-    cursor_col: "updated_at",
+    // No time column on this materialized aggregate — sync via offset pagination only.
   },
   countries: {
     view: "quantivis_country_dashboard",
@@ -46,7 +46,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["iso3", "sovereignty_status", "is_reporting_entity"],
     default_limit: 50,
     max_limit: 250,
-    cursor_col: "last_metric_at",
+    cursor_col: "latest_data_at",
   },
   events: {
     view: "quantivis_event_feed",
