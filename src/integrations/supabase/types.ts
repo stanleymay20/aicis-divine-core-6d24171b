@@ -508,6 +508,275 @@ export type Database = {
         }
         Relationships: []
       }
+      aicis_geo_entities: {
+        Row: {
+          admin_level_1: string | null
+          admin_level_2: string | null
+          aliases: Json | null
+          city: string | null
+          created_at: string
+          geo_confidence: number | null
+          id: string
+          iso3: string
+          lat: number | null
+          locality: string | null
+          lon: number | null
+          population: number | null
+        }
+        Insert: {
+          admin_level_1?: string | null
+          admin_level_2?: string | null
+          aliases?: Json | null
+          city?: string | null
+          created_at?: string
+          geo_confidence?: number | null
+          id?: string
+          iso3: string
+          lat?: number | null
+          locality?: string | null
+          lon?: number | null
+          population?: number | null
+        }
+        Update: {
+          admin_level_1?: string | null
+          admin_level_2?: string | null
+          aliases?: Json | null
+          city?: string | null
+          created_at?: string
+          geo_confidence?: number | null
+          id?: string
+          iso3?: string
+          lat?: number | null
+          locality?: string | null
+          lon?: number | null
+          population?: number | null
+        }
+        Relationships: []
+      }
+      aicis_keyword_packs: {
+        Row: {
+          country: string | null
+          created_at: string
+          domain: string
+          id: string
+          keywords: Json
+          language: string
+          subtype: string | null
+          weight: number | null
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          domain: string
+          id?: string
+          keywords: Json
+          language?: string
+          subtype?: string | null
+          weight?: number | null
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          domain?: string
+          id?: string
+          keywords?: Json
+          language?: string
+          subtype?: string | null
+          weight?: number | null
+        }
+        Relationships: []
+      }
+      aicis_local_events: {
+        Row: {
+          admin_level_1: string | null
+          bridged_to_normalized: boolean | null
+          confidence: number | null
+          confidence_tier: string | null
+          created_at: string
+          description: string | null
+          end_time: string | null
+          event_type: string
+          geo_entity_id: string | null
+          id: string
+          iso3: string
+          lat: number | null
+          locality: string | null
+          lon: number | null
+          matched_keywords: Json | null
+          proxy_boost: number | null
+          raw_signal_ids: Json
+          severity: number | null
+          source_count: number
+          start_time: string
+          status: string
+          subtype: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          admin_level_1?: string | null
+          bridged_to_normalized?: boolean | null
+          confidence?: number | null
+          confidence_tier?: string | null
+          created_at?: string
+          description?: string | null
+          end_time?: string | null
+          event_type: string
+          geo_entity_id?: string | null
+          id?: string
+          iso3: string
+          lat?: number | null
+          locality?: string | null
+          lon?: number | null
+          matched_keywords?: Json | null
+          proxy_boost?: number | null
+          raw_signal_ids?: Json
+          severity?: number | null
+          source_count?: number
+          start_time: string
+          status?: string
+          subtype?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          admin_level_1?: string | null
+          bridged_to_normalized?: boolean | null
+          confidence?: number | null
+          confidence_tier?: string | null
+          created_at?: string
+          description?: string | null
+          end_time?: string | null
+          event_type?: string
+          geo_entity_id?: string | null
+          id?: string
+          iso3?: string
+          lat?: number | null
+          locality?: string | null
+          lon?: number | null
+          matched_keywords?: Json | null
+          proxy_boost?: number | null
+          raw_signal_ids?: Json
+          severity?: number | null
+          source_count?: number
+          start_time?: string
+          status?: string
+          subtype?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aicis_local_events_geo_entity_id_fkey"
+            columns: ["geo_entity_id"]
+            isOneToOne: false
+            referencedRelation: "aicis_geo_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      aicis_proxy_signals: {
+        Row: {
+          admin_level_1: string | null
+          baseline: number | null
+          created_at: string
+          deviation: number | null
+          id: string
+          iso3: string
+          lat: number | null
+          locality: string | null
+          lon: number | null
+          metadata: Json | null
+          signal_type: string
+          source_name: string | null
+          timestamp: string
+          value: number | null
+        }
+        Insert: {
+          admin_level_1?: string | null
+          baseline?: number | null
+          created_at?: string
+          deviation?: number | null
+          id?: string
+          iso3: string
+          lat?: number | null
+          locality?: string | null
+          lon?: number | null
+          metadata?: Json | null
+          signal_type: string
+          source_name?: string | null
+          timestamp?: string
+          value?: number | null
+        }
+        Update: {
+          admin_level_1?: string | null
+          baseline?: number | null
+          created_at?: string
+          deviation?: number | null
+          id?: string
+          iso3?: string
+          lat?: number | null
+          locality?: string | null
+          lon?: number | null
+          metadata?: Json | null
+          signal_type?: string
+          source_name?: string | null
+          timestamp?: string
+          value?: number | null
+        }
+        Relationships: []
+      }
+      aicis_raw_local_signals: {
+        Row: {
+          country_hint: string | null
+          dedup_key: string | null
+          id: string
+          ingested_at: string
+          language: string | null
+          processed_at: string | null
+          published_at: string | null
+          raw_payload: Json | null
+          raw_text: string | null
+          region_hint: string | null
+          source_name: string
+          source_reliability: number | null
+          source_type: string
+          url: string | null
+        }
+        Insert: {
+          country_hint?: string | null
+          dedup_key?: string | null
+          id?: string
+          ingested_at?: string
+          language?: string | null
+          processed_at?: string | null
+          published_at?: string | null
+          raw_payload?: Json | null
+          raw_text?: string | null
+          region_hint?: string | null
+          source_name: string
+          source_reliability?: number | null
+          source_type: string
+          url?: string | null
+        }
+        Update: {
+          country_hint?: string | null
+          dedup_key?: string | null
+          id?: string
+          ingested_at?: string
+          language?: string | null
+          processed_at?: string | null
+          published_at?: string | null
+          raw_payload?: Json | null
+          raw_text?: string | null
+          region_hint?: string | null
+          source_name?: string
+          source_reliability?: number | null
+          source_type?: string
+          url?: string | null
+        }
+        Relationships: []
+      }
       alert_preferences: {
         Row: {
           countries: string[]
@@ -12932,6 +13201,32 @@ export type Database = {
           _user_id: string
         }
         Returns: string
+      }
+      lril_bridge_to_normalized: {
+        Args: never
+        Returns: {
+          bridged_count: number
+        }[]
+      }
+      lril_compute_confidence: {
+        Args: {
+          p_avg_source_reliability: number
+          p_geo_confidence: number
+          p_keyword_strength: number
+          p_proxy_boost?: number
+          p_source_count: number
+          p_temporal_density: number
+        }
+        Returns: number
+      }
+      lril_detect_keywords: {
+        Args: { p_country?: string; p_language?: string; p_text: string }
+        Returns: {
+          domain: string
+          matched_terms: Json
+          score: number
+          subtype: string
+        }[]
       }
       merge_entities_tx: {
         Args: {
