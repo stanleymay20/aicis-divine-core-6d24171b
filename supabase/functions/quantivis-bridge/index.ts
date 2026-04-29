@@ -65,7 +65,7 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["country_iso3", "domain"],
     default_limit: 100,
     max_limit: 500,
-    cursor_col: "created_at",
+    cursor_col: "generated_at",
   },
   cross_border: {
     view: "quantivis_cross_border_signals",
