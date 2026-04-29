@@ -139,22 +139,22 @@ serve(async (req) => {
     } catch (_) { /* ignore */ }
   }
 
-  // GDELT
+  // GDACS (most reliable)
+  try {
+    const ev = await pullGDACS();
+    all.push(...ev);
+    summary.gdacs = ev.length;
+  } catch (e) {
+    summary.gdacs_error = (e as Error).message;
+  }
+
+  // GDELT (best-effort)
   try {
     const ev = await pullGDELT();
     all.push(...ev);
     summary.gdelt = ev.length;
   } catch (e) {
     summary.gdelt_error = (e as Error).message;
-  }
-
-  // ReliefWeb
-  try {
-    const ev = await pullReliefWeb();
-    all.push(...ev);
-    summary.reliefweb = ev.length;
-  } catch (e) {
-    summary.reliefweb_error = (e as Error).message;
   }
 
   let inserted = 0;
