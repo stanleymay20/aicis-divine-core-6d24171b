@@ -56,6 +56,7 @@ const IntelligenceEngine = lazy(() => import("./pages/IntelligenceEngine"));
 const Simulation = lazy(() => import("./pages/Simulation"));
 const Predictions = lazy(() => import("./pages/Predictions"));
 const ApiAudit = lazy(() => import("./pages/ApiAudit"));
+const LocalEvents = lazy(() => import("./pages/LocalEvents"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -140,6 +141,11 @@ const App = () => (
               <Route path="/simulation" element={<Protected><Simulation /></Protected>} />
               <Route path="/predictions" element={<Protected><Predictions /></Protected>} />
               <Route path="/api-audit" element={<Protected><ApiAudit /></Protected>} />
+
+              {/* ── LRIL: Local Reality Intelligence ─────────── */}
+              <Route path="/local-events" element={<Protected><LocalEvents /></Protected>} />
+              <Route path="/local-events/:iso3" element={<Protected><LocalEvents /></Protected>} />
+              <Route path="/local-events/:iso3/:locality" element={<Protected><LocalEvents /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
