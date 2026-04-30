@@ -80,8 +80,8 @@ const COUNTRY_NAMES: Record<string, string[]> = {
   MAC: ["Macau"], GRL: ["Greenland"], BMU: ["Bermuda"], FRO: ["Faroe Islands"],
 };
 
-// Broad incident terms — single query catches most categories per country
-const INCIDENT_TERMS = '(killed OR dead OR injured OR attack OR explosion OR clash OR protest OR riot OR flood OR fire OR earthquake OR outbreak OR shutdown OR collapse OR strike OR coup OR shooting OR kidnapped OR shortage OR blackout OR crisis OR emergency)';
+// Compact incident terms — kept short so GDELT URL stays under 2KB and queries return fast.
+const INCIDENT_TERMS = '(killed OR attack OR clash OR protest OR flood OR fire OR outbreak OR collapse OR shooting OR kidnapped OR blackout OR crisis)';
 
 function hash(s: string): string {
   let h = 0;
