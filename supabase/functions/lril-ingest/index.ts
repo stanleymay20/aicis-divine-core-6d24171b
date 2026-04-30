@@ -198,7 +198,58 @@ async function pullGDACS(): Promise<RawSignal[]> {
   });
 }
 
-serve(async (req) => {
+async function pullUSGS(): Promise<RawSignal[]> {
+  // USGS earthquakes M4.5+ past day — ground truth seismic events worldwide.
+  const url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson";
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`USGS HTTP ${r.status}`);
+  const j = await r.json();
+  const features = (j.features || []) as any[];
+  return features.map((f) => {
+    const p = f.properties || {};
+    const c = f.geometry?.coordinates || [];
+    const text = `M${p.mag} earthquake — ${p.place || "unknown"}`;
+    return {
+      source_type: "sensor",
+      source_name: "usgs",
+      source_reliability: 0.98,
+      raw_text: text,
+      raw_payload: { ...p, coordinates: c },
+      language: "en",
+      url: p.url || null,
+      published_at: p.time ? new Date(p.time).toISOString() : null,
+      country_hint: null,
+      region_hint: p.place || null,
+      dedup_key: `usgs_${f.id}`,
+    } satisfies RawSignal;
+  });
+}
+
+async function pullEONET(): Promise<RawSignal[]> {
+  // NASA EONET — wildfires, volcanoes, severe storms, floods (open events).
+  const url = "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=3&limit=200";
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`EONET HTTP ${r.status}`);
+  const j = await r.json();
+  const events = (j.events || []) as any[];
+  return events.map((e) => {
+    const cat = e.categories?.[0]?.title || "natural event";
+    const geom = e.geometry?.[e.geometry.length - 1] || {};
+    return {
+      source_type: "sensor",
+      source_name: "nasa_eonet",
+      source_reliability: 0.95,
+      raw_text: `${cat}: ${e.title}`,
+      raw_payload: { ...e, last_geom: geom },
+      language: "en",
+      url: e.sources?.[0]?.url || null,
+      published_at: geom.date || null,
+      country_hint: null,
+      region_hint: null,
+      dedup_key: `eonet_${e.id}`,
+    } satisfies RawSignal;
+  });
+}
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const supabase = createClient(
