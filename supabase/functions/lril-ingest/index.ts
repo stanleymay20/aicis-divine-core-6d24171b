@@ -302,6 +302,28 @@ const LOCAL_RSS: { url: string; name: string; iso3: string | null; reliability: 
   { url: "https://www.rappler.com/feed/", name: "rappler_ph", iso3: "PHL", reliability: 0.8 },
   { url: "https://www.semana.com/rss/portada.xml", name: "semana_co", iso3: "COL", reliability: 0.75 },
   { url: "https://www.eluniversal.com.mx/rss.xml", name: "eluniversal_mx", iso3: "MEX", reliability: 0.75 },
+  // v5: Maghreb + Egypt + Sudan + Libya
+  { url: "https://www.aps.dz/spip.php?page=backend-fr", name: "aps_dz", iso3: "DZA", reliability: 0.88 },
+  { url: "https://www.tsa-algerie.com/feed/", name: "tsa_dz", iso3: "DZA", reliability: 0.82 },
+  { url: "https://www.echoroukonline.com/feed", name: "echorouk_dz", iso3: "DZA", reliability: 0.75 },
+  { url: "https://www.elwatan-dz.com/feed", name: "elwatan_dz", iso3: "DZA", reliability: 0.8 },
+  { url: "https://www.mapnews.ma/en/rss.xml", name: "map_ma", iso3: "MAR", reliability: 0.85 },
+  { url: "https://en.hespress.com/feed", name: "hespress_ma", iso3: "MAR", reliability: 0.78 },
+  { url: "https://www.tap.info.tn/en/rss-en", name: "tap_tn", iso3: "TUN", reliability: 0.85 },
+  { url: "https://www.libyaobserver.ly/rss.xml", name: "libya_observer", iso3: "LBY", reliability: 0.78 },
+  { url: "https://sudantribune.com/feed/", name: "sudan_tribune", iso3: "SDN", reliability: 0.82 },
+  { url: "https://www.egyptindependent.com/feed/", name: "egypt_independent", iso3: "EGY", reliability: 0.78 },
+  { url: "https://www.madamasr.com/en/feed/", name: "mada_masr", iso3: "EGY", reliability: 0.85 },
+  // v5: Latin America + Asia gaps
+  { url: "https://feeds.folha.uol.com.br/folha/rss091.xml", name: "folha_br", iso3: "BRA", reliability: 0.82 },
+  { url: "https://www.clarin.com/rss/lo-ultimo/", name: "clarin_ar", iso3: "ARG", reliability: 0.78 },
+  { url: "https://www.bangkokpost.com/rss/data/topstories.xml", name: "bangkok_post", iso3: "THA", reliability: 0.8 },
+  { url: "https://e.vnexpress.net/rss/news.rss", name: "vnexpress", iso3: "VNM", reliability: 0.78 },
+  { url: "https://www.thejakartapost.com/rss", name: "jakarta_post", iso3: "IDN", reliability: 0.78 },
+  { url: "https://www.dawn.com/feeds/home", name: "dawn_pk", iso3: "PAK", reliability: 0.82 },
+  { url: "https://www.thedailystar.net/frontpage/rss.xml", name: "dailystar_bd", iso3: "BGD", reliability: 0.78 },
+  { url: "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf", name: "allafrica", iso3: null, reliability: 0.78 },
+  { url: "https://www.france24.com/en/africa/rss", name: "france24_africa", iso3: null, reliability: 0.85 },
 ];
 
 function stripXml(s: string): string {
