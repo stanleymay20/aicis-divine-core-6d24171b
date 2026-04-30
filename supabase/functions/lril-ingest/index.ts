@@ -312,6 +312,24 @@ async function pullEONET(): Promise<RawSignal[]> {
     summary.reliefweb_error = (e as Error).message;
   }
 
+  // USGS earthquakes (sensor truth, M4.5+)
+  try {
+    const ev = await pullUSGS();
+    all.push(...ev);
+    summary.usgs = ev.length;
+  } catch (e) {
+    summary.usgs_error = (e as Error).message;
+  }
+
+  // NASA EONET (wildfires, volcanoes, storms, floods)
+  try {
+    const ev = await pullEONET();
+    all.push(...ev);
+    summary.eonet = ev.length;
+  } catch (e) {
+    summary.eonet_error = (e as Error).message;
+  }
+
   let inserted = 0;
   if (all.length > 0) {
     // Chunked upsert
