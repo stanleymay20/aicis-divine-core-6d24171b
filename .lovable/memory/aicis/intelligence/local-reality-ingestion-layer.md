@@ -1,36 +1,33 @@
 ---
 name: LRIL — Local Reality Ingestion Layer
-description: Village/town/suburb event detection. 5 tables (aicis_raw_local_signals, aicis_keyword_packs, aicis_geo_entities, aicis_local_events, aicis_proxy_signals). Edge fns lril-ingest (GDACS+GDELT) + lril-process (detect→geo→classify→cluster→bridge) + lril-proxy. Cron every 30min. Confidence tiers: ≥0.7 high (Confirmed), ≥0.4 medium (Watch), <0.4 low (Early Signal — never suppressed). Events ≥0.4 bridge to normalized_events.
+description: Sharp local event detection. v2 adds FIPS→ISO3 mapping + source tiering + log confidence curve. Single tier-1 source ≥0.45 (Watch); 3+ reliable sources ≥0.7 (Confirmed). 100% of events now bridge to normalized_events. Coverage 63+ countries growing.
 type: feature
 ---
 
-# LRIL — Local Reality Ingestion Layer
+# LRIL v2 — Sharpening Notes
 
-## Tables
-- `aicis_raw_local_signals` — raw text from news/gov/ngo/aggregator/proxy with `country_hint`, `language`, `published_at`, `processed_at`, `dedup_key`. RLS read-auth.
-- `aicis_keyword_packs` — multilingual `(language, country, domain, subtype, keywords[], weight)`. Seeded EN + FR/ES/PT/AR + GHA/NGA/ZAF/KEN/IND country specifics (incl. dumsor, loadshedding).
-- `aicis_geo_entities` — `(iso3, admin_level_1, city, locality, lat, lon, geo_confidence)`. Seeded ~85 capitals.
-- `aicis_local_events` — clustered classified events with generated `confidence_tier` column (high/medium/low), `bridged_to_normalized` flag.
-- `aicis_proxy_signals` — anomaly readings (night_lights, network_outage, etc.) with z-score deviation.
+## Country code normalization
+GDELT publishes FIPS-10-4 + quirky 3-letter aliases. We store both:
+- `iso3` = original (preserves audit trail)
+- `iso3_normalized` = ISO 3166-1 alpha-3 (UI/API queries)
+Function: `lril_fips_to_iso3()` covers FIPS 2-letter (GM→DEU, RP→PHL, SF→ZAF) AND GDELT 3-letter aliases (UNI→USA, NIG→NGA, SOU→ZAF, GER→DEU, PHI→PHL, IRE→IRL, SPA→ESP, POR→PRT).
 
-## Helper functions (search_path = public)
-- `lril_detect_keywords(text, language, country)` → matched_terms, domain, subtype, score (top 5)
-- `lril_compute_confidence(source_count, reliability, kw_strength, geo_conf, temporal_density, proxy_boost)` → 0–1, weights 35/20/20/15/10 + boost
-- `lril_bridge_to_normalized()` — idempotent; bridges events with confidence ≥0.4 + status='active'
+## Source reliability tiers (`lril_source_tier`)
+- 0.95 — gdacs, usgs, nasa_eonet, reliefweb, who, fao, imf, worldbank
+- 0.90 — *.gov.* / un.org / europa.eu / who.int
+- 0.85 — Reuters, AP, AFP, BBC, Al Jazeera, Bloomberg, NYT, WSJ, FT, Guardian, DW, France24
+- 0.75 — Regional dailies (allafrica, punchng, thehindu, scmp, clarin, infobae…)
+- 0.50 — default unknown publisher
 
-## Edge functions
-- `lril-ingest` — GDACS (no key, reliable) + GDELT (best-effort, 429-tolerant) + custom POST `{items:[]}` mode
-- `lril-process` — pulls 500 unprocessed signals, RPC keyword detection, locality string-match geo, spatial-temporal clustering (25km / 12h window), confidence scoring, bridge to normalized_events
-- `lril-proxy` — POST `{readings:[]}`, computes 30d baseline, boosts co-occurring active events (max +0.2)
+## Confidence formula (v2)
+- Source-count log curve: 1 src=0.35, 2=0.55, 3=0.7, 5=0.85, 10+=1.0
+- Weights: 35% src + 25% reliability + 20% kw + 15% geo + 5% temporal + ≤20% proxy
+- Floor guarantees: 1 tier-1 src + strong kw → ≥0.45 (Watch); 3+ src @ 0.7+ → ≥0.7 (Confirmed)
 
-## pg_cron
-- `lril-ingest-30min` — `*/30 * * * *`
-- `lril-process-30min` — `5,35 * * * *`
+## Tiers (UI)
+- ≥0.7 Confirmed | ≥0.4 Watch | <0.4 Early Signal (never suppressed)
+- Bridge threshold = 0.4
 
-## UI
-- `/local-events` global, `/local-events/:iso3` country, `/local-events/:iso3/:locality` village/suburb
-- Confidence badges (Confirmed/Watch/Early Signal), evidence drawer with raw signal source links, keyword chips, lat/lon
-
-## Detection guarantee
-- Low-confidence events are NEVER suppressed — surfaced as "Early Signal"
-- When zero signals exist for a query: UI shows "No detectable digital signals for this locality"
+## Last sharpening result (2026-04-30)
+- 189 events / 63 countries, 100% bridged
+- ZAF xenophobia: 7 events, 2 confirmed (was 1 low-conf)

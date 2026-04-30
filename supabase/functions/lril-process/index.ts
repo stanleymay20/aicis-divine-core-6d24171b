@@ -120,13 +120,15 @@ serve(async (req) => {
       const subtype: string = top.subtype;
       const keyword_strength = Number(top.score || 0);
 
-      // Country fallback: if hint is missing OR is a publisher country (GDELT),
-      // try to detect from the actual text. Override when text strongly indicates
-      // a different country (e.g. xenophobia article from a Nigerian publisher about ZAF).
-      let effectiveIso3 = s.country_hint;
+      // Country resolution: (1) normalize FIPS→ISO3, (2) override from text if stronger match
+      let effectiveIso3: string | null = s.country_hint;
+      try {
+        const { data: norm } = await supabase.rpc("lril_fips_to_iso3", { p_code: effectiveIso3 || "" });
+        if (typeof norm === "string" && norm) effectiveIso3 = norm;
+      } catch (_) { /* ignore */ }
       try {
         const { data: detected } = await supabase.rpc("lril_detect_country_from_text", { p_text: s.raw_text || "" });
-        if (detected && (typeof detected === "string")) {
+        if (detected && typeof detected === "string") {
           if (!effectiveIso3 || effectiveIso3 !== detected) effectiveIso3 = detected;
         }
       } catch (_) { /* keep original */ }
@@ -185,17 +187,25 @@ serve(async (req) => {
         clusterId = existing[0].id;
       }
 
+      // Compute per-signal source tier (overrides static source_reliability)
+      let sourceTier = s.source_reliability ?? 0.5;
+      try {
+        const { data: tier } = await supabase.rpc("lril_source_tier", { p_source: s.source_name, p_url: s.url });
+        if (typeof tier === "number" || (tier && !isNaN(Number(tier)))) sourceTier = Number(tier);
+      } catch (_) { /* keep default */ }
+
       if (clusterId) {
-        // Update existing event: append signal, recompute confidence
         const target = existing!.find(e => e.id === clusterId)!;
-        const newIds = [...new Set([...(target.raw_signal_ids || []), s.id])];
-        const newKws = [...new Set([...(target.matched_keywords || []), ...matched])];
+        const newIds = [...new Set([...((target.raw_signal_ids as any[]) || []), s.id])];
+        const newKws = [...new Set([...((target.matched_keywords as any[]) || []), ...matched])];
         const newCount = newIds.length;
         const temporal_density = Math.min(1, newCount / CLUSTER_WINDOW_HOURS);
+        // Blend tier across cluster: weighted average of existing reliability and this signal's tier
+        const blendedReliability = Math.max(sourceTier, Number((target as any).avg_reliability) || sourceTier);
         const { data: confRow } = await supabase.rpc("lril_compute_confidence", {
           p_source_count: newCount,
-          p_avg_source_reliability: s.source_reliability,
-          p_keyword_strength: keyword_strength,
+          p_avg_source_reliability: blendedReliability,
+          p_keyword_strength: Math.max(keyword_strength, 0.5 + 0.2 * newKws.length),
           p_geo_confidence: geo_confidence,
           p_temporal_density: temporal_density,
           p_proxy_boost: 0,
@@ -207,14 +217,13 @@ serve(async (req) => {
           raw_signal_ids: newIds,
           matched_keywords: newKws,
           confidence: newConfidence,
-          bridged_to_normalized: false, // re-evaluate downstream
+          bridged_to_normalized: false,
         }).eq("id", clusterId);
         stats.events_updated++;
       } else {
-        // Create new event (low-confidence early signal allowed)
         const { data: confRow } = await supabase.rpc("lril_compute_confidence", {
           p_source_count: 1,
-          p_avg_source_reliability: s.source_reliability,
+          p_avg_source_reliability: sourceTier,
           p_keyword_strength: keyword_strength,
           p_geo_confidence: geo_confidence,
           p_temporal_density: 0.1,
@@ -230,6 +239,7 @@ serve(async (req) => {
           event_type: domain,
           subtype,
           iso3,
+          iso3_normalized: iso3,
           admin_level_1: geo?.admin_level_1 || null,
           locality: geo?.locality || geo?.city || s.region_hint || null,
           geo_entity_id: geo?.id || null,

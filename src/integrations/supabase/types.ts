@@ -599,6 +599,7 @@ export type Database = {
           geo_entity_id: string | null
           id: string
           iso3: string
+          iso3_normalized: string | null
           lat: number | null
           locality: string | null
           lon: number | null
@@ -625,6 +626,7 @@ export type Database = {
           geo_entity_id?: string | null
           id?: string
           iso3: string
+          iso3_normalized?: string | null
           lat?: number | null
           locality?: string | null
           lon?: number | null
@@ -651,6 +653,7 @@ export type Database = {
           geo_entity_id?: string | null
           id?: string
           iso3?: string
+          iso3_normalized?: string | null
           lat?: number | null
           locality?: string | null
           lon?: number | null
@@ -13231,6 +13234,11 @@ export type Database = {
           score: number
           subtype: string
         }[]
+      }
+      lril_fips_to_iso3: { Args: { p_code: string }; Returns: string }
+      lril_source_tier: {
+        Args: { p_source: string; p_url: string }
+        Returns: number
       }
       merge_entities_tx: {
         Args: {

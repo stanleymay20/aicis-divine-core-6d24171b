@@ -238,7 +238,7 @@ export default function LocalEvents() {
         .eq("status", "active")
         .order("start_time", { ascending: false })
         .limit(200);
-      if (iso3) q = q.eq("iso3", iso3);
+      if (iso3) q = q.or(`iso3_normalized.eq.${iso3},iso3.eq.${iso3}`);
       if (locality) q = q.ilike("locality", `%${locality}%`);
       if (tierFilter !== "all") q = q.eq("confidence_tier", tierFilter);
       const { data, error } = await q;
