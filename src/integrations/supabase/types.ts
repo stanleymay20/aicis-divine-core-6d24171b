@@ -13219,6 +13219,10 @@ export type Database = {
         }
         Returns: number
       }
+      lril_detect_country_from_text: {
+        Args: { p_text: string }
+        Returns: string
+      }
       lril_detect_keywords: {
         Args: { p_country?: string; p_language?: string; p_text: string }
         Returns: {
