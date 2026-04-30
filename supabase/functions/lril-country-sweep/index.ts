@@ -134,15 +134,19 @@ serve(async (req) => {
   );
   const start = Date.now();
 
-  // Pick countries with fewest recent events (covers underrepresented first)
+  // v4: rank coverage by NEWS signals only (exclude sensor rows like GDACS/USGS/EONET
+  // which would otherwise mask countries that only have earthquake/wildfire pings).
+  const sinceIso = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
   const { data: counts } = await supabase
-    .from("aicis_local_events")
-    .select("iso3_normalized")
-    .gte("start_time", new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString());
+    .from("aicis_raw_local_signals")
+    .select("country_hint")
+    .in("source_type", ["news", "aggregator"])
+    .gte("ingested_at", sinceIso)
+    .limit(20000);
 
   const eventCount = new Map<string, number>();
   for (const r of (counts || [])) {
-    const k = (r as any).iso3_normalized;
+    const k = (r as any).country_hint;
     if (k) eventCount.set(k, (eventCount.get(k) || 0) + 1);
   }
 
