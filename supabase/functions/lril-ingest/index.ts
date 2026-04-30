@@ -79,6 +79,22 @@ const GDELT_QUERIES = [
   '("wagner" OR "africa corps" OR "tren de aragua" OR "cjng" OR "sinaloa cartel")',
   '("xenophobic attack" OR "anti-immigrant" OR "deportation flight" OR "asylum denied")',
   '("election rigged" OR "ballot stuffing" OR "results disputed" OR "constitutional crisis")',
+  // v4: hyperlocal incident classes — village, district, sub-national fatal events
+  '("tribal fight" OR "tribal clash" OR "land dispute" OR "inter-clan" OR "payback killing" OR "clan war")',
+  '("village massacre" OR "village raid" OR "village burned" OR "homes torched" OR "houses razed")',
+  '("mob killing" OR "mob justice" OR "vigilante mob" OR "lynched" OR "burnt alive" OR "necklacing")',
+  '("cattle raid" OR "herder attack" OR "pastoralist clash" OR "farmer-herder" OR "boundary dispute")',
+  '("bandit attack" OR "bandits killed" OR "bandits abducted" OR "kidnap for ransom" OR "ransom demand")',
+  '("illegal mining" OR "artisanal miners killed" OR "galamsey" OR "wildcat miners" OR "mine collapse")',
+  '("chieftaincy dispute" OR "chieftaincy clash" OR "communal conflict" OR "ethnic militia")',
+  '("Bulolo" OR "Morobe" OR "Hela" OR "Enga" OR "Southern Highlands" OR "Bougainville" OR "Goroka")',
+  '("Plateau state" OR "Benue" OR "Zamfara" OR "Kaduna" OR "Borno" OR "Sokoto" OR "Niger state")',
+  '("Amhara" OR "Oromia" OR "Tigray" OR "Fano militia" OR "OLA" OR "Benishangul")',
+  '("Manipur" OR "Imphal" OR "Kuki" OR "Meitei" OR "Nagaland" OR "Mizoram")',
+  '("Rakhine" OR "Chin state" OR "Kachin" OR "Shan state" OR "Sagaing" OR "PDF clash")',
+  '("Cabo Delgado" OR "Mocimboa" OR "Pemba" OR "ADF Beni" OR "Ituri" OR "Djugu")',
+  '("Chocó" OR "Cauca" OR "Catatumbo" OR "Arauca" OR "Guaviare" OR "Tumaco")',
+  '("Sinaloa" OR "Guerrero" OR "Michoacán" OR "Tamaulipas" OR "Chiapas" OR "Zacatecas")',
 ];
 
 async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
