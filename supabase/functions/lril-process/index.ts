@@ -120,6 +120,18 @@ serve(async (req) => {
       const subtype: string = top.subtype;
       const keyword_strength = Number(top.score || 0);
 
+      // Country fallback: if hint is missing OR is a publisher country (GDELT),
+      // try to detect from the actual text. Override when text strongly indicates
+      // a different country (e.g. xenophobia article from a Nigerian publisher about ZAF).
+      let effectiveIso3 = s.country_hint;
+      try {
+        const { data: detected } = await supabase.rpc("lril_detect_country_from_text", { p_text: s.raw_text || "" });
+        if (detected && (typeof detected === "string")) {
+          if (!effectiveIso3 || effectiveIso3 !== detected) effectiveIso3 = detected;
+        }
+      } catch (_) { /* keep original */ }
+      (s as any).country_hint = effectiveIso3;
+
       // 2b. Geo resolution (locality string-match in cached geo entities)
       const iso3 = s.country_hint;
       let geo: GeoEntity | null = null;
