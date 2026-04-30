@@ -95,6 +95,21 @@ const GDELT_QUERIES = [
   '("Cabo Delgado" OR "Mocimboa" OR "Pemba" OR "ADF Beni" OR "Ituri" OR "Djugu")',
   '("Chocó" OR "Cauca" OR "Catatumbo" OR "Arauca" OR "Guaviare" OR "Tumaco")',
   '("Sinaloa" OR "Guerrero" OR "Michoacán" OR "Tamaulipas" OR "Chiapas" OR "Zacatecas")',
+  // v5: ALL-DOMAIN — industrial / economic / infrastructure / agriculture / science / governance
+  '("plant launched" OR "factory inaugurated" OR "assembly line" OR "production hub" OR "industrial zone" OR SEZ OR "manufacturing plant")',
+  '("refinery commissioned" OR smelter OR "cement plant" OR "steel mill" OR "automotive plant" OR "EV factory" OR "battery gigafactory")',
+  '("plastics components" OR "auto parts plant" OR "petrochemical complex" OR "fertilizer plant" OR "pharma plant")',
+  '("FDI deal" OR "foreign investment" OR "trade pact" OR "tariff cut" OR "free trade" OR "bilateral agreement" OR "joint venture")',
+  '("central bank" OR "rate hike" OR "rate cut" OR "bond issuance" OR "debt restructuring" OR "sovereign rating" OR eurobond)',
+  '("port expansion" OR "rail line opened" OR "metro launched" OR "pipeline commissioned" OR "dam inaugurated" OR "highway opened")',
+  '("solar farm" OR "wind farm" OR "data center" OR "fiber network" OR "5G rollout" OR "submarine cable")',
+  '("harvest yield" OR "wheat reserve" OR "irrigation scheme" OR "livestock disease" OR "fisheries quota" OR "food security")',
+  '("vaccine approved" OR "clinical trial" OR "gene therapy" OR "fusion milestone" OR "satellite launch" OR "lunar mission")',
+  '("bill passed" OR referendum OR "cabinet reshuffle" OR "treaty signed" OR "sanctions lifted" OR "constitutional amendment")',
+  '("Tissemsilt" OR "Tlemcen" OR "Oran" OR "Constantine" OR "Annaba" OR "Béjaïa" OR "Sétif" OR "Hassi Messaoud" OR "Adrar")',
+  '("Tangier" OR "Casablanca" OR "Kenitra" OR "Jorf Lasfar" OR "Mohammedia" OR "Sfax" OR "Sousse" OR "Bizerte" OR "Misrata" OR "Benghazi")',
+  '("Special Economic Zone" OR "industrial park" OR "tech park" OR "logistics hub" OR "container terminal" OR "transshipment hub")',
+  '("EV adoption" OR "green hydrogen" OR "carbon capture" OR "renewables target" OR "nuclear plant" OR "SMR reactor")',
 ];
 
 async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
