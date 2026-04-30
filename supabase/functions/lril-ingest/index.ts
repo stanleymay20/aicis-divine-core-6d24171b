@@ -69,6 +69,16 @@ const GDELT_QUERIES = [
   '(rsf OR "rapid support forces" OR "el fasher" OR darfur)',
   '(houthi OR hezbollah OR "idf strike" OR rafah OR "khan younis" OR jabalia)',
   '(m23 OR adf OR "al-shabaab" OR jnim OR iswap OR "boko haram")',
+  '("school attacked" OR "schoolgirls abducted" OR "students killed" OR "university shut")',
+  '("hospital attacked" OR "doctors strike" OR "oxygen shortage" OR "medicines shortage")',
+  '("bridge collapse" OR "train derailment" OR "ferry capsized" OR "plane crash" OR "building collapse")',
+  '("oil spill" OR "tailings dam" OR "chemical leak" OR "gas explosion" OR "toxic cloud")',
+  '("nipah" OR "marburg" OR "polio detected" OR "cholera spreading" OR "diphtheria outbreak")',
+  '("lockbit" OR "blackcat ransomware" OR "ddos attack" OR "government website hacked" OR "stolen data leaked")',
+  '("price hike riot" OR "bread queue" OR "fuel subsidy" OR "forex shortage" OR "dollar shortage")',
+  '("wagner" OR "africa corps" OR "tren de aragua" OR "cjng" OR "sinaloa cartel")',
+  '("xenophobic attack" OR "anti-immigrant" OR "deportation flight" OR "asylum denied")',
+  '("election rigged" OR "ballot stuffing" OR "results disputed" OR "constitutional crisis")',
 ];
 
 async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
