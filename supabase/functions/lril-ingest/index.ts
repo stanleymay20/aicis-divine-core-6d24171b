@@ -69,6 +69,16 @@ const GDELT_QUERIES = [
   '(rsf OR "rapid support forces" OR "el fasher" OR darfur)',
   '(houthi OR hezbollah OR "idf strike" OR rafah OR "khan younis" OR jabalia)',
   '(m23 OR adf OR "al-shabaab" OR jnim OR iswap OR "boko haram")',
+  '("school attacked" OR "schoolgirls abducted" OR "students killed" OR "university shut")',
+  '("hospital attacked" OR "doctors strike" OR "oxygen shortage" OR "medicines shortage")',
+  '("bridge collapse" OR "train derailment" OR "ferry capsized" OR "plane crash" OR "building collapse")',
+  '("oil spill" OR "tailings dam" OR "chemical leak" OR "gas explosion" OR "toxic cloud")',
+  '("nipah" OR "marburg" OR "polio detected" OR "cholera spreading" OR "diphtheria outbreak")',
+  '("lockbit" OR "blackcat ransomware" OR "ddos attack" OR "government website hacked" OR "stolen data leaked")',
+  '("price hike riot" OR "bread queue" OR "fuel subsidy" OR "forex shortage" OR "dollar shortage")',
+  '("wagner" OR "africa corps" OR "tren de aragua" OR "cjng" OR "sinaloa cartel")',
+  '("xenophobic attack" OR "anti-immigrant" OR "deportation flight" OR "asylum denied")',
+  '("election rigged" OR "ballot stuffing" OR "results disputed" OR "constitutional crisis")',
 ];
 
 async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
@@ -188,6 +198,59 @@ async function pullGDACS(): Promise<RawSignal[]> {
   });
 }
 
+async function pullUSGS(): Promise<RawSignal[]> {
+  // USGS earthquakes M4.5+ past day — ground truth seismic events worldwide.
+  const url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson";
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`USGS HTTP ${r.status}`);
+  const j = await r.json();
+  const features = (j.features || []) as any[];
+  return features.map((f) => {
+    const p = f.properties || {};
+    const c = f.geometry?.coordinates || [];
+    const text = `M${p.mag} earthquake — ${p.place || "unknown"}`;
+    return {
+      source_type: "sensor",
+      source_name: "usgs",
+      source_reliability: 0.98,
+      raw_text: text,
+      raw_payload: { ...p, coordinates: c },
+      language: "en",
+      url: p.url || null,
+      published_at: p.time ? new Date(p.time).toISOString() : null,
+      country_hint: null,
+      region_hint: p.place || null,
+      dedup_key: `usgs_${f.id}`,
+    } satisfies RawSignal;
+  });
+}
+
+async function pullEONET(): Promise<RawSignal[]> {
+  // NASA EONET — wildfires, volcanoes, severe storms, floods (open events).
+  const url = "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=3&limit=200";
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`EONET HTTP ${r.status}`);
+  const j = await r.json();
+  const events = (j.events || []) as any[];
+  return events.map((e) => {
+    const cat = e.categories?.[0]?.title || "natural event";
+    const geom = e.geometry?.[e.geometry.length - 1] || {};
+    return {
+      source_type: "sensor",
+      source_name: "nasa_eonet",
+      source_reliability: 0.95,
+      raw_text: `${cat}: ${e.title}`,
+      raw_payload: { ...e, last_geom: geom },
+      language: "en",
+      url: e.sources?.[0]?.url || null,
+      published_at: geom.date || null,
+      country_hint: null,
+      region_hint: null,
+      dedup_key: `eonet_${e.id}`,
+    } satisfies RawSignal;
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -249,6 +312,24 @@ serve(async (req) => {
     summary.reliefweb = ev.length;
   } catch (e) {
     summary.reliefweb_error = (e as Error).message;
+  }
+
+  // USGS earthquakes (sensor truth, M4.5+)
+  try {
+    const ev = await pullUSGS();
+    all.push(...ev);
+    summary.usgs = ev.length;
+  } catch (e) {
+    summary.usgs_error = (e as Error).message;
+  }
+
+  // NASA EONET (wildfires, volcanoes, storms, floods)
+  try {
+    const ev = await pullEONET();
+    all.push(...ev);
+    summary.eonet = ev.length;
+  } catch (e) {
+    summary.eonet_error = (e as Error).message;
   }
 
   let inserted = 0;
