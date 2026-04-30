@@ -42,14 +42,29 @@ interface RawSignal {
   dedup_key: string;
 }
 
-async function pullGDELT(): Promise<RawSignal[]> {
-  // Single conservative query (rate limit: 1 req / 5s — we run every 30 min so OK)
-  const q = encodeURIComponent('(protest OR blackout OR flood OR outbreak OR coup)');
-  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=ArtList&maxrecords=100&format=json&sort=DateDesc`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
-  if (!r.ok) throw new Error(`GDELT HTTP ${r.status}`);
+// Rotating targeted queries — broader coverage of real local incidents.
+// Each query is narrow enough to return relevant articles instead of generic noise.
+const GDELT_QUERIES = [
+  '(xenophobic OR xenophobia OR "operation dudula" OR "foreign nationals attacked")',
+  '("communal clash" OR "ethnic clash" OR "sectarian violence" OR "tribal clash" OR "herder farmer")',
+  '("mob lynched" OR "vigilante killing" OR "jungle justice" OR "necklacing")',
+  '("mass shooting" OR "tavern shooting" OR massacre OR "gunmen open fire")',
+  '("gang violence" OR "cartel violence" OR "drive-by shooting" OR "turf war")',
+  '(kidnapped OR abducted OR "mass abduction" OR "schoolgirls kidnapped")',
+  '(dumsor OR "load shedding" OR loadshedding OR "rolling blackouts" OR "grid collapse")',
+  '(protest OR demonstration OR riot OR unrest OR "violent clashes")',
+  '(blackout OR "power outage" OR "national grid" OR "stage 6" OR "stage 8")',
+  '(flood OR earthquake OR landslide OR cyclone OR wildfire)',
+  '(outbreak OR cholera OR ebola OR "lassa fever" OR "viral hemorrhagic")',
+  '(coup OR mutiny OR insurgency OR militants OR "armed group")',
+];
+
+async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(q)}&mode=ArtList&maxrecords=75&format=json&sort=DateDesc&timespan=24h`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error(`GDELT HTTP ${r.status} for ${q.slice(0,40)}`);
   const text = await r.text();
-  if (!text.trim().startsWith("{")) throw new Error(`GDELT non-JSON: ${text.slice(0, 80)}`);
+  if (!text.trim().startsWith("{")) return [];
   const j = JSON.parse(text);
   const articles = (j.articles || []) as any[];
   return articles.map((a) => {
@@ -57,7 +72,7 @@ async function pullGDELT(): Promise<RawSignal[]> {
     return {
       source_type: "aggregator",
       source_name: a.domain || "gdelt",
-      source_reliability: 0.55,
+      source_reliability: 0.6,
       raw_text: a.title || "",
       raw_payload: a,
       language: (a.language || "en").toLowerCase().slice(0, 2),
@@ -68,6 +83,51 @@ async function pullGDELT(): Promise<RawSignal[]> {
       dedup_key: `gdelt_${hash(a.url || a.title || crypto.randomUUID())}`,
     } satisfies RawSignal;
   });
+}
+
+async function pullGDELT(): Promise<RawSignal[]> {
+  // Run all queries with small spacing to respect 1req/5s rate limit pattern.
+  const all: RawSignal[] = [];
+  for (const q of GDELT_QUERIES) {
+    try {
+      const rows = await pullGDELTQuery(q);
+      all.push(...rows);
+    } catch (e) {
+      console.warn(`gdelt skip: ${(e as Error).message}`);
+    }
+    await new Promise(r => setTimeout(r, 1200));
+  }
+  return all;
+}
+
+async function pullReliefWeb(): Promise<RawSignal[]> {
+  // ReliefWeb — UN OCHA humanitarian reports. Open API, no key.
+  const url = "https://api.reliefweb.int/v1/reports?appname=aicis-lril&limit=100&sort[]=date:desc&filter[field]=date.created&filter[value][from]=" + new Date(Date.now() - 48*3600*1000).toISOString();
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
+  const j = await r.json();
+  const data = (j.data || []) as any[];
+  const out: RawSignal[] = [];
+  for (const d of data) {
+    const f = d.fields || {};
+    const iso3 = f.primary_country?.iso3?.toUpperCase() || null;
+    const title = f.title || "";
+    const body = (f.body || "").slice(0, 1500);
+    out.push({
+      source_type: "ngo",
+      source_name: "reliefweb",
+      source_reliability: 0.88,
+      raw_text: `${title}. ${body}`,
+      raw_payload: { id: d.id, url: f.url, country: f.primary_country?.name },
+      language: "en",
+      url: f.url || null,
+      published_at: f.date?.created || null,
+      country_hint: iso3,
+      region_hint: f.primary_country?.name || null,
+      dedup_key: `reliefweb_${d.id}`,
+    });
+  }
+  return out;
 }
 
 function parseGDELTDate(s: string): string | null {
@@ -155,6 +215,15 @@ serve(async (req) => {
     summary.gdelt = ev.length;
   } catch (e) {
     summary.gdelt_error = (e as Error).message;
+  }
+
+  // ReliefWeb (NGO/UN reports — high reliability)
+  try {
+    const ev = await pullReliefWeb();
+    all.push(...ev);
+    summary.reliefweb = ev.length;
+  } catch (e) {
+    summary.reliefweb_error = (e as Error).message;
   }
 
   let inserted = 0;
