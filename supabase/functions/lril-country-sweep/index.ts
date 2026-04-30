@@ -100,8 +100,8 @@ function parseGDELTDate(s: string): string | null {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
-async function pullCountryQuery(iso3: string, name: string): Promise<any[]> {
-  const q = `"${name}" ${INCIDENT_TERMS}`;
+async function pullCountryQuery(iso3: string, name: string, mode: { name: string; terms: string }): Promise<any[]> {
+  const q = `"${name}" ${mode.terms}`;
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(q)}&mode=ArtList&maxrecords=25&format=json&sort=DateDesc&timespan=48h`;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
