@@ -79,6 +79,22 @@ const GDELT_QUERIES = [
   '("wagner" OR "africa corps" OR "tren de aragua" OR "cjng" OR "sinaloa cartel")',
   '("xenophobic attack" OR "anti-immigrant" OR "deportation flight" OR "asylum denied")',
   '("election rigged" OR "ballot stuffing" OR "results disputed" OR "constitutional crisis")',
+  // v4: hyperlocal incident classes — village, district, sub-national fatal events
+  '("tribal fight" OR "tribal clash" OR "land dispute" OR "inter-clan" OR "payback killing" OR "clan war")',
+  '("village massacre" OR "village raid" OR "village burned" OR "homes torched" OR "houses razed")',
+  '("mob killing" OR "mob justice" OR "vigilante mob" OR "lynched" OR "burnt alive" OR "necklacing")',
+  '("cattle raid" OR "herder attack" OR "pastoralist clash" OR "farmer-herder" OR "boundary dispute")',
+  '("bandit attack" OR "bandits killed" OR "bandits abducted" OR "kidnap for ransom" OR "ransom demand")',
+  '("illegal mining" OR "artisanal miners killed" OR "galamsey" OR "wildcat miners" OR "mine collapse")',
+  '("chieftaincy dispute" OR "chieftaincy clash" OR "communal conflict" OR "ethnic militia")',
+  '("Bulolo" OR "Morobe" OR "Hela" OR "Enga" OR "Southern Highlands" OR "Bougainville" OR "Goroka")',
+  '("Plateau state" OR "Benue" OR "Zamfara" OR "Kaduna" OR "Borno" OR "Sokoto" OR "Niger state")',
+  '("Amhara" OR "Oromia" OR "Tigray" OR "Fano militia" OR "OLA" OR "Benishangul")',
+  '("Manipur" OR "Imphal" OR "Kuki" OR "Meitei" OR "Nagaland" OR "Mizoram")',
+  '("Rakhine" OR "Chin state" OR "Kachin" OR "Shan state" OR "Sagaing" OR "PDF clash")',
+  '("Cabo Delgado" OR "Mocimboa" OR "Pemba" OR "ADF Beni" OR "Ituri" OR "Djugu")',
+  '("Chocó" OR "Cauca" OR "Catatumbo" OR "Arauca" OR "Guaviare" OR "Tumaco")',
+  '("Sinaloa" OR "Guerrero" OR "Michoacán" OR "Tamaulipas" OR "Chiapas" OR "Zacatecas")',
 ];
 
 async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
@@ -251,6 +267,80 @@ async function pullEONET(): Promise<RawSignal[]> {
   });
 }
 
+// v4: Local & regional RSS — fills gaps in Pacific, West Africa, Sahel, Horn, SE Asia, Latin America
+const LOCAL_RSS: { url: string; name: string; iso3: string | null; reliability: number }[] = [
+  { url: "https://www.rnz.co.nz/rss/pacific.xml", name: "rnz_pacific", iso3: null, reliability: 0.85 },
+  { url: "https://www.abc.net.au/news/feed/8841608/rss.xml", name: "abc_pacific", iso3: null, reliability: 0.85 },
+  { url: "https://www.thenational.com.pg/feed/", name: "thenational_png", iso3: "PNG", reliability: 0.78 },
+  { url: "https://postcourier.com.pg/feed/", name: "postcourier_png", iso3: "PNG", reliability: 0.78 },
+  { url: "https://www.looppng.com/rss.xml", name: "loop_png", iso3: "PNG", reliability: 0.72 },
+  { url: "https://www.fijitimes.com.fj/feed/", name: "fiji_times", iso3: "FJI", reliability: 0.75 },
+  { url: "https://www.solomonstarnews.com/feed/", name: "solomon_star", iso3: "SLB", reliability: 0.72 },
+  { url: "https://www.dailypost.vu/search/?f=rss", name: "vanuatu_dailypost", iso3: "VUT", reliability: 0.72 },
+  { url: "https://www.premiumtimesng.com/feed", name: "premium_times_ng", iso3: "NGA", reliability: 0.82 },
+  { url: "https://dailytrust.com/feed/", name: "daily_trust_ng", iso3: "NGA", reliability: 0.78 },
+  { url: "https://humanglemedia.com/feed/", name: "humangle", iso3: "NGA", reliability: 0.85 },
+  { url: "https://www.graphic.com.gh/feed/", name: "graphic_gh", iso3: "GHA", reliability: 0.78 },
+  { url: "https://addisstandard.com/feed/", name: "addis_standard", iso3: "ETH", reliability: 0.82 },
+  { url: "https://www.standardmedia.co.ke/rss/headlines.php", name: "standard_ke", iso3: "KEN", reliability: 0.78 },
+  { url: "https://www.frontiermyanmar.net/en/feed/", name: "frontier_mm", iso3: "MMR", reliability: 0.85 },
+  { url: "https://www.rappler.com/feed/", name: "rappler_ph", iso3: "PHL", reliability: 0.8 },
+  { url: "https://www.semana.com/rss/portada.xml", name: "semana_co", iso3: "COL", reliability: 0.75 },
+  { url: "https://www.eluniversal.com.mx/rss.xml", name: "eluniversal_mx", iso3: "MEX", reliability: 0.75 },
+];
+
+function stripXml(s: string): string {
+  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function pullRSSFeed(feed: typeof LOCAL_RSS[number]): Promise<RawSignal[]> {
+  try {
+    const r = await fetch(feed.url, {
+      headers: { "User-Agent": "AICIS-LRIL/4.0" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) return [];
+    const xml = await r.text();
+    const items = xml.match(/<item[\s\S]*?<\/item>/gi) || xml.match(/<entry[\s\S]*?<\/entry>/gi) || [];
+    const out: RawSignal[] = [];
+    for (const it of items.slice(0, 30)) {
+      const title = stripXml((it.match(/<title>([\s\S]*?)<\/title>/i) || [, ""])[1]);
+      const desc = stripXml((it.match(/<description>([\s\S]*?)<\/description>/i) || it.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i) || [, ""])[1]).slice(0, 800);
+      const link = (it.match(/<link[^>]*>([^<]+)<\/link>/i) || it.match(/<link[^>]*href="([^"]+)"/i) || [, ""])[1].trim();
+      const pub = (it.match(/<pubDate>([^<]+)<\/pubDate>/i) || it.match(/<published>([^<]+)<\/published>/i) || it.match(/<updated>([^<]+)<\/updated>/i) || [, ""])[1];
+      if (!title) continue;
+      out.push({
+        source_type: "news",
+        source_name: feed.name,
+        source_reliability: feed.reliability,
+        raw_text: desc ? `${title}. ${desc}` : title,
+        raw_payload: { title, desc, link, feed: feed.name },
+        language: "en",
+        url: link || null,
+        published_at: pub ? new Date(pub).toISOString() : new Date().toISOString(),
+        country_hint: feed.iso3,
+        region_hint: null,
+        dedup_key: `rss_${feed.name}_${hash(link || title)}`,
+      });
+    }
+    return out;
+  } catch (_) {
+    return [];
+  }
+}
+
+async function pullLocalRSS(): Promise<RawSignal[]> {
+  const all: RawSignal[] = [];
+  const BATCH = 5;
+  for (let i = 0; i < LOCAL_RSS.length; i += BATCH) {
+    const batch = LOCAL_RSS.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(pullRSSFeed));
+    for (const r of results) if (r.status === "fulfilled") all.push(...r.value);
+    await new Promise(r => setTimeout(r, 400));
+  }
+  return all;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -287,50 +377,25 @@ serve(async (req) => {
     } catch (_) { /* ignore */ }
   }
 
-  // GDACS (most reliable)
-  try {
-    const ev = await pullGDACS();
-    all.push(...ev);
-    summary.gdacs = ev.length;
-  } catch (e) {
-    summary.gdacs_error = (e as Error).message;
-  }
-
-  // GDELT (best-effort)
-  try {
-    const ev = await pullGDELT();
-    all.push(...ev);
-    summary.gdelt = ev.length;
-  } catch (e) {
-    summary.gdelt_error = (e as Error).message;
-  }
-
-  // ReliefWeb (NGO/UN reports — high reliability)
-  try {
-    const ev = await pullReliefWeb();
-    all.push(...ev);
-    summary.reliefweb = ev.length;
-  } catch (e) {
-    summary.reliefweb_error = (e as Error).message;
-  }
-
-  // USGS earthquakes (sensor truth, M4.5+)
-  try {
-    const ev = await pullUSGS();
-    all.push(...ev);
-    summary.usgs = ev.length;
-  } catch (e) {
-    summary.usgs_error = (e as Error).message;
-  }
-
-  // NASA EONET (wildfires, volcanoes, storms, floods)
-  try {
-    const ev = await pullEONET();
-    all.push(...ev);
-    summary.eonet = ev.length;
-  } catch (e) {
-    summary.eonet_error = (e as Error).message;
-  }
+  // v4: run all sources in parallel — slow GDELT 429s never block local RSS / sensors.
+  const tasks: Array<[string, Promise<RawSignal[]>]> = [
+    ["gdacs", pullGDACS()],
+    ["gdelt", pullGDELT()],
+    ["reliefweb", pullReliefWeb()],
+    ["usgs", pullUSGS()],
+    ["eonet", pullEONET()],
+    ["local_rss", pullLocalRSS()],
+  ];
+  const settled = await Promise.allSettled(tasks.map(([, p]) => p));
+  settled.forEach((res, i) => {
+    const [name] = tasks[i];
+    if (res.status === "fulfilled") {
+      all.push(...res.value);
+      summary[name] = res.value.length;
+    } else {
+      summary[`${name}_error`] = (res.reason as Error)?.message || String(res.reason);
+    }
+  });
 
   let inserted = 0;
   if (all.length > 0) {
