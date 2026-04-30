@@ -250,6 +250,8 @@ async function pullEONET(): Promise<RawSignal[]> {
     } satisfies RawSignal;
   });
 }
+
+serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const supabase = createClient(
