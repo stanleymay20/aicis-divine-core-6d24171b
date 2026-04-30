@@ -110,6 +110,19 @@ const GDELT_QUERIES = [
   '("Tangier" OR "Casablanca" OR "Kenitra" OR "Jorf Lasfar" OR "Mohammedia" OR "Sfax" OR "Sousse" OR "Bizerte" OR "Misrata" OR "Benghazi")',
   '("Special Economic Zone" OR "industrial park" OR "tech park" OR "logistics hub" OR "container terminal" OR "transshipment hub")',
   '("EV adoption" OR "green hydrogen" OR "carbon capture" OR "renewables target" OR "nuclear plant" OR "SMR reactor")',
+  // v7: HUMAN RIGHTS — activist/journalist killings, junta crackdowns, enforced disappearance
+  '("activist killed" OR "activist found dead" OR "activist murdered" OR "activist assassinated" OR "rights defender killed" OR "civil society leader killed")',
+  '("vocal critic" OR "outspoken critic" OR "critic of the junta" OR "critic of the military" OR "government critic killed" OR "opposition figure killed")',
+  '("journalist killed" OR "journalist murdered" OR "journalist found dead" OR "reporter killed" OR "press freedom" OR "blogger killed" OR "editor killed")',
+  '("signs of violent assault" OR "found dead with signs" OR "body found" OR "body discovered" OR "execution-style" OR "killed by gunmen" OR "masked gunmen")',
+  '("forced disappearance" OR "enforced disappearance" OR "abducted by security" OR "held incommunicado" OR "secret detention" OR "whereabouts unknown")',
+  '("extrajudicial killing" OR "summary execution" OR "died in custody" OR "killed in custody" OR "custodial death" OR "tortured to death")',
+  '("crackdown" OR "mass arrests" OR "sweeping arrests" OR "banned opposition" OR "dissolved party" OR "jailed for criticism" OR "silenced dissent")',
+  '("militant tué" OR "militant assassiné" OR "journaliste tué" OR "journaliste assassiné" OR "défenseur des droits tué" OR "critique de la junte")',
+  '("ativista morto" OR "ativista assassinado" OR "activista morto" OR "activista assassinado" OR "jornalista morto" OR "crítico do regime")',
+  '("Guinea-Bissau" OR "Guiné-Bissau" OR Bissau OR Bafatá OR Gabú OR "Balanta" OR "PAIGC" OR "Embalo")',
+  '("military junta" OR "junta leader" OR "ruling military council" OR CNSP OR CNRD OR "transitional military" OR "extended transition")',
+  '("post-coup" OR "since the coup" OR "ECOWAS sanctions" OR "AU suspension" OR "sanctions following coup")',
 ];
 
 async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
@@ -324,6 +337,30 @@ const LOCAL_RSS: { url: string; name: string; iso3: string | null; reliability: 
   { url: "https://www.thedailystar.net/frontpage/rss.xml", name: "dailystar_bd", iso3: "BGD", reliability: 0.78 },
   { url: "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf", name: "allafrica", iso3: null, reliability: 0.78 },
   { url: "https://www.france24.com/en/africa/rss", name: "france24_africa", iso3: null, reliability: 0.85 },
+  // v7: Lusophone Africa + Sahel/junta belt + human-rights watchdogs
+  { url: "https://www.rfi.fr/pt/rss", name: "rfi_pt", iso3: null, reliability: 0.85 },
+  { url: "https://www.dw.com/pt-002/rss", name: "dw_pt_africa", iso3: null, reliability: 0.85 },
+  { url: "https://www.voaportugues.com/api/zmgqoe$pmi", name: "voa_pt", iso3: null, reliability: 0.82 },
+  { url: "https://noticiasaominuto.com/rss/mundo", name: "noticias_ao_minuto", iso3: null, reliability: 0.7 },
+  { url: "https://www.jornaldenegocios.pt/rss", name: "jornal_negocios_pt", iso3: null, reliability: 0.75 },
+  { url: "https://www.publico.pt/rss", name: "publico_pt", iso3: null, reliability: 0.82 },
+  { url: "https://opais.co.mz/feed/", name: "opais_mz", iso3: "MOZ", reliability: 0.78 },
+  { url: "https://www.jornalnoticias.co.mz/feed/", name: "jornal_noticias_mz", iso3: "MOZ", reliability: 0.75 },
+  { url: "https://www.angop.ao/noticias/rss.xml", name: "angop_ao", iso3: "AGO", reliability: 0.82 },
+  { url: "https://www.novojornal.co.ao/rss", name: "novo_jornal_ao", iso3: "AGO", reliability: 0.75 },
+  { url: "https://www.rfi.fr/fr/afrique/rss", name: "rfi_afrique", iso3: null, reliability: 0.88 },
+  { url: "https://www.jeuneafrique.com/feed/", name: "jeune_afrique", iso3: null, reliability: 0.85 },
+  { url: "https://www.maliweb.net/feed", name: "maliweb", iso3: "MLI", reliability: 0.75 },
+  { url: "https://lefaso.net/spip.php?page=backend", name: "lefaso_bf", iso3: "BFA", reliability: 0.78 },
+  { url: "https://www.aniamey.com/?q=rss.xml", name: "ani_ne", iso3: "NER", reliability: 0.72 },
+  { url: "https://guineematin.com/feed/", name: "guinee_matin", iso3: "GIN", reliability: 0.75 },
+  { url: "https://www.tchadinfos.com/feed/", name: "tchad_infos", iso3: "TCD", reliability: 0.72 },
+  // Human-rights watchdogs (global, high reliability)
+  { url: "https://www.frontlinedefenders.org/en/rss.xml", name: "frontline_defenders", iso3: null, reliability: 0.95 },
+  { url: "https://cpj.org/feed/", name: "cpj", iso3: null, reliability: 0.95 },
+  { url: "https://rsf.org/en/rss.xml", name: "rsf", iso3: null, reliability: 0.92 },
+  { url: "https://www.amnesty.org/en/rss/news/", name: "amnesty", iso3: null, reliability: 0.92 },
+  { url: "https://www.hrw.org/rss/news", name: "hrw", iso3: null, reliability: 0.92 },
 ];
 
 function stripXml(s: string): string {
