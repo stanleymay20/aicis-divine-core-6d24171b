@@ -80,8 +80,13 @@ const COUNTRY_NAMES: Record<string, string[]> = {
   MAC: ["Macau"], GRL: ["Greenland"], BMU: ["Bermuda"], FRO: ["Faroe Islands"],
 };
 
-// Compact incident terms — kept short so GDELT URL stays under 2KB and queries return fast.
+// v5: dual-mode — incidents AND development. A country is "covered" only if both flow.
 const INCIDENT_TERMS = '(killed OR attack OR clash OR protest OR flood OR fire OR outbreak OR collapse OR shooting OR kidnapped OR blackout OR crisis)';
+const DEVELOPMENT_TERMS = '(launched OR inaugurated OR opened OR signed OR approved OR commissioned OR investment OR plant OR factory OR deal OR agreement OR reform OR policy)';
+const QUERY_MODES: Array<{ name: string; terms: string }> = [
+  { name: "incident", terms: INCIDENT_TERMS },
+  { name: "development", terms: DEVELOPMENT_TERMS },
+];
 
 function hash(s: string): string {
   let h = 0;
