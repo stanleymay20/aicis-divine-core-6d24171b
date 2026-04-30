@@ -80,8 +80,13 @@ const COUNTRY_NAMES: Record<string, string[]> = {
   MAC: ["Macau"], GRL: ["Greenland"], BMU: ["Bermuda"], FRO: ["Faroe Islands"],
 };
 
-// Compact incident terms — kept short so GDELT URL stays under 2KB and queries return fast.
+// v5: dual-mode — incidents AND development. A country is "covered" only if both flow.
 const INCIDENT_TERMS = '(killed OR attack OR clash OR protest OR flood OR fire OR outbreak OR collapse OR shooting OR kidnapped OR blackout OR crisis)';
+const DEVELOPMENT_TERMS = '(launched OR inaugurated OR opened OR signed OR approved OR commissioned OR investment OR plant OR factory OR deal OR agreement OR reform OR policy)';
+const QUERY_MODES: Array<{ name: string; terms: string }> = [
+  { name: "incident", terms: INCIDENT_TERMS },
+  { name: "development", terms: DEVELOPMENT_TERMS },
+];
 
 function hash(s: string): string {
   let h = 0;
@@ -95,8 +100,8 @@ function parseGDELTDate(s: string): string | null {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
-async function pullCountryQuery(iso3: string, name: string): Promise<any[]> {
-  const q = `"${name}" ${INCIDENT_TERMS}`;
+async function pullCountryQuery(iso3: string, name: string, mode: { name: string; terms: string }): Promise<any[]> {
+  const q = `"${name}" ${mode.terms}`;
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(q)}&mode=ArtList&maxrecords=25&format=json&sort=DateDesc&timespan=48h`;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
@@ -118,7 +123,7 @@ async function pullCountryQuery(iso3: string, name: string): Promise<any[]> {
       // is *about* that country (we searched for its name)
       country_hint: iso3,
       region_hint: name,
-      dedup_key: `gdelt_sweep_${iso3}_${hash(a.url || a.title || crypto.randomUUID())}`,
+      dedup_key: `gdelt_sweep_${mode.name}_${iso3}_${hash(a.url || a.title || crypto.randomUUID())}`,
     }));
   } catch (_) {
     return [];
@@ -167,10 +172,13 @@ serve(async (req) => {
       batch.map(async ({ iso }) => {
         const names = COUNTRY_NAMES[iso] || [];
         const out: any[] = [];
-        for (const n of names) {
-          const r = await pullCountryQuery(iso, n);
-          out.push(...r);
-          if (r.length > 0) break; // first variant that returns is enough
+        // v5: pull BOTH incident + development for each country.
+        for (const mode of QUERY_MODES) {
+          for (const n of names) {
+            const r = await pullCountryQuery(iso, n, mode);
+            out.push(...r);
+            if (r.length > 0) break;
+          }
         }
         targets.push(`${iso}:${out.length}`);
         return out;
