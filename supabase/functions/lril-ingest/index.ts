@@ -587,6 +587,7 @@ serve(async (req) => {
     ["usgs", pullUSGS()],
     ["eonet", pullEONET()],
     ["local_rss", pullLocalRSS()],
+    ["google_news", pullGoogleNewsAllCountries()],
   ];
   const settled = await Promise.allSettled(tasks.map(([, p]) => p));
   settled.forEach((res, i) => {
