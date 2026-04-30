@@ -172,10 +172,13 @@ serve(async (req) => {
       batch.map(async ({ iso }) => {
         const names = COUNTRY_NAMES[iso] || [];
         const out: any[] = [];
-        for (const n of names) {
-          const r = await pullCountryQuery(iso, n);
-          out.push(...r);
-          if (r.length > 0) break; // first variant that returns is enough
+        // v5: pull BOTH incident + development for each country.
+        for (const mode of QUERY_MODES) {
+          for (const n of names) {
+            const r = await pullCountryQuery(iso, n, mode);
+            out.push(...r);
+            if (r.length > 0) break;
+          }
         }
         targets.push(`${iso}:${out.length}`);
         return out;
