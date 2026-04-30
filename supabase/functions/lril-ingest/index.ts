@@ -49,14 +49,26 @@ const GDELT_QUERIES = [
   '("communal clash" OR "ethnic clash" OR "sectarian violence" OR "tribal clash" OR "herder farmer")',
   '("mob lynched" OR "vigilante killing" OR "jungle justice" OR "necklacing")',
   '("mass shooting" OR "tavern shooting" OR massacre OR "gunmen open fire")',
-  '("gang violence" OR "cartel violence" OR "drive-by shooting" OR "turf war")',
-  '(kidnapped OR abducted OR "mass abduction" OR "schoolgirls kidnapped")',
+  '("gang violence" OR "cartel violence" OR "drive-by shooting" OR "turf war" OR sicarios)',
+  '(kidnapped OR abducted OR "mass abduction" OR "schoolgirls kidnapped" OR "for ransom")',
   '(dumsor OR "load shedding" OR loadshedding OR "rolling blackouts" OR "grid collapse")',
-  '(protest OR demonstration OR riot OR unrest OR "violent clashes")',
-  '(blackout OR "power outage" OR "national grid" OR "stage 6" OR "stage 8")',
-  '(flood OR earthquake OR landslide OR cyclone OR wildfire)',
-  '(outbreak OR cholera OR ebola OR "lassa fever" OR "viral hemorrhagic")',
-  '(coup OR mutiny OR insurgency OR militants OR "armed group")',
+  '(protest OR demonstration OR riot OR unrest OR "violent clashes" OR "general strike")',
+  '(blackout OR "power outage" OR "national grid" OR "stage 6" OR "stage 8" OR "fuel shortage")',
+  '(flood OR earthquake OR landslide OR cyclone OR wildfire OR typhoon OR hurricane)',
+  '(outbreak OR cholera OR ebola OR "lassa fever" OR mpox OR dengue OR measles)',
+  '(coup OR mutiny OR insurgency OR militants OR "armed group" OR junta)',
+  '(famine OR malnutrition OR "ipc phase" OR "acute hunger" OR starvation)',
+  '("currency crash" OR devalued OR hyperinflation OR "imf bailout" OR "sovereign default" OR "bank run")',
+  '("internet shutdown" OR "social media blocked" OR "vpn restricted" OR "telecom blackout")',
+  '("water shortage" OR "no running water" OR "water rationing" OR "reservoir critical")',
+  '("airport closed" OR "border closed" OR "port closed" OR "rail shutdown" OR "highway blocked")',
+  '("displaced persons" OR refugees OR exodus OR "asylum seekers" OR "migrant boat")',
+  '(ransomware OR cyberattack OR "data breach" OR "hospital hacked" OR "grid hacked")',
+  '("state of emergency" OR "martial law" OR curfew OR "emergency decree")',
+  '("building collapse" OR "tower collapse" OR "trapped in rubble")',
+  '(rsf OR "rapid support forces" OR "el fasher" OR darfur)',
+  '(houthi OR hezbollah OR "idf strike" OR rafah OR "khan younis" OR jabalia)',
+  '(m23 OR adf OR "al-shabaab" OR jnim OR iswap OR "boko haram")',
 ];
 
 async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
@@ -86,24 +98,37 @@ async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
 }
 
 async function pullGDELT(): Promise<RawSignal[]> {
-  // Run all queries with small spacing to respect 1req/5s rate limit pattern.
+  // Parallelize in batches of 4 to keep total runtime under function timeout.
   const all: RawSignal[] = [];
-  for (const q of GDELT_QUERIES) {
-    try {
-      const rows = await pullGDELTQuery(q);
-      all.push(...rows);
-    } catch (e) {
-      console.warn(`gdelt skip: ${(e as Error).message}`);
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < GDELT_QUERIES.length; i += BATCH_SIZE) {
+    const batch = GDELT_QUERIES.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map(pullGDELTQuery));
+    for (const r of results) {
+      if (r.status === "fulfilled") all.push(...r.value);
+      else console.warn(`gdelt skip: ${r.reason?.message || r.reason}`);
     }
-    await new Promise(r => setTimeout(r, 1200));
+    await new Promise(r => setTimeout(r, 800));
   }
   return all;
 }
 
 async function pullReliefWeb(): Promise<RawSignal[]> {
-  // ReliefWeb — UN OCHA humanitarian reports. Open API, no key.
-  const url = "https://api.reliefweb.int/v1/reports?appname=aicis-lril&limit=100&sort[]=date:desc&filter[field]=date.created&filter[value][from]=" + new Date(Date.now() - 48*3600*1000).toISOString();
-  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  // ReliefWeb v2 POST API. Open, no key.
+  const url = "https://api.reliefweb.int/v2/reports?appname=aicis-lril";
+  const fromIso = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+  const body = {
+    limit: 100,
+    sort: ["date.created:desc"],
+    filter: { field: "date.created", value: { from: fromIso } },
+    fields: { include: ["title","body","date","url","primary_country","disaster_type","theme"] },
+  };
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20000),
+  });
   if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
   const j = await r.json();
   const data = (j.data || []) as any[];
@@ -112,13 +137,13 @@ async function pullReliefWeb(): Promise<RawSignal[]> {
     const f = d.fields || {};
     const iso3 = f.primary_country?.iso3?.toUpperCase() || null;
     const title = f.title || "";
-    const body = (f.body || "").slice(0, 1500);
+    const bodyText = (f.body || "").replace(/<[^>]+>/g, " ").slice(0, 1500);
     out.push({
       source_type: "ngo",
       source_name: "reliefweb",
-      source_reliability: 0.88,
-      raw_text: `${title}. ${body}`,
-      raw_payload: { id: d.id, url: f.url, country: f.primary_country?.name },
+      source_reliability: 0.9,
+      raw_text: `${title}. ${bodyText}`,
+      raw_payload: { id: d.id, url: f.url, country: f.primary_country?.name, disaster_type: f.disaster_type },
       language: "en",
       url: f.url || null,
       published_at: f.date?.created || null,
