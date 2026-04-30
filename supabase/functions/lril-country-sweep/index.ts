@@ -123,7 +123,7 @@ async function pullCountryQuery(iso3: string, name: string, mode: { name: string
       // is *about* that country (we searched for its name)
       country_hint: iso3,
       region_hint: name,
-      dedup_key: `gdelt_sweep_${iso3}_${hash(a.url || a.title || crypto.randomUUID())}`,
+      dedup_key: `gdelt_sweep_${mode.name}_${iso3}_${hash(a.url || a.title || crypto.randomUUID())}`,
     }));
   } catch (_) {
     return [];
