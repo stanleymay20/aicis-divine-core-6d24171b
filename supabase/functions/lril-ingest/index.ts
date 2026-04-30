@@ -217,6 +217,15 @@ serve(async (req) => {
     summary.gdelt_error = (e as Error).message;
   }
 
+  // ReliefWeb (NGO/UN reports — high reliability)
+  try {
+    const ev = await pullReliefWeb();
+    all.push(...ev);
+    summary.reliefweb = ev.length;
+  } catch (e) {
+    summary.reliefweb_error = (e as Error).message;
+  }
+
   let inserted = 0;
   if (all.length > 0) {
     // Chunked upsert
