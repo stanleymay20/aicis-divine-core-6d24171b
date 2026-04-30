@@ -378,6 +378,171 @@ async function pullLocalRSS(): Promise<RawSignal[]> {
   return all;
 }
 
+// v6: Google News RSS — universal local-news coverage for every country.
+// Each country has its own (hl=lang, gl=country, ceid=country:lang) edition,
+// returning genuine local outlets in the local language. No API key required.
+// This closes the "all locals everywhere" gap: 200+ countries get hyperlocal
+// news ingestion automatically without hand-curating individual RSS feeds.
+const GOOGLE_NEWS_LOCALES: Array<{ iso3: string; hl: string; gl: string }> = [
+  // Africa
+  { iso3: "DZA", hl: "fr", gl: "DZ" }, { iso3: "AGO", hl: "pt", gl: "AO" },
+  { iso3: "BEN", hl: "fr", gl: "BJ" }, { iso3: "BWA", hl: "en", gl: "BW" },
+  { iso3: "BFA", hl: "fr", gl: "BF" }, { iso3: "BDI", hl: "fr", gl: "BI" },
+  { iso3: "CMR", hl: "fr", gl: "CM" }, { iso3: "CPV", hl: "pt", gl: "CV" },
+  { iso3: "CAF", hl: "fr", gl: "CF" }, { iso3: "TCD", hl: "fr", gl: "TD" },
+  { iso3: "COM", hl: "fr", gl: "KM" }, { iso3: "COD", hl: "fr", gl: "CD" },
+  { iso3: "COG", hl: "fr", gl: "CG" }, { iso3: "CIV", hl: "fr", gl: "CI" },
+  { iso3: "DJI", hl: "fr", gl: "DJ" }, { iso3: "EGY", hl: "ar", gl: "EG" },
+  { iso3: "GNQ", hl: "es", gl: "GQ" }, { iso3: "ERI", hl: "en", gl: "ER" },
+  { iso3: "SWZ", hl: "en", gl: "SZ" }, { iso3: "ETH", hl: "en", gl: "ET" },
+  { iso3: "GAB", hl: "fr", gl: "GA" }, { iso3: "GMB", hl: "en", gl: "GM" },
+  { iso3: "GHA", hl: "en", gl: "GH" }, { iso3: "GIN", hl: "fr", gl: "GN" },
+  { iso3: "GNB", hl: "pt", gl: "GW" }, { iso3: "KEN", hl: "en", gl: "KE" },
+  { iso3: "LSO", hl: "en", gl: "LS" }, { iso3: "LBR", hl: "en", gl: "LR" },
+  { iso3: "LBY", hl: "ar", gl: "LY" }, { iso3: "MDG", hl: "fr", gl: "MG" },
+  { iso3: "MWI", hl: "en", gl: "MW" }, { iso3: "MLI", hl: "fr", gl: "ML" },
+  { iso3: "MRT", hl: "ar", gl: "MR" }, { iso3: "MUS", hl: "en", gl: "MU" },
+  { iso3: "MAR", hl: "fr", gl: "MA" }, { iso3: "MOZ", hl: "pt", gl: "MZ" },
+  { iso3: "NAM", hl: "en", gl: "NA" }, { iso3: "NER", hl: "fr", gl: "NE" },
+  { iso3: "NGA", hl: "en", gl: "NG" }, { iso3: "RWA", hl: "en", gl: "RW" },
+  { iso3: "STP", hl: "pt", gl: "ST" }, { iso3: "SEN", hl: "fr", gl: "SN" },
+  { iso3: "SYC", hl: "en", gl: "SC" }, { iso3: "SLE", hl: "en", gl: "SL" },
+  { iso3: "SOM", hl: "en", gl: "SO" }, { iso3: "ZAF", hl: "en", gl: "ZA" },
+  { iso3: "SSD", hl: "en", gl: "SS" }, { iso3: "SDN", hl: "ar", gl: "SD" },
+  { iso3: "TZA", hl: "en", gl: "TZ" }, { iso3: "TGO", hl: "fr", gl: "TG" },
+  { iso3: "TUN", hl: "ar", gl: "TN" }, { iso3: "UGA", hl: "en", gl: "UG" },
+  { iso3: "ZMB", hl: "en", gl: "ZM" }, { iso3: "ZWE", hl: "en", gl: "ZW" },
+  // Americas
+  { iso3: "ARG", hl: "es", gl: "AR" }, { iso3: "BHS", hl: "en", gl: "BS" },
+  { iso3: "BRB", hl: "en", gl: "BB" }, { iso3: "BLZ", hl: "en", gl: "BZ" },
+  { iso3: "BOL", hl: "es", gl: "BO" }, { iso3: "BRA", hl: "pt", gl: "BR" },
+  { iso3: "CAN", hl: "en", gl: "CA" }, { iso3: "CHL", hl: "es", gl: "CL" },
+  { iso3: "COL", hl: "es", gl: "CO" }, { iso3: "CRI", hl: "es", gl: "CR" },
+  { iso3: "CUB", hl: "es", gl: "CU" }, { iso3: "DOM", hl: "es", gl: "DO" },
+  { iso3: "ECU", hl: "es", gl: "EC" }, { iso3: "SLV", hl: "es", gl: "SV" },
+  { iso3: "GTM", hl: "es", gl: "GT" }, { iso3: "GUY", hl: "en", gl: "GY" },
+  { iso3: "HTI", hl: "fr", gl: "HT" }, { iso3: "HND", hl: "es", gl: "HN" },
+  { iso3: "JAM", hl: "en", gl: "JM" }, { iso3: "MEX", hl: "es", gl: "MX" },
+  { iso3: "NIC", hl: "es", gl: "NI" }, { iso3: "PAN", hl: "es", gl: "PA" },
+  { iso3: "PRY", hl: "es", gl: "PY" }, { iso3: "PER", hl: "es", gl: "PE" },
+  { iso3: "TTO", hl: "en", gl: "TT" }, { iso3: "USA", hl: "en", gl: "US" },
+  { iso3: "URY", hl: "es", gl: "UY" }, { iso3: "VEN", hl: "es", gl: "VE" },
+  // Asia
+  { iso3: "AFG", hl: "en", gl: "AF" }, { iso3: "ARM", hl: "hy", gl: "AM" },
+  { iso3: "AZE", hl: "az", gl: "AZ" }, { iso3: "BHR", hl: "ar", gl: "BH" },
+  { iso3: "BGD", hl: "en", gl: "BD" }, { iso3: "BTN", hl: "en", gl: "BT" },
+  { iso3: "BRN", hl: "en", gl: "BN" }, { iso3: "KHM", hl: "en", gl: "KH" },
+  { iso3: "CHN", hl: "zh", gl: "CN" }, { iso3: "GEO", hl: "ka", gl: "GE" },
+  { iso3: "HKG", hl: "en", gl: "HK" }, { iso3: "IND", hl: "en", gl: "IN" },
+  { iso3: "IDN", hl: "id", gl: "ID" }, { iso3: "IRN", hl: "fa", gl: "IR" },
+  { iso3: "IRQ", hl: "ar", gl: "IQ" }, { iso3: "ISR", hl: "he", gl: "IL" },
+  { iso3: "JPN", hl: "ja", gl: "JP" }, { iso3: "JOR", hl: "ar", gl: "JO" },
+  { iso3: "KAZ", hl: "ru", gl: "KZ" }, { iso3: "KWT", hl: "ar", gl: "KW" },
+  { iso3: "KGZ", hl: "ru", gl: "KG" }, { iso3: "LAO", hl: "en", gl: "LA" },
+  { iso3: "LBN", hl: "ar", gl: "LB" }, { iso3: "MYS", hl: "en", gl: "MY" },
+  { iso3: "MDV", hl: "en", gl: "MV" }, { iso3: "MNG", hl: "en", gl: "MN" },
+  { iso3: "MMR", hl: "en", gl: "MM" }, { iso3: "NPL", hl: "en", gl: "NP" },
+  { iso3: "PRK", hl: "en", gl: "KP" }, { iso3: "OMN", hl: "ar", gl: "OM" },
+  { iso3: "PAK", hl: "en", gl: "PK" }, { iso3: "PSE", hl: "ar", gl: "PS" },
+  { iso3: "PHL", hl: "en", gl: "PH" }, { iso3: "QAT", hl: "ar", gl: "QA" },
+  { iso3: "SAU", hl: "ar", gl: "SA" }, { iso3: "SGP", hl: "en", gl: "SG" },
+  { iso3: "KOR", hl: "ko", gl: "KR" }, { iso3: "LKA", hl: "en", gl: "LK" },
+  { iso3: "SYR", hl: "ar", gl: "SY" }, { iso3: "TWN", hl: "zh", gl: "TW" },
+  { iso3: "TJK", hl: "ru", gl: "TJ" }, { iso3: "THA", hl: "th", gl: "TH" },
+  { iso3: "TLS", hl: "en", gl: "TL" }, { iso3: "TUR", hl: "tr", gl: "TR" },
+  { iso3: "TKM", hl: "ru", gl: "TM" }, { iso3: "ARE", hl: "ar", gl: "AE" },
+  { iso3: "UZB", hl: "ru", gl: "UZ" }, { iso3: "VNM", hl: "vi", gl: "VN" },
+  { iso3: "YEM", hl: "ar", gl: "YE" },
+  // Europe
+  { iso3: "ALB", hl: "sq", gl: "AL" }, { iso3: "AND", hl: "es", gl: "AD" },
+  { iso3: "AUT", hl: "de", gl: "AT" }, { iso3: "BLR", hl: "ru", gl: "BY" },
+  { iso3: "BEL", hl: "fr", gl: "BE" }, { iso3: "BIH", hl: "en", gl: "BA" },
+  { iso3: "BGR", hl: "bg", gl: "BG" }, { iso3: "HRV", hl: "hr", gl: "HR" },
+  { iso3: "CYP", hl: "en", gl: "CY" }, { iso3: "CZE", hl: "cs", gl: "CZ" },
+  { iso3: "DNK", hl: "da", gl: "DK" }, { iso3: "EST", hl: "et", gl: "EE" },
+  { iso3: "FIN", hl: "fi", gl: "FI" }, { iso3: "FRA", hl: "fr", gl: "FR" },
+  { iso3: "DEU", hl: "de", gl: "DE" }, { iso3: "GRC", hl: "el", gl: "GR" },
+  { iso3: "HUN", hl: "hu", gl: "HU" }, { iso3: "ISL", hl: "is", gl: "IS" },
+  { iso3: "IRL", hl: "en", gl: "IE" }, { iso3: "ITA", hl: "it", gl: "IT" },
+  { iso3: "XKX", hl: "en", gl: "XK" }, { iso3: "LVA", hl: "lv", gl: "LV" },
+  { iso3: "LIE", hl: "de", gl: "LI" }, { iso3: "LTU", hl: "lt", gl: "LT" },
+  { iso3: "LUX", hl: "fr", gl: "LU" }, { iso3: "MLT", hl: "en", gl: "MT" },
+  { iso3: "MDA", hl: "ro", gl: "MD" }, { iso3: "MCO", hl: "fr", gl: "MC" },
+  { iso3: "MNE", hl: "en", gl: "ME" }, { iso3: "NLD", hl: "nl", gl: "NL" },
+  { iso3: "MKD", hl: "en", gl: "MK" }, { iso3: "NOR", hl: "no", gl: "NO" },
+  { iso3: "POL", hl: "pl", gl: "PL" }, { iso3: "PRT", hl: "pt", gl: "PT" },
+  { iso3: "ROU", hl: "ro", gl: "RO" }, { iso3: "RUS", hl: "ru", gl: "RU" },
+  { iso3: "SMR", hl: "it", gl: "SM" }, { iso3: "SRB", hl: "sr", gl: "RS" },
+  { iso3: "SVK", hl: "sk", gl: "SK" }, { iso3: "SVN", hl: "sl", gl: "SI" },
+  { iso3: "ESP", hl: "es", gl: "ES" }, { iso3: "SWE", hl: "sv", gl: "SE" },
+  { iso3: "CHE", hl: "de", gl: "CH" }, { iso3: "UKR", hl: "uk", gl: "UA" },
+  { iso3: "GBR", hl: "en", gl: "GB" },
+  // Oceania
+  { iso3: "AUS", hl: "en", gl: "AU" }, { iso3: "FJI", hl: "en", gl: "FJ" },
+  { iso3: "KIR", hl: "en", gl: "KI" }, { iso3: "MHL", hl: "en", gl: "MH" },
+  { iso3: "FSM", hl: "en", gl: "FM" }, { iso3: "NRU", hl: "en", gl: "NR" },
+  { iso3: "NZL", hl: "en", gl: "NZ" }, { iso3: "PLW", hl: "en", gl: "PW" },
+  { iso3: "PNG", hl: "en", gl: "PG" }, { iso3: "WSM", hl: "en", gl: "WS" },
+  { iso3: "SLB", hl: "en", gl: "SB" }, { iso3: "TON", hl: "en", gl: "TO" },
+  { iso3: "TUV", hl: "en", gl: "TV" }, { iso3: "VUT", hl: "en", gl: "VU" },
+];
+
+async function pullGoogleNewsLocale(loc: typeof GOOGLE_NEWS_LOCALES[number]): Promise<RawSignal[]> {
+  // Top stories for the country's local edition — returns local outlets in local language.
+  const url = `https://news.google.com/rss?hl=${loc.hl}&gl=${loc.gl}&ceid=${loc.gl}:${loc.hl}`;
+  try {
+    const r = await fetch(url, {
+      headers: { "User-Agent": "AICIS-LRIL/6.0" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) return [];
+    const xml = await r.text();
+    const items = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
+    const out: RawSignal[] = [];
+    for (const it of items.slice(0, 25)) {
+      const title = stripXml((it.match(/<title>([\s\S]*?)<\/title>/i) || [, ""])[1]);
+      const desc = stripXml((it.match(/<description>([\s\S]*?)<\/description>/i) || [, ""])[1]).slice(0, 600);
+      const link = (it.match(/<link[^>]*>([^<]+)<\/link>/i) || [, ""])[1].trim();
+      const pub = (it.match(/<pubDate>([^<]+)<\/pubDate>/i) || [, ""])[1];
+      const sourceMatch = it.match(/<source[^>]*>([^<]+)<\/source>/i);
+      const sourceName = sourceMatch ? stripXml(sourceMatch[1]).toLowerCase().replace(/\s+/g, "_").slice(0, 40) : `gnews_${loc.gl}`;
+      if (!title) continue;
+      out.push({
+        source_type: "news",
+        source_name: `gnews_${loc.gl}_${sourceName}`.slice(0, 60),
+        source_reliability: 0.72,
+        raw_text: desc ? `${title}. ${desc}` : title,
+        raw_payload: { title, desc, link, locale: loc, source: sourceName },
+        language: loc.hl,
+        url: link || null,
+        published_at: pub ? new Date(pub).toISOString() : new Date().toISOString(),
+        country_hint: loc.iso3,
+        region_hint: null,
+        dedup_key: `gnews_${loc.iso3}_${hash(link || title)}`,
+      });
+    }
+    return out;
+  } catch (_) {
+    return [];
+  }
+}
+
+async function pullGoogleNewsAllCountries(): Promise<RawSignal[]> {
+  // Rotate through 25 countries per run (full cycle ~every 3h at 30-min cadence).
+  // Prioritize countries with low recent news signal — same logic as country-sweep.
+  const PER_RUN = 25;
+  const BATCH = 6;
+  const shuffled = [...GOOGLE_NEWS_LOCALES].sort(() => Math.random() - 0.5).slice(0, PER_RUN);
+  const all: RawSignal[] = [];
+  for (let i = 0; i < shuffled.length; i += BATCH) {
+    const batch = shuffled.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(pullGoogleNewsLocale));
+    for (const r of results) if (r.status === "fulfilled") all.push(...r.value);
+    await new Promise(r => setTimeout(r, 300));
+  }
+  return all;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -422,6 +587,7 @@ serve(async (req) => {
     ["usgs", pullUSGS()],
     ["eonet", pullEONET()],
     ["local_rss", pullLocalRSS()],
+    ["google_news", pullGoogleNewsAllCountries()],
   ];
   const settled = await Promise.allSettled(tasks.map(([, p]) => p));
   settled.forEach((res, i) => {
