@@ -98,16 +98,17 @@ async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
 }
 
 async function pullGDELT(): Promise<RawSignal[]> {
-  // Run all queries with small spacing to respect 1req/5s rate limit pattern.
+  // Parallelize in batches of 4 to keep total runtime under function timeout.
   const all: RawSignal[] = [];
-  for (const q of GDELT_QUERIES) {
-    try {
-      const rows = await pullGDELTQuery(q);
-      all.push(...rows);
-    } catch (e) {
-      console.warn(`gdelt skip: ${(e as Error).message}`);
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < GDELT_QUERIES.length; i += BATCH_SIZE) {
+    const batch = GDELT_QUERIES.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map(pullGDELTQuery));
+    for (const r of results) {
+      if (r.status === "fulfilled") all.push(...r.value);
+      else console.warn(`gdelt skip: ${r.reason?.message || r.reason}`);
     }
-    await new Promise(r => setTimeout(r, 1200));
+    await new Promise(r => setTimeout(r, 800));
   }
   return all;
 }
