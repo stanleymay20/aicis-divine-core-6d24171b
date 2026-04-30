@@ -422,6 +422,15 @@ serve(async (req) => {
     summary.eonet_error = (e as Error).message;
   }
 
+  // v4: Local & regional RSS (Pacific, West Africa, Sahel, SE Asia, LatAm)
+  try {
+    const ev = await pullLocalRSS();
+    all.push(...ev);
+    summary.local_rss = ev.length;
+  } catch (e) {
+    summary.local_rss_error = (e as Error).message;
+  }
+
   let inserted = 0;
   if (all.length > 0) {
     // Chunked upsert
