@@ -377,59 +377,25 @@ serve(async (req) => {
     } catch (_) { /* ignore */ }
   }
 
-  // GDACS (most reliable)
-  try {
-    const ev = await pullGDACS();
-    all.push(...ev);
-    summary.gdacs = ev.length;
-  } catch (e) {
-    summary.gdacs_error = (e as Error).message;
-  }
-
-  // GDELT (best-effort)
-  try {
-    const ev = await pullGDELT();
-    all.push(...ev);
-    summary.gdelt = ev.length;
-  } catch (e) {
-    summary.gdelt_error = (e as Error).message;
-  }
-
-  // ReliefWeb (NGO/UN reports — high reliability)
-  try {
-    const ev = await pullReliefWeb();
-    all.push(...ev);
-    summary.reliefweb = ev.length;
-  } catch (e) {
-    summary.reliefweb_error = (e as Error).message;
-  }
-
-  // USGS earthquakes (sensor truth, M4.5+)
-  try {
-    const ev = await pullUSGS();
-    all.push(...ev);
-    summary.usgs = ev.length;
-  } catch (e) {
-    summary.usgs_error = (e as Error).message;
-  }
-
-  // NASA EONET (wildfires, volcanoes, storms, floods)
-  try {
-    const ev = await pullEONET();
-    all.push(...ev);
-    summary.eonet = ev.length;
-  } catch (e) {
-    summary.eonet_error = (e as Error).message;
-  }
-
-  // v4: Local & regional RSS (Pacific, West Africa, Sahel, SE Asia, LatAm)
-  try {
-    const ev = await pullLocalRSS();
-    all.push(...ev);
-    summary.local_rss = ev.length;
-  } catch (e) {
-    summary.local_rss_error = (e as Error).message;
-  }
+  // v4: run all sources in parallel — slow GDELT 429s never block local RSS / sensors.
+  const tasks: Array<[string, Promise<RawSignal[]>]> = [
+    ["gdacs", pullGDACS()],
+    ["gdelt", pullGDELT()],
+    ["reliefweb", pullReliefWeb()],
+    ["usgs", pullUSGS()],
+    ["eonet", pullEONET()],
+    ["local_rss", pullLocalRSS()],
+  ];
+  const settled = await Promise.allSettled(tasks.map(([, p]) => p));
+  settled.forEach((res, i) => {
+    const [name] = tasks[i];
+    if (res.status === "fulfilled") {
+      all.push(...res.value);
+      summary[name] = res.value.length;
+    } else {
+      summary[`${name}_error`] = (res.reason as Error)?.message || String(res.reason);
+    }
+  });
 
   let inserted = 0;
   if (all.length > 0) {
