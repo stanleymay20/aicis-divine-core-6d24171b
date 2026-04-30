@@ -114,9 +114,21 @@ async function pullGDELT(): Promise<RawSignal[]> {
 }
 
 async function pullReliefWeb(): Promise<RawSignal[]> {
-  // ReliefWeb — UN OCHA humanitarian reports. Open API, no key.
-  const url = "https://api.reliefweb.int/v1/reports?appname=aicis-lril&limit=100&sort[]=date:desc&filter[field]=date.created&filter[value][from]=" + new Date(Date.now() - 48*3600*1000).toISOString();
-  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  // ReliefWeb v2 POST API. Open, no key.
+  const url = "https://api.reliefweb.int/v2/reports?appname=aicis-lril";
+  const fromIso = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+  const body = {
+    limit: 100,
+    sort: ["date.created:desc"],
+    filter: { field: "date.created", value: { from: fromIso } },
+    fields: { include: ["title","body","date","url","primary_country","disaster_type","theme"] },
+  };
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20000),
+  });
   if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
   const j = await r.json();
   const data = (j.data || []) as any[];
@@ -125,13 +137,13 @@ async function pullReliefWeb(): Promise<RawSignal[]> {
     const f = d.fields || {};
     const iso3 = f.primary_country?.iso3?.toUpperCase() || null;
     const title = f.title || "";
-    const body = (f.body || "").slice(0, 1500);
+    const bodyText = (f.body || "").replace(/<[^>]+>/g, " ").slice(0, 1500);
     out.push({
       source_type: "ngo",
       source_name: "reliefweb",
-      source_reliability: 0.88,
-      raw_text: `${title}. ${body}`,
-      raw_payload: { id: d.id, url: f.url, country: f.primary_country?.name },
+      source_reliability: 0.9,
+      raw_text: `${title}. ${bodyText}`,
+      raw_payload: { id: d.id, url: f.url, country: f.primary_country?.name, disaster_type: f.disaster_type },
       language: "en",
       url: f.url || null,
       published_at: f.date?.created || null,
