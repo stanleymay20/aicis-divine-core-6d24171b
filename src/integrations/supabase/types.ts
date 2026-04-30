@@ -13211,17 +13211,30 @@ export type Database = {
           bridged_count: number
         }[]
       }
-      lril_compute_confidence: {
-        Args: {
-          p_avg_source_reliability: number
-          p_geo_confidence: number
-          p_keyword_strength: number
-          p_proxy_boost?: number
-          p_source_count: number
-          p_temporal_density: number
-        }
-        Returns: number
-      }
+      lril_compute_confidence:
+        | {
+            Args: {
+              p_avg_source_reliability: number
+              p_geo_confidence: number
+              p_keyword_strength: number
+              p_proxy_boost?: number
+              p_source_count: number
+              p_temporal_density: number
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_avg_source_reliability: number
+              p_fatality_count?: number
+              p_geo_confidence: number
+              p_keyword_strength: number
+              p_proxy_boost?: number
+              p_source_count: number
+              p_temporal_density: number
+            }
+            Returns: number
+          }
       lril_detect_country_from_text: {
         Args: { p_text: string }
         Returns: string
