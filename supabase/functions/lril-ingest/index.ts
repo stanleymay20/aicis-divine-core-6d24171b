@@ -179,19 +179,26 @@ async function pullGDELT(): Promise<RawSignal[]> {
 }
 
 async function pullReliefWeb(): Promise<RawSignal[]> {
-  // ReliefWeb v2 POST API. Open, no key.
-  const url = "https://api.reliefweb.int/v2/reports?appname=aicis-lril";
+  // v11: ReliefWeb v1 stable API (v2 returns HTTP 400 for anonymous calls).
+  // GET with query string — v1 is the documented open endpoint.
   const fromIso = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
-  const body = {
-    limit: 100,
-    sort: ["date.created:desc"],
-    filter: { field: "date.created", value: { from: fromIso } },
-    fields: { include: ["title","body","date","url","primary_country","disaster_type","theme"] },
-  };
+  const params = new URLSearchParams({
+    appname: "aicis-lril",
+    "filter[field]": "date.created",
+    "filter[value][from]": fromIso,
+    "fields[include][]": "title",
+    sort: "date.created:desc",
+    limit: "100",
+    profile: "list",
+  });
+  // include extra fields (URLSearchParams can't repeat key easily — append manually)
+  for (const f of ["body","date","url","primary_country","disaster_type","theme"]) {
+    params.append("fields[include][]", f);
+  }
+  const url = `https://api.reliefweb.int/v1/reports?${params.toString()}`;
   const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    method: "GET",
+    headers: { "Accept": "application/json", "User-Agent": "AICIS-LRIL/1.0" },
     signal: AbortSignal.timeout(20000),
   });
   if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
