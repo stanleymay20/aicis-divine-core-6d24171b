@@ -179,29 +179,31 @@ async function pullGDELT(): Promise<RawSignal[]> {
 }
 
 async function pullReliefWeb(): Promise<RawSignal[]> {
-  // v11: ReliefWeb v1 stable API (v2 returns HTTP 400 for anonymous calls).
-  // GET with query string — v1 is the documented open endpoint.
+  // v11: ReliefWeb v2 now REQUIRES a registered appname (anonymous calls return 403).
+  // v1 was decommissioned (HTTP 410). We honor an optional RELIEFWEB_APPNAME secret;
+  // if not configured, return empty silently — gracefully degrade rather than throw.
+  const appname = Deno.env.get("RELIEFWEB_APPNAME");
+  if (!appname) return [];
+
   const fromIso = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
-  const params = new URLSearchParams({
-    appname: "aicis-lril",
-    "filter[field]": "date.created",
-    "filter[value][from]": fromIso,
-    "fields[include][]": "title",
-    sort: "date.created:desc",
-    limit: "100",
-    profile: "list",
-  });
-  // include extra fields (URLSearchParams can't repeat key easily — append manually)
-  for (const f of ["body","date","url","primary_country","disaster_type","theme"]) {
-    params.append("fields[include][]", f);
-  }
-  const url = `https://api.reliefweb.int/v1/reports?${params.toString()}`;
+  const url = `https://api.reliefweb.int/v2/reports?appname=${encodeURIComponent(appname)}`;
+  const body = {
+    limit: 100,
+    sort: ["date.created:desc"],
+    filter: { field: "date.created", value: { from: fromIso } },
+    fields: { include: ["title","body","date","url","primary_country","disaster_type","theme"] },
+  };
   const r = await fetch(url, {
-    method: "GET",
-    headers: { "Accept": "application/json", "User-Agent": "AICIS-LRIL/1.0" },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
   });
-  if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
+  if (!r.ok) {
+    // Don't throw — just log and skip so other sources keep flowing.
+    console.warn(`reliefweb: HTTP ${r.status} (skipping)`);
+    return [];
+  }
   const j = await r.json();
   const data = (j.data || []) as any[];
   const out: RawSignal[] = [];
