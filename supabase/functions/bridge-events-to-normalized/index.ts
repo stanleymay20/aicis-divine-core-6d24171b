@@ -39,14 +39,20 @@ serve(async (req) => {
 
     for (const c of crises || []) {
       const dedup = `crisis:${c.id}`;
+      let iso3: string | null = (c.region && c.region.length === 3) ? c.region : null;
+      if (!iso3 && c.region) {
+        try {
+          const { data: norm } = await supabase.rpc("lril_fips_to_iso3", { p_code: c.region });
+          if (typeof norm === "string" && norm) iso3 = norm;
+        } catch (_) {}
+      }
       const { error } = await supabase.from("normalized_events").upsert({
         provider_name: "internal:crisis_events",
         event_type: c.kind || "crisis",
         category: c.kind || "crisis",
         title: `${c.kind || "crisis"} in ${c.region}`,
         description: c.details_md || null,
-        iso3: (c.region && c.region.length === 3) ? c.region : null,
-        country_iso3: (c.region && c.region.length === 3) ? c.region : null,
+        iso3, country_iso3: iso3,
         started_at: c.opened_at || c.created_at,
         occurred_at: c.opened_at || c.created_at,
         severity: c.severity ?? null,
@@ -69,7 +75,13 @@ serve(async (req) => {
     for (const s of signals || []) {
       const country = Array.isArray(s.affected_countries) && s.affected_countries.length
         ? s.affected_countries[0] : null;
-      const iso3 = (country && country.length === 3) ? country : null;
+      let iso3: string | null = (country && country.length === 3) ? country : null;
+      if (!iso3 && country) {
+        try {
+          const { data: norm } = await supabase.rpc("lril_fips_to_iso3", { p_code: country });
+          if (typeof norm === "string" && norm) iso3 = norm;
+        } catch (_) {}
+      }
       const dedup = `signal:${s.id}`;
 
       const { error } = await supabase.from("normalized_events").upsert({
