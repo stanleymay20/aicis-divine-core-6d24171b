@@ -22,7 +22,7 @@ const corsHeaders = {
 };
 
 const FN = "lril-process";
-const BATCH = 500;
+const BATCH = 2000;            // v10: 500 -> 2000 (closes 3x throughput gap)
 const CLUSTER_RADIUS_KM = 25;
 const CLUSTER_WINDOW_HOURS = 12;
 
@@ -134,7 +134,7 @@ serve(async (req) => {
       } catch (_) { /* keep original */ }
       (s as any).country_hint = effectiveIso3;
 
-      // 2b. Geo resolution (locality string-match in cached geo entities)
+      // 2b. Geo resolution: cached substring first, then fuzzy DB resolver
       const iso3 = s.country_hint;
       let geo: GeoEntity | null = null;
       if (iso3 && geoCache.has(iso3) && s.raw_text) {
@@ -147,6 +147,22 @@ serve(async (req) => {
           }
           if (geo) break;
         }
+      }
+      // v10: fuzzy DB fallback (unaccent + alias + trigram)
+      if (!geo && iso3 && s.raw_text) {
+        try {
+          const { data: fuzzy } = await supabase.rpc("lril_resolve_geo_fuzzy", {
+            p_text: s.raw_text.slice(0, 1000), p_iso3: iso3,
+          });
+          if (Array.isArray(fuzzy) && fuzzy.length > 0) {
+            const f = fuzzy[0];
+            geo = {
+              id: f.geo_entity_id, iso3, admin_level_1: f.admin_level_1,
+              city: null, locality: f.locality, lat: f.lat, lon: f.lon,
+              geo_confidence: Number(f.geo_confidence) || 0.5,
+            };
+          }
+        } catch (_) { /* keep null */ }
       }
       const geo_confidence = geo ? geo.geo_confidence : (iso3 ? 0.4 : 0.15);
       if (geo) stats.geo_resolved++;
