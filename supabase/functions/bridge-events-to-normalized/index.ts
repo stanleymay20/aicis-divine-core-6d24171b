@@ -113,7 +113,13 @@ serve(async (req) => {
 
     for (const s of secs || []) {
       const dedup = `security:${s.id}`;
-      const iso3 = (s.country && s.country.length === 3) ? s.country : null;
+      let iso3: string | null = (s.country && s.country.length === 3) ? s.country : null;
+      if (!iso3 && s.country) {
+        try {
+          const { data: norm } = await supabase.rpc("lril_fips_to_iso3", { p_code: s.country });
+          if (typeof norm === "string" && norm) iso3 = norm;
+        } catch (_) {}
+      }
       const { error } = await supabase.from("normalized_events").upsert({
         provider_name: "internal:security_incidents",
         event_type: "security",
