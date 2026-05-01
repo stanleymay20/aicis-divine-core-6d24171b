@@ -179,9 +179,14 @@ async function pullGDELT(): Promise<RawSignal[]> {
 }
 
 async function pullReliefWeb(): Promise<RawSignal[]> {
-  // ReliefWeb v2 POST API. Open, no key.
-  const url = "https://api.reliefweb.int/v2/reports?appname=aicis-lril";
+  // v11: ReliefWeb v2 now REQUIRES a registered appname (anonymous calls return 403).
+  // v1 was decommissioned (HTTP 410). We honor an optional RELIEFWEB_APPNAME secret;
+  // if not configured, return empty silently — gracefully degrade rather than throw.
+  const appname = Deno.env.get("RELIEFWEB_APPNAME");
+  if (!appname) return [];
+
   const fromIso = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
+  const url = `https://api.reliefweb.int/v2/reports?appname=${encodeURIComponent(appname)}`;
   const body = {
     limit: 100,
     sort: ["date.created:desc"],
@@ -194,7 +199,11 @@ async function pullReliefWeb(): Promise<RawSignal[]> {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
   });
-  if (!r.ok) throw new Error(`ReliefWeb HTTP ${r.status}`);
+  if (!r.ok) {
+    // Don't throw — just log and skip so other sources keep flowing.
+    console.warn(`reliefweb: HTTP ${r.status} (skipping)`);
+    return [];
+  }
   const j = await r.json();
   const data = (j.data || []) as any[];
   const out: RawSignal[] = [];

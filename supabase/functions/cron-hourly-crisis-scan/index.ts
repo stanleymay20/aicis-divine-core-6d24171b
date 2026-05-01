@@ -23,15 +23,24 @@ serve(async (req) => {
       message: "Starting crisis detection scan",
     });
 
-    // Direct HTTP call instead of supabase.functions.invoke to avoid nested invocation issues
-    const response = await fetch(`${supabaseUrl}/functions/v1/crisis-scan`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${serviceKey}`,
-      },
-      body: JSON.stringify({ source: "cron" }),
-    });
+    // v11: Hard 55s client-side abort prevents 1h zombie state if downstream hangs.
+    // crisis-scan itself has a 50s deadline, so 55s here is the outer envelope.
+    const ctrl = new AbortController();
+    const watchdog = setTimeout(() => ctrl.abort("cron-watchdog-55s"), 55_000);
+    let response: Response;
+    try {
+      response = await fetch(`${supabaseUrl}/functions/v1/crisis-scan`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ source: "cron" }),
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(watchdog);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
