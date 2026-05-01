@@ -1,41 +1,26 @@
 ---
 name: LRIL — Local Reality Ingestion Layer
-description: Sharp local event detection. v3 adds per-country GDELT sweeps (lril-country-sweep) cycling 20 underrepresented countries / 30min so all ~190 countries are queried within 5h. Combined with v2 source tiering and FIPS→ISO3 normalization. 65+ countries actively covered, growing every cron tick.
+description: Sharp local event detection. v9 (2026-05-01) repairs the country-code bridge, schedules action recommendations every 30min, expands sub-national geo entities to 880+ rows, and adds keyword packs for water/education/supply_chain/sanctions/elections/cyber/financial_markets. Three crons: lril-ingest, lril-country-sweep, lril-process. Bridge writes iso3_normalized into normalized_events.country_iso3.
 type: feature
 ---
 
-# LRIL v3 — Planetary Coverage Sweep
+# LRIL v9 — Comprehensive Pipeline Repair
 
-## Three-tier ingestion architecture
-1. **`lril-ingest`** (every 30min): thematic queries (xenophobia, dumsor, RSF, Houthis...) + GDACS + ReliefWeb + USGS + EONET. Catches global hotspots regardless of country.
-2. **`lril-country-sweep`** (every 30min): cycles 20 lowest-coverage countries per run, queries GDELT with `"<country name>" AND <broad incident terms>`. Full sweep covers ~190 countries every ~5h. Crucial for small/low-news countries that thematic queries miss.
-3. **`lril-process`** (every 30min, offset +5min): keyword detect → geo resolve → cluster → confidence score → bridge.
+## Three-tier ingestion (unchanged)
+1. **`lril-ingest`** /30min — thematic GDELT + GDACS + USGS + EONET + local RSS + Google News locales
+2. **`lril-country-sweep`** /30min — cycles 20 lowest-coverage countries per run; full sweep ~5h
+3. **`lril-process`** /30min @ +5min — keyword detect → geo resolve → cluster → confidence → bridge
 
-## Why country-sweep was needed
-Thematic queries surface incidents from wherever GDELT happens to index. Big-press countries (USA, UK, India, China, ZAF) dominate; small countries (Lesotho, Sierra Leone, Iceland, Bhutan, Pacific islands) get zero signals even when real events occur. The sweep explicitly searches FOR those countries by name, overriding GDELT's publisher-country bias.
+## v9 fixes (gap analysis 2026-05-01)
+- **Bridge function**: now writes `coalesce(iso3_normalized, iso3)` into `normalized_events.country_iso3`. Fixed root cause of 62% NULL country codes.
+- **Backfill**: existing LRIL + GDACS rows had country code populated retroactively.
+- **Action cron**: `generate-risk-actions-30min` runs `generate_risk_action_recommendations(50)` at :15 and :45. Previously last run April 20 — broken since deployment.
+- **Legacy disabled**: `gdelt-ingest-30min` (1 country/batch, 47-batch rotation) unscheduled — redundant with country-sweep.
+- **Geo entities**: expanded from 750 → 880+ rows. Added Pacific (PNG Bulolo/Lae, Fiji, Solomon, Vanuatu, Samoa, Tonga, Kiribati, Tuvalu, Nauru, Palau, FSM, Marshall), West Africa (Guinea-Bissau, Gambia, Liberia, Côte d'Ivoire, Togo, Benin), Sahel (Mali, Burkina, Niger, Chad), Maghreb (Algeria incl Tissemsilt, Tunisia, Libya), Indian Ocean (Madagascar, Mauritius, Seychelles, Comoros), Caribbean (Haiti, Jamaica, Cuba, DR), Central Asia + Caucasus, Andes, South Asia (Sri Lanka, Nepal, Bhutan, Maldives), SE Asia (Laos, Cambodia, Timor, Brunei), Horn (Somalia, Ethiopia, Eritrea, Djibouti, Sudan, S Sudan), Central Africa (CAR, Congo, DRC incl Goma/Bukavu, Gabon, Equatorial Guinea), Southern Africa, European microstates.
+- **Keyword packs**: added water (shortage, contamination), education (closure, attack_on_school), supply_chain (disruption, route_attack), sanctions, elections, cyber, financial_markets — across en/fr/es/pt/ar.
 
-## Country code normalization (v2 carryover)
-- `iso3` = original (audit trail)
-- `iso3_normalized` = ISO 3166-1 alpha-3 (UI/API queries)
-- `lril_fips_to_iso3()` covers FIPS 2-letter (GM→DEU, RP→PHL, SF→ZAF) AND GDELT 3-letter aliases (UNI→USA, NIG→NGA, SOU→ZAF, GER→DEU, PHI→PHL).
-
-## Source reliability tiers (`lril_source_tier`)
-- 0.95 — gdacs, usgs, nasa_eonet, reliefweb, who, fao, imf, worldbank
-- 0.90 — *.gov.* / un.org / europa.eu / who.int
-- 0.85 — Reuters, AP, AFP, BBC, Al Jazeera, Bloomberg, NYT, WSJ, FT, Guardian, DW
-- 0.75 — Regional dailies (allafrica, punchng, thehindu, scmp, clarin, infobae...)
-- 0.50 — default unknown publisher
-
-## Confidence formula
-- Source-count log curve: 1=0.35, 2=0.55, 3=0.7, 5=0.85, 10+=1.0
-- Weights: 35% src + 25% reliability + 20% kw + 15% geo + 5% temporal + ≤20% proxy
-- Floors: 1 tier-1 src + strong kw → ≥0.45 (Watch); 3+ src @ 0.7+ → ≥0.7 (Confirmed)
-
-## Tiers (UI)
-- ≥0.7 Confirmed | ≥0.4 Watch | <0.4 Early Signal (never suppressed)
-- Bridge threshold = 0.4 — 100% of actionable events flow to normalized_events → risk_action_recommendations
-
-## Last sweep result (2026-04-30)
-- 216 events / 65 countries / 30 confirmed / 100% bridged
-- Country-sweep cron will continue expanding coverage every 30min
-- Cron jobs: `lril-ingest-30min`, `lril-process-30min`, `lril-country-sweep-30min`
+## Known remaining gaps (v9)
+- **ReliefWeb HTTP 400** — endpoint v2 changed; pullReliefWeb() needs new POST body format.
+- **Sub-national resolution still weak** — `geo_resolved` averages ~10% of events; cluster/fuzzy match in `lril_resolve_geo()` needs tightening.
+- **Confidence skew** — 81% events still tier=low; clustering by hash dedup misses semantic title duplicates.
+- **Domains under-covered** — water/education/supply_chain/sanctions/elections packs added but not yet validated against live signals.
