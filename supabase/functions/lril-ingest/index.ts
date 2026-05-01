@@ -123,6 +123,17 @@ const GDELT_QUERIES = [
   '("Guinea-Bissau" OR "Guiné-Bissau" OR Bissau OR Bafatá OR Gabú OR "Balanta" OR "PAIGC" OR "Embalo")',
   '("military junta" OR "junta leader" OR "ruling military council" OR CNSP OR CNRD OR "transitional military" OR "extended transition")',
   '("post-coup" OR "since the coup" OR "ECOWAS sanctions" OR "AU suspension" OR "sanctions following coup")',
+  // v8: DESTABILIZATION PLOTS — foreign mercenaries, coup conspiracies, high-profile detentions
+  '("destabilize the country" OR "plot to destabilize" OR "alleged conspiracy" OR "conspiracy to destabilize" OR "destabilization plot" OR "coup plot" OR "coup attempt foiled" OR "plot foiled")',
+  '("former French serviceman" OR "former soldier detained" OR "ex-military detained" OR "foreign mercenary" OR "foreign mercenaries" OR "mercenaries arrested" OR "mercenaries detained")',
+  '("Wagner operatives" OR "private military contractor" OR "PMC arrested" OR "foreign fighters arrested" OR "foreign nationals detained" OR "spy ring uncovered" OR "espionage ring")',
+  '("plotting against the state" OR "threat to national security" OR "subversive activities" OR "undermining the state" OR "treason charges" OR "high treason" OR "sedition charges")',
+  '("complot" OR "complot pour déstabiliser" OR "tentative de déstabilisation" OR "tentative de coup" OR "putsch déjoué" OR "mercenaires arrêtés" OR "ancien militaire français" OR "ressortissant français arrêté")',
+  '("conspiración para desestabilizar" OR "intento de golpe" OR "mercenarios detenidos" OR "complot golpista")',
+  '("conspiração para desestabilizar" OR "tentativa de golpe" OR "mercenários detidos" OR "ex-militar detido")',
+  '("Madagascar" OR "Antananarivo" OR "Tana" OR "Toamasina" OR "Mahajanga" OR "Antsiranana" OR "Toliara" OR "Fianarantsoa" OR "Nosy Be")',
+  '("Guy Baret" OR "Comoros plot" OR "Equatorial Guinea coup attempt" OR "Bolivia coup attempt" OR "DRC coup attempt" OR "Bissau coup attempt")',
+  '("arms cache discovered" OR "weapons cache seized" OR "explosives seized" OR "plot uncovered" OR "intelligence services foiled" OR "national intelligence agency arrested")',
 ];
 
 async function pullGDELTQuery(q: string): Promise<RawSignal[]> {
