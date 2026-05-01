@@ -508,6 +508,38 @@ export type Database = {
         }
         Relationships: []
       }
+      aicis_geo_aliases: {
+        Row: {
+          alias: string
+          created_at: string | null
+          geo_entity_id: string | null
+          id: string
+          language: string | null
+        }
+        Insert: {
+          alias: string
+          created_at?: string | null
+          geo_entity_id?: string | null
+          id?: string
+          language?: string | null
+        }
+        Update: {
+          alias?: string
+          created_at?: string | null
+          geo_entity_id?: string | null
+          id?: string
+          language?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aicis_geo_aliases_geo_entity_id_fkey"
+            columns: ["geo_entity_id"]
+            isOneToOne: false
+            referencedRelation: "aicis_geo_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       aicis_geo_entities: {
         Row: {
           admin_level_1: string | null
@@ -13211,30 +13243,18 @@ export type Database = {
           bridged_count: number
         }[]
       }
-      lril_compute_confidence:
-        | {
-            Args: {
-              p_avg_source_reliability: number
-              p_geo_confidence: number
-              p_keyword_strength: number
-              p_proxy_boost?: number
-              p_source_count: number
-              p_temporal_density: number
-            }
-            Returns: number
-          }
-        | {
-            Args: {
-              p_avg_source_reliability: number
-              p_fatality_count?: number
-              p_geo_confidence: number
-              p_keyword_strength: number
-              p_proxy_boost?: number
-              p_source_count: number
-              p_temporal_density: number
-            }
-            Returns: number
-          }
+      lril_compute_confidence: {
+        Args: {
+          p_avg_source_reliability: number
+          p_fatality_count?: number
+          p_geo_confidence: number
+          p_keyword_strength: number
+          p_proxy_boost?: number
+          p_source_count: number
+          p_temporal_density: number
+        }
+        Returns: number
+      }
       lril_detect_country_from_text: {
         Args: { p_text: string }
         Returns: string
@@ -13249,6 +13269,18 @@ export type Database = {
         }[]
       }
       lril_fips_to_iso3: { Args: { p_code: string }; Returns: string }
+      lril_resolve_geo_fuzzy: {
+        Args: { p_iso3: string; p_text: string }
+        Returns: {
+          admin_level_1: string
+          geo_confidence: number
+          geo_entity_id: string
+          lat: number
+          locality: string
+          lon: number
+          match_strength: number
+        }[]
+      }
       lril_source_tier: {
         Args: { p_source: string; p_url: string }
         Returns: number
@@ -13362,6 +13394,7 @@ export type Database = {
       trigger_signals_unify: { Args: never; Returns: undefined }
       trigger_village_unify: { Args: never; Returns: undefined }
       trigger_wb_ingest: { Args: never; Returns: undefined }
+      unaccent: { Args: { "": string }; Returns: string }
       wilson_interval: {
         Args: { p_successes: number; p_total: number; p_z?: number }
         Returns: Json
