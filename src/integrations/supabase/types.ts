@@ -14156,10 +14156,10 @@ export type Database = {
       refresh_recommendation_quality_scores: {
         Args: never
         Returns: {
-          adjustment_multiplier: number
-          intervention_type: string
-          quality_score: number
-          sample_size: number
+          out_adjustment_multiplier: number
+          out_intervention_type: string
+          out_quality_score: number
+          out_sample_size: number
         }[]
       }
       refresh_risk_rankings_current: { Args: never; Returns: undefined }
