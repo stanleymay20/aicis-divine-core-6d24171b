@@ -13609,6 +13609,14 @@ export type Database = {
           entities_updated: number
         }[]
       }
+      geonames_ingest_chunk: {
+        Args: { p_limit: number; p_offset: number }
+        Returns: {
+          aliases_inserted: number
+          entities_inserted: number
+          entities_updated: number
+        }[]
+      }
       get_countries_needing_villages: {
         Args: never
         Returns: {
