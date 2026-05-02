@@ -237,6 +237,9 @@ export default function PilotTruthFeed() {
         </CardContent>
       </Card>
 
+      {/* Wave 1C: Action Learning Loop */}
+      <LearningSection isPrivileged={isPrivileged} />
+
       {/* Truth feed */}
       <Card>
         <CardHeader>
