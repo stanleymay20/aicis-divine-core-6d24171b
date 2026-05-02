@@ -13027,6 +13027,31 @@ export type Database = {
         }
         Relationships: []
       }
+      v_lril_geo_audit_null_iso3: {
+        Row: {
+          null_iso3_count: number | null
+          source_name: string | null
+        }
+        Relationships: []
+      }
+      v_lril_geo_audit_top_unresolved_places: {
+        Row: {
+          iso3: string | null
+          mention_count: number | null
+          phrase: string | null
+        }
+        Relationships: []
+      }
+      v_lril_geo_audit_unresolved: {
+        Row: {
+          iso3: string | null
+          language: string | null
+          last_seen: string | null
+          source_name: string | null
+          unresolved_signals: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       aggregate_country_snapshots: {
@@ -13332,6 +13357,14 @@ export type Database = {
           subtype: string
         }[]
       }
+      lril_extract_place_phrases: {
+        Args: { p_text: string }
+        Returns: {
+          kind: string
+          phrase: string
+          weight: number
+        }[]
+      }
       lril_fips_to_iso3: { Args: { p_code: string }; Returns: string }
       lril_resolve_geo_fuzzy: {
         Args: { p_iso3: string; p_text: string }
@@ -13342,6 +13375,19 @@ export type Database = {
           lat: number
           locality: string
           lon: number
+          match_strength: number
+        }[]
+      }
+      lril_resolve_geo_fuzzy_v2: {
+        Args: { p_iso3: string; p_text: string }
+        Returns: {
+          admin_level_1: string
+          geo_confidence: number
+          geo_entity_id: string
+          lat: number
+          locality: string
+          lon: number
+          match_kind: string
           match_strength: number
         }[]
       }

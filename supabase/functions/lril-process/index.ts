@@ -148,11 +148,11 @@ serve(async (req) => {
           if (geo) break;
         }
       }
-      // v10: fuzzy DB fallback (unaccent + alias + trigram)
+      // v14: phrase-aware fuzzy resolver (admin-suffix > preposition > trigram > legacy)
       if (!geo && iso3 && s.raw_text) {
         try {
-          const { data: fuzzy } = await supabase.rpc("lril_resolve_geo_fuzzy", {
-            p_text: s.raw_text.slice(0, 1000), p_iso3: iso3,
+          const { data: fuzzy } = await supabase.rpc("lril_resolve_geo_fuzzy_v2", {
+            p_text: s.raw_text.slice(0, 1500), p_iso3: iso3,
           });
           if (Array.isArray(fuzzy) && fuzzy.length > 0) {
             const f = fuzzy[0];
