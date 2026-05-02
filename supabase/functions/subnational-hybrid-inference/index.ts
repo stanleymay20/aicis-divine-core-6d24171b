@@ -23,6 +23,18 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
+  // Open run record up-front so even hard crashes leave evidence
+  const runRow = await supabase
+    .from("subnational_inference_runs")
+    .insert({
+      function_name: "subnational-hybrid-inference",
+      status: "started",
+      metadata: { method: req.method },
+    })
+    .select("run_id")
+    .single();
+  const runId: string | null = runRow.data?.run_id ?? null;
+
   try {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const targetLevel: number = body.admin_level ?? 1;
@@ -160,13 +172,31 @@ serve(async (req) => {
       message: `level=${targetLevel} regions=${regions.length} inferred=${inferred} inserted=${insertedCount} offset=${offset}`,
     });
 
+    // Close run record honestly: zero_write if nothing landed
+    if (runId) {
+      await supabase.from("subnational_inference_runs").update({
+        status: insertedCount === 0 ? "zero_write" : "succeeded",
+        admin_level: targetLevel,
+        rows_written: insertedCount,
+        rows_attempted: inserts.length,
+        finished_at: new Date().toISOString(),
+        duration_ms: Date.now() - start,
+        metadata: {
+          regions_processed: regions.length,
+          offset,
+          domain: domain ?? null,
+        },
+      }).eq("run_id", runId);
+    }
+
     return new Response(
       JSON.stringify({
         ok: true,
+        run_id: runId,
         admin_level: targetLevel,
         regions_processed: regions.length,
         inferred_metrics: inferred,
-        inserted: insertedCount,
+        rows_written: insertedCount,
         next_offset: offset + regions.length,
         duration_ms: Date.now() - start,
       }),
@@ -175,9 +205,18 @@ serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("subnational-hybrid-inference error:", msg);
-    return new Response(JSON.stringify({ error: msg }), {
+    if (runId) {
+      await supabase.from("subnational_inference_runs").update({
+        status: "failed",
+        finished_at: new Date().toISOString(),
+        duration_ms: Date.now() - start,
+        error_message: msg,
+      }).eq("run_id", runId);
+    }
+    return new Response(JSON.stringify({ error: msg, run_id: runId }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
