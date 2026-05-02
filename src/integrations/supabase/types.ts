@@ -775,6 +775,24 @@ export type Database = {
           },
         ]
       }
+      aicis_negative_entities: {
+        Row: {
+          category: string
+          created_at: string
+          phrase: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          phrase: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          phrase?: string
+        }
+        Relationships: []
+      }
       aicis_proxy_signals: {
         Row: {
           admin_level_1: string | null
@@ -13442,6 +13460,10 @@ export type Database = {
         }[]
       }
       lril_fips_to_iso3: { Args: { p_code: string }; Returns: string }
+      lril_promote_unresolved_to_aliases: {
+        Args: { p_min_hits?: number; p_sim_threshold?: number }
+        Returns: number
+      }
       lril_resolve_geo_fuzzy: {
         Args: { p_iso3: string; p_text: string }
         Returns: {
