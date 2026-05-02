@@ -22,7 +22,7 @@ const corsHeaders = {
 };
 
 const FN = "lril-process";
-const BATCH = 400;             // v15: 2000 -> 400 (per-signal RPC cost was timing out edge fn)
+const BATCH = 500;             // v18: 750 also timed out per call -> settle at 500 (parallel callers scale throughput)
 const CLUSTER_RADIUS_KM = 25;
 const CLUSTER_WINDOW_HOURS = 12;
 
