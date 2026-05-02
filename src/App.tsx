@@ -58,6 +58,7 @@ const Predictions = lazy(() => import("./pages/Predictions"));
 const ApiAudit = lazy(() => import("./pages/ApiAudit"));
 const LocalEvents = lazy(() => import("./pages/LocalEvents"));
 const ExportCenter = lazy(() => import("./pages/ExportCenter"));
+const PilotTruthFeed = lazy(() => import("./pages/PilotTruthFeed"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
