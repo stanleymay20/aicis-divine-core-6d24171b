@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycleControls";
 import { LearningSection } from "@/components/pilot-truth/LearningSection";
 import { PilotQueueSection } from "@/components/pilot-truth/PilotQueueSection";
+import { ControlledPilotRunPanel } from "@/components/pilot-truth/ControlledPilotRunPanel";
 
 type TruthRow = {
   outcome_id: string | null;
