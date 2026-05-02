@@ -246,7 +246,18 @@ serve(async (req) => {
           p_proxy_boost: 0,
         });
         const confidence = Number(confRow ?? 0.3);
-        const severity = Math.min(1, 0.3 + 0.1 * matched.length);
+        // v13: severity from SQL severity model (domain + keyword + magnitude cues + tier-A boost)
+        let severity = Math.min(1, 0.3 + 0.1 * matched.length);
+        try {
+          const { data: sevRow } = await supabase.rpc("lril_compute_severity", {
+            p_domain: domain,
+            p_subtype: subtype,
+            p_text: (s.raw_text || "").slice(0, 2000),
+            p_matched_keywords: matched,
+            p_source_reliability: sourceTier,
+          });
+          if (sevRow != null && !isNaN(Number(sevRow))) severity = Number(sevRow);
+        } catch (_) { /* keep fallback */ }
 
         const title = `${subtype.replace(/_/g, ' ')} — ${geo?.locality || geo?.city || iso3}`;
         const description = (s.raw_text || "").slice(0, 500);
