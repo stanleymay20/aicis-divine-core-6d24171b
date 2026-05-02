@@ -13601,6 +13601,14 @@ export type Database = {
           generated: number
         }[]
       }
+      geonames_bulk_upsert: {
+        Args: { p_rows: Json }
+        Returns: {
+          aliases_inserted: number
+          entities_inserted: number
+          entities_updated: number
+        }[]
+      }
       get_countries_needing_villages: {
         Args: never
         Returns: {
