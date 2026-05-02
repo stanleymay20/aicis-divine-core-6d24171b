@@ -1,11 +1,14 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Rocket, AlertTriangle, CheckCircle2, PlayCircle, ClipboardCheck, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycleControls";
+import { PilotBulkActionBar } from "@/components/pilot-truth/PilotBulkActionBar";
 
 type QueueRow = {
   id: string;
