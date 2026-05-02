@@ -155,6 +155,7 @@ const App = () => (
               <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
               <Route path="/pilot-truth" element={<Protected><PilotTruthFeed /></Protected>} />
               <Route path="/data-pipeline" element={<Protected><DataPipeline /></Protected>} />
+              <Route path="/outcome-cockpit" element={<Protected><OutcomeCockpit /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
