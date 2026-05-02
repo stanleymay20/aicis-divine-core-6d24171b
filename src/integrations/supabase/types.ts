@@ -3720,13 +3720,6 @@ export type Database = {
             referencedRelation: "decision_outcome_log"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "decision_review_history_decision_id_fkey"
-            columns: ["decision_id"]
-            isOneToOne: false
-            referencedRelation: "pilot_truth_feed"
-            referencedColumns: ["outcome_id"]
-          },
         ]
       }
       decision_training_dataset: {
@@ -6239,13 +6232,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "decision_outcome_log"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "governance_discrepancies_decision_id_fkey"
-            columns: ["decision_id"]
-            isOneToOne: false
-            referencedRelation: "pilot_truth_feed"
-            referencedColumns: ["outcome_id"]
           },
         ]
       }
@@ -9306,11 +9292,16 @@ export type Database = {
           counterfactual_md: string | null
           country_iso3: string
           created_at: string
+          dismissal_reason: string | null
+          dismissed_at: string | null
+          dismissed_by: string | null
           domain: string
           estimated_cost_eur: number | null
           estimated_roi_eur: number | null
           evidence_chain: Json | null
           executed_at: string | null
+          executed_by: string | null
+          execution_note: string | null
           expected_roi_lower: number | null
           expected_roi_upper: number | null
           first_approver: string | null
@@ -9319,6 +9310,9 @@ export type Database = {
           intervention_title: string
           intervention_type: string
           lifecycle_audit_hash: string | null
+          linked_outcome_id: string | null
+          outcome_logged_at: string | null
+          outcome_logged_by: string | null
           outcome_notes_md: string | null
           rank_position: number | null
           ranking_id: string | null
@@ -9340,11 +9334,16 @@ export type Database = {
           counterfactual_md?: string | null
           country_iso3: string
           created_at?: string
+          dismissal_reason?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
           domain: string
           estimated_cost_eur?: number | null
           estimated_roi_eur?: number | null
           evidence_chain?: Json | null
           executed_at?: string | null
+          executed_by?: string | null
+          execution_note?: string | null
           expected_roi_lower?: number | null
           expected_roi_upper?: number | null
           first_approver?: string | null
@@ -9353,6 +9352,9 @@ export type Database = {
           intervention_title: string
           intervention_type: string
           lifecycle_audit_hash?: string | null
+          linked_outcome_id?: string | null
+          outcome_logged_at?: string | null
+          outcome_logged_by?: string | null
           outcome_notes_md?: string | null
           rank_position?: number | null
           ranking_id?: string | null
@@ -9374,11 +9376,16 @@ export type Database = {
           counterfactual_md?: string | null
           country_iso3?: string
           created_at?: string
+          dismissal_reason?: string | null
+          dismissed_at?: string | null
+          dismissed_by?: string | null
           domain?: string
           estimated_cost_eur?: number | null
           estimated_roi_eur?: number | null
           evidence_chain?: Json | null
           executed_at?: string | null
+          executed_by?: string | null
+          execution_note?: string | null
           expected_roi_lower?: number | null
           expected_roi_upper?: number | null
           first_approver?: string | null
@@ -9387,6 +9394,9 @@ export type Database = {
           intervention_title?: string
           intervention_type?: string
           lifecycle_audit_hash?: string | null
+          linked_outcome_id?: string | null
+          outcome_logged_at?: string | null
+          outcome_logged_by?: string | null
           outcome_notes_md?: string | null
           rank_position?: number | null
           ranking_id?: string | null
@@ -12866,10 +12876,12 @@ export type Database = {
       pilot_truth_feed: {
         Row: {
           absolute_error: number | null
+          accepted_at: string | null
           action_id: string | null
           action_status: string | null
           action_taken: boolean | null
           direction_hit: boolean | null
+          dismissed_at: string | null
           domain: string | null
           estimated_roi_eur: number | null
           evaluation_locked: boolean | null
@@ -12882,6 +12894,7 @@ export type Database = {
           measured_impact_score: number | null
           net_value: number | null
           outcome_id: string | null
+          outcome_logged_at: string | null
           outcome_recorded_at: string | null
           outcome_success: boolean | null
           predicted_at: string | null
@@ -13372,6 +13385,19 @@ export type Database = {
             | null
           unit: string | null
           value: number | null
+        }
+        Relationships: []
+      }
+      risk_action_lifecycle_metrics: {
+        Row: {
+          accepted_count: number | null
+          action_conversion_rate: number | null
+          dismissed_count: number | null
+          executed_count: number | null
+          expired_count: number | null
+          outcome_logged_count: number | null
+          proposed_count: number | null
+          stale_proposed_count: number | null
         }
         Relationships: []
       }
@@ -14040,6 +14066,63 @@ export type Database = {
       snap_planetary_stats: { Args: never; Returns: undefined }
       snapshot_prospective_health: { Args: never; Returns: Json }
       timeout_zombie_jobs: { Args: never; Returns: Json }
+      transition_risk_action: {
+        Args: {
+          p_action_id: string
+          p_dismissal_reason?: string
+          p_execution_note?: string
+          p_outcome_id?: string
+          p_to_status: string
+        }
+        Returns: {
+          accepted_at: string | null
+          accepted_by: string | null
+          batch_id: string
+          confidence: number | null
+          counterfactual_md: string | null
+          country_iso3: string
+          created_at: string
+          dismissal_reason: string | null
+          dismissed_at: string | null
+          dismissed_by: string | null
+          domain: string
+          estimated_cost_eur: number | null
+          estimated_roi_eur: number | null
+          evidence_chain: Json | null
+          executed_at: string | null
+          executed_by: string | null
+          execution_note: string | null
+          expected_roi_lower: number | null
+          expected_roi_upper: number | null
+          first_approver: string | null
+          generated_at: string
+          id: string
+          intervention_title: string
+          intervention_type: string
+          lifecycle_audit_hash: string | null
+          linked_outcome_id: string | null
+          outcome_logged_at: string | null
+          outcome_logged_by: string | null
+          outcome_notes_md: string | null
+          rank_position: number | null
+          ranking_id: string | null
+          rationale_md: string | null
+          requires_dual_approval: boolean | null
+          responsible_domain: string
+          risk_probability: number
+          second_approver: string | null
+          status: string
+          updated_at: string
+          urgency_hours: number
+          urgency_window: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "risk_action_recommendations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       traverse_entity_graph: {
         Args: { _depth?: number; _entity_id: string }
         Returns: {
