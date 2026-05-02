@@ -93,7 +93,20 @@ export default function PilotTruthFeed() {
         .order("outcome_recorded_at", { ascending: false })
         .limit(100);
       if (error) throw error;
-      return (data ?? []) as unknown as TruthRow[];
+      const rows = (data ?? []) as unknown as TruthRow[];
+      const ids = rows.map((r) => r.outcome_id).filter(Boolean) as string[];
+      if (ids.length === 0) return rows;
+      const { data: badges } = await supabase
+        .from("pilot_outcome_evidence_badges" as any)
+        .select("outcome_id,evidence_quality_score,evidence_badge,excluded_from_learning")
+        .in("outcome_id", ids);
+      const byId = new Map<string, any>((badges ?? []).map((b: any) => [b.outcome_id, b]));
+      return rows.map((r) => {
+        const b = r.outcome_id ? byId.get(r.outcome_id) : null;
+        return b
+          ? { ...r, evidence_quality_score: b.evidence_quality_score, evidence_badge: b.evidence_badge, excluded_from_learning: b.excluded_from_learning }
+          : r;
+      });
     },
   });
 
