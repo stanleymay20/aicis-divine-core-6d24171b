@@ -65,15 +65,14 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
   const start = Date.now();
+  const workerId = (req.headers.get("x-worker-id")) || crypto.randomUUID().slice(0, 8);
   const stats = { fetched: 0, classified: 0, geo_resolved: 0, events_created: 0, events_updated: 0, bridged: 0, errors: 0 };
 
-  // 1. Fetch unprocessed signals
-  const { data: signals, error: sErr } = await supabase
-    .from("aicis_raw_local_signals")
-    .select("id, raw_text, language, country_hint, region_hint, source_reliability, published_at, url, source_name")
-    .is("processed_at", null)
-    .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(BATCH);
+  // v18: Release any stale claims from crashed workers (>5 min)
+  try { await supabase.rpc("lril_release_stale_claims", { p_max_age_minutes: 5 }); } catch (_) { /* non-blocking */ }
+
+  // 1. Atomically claim a batch via FOR UPDATE SKIP LOCKED — safe for parallel workers
+  const { data: signals, error: sErr } = await supabase.rpc("lril_claim_signals", { p_limit: BATCH });
   if (sErr) {
     await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: sErr.message });
     return new Response(JSON.stringify({ ok: false, error: sErr.message }), { status: 500, headers: corsHeaders });
@@ -328,13 +327,30 @@ serve(async (req) => {
     console.error("bridge error", (e as Error).message);
   }
 
+  const duration = Date.now() - start;
+
+  // v18: write progress checkpoint for parallel-worker observability
+  try {
+    const { count: remaining } = await supabase
+      .from("aicis_raw_local_signals")
+      .select("id", { count: "exact", head: true })
+      .is("processed_at", null);
+    await supabase.from("lril_process_checkpoints").insert({
+      worker_id: workerId,
+      processed_count: processedIds.length,
+      failed_count: stats.errors,
+      last_batch_duration_ms: duration,
+      remaining_unprocessed: remaining ?? null,
+    });
+  } catch (_) { /* non-blocking */ }
+
   await supabase.from("automation_logs").insert({
     job_name: FN,
     status: stats.errors > 0 ? "partial" : "success",
-    message: `${JSON.stringify(stats)} (${Date.now() - start}ms)`,
+    message: `worker=${workerId} ${JSON.stringify(stats)} (${duration}ms)`,
   });
 
-  return new Response(JSON.stringify({ ok: true, stats }), {
+  return new Response(JSON.stringify({ ok: true, worker_id: workerId, duration_ms: duration, stats }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });

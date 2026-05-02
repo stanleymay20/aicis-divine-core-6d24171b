@@ -921,6 +921,7 @@ export type Database = {
       }
       aicis_raw_local_signals: {
         Row: {
+          claimed_at: string | null
           country_hint: string | null
           dedup_key: string | null
           id: string
@@ -937,6 +938,7 @@ export type Database = {
           url: string | null
         }
         Insert: {
+          claimed_at?: string | null
           country_hint?: string | null
           dedup_key?: string | null
           id?: string
@@ -953,6 +955,7 @@ export type Database = {
           url?: string | null
         }
         Update: {
+          claimed_at?: string | null
           country_hint?: string | null
           dedup_key?: string | null
           id?: string
@@ -6835,6 +6838,36 @@ export type Database = {
           raw_text_excerpt?: string | null
           signal_id?: string | null
           source_name?: string | null
+        }
+        Relationships: []
+      }
+      lril_process_checkpoints: {
+        Row: {
+          created_at: string
+          failed_count: number
+          id: string
+          last_batch_duration_ms: number | null
+          processed_count: number
+          remaining_unprocessed: number | null
+          worker_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          failed_count?: number
+          id?: string
+          last_batch_duration_ms?: number | null
+          processed_count?: number
+          remaining_unprocessed?: number | null
+          worker_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          failed_count?: number
+          id?: string
+          last_batch_duration_ms?: number | null
+          processed_count?: number
+          remaining_unprocessed?: number | null
+          worker_id?: string | null
         }
         Relationships: []
       }
@@ -13706,6 +13739,20 @@ export type Database = {
           bridged_count: number
         }[]
       }
+      lril_claim_signals: {
+        Args: { p_limit?: number }
+        Returns: {
+          country_hint: string
+          id: string
+          language: string
+          published_at: string
+          raw_text: string
+          region_hint: string
+          source_name: string
+          source_reliability: number
+          url: string
+        }[]
+      }
       lril_compute_confidence: {
         Args: {
           p_avg_source_reliability: number
@@ -13753,6 +13800,10 @@ export type Database = {
       lril_is_negative_phrase: { Args: { p_phrase: string }; Returns: boolean }
       lril_promote_unresolved_to_aliases: {
         Args: { p_min_hits?: number; p_sim_threshold?: number }
+        Returns: number
+      }
+      lril_release_stale_claims: {
+        Args: { p_max_age_minutes?: number }
         Returns: number
       }
       lril_resolve_geo_fuzzy: {
