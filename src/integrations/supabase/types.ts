@@ -9281,6 +9281,7 @@ export type Database = {
           metadata: Json | null
           metric_key: string
           metric_value: number
+          primary_country_iso3: string | null
           region_code: string | null
           region_name: string
           trend: string | null
@@ -9295,6 +9296,7 @@ export type Database = {
           metadata?: Json | null
           metric_key: string
           metric_value: number
+          primary_country_iso3?: string | null
           region_code?: string | null
           region_name: string
           trend?: string | null
@@ -9309,6 +9311,7 @@ export type Database = {
           metadata?: Json | null
           metric_key?: string
           metric_value?: number
+          primary_country_iso3?: string | null
           region_code?: string | null
           region_name?: string
           trend?: string | null
@@ -11186,6 +11189,54 @@ export type Database = {
         }
         Relationships: []
       }
+      subnational_inference_runs: {
+        Row: {
+          admin_level: number | null
+          country_iso3: string | null
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          finished_at: string | null
+          function_name: string
+          metadata: Json | null
+          rows_attempted: number | null
+          rows_written: number
+          run_id: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          admin_level?: number | null
+          country_iso3?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          function_name: string
+          metadata?: Json | null
+          rows_attempted?: number | null
+          rows_written?: number
+          run_id?: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          admin_level?: number | null
+          country_iso3?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          function_name?: string
+          metadata?: Json | null
+          rows_attempted?: number | null
+          rows_written?: number
+          run_id?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       subscription_plans: {
         Row: {
           billing_cycle: string | null
@@ -12203,6 +12254,7 @@ export type Database = {
       village_indicators: {
         Row: {
           confidence: number | null
+          country_iso3: string | null
           created_at: string | null
           data_source: string
           domain: string
@@ -12217,6 +12269,7 @@ export type Database = {
         }
         Insert: {
           confidence?: number | null
+          country_iso3?: string | null
           created_at?: string | null
           data_source: string
           domain: string
@@ -12231,6 +12284,7 @@ export type Database = {
         }
         Update: {
           confidence?: number | null
+          country_iso3?: string | null
           created_at?: string | null
           data_source?: string
           domain?: string
@@ -12257,19 +12311,31 @@ export type Database = {
         Row: {
           attempted_at: string | null
           country_iso3: string
+          last_error: string | null
+          next_retry_at: string | null
+          retry_count: number
           status: string | null
+          updated_at: string
           villages_found: number | null
         }
         Insert: {
           attempted_at?: string | null
           country_iso3: string
+          last_error?: string | null
+          next_retry_at?: string | null
+          retry_count?: number
           status?: string | null
+          updated_at?: string
           villages_found?: number | null
         }
         Update: {
           attempted_at?: string | null
           country_iso3?: string
+          last_error?: string | null
+          next_retry_at?: string | null
+          retry_count?: number
           status?: string | null
+          updated_at?: string
           villages_found?: number | null
         }
         Relationships: []
@@ -12939,6 +13005,54 @@ export type Database = {
           measured_count: number | null
           postmortem_rate: number | null
           total_decisions: number | null
+        }
+        Relationships: []
+      }
+      dq_inference_run_health: {
+        Row: {
+          failed_24h: number | null
+          function_name: string | null
+          last_run_at: string | null
+          ok_24h: number | null
+          rows_written_24h: number | null
+          runs_24h: number | null
+          three_consecutive_failures: boolean | null
+          zero_24h: number | null
+        }
+        Relationships: []
+      }
+      dq_orphan_regions: {
+        Row: {
+          admin_level: number | null
+          missing_centroid: number | null
+          missing_iso3: number | null
+          missing_parent: number | null
+          missing_population: number | null
+        }
+        Relationships: []
+      }
+      dq_seed_retry_status: {
+        Row: {
+          best_villages_found: number | null
+          country_iso3: string | null
+          last_attempt_at: string | null
+          last_error: string | null
+          next_retry_at: string | null
+          retry_count: number | null
+          retry_state: string | null
+        }
+        Relationships: []
+      }
+      dq_village_layer_health: {
+        Row: {
+          country_iso3: string | null
+          freshness_status: string | null
+          hours_since_last: number | null
+          last_observed_at: string | null
+          regions_with_data: number | null
+          rows_24h: number | null
+          rows_7d: number | null
+          village_rows: number | null
         }
         Relationships: []
       }
@@ -14061,6 +14175,10 @@ export type Database = {
       compute_uptime_snapshot: { Args: never; Returns: Json }
       count_districts_needing_settlements: { Args: never; Returns: number }
       count_uncovered_regions: { Args: never; Returns: number }
+      country_l0_is_stale: {
+        Args: { _iso3: string; _max_hours?: number }
+        Returns: boolean
+      }
       enqueue_quantivis_event_batch: {
         Args: { p_limit?: number }
         Returns: Json
@@ -14414,6 +14532,10 @@ export type Database = {
           p_name: string
         }
         Returns: string
+      }
+      schedule_village_seed_retry: {
+        Args: { _error?: string; _iso3: string; _success: boolean }
+        Returns: undefined
       }
       score_country_domain_risk: {
         Args: { p_domain: string; p_iso3: string }

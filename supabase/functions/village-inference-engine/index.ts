@@ -21,10 +21,22 @@ serve(async (req) => {
 
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
+  // Open run record up-front (Truth Floor doctrine: every run leaves evidence)
+  const runRow = await supabase
+    .from("subnational_inference_runs")
+    .insert({ function_name: FN, status: "started" })
+    .select("run_id")
+    .single();
+  const runId: string | null = runRow.data?.run_id ?? null;
+
   try {
     const { country_iso3, admin_level, limit = 50 } = await req.json();
 
     if (!country_iso3) {
+      if (runId) await supabase.from("subnational_inference_runs").update({
+        status: "failed", finished_at: new Date().toISOString(),
+        duration_ms: Date.now() - start, error_message: "country_iso3 required",
+      }).eq("run_id", runId);
       return new Response(JSON.stringify({ error: "country_iso3 required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -34,6 +46,7 @@ serve(async (req) => {
     console.log(`[${FN}] Starting inference for ${country_iso3}, level ${admin_level || "all"}`);
 
     const results = { regions_processed: 0, indicators_created: 0, satellite_tiles: 0, errors: [] as string[] };
+
 
     // 1. Get regions that need indicators
     let query = supabase
@@ -89,9 +102,33 @@ serve(async (req) => {
       message: `Processed ${results.regions_processed} regions, ${results.indicators_created} indicators, ${results.satellite_tiles} tiles. Errors: ${results.errors.length}`,
     });
 
+    // Close run record honestly + drive seed retry scheduler
+    if (runId) {
+      const finalStatus = results.indicators_created === 0
+        ? "zero_write"
+        : results.errors.length > 0 ? "partial" : "succeeded";
+      await supabase.from("subnational_inference_runs").update({
+        status: finalStatus,
+        country_iso3,
+        admin_level: admin_level ?? null,
+        rows_written: results.indicators_created,
+        rows_attempted: results.regions_processed,
+        finished_at: new Date().toISOString(),
+        duration_ms: Date.now() - start,
+        metadata: { satellite_tiles: results.satellite_tiles, errors: results.errors.slice(0, 5) },
+      }).eq("run_id", runId);
+    }
+
+    // Update seed retry schedule based on result
+    await supabase.rpc("schedule_village_seed_retry", {
+      _iso3: country_iso3,
+      _success: results.indicators_created > 0,
+      _error: results.errors[0] ?? null,
+    });
+
     console.log(`[${FN}] Done in ${Date.now() - start}ms`, results);
 
-    return new Response(JSON.stringify({ success: true, results }), {
+    return new Response(JSON.stringify({ success: true, run_id: runId, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
@@ -99,10 +136,17 @@ serve(async (req) => {
     await supabase.from("automation_logs").insert({
       job_name: FN, status: "error", message: (e as Error).message,
     });
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
+    if (runId) {
+      await supabase.from("subnational_inference_runs").update({
+        status: "failed", finished_at: new Date().toISOString(),
+        duration_ms: Date.now() - start, error_message: (e as Error).message,
+      }).eq("run_id", runId);
+    }
+    return new Response(JSON.stringify({ error: (e as Error).message, run_id: runId }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   }
 });
 
