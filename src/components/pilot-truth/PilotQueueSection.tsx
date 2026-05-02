@@ -178,9 +178,37 @@ export function PilotQueueSection({ isPrivileged }: { isPrivileged: boolean }) {
 
         {/* Top 10 proposed for execution */}
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Rocket className="h-3 w-3" /> Top 10 ranked for execution
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Rocket className="h-3 w-3" /> Top 10 ranked for execution
+            </div>
+            {isPrivileged && top10Proposed.length > 0 && (
+              <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all top 10"
+                />
+                <span className="text-muted-foreground">Select all ({selectedIds.size}/{top10Proposed.length})</span>
+              </label>
+            )}
           </div>
+
+          {/* Bulk action bar */}
+          {top10Proposed.length > 0 && (
+            <PilotBulkActionBar
+              isPrivileged={isPrivileged}
+              visibleRows={top10Proposed.map((r) => ({
+                id: r.id,
+                country_iso3: r.country_iso3,
+                domain: r.domain,
+                intervention_title: r.intervention_title,
+                estimated_roi_eur: r.estimated_roi_eur,
+              }))}
+              selectedIds={selectedIds}
+              onClearSelection={clearSelection}
+            />
+          )}
 
           {queue.isLoading && <Skeleton className="h-48 w-full" />}
 
@@ -192,7 +220,14 @@ export function PilotQueueSection({ isPrivileged }: { isPrivileged: boolean }) {
 
           <div className="space-y-2">
             {top10Proposed.map((r, i) => (
-              <PilotRow key={r.id} row={r} rank={i + 1} isPrivileged={isPrivileged} />
+              <PilotRow
+                key={r.id}
+                row={r}
+                rank={i + 1}
+                isPrivileged={isPrivileged}
+                selected={selectedIds.has(r.id)}
+                onToggle={() => toggleOne(r.id)}
+              />
             ))}
           </div>
         </div>
