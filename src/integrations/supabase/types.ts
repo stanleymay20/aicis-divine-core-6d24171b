@@ -577,6 +577,57 @@ export type Database = {
         }
         Relationships: []
       }
+      aicis_export_logs: {
+        Row: {
+          created_at: string
+          dataset_name: string
+          duration_ms: number | null
+          error_message: string | null
+          exported_by: string | null
+          exported_by_email: string | null
+          file_size_bytes: number | null
+          filters: Json
+          format: string
+          id: string
+          row_count: number
+          sha256_checksum: string | null
+          status: string
+          storage_path: string | null
+        }
+        Insert: {
+          created_at?: string
+          dataset_name: string
+          duration_ms?: number | null
+          error_message?: string | null
+          exported_by?: string | null
+          exported_by_email?: string | null
+          file_size_bytes?: number | null
+          filters?: Json
+          format: string
+          id?: string
+          row_count?: number
+          sha256_checksum?: string | null
+          status?: string
+          storage_path?: string | null
+        }
+        Update: {
+          created_at?: string
+          dataset_name?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          exported_by?: string | null
+          exported_by_email?: string | null
+          file_size_bytes?: number | null
+          filters?: Json
+          format?: string
+          id?: string
+          row_count?: number
+          sha256_checksum?: string | null
+          status?: string
+          storage_path?: string | null
+        }
+        Relationships: []
+      }
       aicis_geo_aliases: {
         Row: {
           alias: string
@@ -13703,6 +13754,7 @@ export type Database = {
           value: number
         }[]
       }
+      has_export_role: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
