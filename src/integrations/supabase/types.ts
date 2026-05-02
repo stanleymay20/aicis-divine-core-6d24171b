@@ -6805,6 +6805,39 @@ export type Database = {
         }
         Relationships: []
       }
+      lril_country_corrections: {
+        Row: {
+          confidence_penalty: number | null
+          created_at: string
+          detected_iso3: string
+          id: string
+          original_country_hint: string | null
+          raw_text_excerpt: string | null
+          signal_id: string | null
+          source_name: string | null
+        }
+        Insert: {
+          confidence_penalty?: number | null
+          created_at?: string
+          detected_iso3: string
+          id?: string
+          original_country_hint?: string | null
+          raw_text_excerpt?: string | null
+          signal_id?: string | null
+          source_name?: string | null
+        }
+        Update: {
+          confidence_penalty?: number | null
+          created_at?: string
+          detected_iso3?: string
+          id?: string
+          original_country_hint?: string | null
+          raw_text_excerpt?: string | null
+          signal_id?: string | null
+          source_name?: string | null
+        }
+        Relationships: []
+      }
       methodology_documents: {
         Row: {
           content: Json
@@ -13736,6 +13769,19 @@ export type Database = {
       }
       lril_resolve_geo_fuzzy_v2: {
         Args: { p_iso3: string; p_text: string }
+        Returns: {
+          admin_level_1: string
+          geo_confidence: number
+          geo_entity_id: string
+          lat: number
+          locality: string
+          lon: number
+          match_kind: string
+          match_strength: number
+        }[]
+      }
+      lril_resolve_geo_fuzzy_v3: {
+        Args: { p_iso3: string; p_signal_id: string; p_text: string }
         Returns: {
           admin_level_1: string
           geo_confidence: number
