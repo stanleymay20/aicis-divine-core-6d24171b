@@ -97,9 +97,49 @@ async function refetchStatuses(items: QueueItem[]): Promise<{ live: QueueItem[];
 
 export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onClearSelection }: Props) {
   const qc = useQueryClient();
-  const [confirmMode, setConfirmMode] = useState<null | { mode: Mode; targets: QueueItem[] }>(null);
+  const [confirmMode, setConfirmMode] = useState<
+    null | { mode: Mode; targets: QueueItem[]; cohortKind: CohortKind }
+  >(null);
   const [dismissReason, setDismissReason] = useState("");
+  const [pilotNotes, setPilotNotes] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
   const [run, setRun] = useState<RunState>(initialRun);
+  const [pilotRunId, setPilotRunId] = useState<string | null>(null);
+
+  // Active pilot run (controls scaling guard messaging)
+  const activeRun = useQuery({
+    queryKey: ["controlled-pilot-runs-active"],
+    enabled: isPrivileged,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("controlled_pilot_run_status" as any)
+        .select("pilot_run_id,status,outcomes_logged_count,cohort_size")
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  // Is current user admin (gates override option)
+  const isAdmin = useQuery({
+    queryKey: ["is-admin-check"],
+    enabled: isPrivileged,
+    queryFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u.user?.id;
+      if (!uid) return false;
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", uid)
+        .eq("role", "admin")
+        .limit(1);
+      if (error) return false;
+      return (data ?? []).length > 0;
+    },
+  });
 
   const summary = useMemo(() => {
     if (!confirmMode) return null;
@@ -125,6 +165,9 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
     qc.invalidateQueries({ queryKey: ["risk-action-lifecycle-metrics"] });
     qc.invalidateQueries({ queryKey: ["stale-proposed-actions"] });
     qc.invalidateQueries({ queryKey: ["pilot-truth-feed"] });
+    qc.invalidateQueries({ queryKey: ["controlled-pilot-runs"] });
+    qc.invalidateQueries({ queryKey: ["controlled-pilot-runs-active"] });
+    qc.invalidateQueries({ queryKey: ["pilot-scaling-overrides"] });
   }
 
   /** Core executor: drift-check then sequential RPC with live progress. */
