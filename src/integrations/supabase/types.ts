@@ -12909,6 +12909,39 @@ export type Database = {
           },
         ]
       }
+      pilot_execution_queue: {
+        Row: {
+          accepted_at: string | null
+          adjusted_priority_score: number | null
+          adjustment_rationale: string | null
+          confidence: number | null
+          country_iso3: string | null
+          created_at: string | null
+          domain: string | null
+          estimated_cost_eur: number | null
+          estimated_roi_eur: number | null
+          executed_at: string | null
+          id: string | null
+          intervention_quality_score: number | null
+          intervention_title: string | null
+          intervention_type: string | null
+          learning_multiplier: number | null
+          linked_outcome_id: string | null
+          outcome_logged_at: string | null
+          outcome_needed: boolean | null
+          pilot_priority_score: number | null
+          queue_stage: string | null
+          rank_position: number | null
+          rationale_md: string | null
+          roi_factor: number | null
+          stage_age_days: number | null
+          status: string | null
+          urgency_factor: number | null
+          urgency_hours: number | null
+          urgency_window: string | null
+        }
+        Relationships: []
+      }
       pilot_truth_feed: {
         Row: {
           absolute_error: number | null
@@ -12940,6 +12973,18 @@ export type Database = {
           roi_realization_ratio: number | null
           signal_title: string | null
           urgency_window: string | null
+        }
+        Relationships: []
+      }
+      pilot_weekly_metrics: {
+        Row: {
+          accepted_open_count: number | null
+          accepted_this_week: number | null
+          executed_open_count: number | null
+          executed_this_week: number | null
+          outcome_needed_count: number | null
+          outcomes_logged_this_week: number | null
+          proposed_open_count: number | null
         }
         Relationships: []
       }
