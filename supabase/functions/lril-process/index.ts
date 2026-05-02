@@ -327,13 +327,30 @@ serve(async (req) => {
     console.error("bridge error", (e as Error).message);
   }
 
+  const duration = Date.now() - start;
+
+  // v18: write progress checkpoint for parallel-worker observability
+  try {
+    const { count: remaining } = await supabase
+      .from("aicis_raw_local_signals")
+      .select("id", { count: "exact", head: true })
+      .is("processed_at", null);
+    await supabase.from("lril_process_checkpoints").insert({
+      worker_id: workerId,
+      processed_count: processedIds.length,
+      failed_count: stats.errors,
+      last_batch_duration_ms: duration,
+      remaining_unprocessed: remaining ?? null,
+    });
+  } catch (_) { /* non-blocking */ }
+
   await supabase.from("automation_logs").insert({
     job_name: FN,
     status: stats.errors > 0 ? "partial" : "success",
-    message: `${JSON.stringify(stats)} (${Date.now() - start}ms)`,
+    message: `worker=${workerId} ${JSON.stringify(stats)} (${duration}ms)`,
   });
 
-  return new Response(JSON.stringify({ ok: true, stats }), {
+  return new Response(JSON.stringify({ ok: true, worker_id: workerId, duration_ms: duration, stats }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
