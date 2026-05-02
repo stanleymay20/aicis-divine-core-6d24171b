@@ -36,6 +36,9 @@ type TruthRow = {
   absolute_error: number | null;
   evaluation_locked: boolean | null;
   roi_realization_ratio: number | null;
+  evidence_quality_score?: number | null;
+  evidence_badge?: "strong" | "acceptable" | "weak" | "inconclusive" | null;
+  excluded_from_learning?: boolean | null;
 };
 
 type StaleAction = {
