@@ -623,6 +623,8 @@ export type Database = {
           locality: string | null
           lon: number | null
           population: number | null
+          source: string | null
+          source_id: string | null
         }
         Insert: {
           admin_level_1?: string | null
@@ -637,6 +639,8 @@ export type Database = {
           locality?: string | null
           lon?: number | null
           population?: number | null
+          source?: string | null
+          source_id?: string | null
         }
         Update: {
           admin_level_1?: string | null
@@ -651,6 +655,8 @@ export type Database = {
           locality?: string | null
           lon?: number | null
           population?: number | null
+          source?: string | null
+          source_id?: string | null
         }
         Relationships: []
       }
@@ -5813,6 +5819,72 @@ export type Database = {
         }
         Relationships: []
       }
+      geonames_staging: {
+        Row: {
+          admin1_code: string | null
+          admin2_code: string | null
+          admin3_code: string | null
+          admin4_code: string | null
+          alternatenames: string | null
+          asciiname: string | null
+          cc2: string | null
+          country_code: string | null
+          dem: number | null
+          elevation: number | null
+          feature_class: string | null
+          feature_code: string | null
+          geonameid: number | null
+          latitude: number | null
+          longitude: number | null
+          modification_date: string | null
+          name: string | null
+          population: number | null
+          timezone: string | null
+        }
+        Insert: {
+          admin1_code?: string | null
+          admin2_code?: string | null
+          admin3_code?: string | null
+          admin4_code?: string | null
+          alternatenames?: string | null
+          asciiname?: string | null
+          cc2?: string | null
+          country_code?: string | null
+          dem?: number | null
+          elevation?: number | null
+          feature_class?: string | null
+          feature_code?: string | null
+          geonameid?: number | null
+          latitude?: number | null
+          longitude?: number | null
+          modification_date?: string | null
+          name?: string | null
+          population?: number | null
+          timezone?: string | null
+        }
+        Update: {
+          admin1_code?: string | null
+          admin2_code?: string | null
+          admin3_code?: string | null
+          admin4_code?: string | null
+          alternatenames?: string | null
+          asciiname?: string | null
+          cc2?: string | null
+          country_code?: string | null
+          dem?: number | null
+          elevation?: number | null
+          feature_class?: string | null
+          feature_code?: string | null
+          geonameid?: number | null
+          latitude?: number | null
+          longitude?: number | null
+          modification_date?: string | null
+          name?: string | null
+          population?: number | null
+          timezone?: string | null
+        }
+        Relationships: []
+      }
       global_domain_benchmarks: {
         Row: {
           domain: string
@@ -6694,6 +6766,24 @@ export type Database = {
           threshold_count?: number
           trigger_type?: string
           window_minutes?: number
+        }
+        Relationships: []
+      }
+      iso_country_map: {
+        Row: {
+          iso2: string
+          iso3: string
+          name: string | null
+        }
+        Insert: {
+          iso2: string
+          iso3: string
+          name?: string | null
+        }
+        Update: {
+          iso2?: string
+          iso3?: string
+          name?: string | null
         }
         Relationships: []
       }
