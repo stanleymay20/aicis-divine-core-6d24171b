@@ -8484,6 +8484,117 @@ export type Database = {
         }
         Relationships: []
       }
+      pilot_run_actions: {
+        Row: {
+          action_id: string
+          created_at: string
+          id: string
+          outcome_logged: boolean
+          outcome_logged_at: string | null
+          pilot_run_id: string
+        }
+        Insert: {
+          action_id: string
+          created_at?: string
+          id?: string
+          outcome_logged?: boolean
+          outcome_logged_at?: string | null
+          pilot_run_id: string
+        }
+        Update: {
+          action_id?: string
+          created_at?: string
+          id?: string
+          outcome_logged?: boolean
+          outcome_logged_at?: string | null
+          pilot_run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pilot_run_actions_pilot_run_id_fkey"
+            columns: ["pilot_run_id"]
+            isOneToOne: false
+            referencedRelation: "controlled_pilot_run_status"
+            referencedColumns: ["pilot_run_id"]
+          },
+          {
+            foreignKeyName: "pilot_run_actions_pilot_run_id_fkey"
+            columns: ["pilot_run_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pilot_runs: {
+        Row: {
+          accepted_at: string
+          accepted_by: string
+          cohort_size: number
+          completed_at: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          outcomes_logged_count: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string
+          accepted_by: string
+          cohort_size: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          outcomes_logged_count?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string
+          accepted_by?: string
+          cohort_size?: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          outcomes_logged_count?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pilot_scaling_overrides: {
+        Row: {
+          blocked_reason: string | null
+          created_at: string
+          id: string
+          overridden_by: string
+          reason: string
+          requested_cohort_size: number
+          used_at: string | null
+        }
+        Insert: {
+          blocked_reason?: string | null
+          created_at?: string
+          id?: string
+          overridden_by: string
+          reason: string
+          requested_cohort_size: number
+          used_at?: string | null
+        }
+        Update: {
+          blocked_reason?: string | null
+          created_at?: string
+          id?: string
+          overridden_by?: string
+          reason?: string
+          requested_cohort_size?: number
+          used_at?: string | null
+        }
+        Relationships: []
+      }
       pipeline_health: {
         Row: {
           alert_triggered: boolean | null
@@ -12709,6 +12820,20 @@ export type Database = {
         }
         Relationships: []
       }
+      controlled_pilot_run_status: {
+        Row: {
+          accepted_action_ids: string[] | null
+          accepted_at: string | null
+          accepted_by: string | null
+          cohort_size: number | null
+          completed_at: string | null
+          notes: string | null
+          outcomes_logged_count: number | null
+          pilot_run_id: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
       country_coverage_full: {
         Row: {
           canonical_name: string | null
@@ -13833,6 +13958,10 @@ export type Database = {
         Args: { _ip_address: unknown; _org_id: string }
         Returns: boolean
       }
+      check_pilot_scaling_guard: {
+        Args: { p_requested_cohort_size: number }
+        Returns: Json
+      }
       check_prospective_health: { Args: never; Returns: Json }
       check_rate_limit: {
         Args: {
@@ -14056,6 +14185,10 @@ export type Database = {
         }
         Returns: string
       }
+      log_pilot_scaling_override: {
+        Args: { p_reason: string; p_requested_cohort_size: number }
+        Returns: string
+      }
       lril_bridge_to_normalized: {
         Args: never
         Returns: {
@@ -14268,6 +14401,10 @@ export type Database = {
       }
       snap_planetary_stats: { Args: never; Returns: undefined }
       snapshot_prospective_health: { Args: never; Returns: Json }
+      start_controlled_pilot_run: {
+        Args: { p_action_ids: string[]; p_notes?: string }
+        Returns: string
+      }
       timeout_zombie_jobs: { Args: never; Returns: Json }
       transition_risk_action: {
         Args: {
