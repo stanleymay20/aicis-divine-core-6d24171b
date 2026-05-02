@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,10 +10,11 @@ import { Progress } from "@/components/ui/progress";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { CheckCircle2, XCircle, Zap, Loader2, AlertTriangle, RotateCcw } from "lucide-react";
+import { CheckCircle2, XCircle, Zap, Loader2, AlertTriangle, RotateCcw, FlaskConical, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
 type Mode = "accept" | "dismiss";
+type CohortKind = "pilot_run" | "scaled" | "free";
 
 interface QueueItem {
   id: string;
