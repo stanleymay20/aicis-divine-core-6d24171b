@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { CheckCircle2, XCircle, PlayCircle, Loader2, ClipboardCheck } from "lucide-react";
+import {
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, XCircle, PlayCircle, Loader2, ClipboardCheck, AlertTriangle, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 
 type Status = "proposed" | "accepted" | "dismissed" | "executed" | "outcome_logged" | "expired";
