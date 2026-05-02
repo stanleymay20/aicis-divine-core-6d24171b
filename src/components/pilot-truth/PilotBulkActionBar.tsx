@@ -371,16 +371,16 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
           variant="outline"
           className="gap-1.5 h-8"
           disabled={top3.length === 0 || isBusy}
-          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: top3 }); }}
+          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: top3, cohortKind: "pilot_run" }); }}
         >
-          <Zap className="h-3.5 w-3.5" /> Accept top 3
+          <FlaskConical className="h-3.5 w-3.5" /> Accept top 3 (Pilot)
         </Button>
         <Button
           size="sm"
           variant="outline"
           className="gap-1.5 h-8"
           disabled={top5.length === 0 || isBusy}
-          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: top5 }); }}
+          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: top5, cohortKind: "scaled" }); }}
         >
           <Zap className="h-3.5 w-3.5" /> Accept top 5
         </Button>
@@ -389,7 +389,14 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
           size="sm"
           className="gap-1.5 h-8"
           disabled={!hasSelection || isBusy}
-          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: selected }); }}
+          onClick={() => {
+            setRun(initialRun);
+            setConfirmMode({
+              mode: "accept",
+              targets: selected,
+              cohortKind: selected.length > 3 ? "scaled" : "free",
+            });
+          }}
         >
           <CheckCircle2 className="h-3.5 w-3.5" /> Accept selected ({selected.length})
         </Button>
@@ -398,7 +405,7 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
           variant="destructive"
           className="gap-1.5 h-8"
           disabled={!hasSelection || isBusy}
-          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "dismiss", targets: selected }); }}
+          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "dismiss", targets: selected, cohortKind: "free" }); }}
         >
           <XCircle className="h-3.5 w-3.5" /> Dismiss selected ({selected.length})
         </Button>
