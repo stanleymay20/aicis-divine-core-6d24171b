@@ -22,7 +22,7 @@ const corsHeaders = {
 };
 
 const FN = "lril-process";
-const BATCH = 1500;            // v18: 400 -> 1500 to accelerate drain (will fall back to 1000/750 if timeouts)
+const BATCH = 750;             // v18: 1500 timed out -> 750 (stable middle ground)
 const CLUSTER_RADIUS_KM = 25;
 const CLUSTER_WINDOW_HOURS = 12;
 
