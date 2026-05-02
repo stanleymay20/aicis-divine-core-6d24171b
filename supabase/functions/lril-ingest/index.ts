@@ -678,6 +678,7 @@ serve(async (req) => {
   }
 
   // v4: run all sources in parallel — slow GDELT 429s never block local RSS / sensors.
+  // v13: added tier_a (UN/OCHA/UNHCR/WHO/PAHO/ECHO/AP/AFP) as an isolated parallel branch.
   const tasks: Array<[string, Promise<RawSignal[]>]> = [
     ["gdacs", pullGDACS()],
     ["gdelt", pullGDELT()],
@@ -686,6 +687,7 @@ serve(async (req) => {
     ["eonet", pullEONET()],
     ["local_rss", pullLocalRSS()],
     ["google_news", pullGoogleNewsAllCountries()],
+    ["tier_a", pullTierARSS()],
   ];
   const settled = await Promise.allSettled(tasks.map(([, p]) => p));
   settled.forEach((res, i) => {
@@ -697,6 +699,17 @@ serve(async (req) => {
       summary[`${name}_error`] = (res.reason as Error)?.message || String(res.reason);
     }
   });
+
+  // v13: update registry liveness — record last_checked_at for every known source we attempted.
+  try {
+    const sourceNames = [...new Set(all.map(s => s.source_name))];
+    if (sourceNames.length > 0) {
+      await supabase
+        .from("aicis_source_registry")
+        .update({ last_checked_at: new Date().toISOString(), last_success_at: new Date().toISOString() })
+        .in("source_name", sourceNames);
+    }
+  } catch (_) { /* non-blocking */ }
 
   let inserted = 0;
   if (all.length > 0) {
