@@ -383,6 +383,47 @@ const LOCAL_RSS: { url: string; name: string; iso3: string | null; reliability: 
   { url: "https://www.hrw.org/rss/news", name: "hrw", iso3: null, reliability: 0.92 },
 ];
 
+// v13: TIER-A institutional & wire feeds (public RSS only — no scraping, no paywall bypass).
+// Reuters has retired most public RSS endpoints; we mark it 'requires_credential' in the
+// registry and do NOT auto-fetch it. AP topnews RSS is publicly available.
+const TIER_A_RSS: typeof LOCAL_RSS = [
+  // UN system
+  { url: "https://news.un.org/feed/subscribe/en/news/all/rss.xml", name: "un_news", iso3: null, reliability: 0.92 },
+  { url: "https://reliefweb.int/updates/rss.xml", name: "ocha_updates", iso3: null, reliability: 0.92 },
+  { url: "https://www.unhcr.org/rss/news/en", name: "unhcr_news", iso3: null, reliability: 0.92 },
+  { url: "https://www.who.int/rss-feeds/news-english.xml", name: "who_don", iso3: null, reliability: 0.95 },
+  { url: "https://www.paho.org/en/rss.xml", name: "paho_news", iso3: null, reliability: 0.92 },
+  // EU institutional
+  { url: "https://erccportal.jrc.ec.europa.eu/ECHO-Flash/RSS", name: "echo_flash", iso3: null, reliability: 0.90 },
+  // Wires (public RSS where legal)
+  { url: "https://feeds.apnews.com/apf-topnews", name: "ap_topnews", iso3: null, reliability: 0.90 },
+  { url: "https://factuel.afp.com/list/all/feed", name: "afp_factcheck", iso3: null, reliability: 0.88 },
+];
+
+async function pullTierARSS(): Promise<RawSignal[]> {
+  // v13: tier-A sources — fetch in small batches, mark source_type='un'/'ngo' where appropriate.
+  // Each failure is isolated (pullRSSFeed already swallows per-feed errors).
+  const all: RawSignal[] = [];
+  const BATCH = 4;
+  for (let i = 0; i < TIER_A_RSS.length; i += BATCH) {
+    const batch = TIER_A_RSS.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(pullRSSFeed));
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        for (const sig of r.value) {
+          // Re-tag source_type based on source_name so downstream scoring is correct.
+          if (/^(un_news|ocha_updates|unhcr_news|who_don|paho_news)$/.test(sig.source_name)) sig.source_type = "un";
+          else if (sig.source_name === "echo_flash") sig.source_type = "gov";
+          else if (sig.source_name.startsWith("ap_") || sig.source_name.startsWith("afp_")) sig.source_type = "news";
+          all.push(sig);
+        }
+      }
+    }
+    await new Promise(r => setTimeout(r, 400));
+  }
+  return all;
+}
+
 function stripXml(s: string): string {
   return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
