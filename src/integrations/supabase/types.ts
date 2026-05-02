@@ -3720,6 +3720,13 @@ export type Database = {
             referencedRelation: "decision_outcome_log"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "decision_review_history_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_truth_feed"
+            referencedColumns: ["outcome_id"]
+          },
         ]
       }
       decision_training_dataset: {
@@ -6232,6 +6239,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "decision_outcome_log"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "governance_discrepancies_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_truth_feed"
+            referencedColumns: ["outcome_id"]
           },
         ]
       }
@@ -12849,6 +12863,37 @@ export type Database = {
           },
         ]
       }
+      pilot_truth_feed: {
+        Row: {
+          absolute_error: number | null
+          action_id: string | null
+          action_status: string | null
+          action_taken: boolean | null
+          direction_hit: boolean | null
+          domain: string | null
+          estimated_roi_eur: number | null
+          evaluation_locked: boolean | null
+          executed_at: string | null
+          forecast_id: string | null
+          forecast_realized_at: string | null
+          intervention_title: string | null
+          intervention_type: string | null
+          iso3: string | null
+          measured_impact_score: number | null
+          net_value: number | null
+          outcome_id: string | null
+          outcome_recorded_at: string | null
+          outcome_success: boolean | null
+          predicted_at: string | null
+          recommended_action: string | null
+          review_status: string | null
+          roi_estimate: number | null
+          roi_realization_ratio: number | null
+          signal_title: string | null
+          urgency_window: string | null
+        }
+        Relationships: []
+      }
       planetary_country_integrity: {
         Row: {
           canonical_name: string | null
@@ -13633,6 +13678,12 @@ export type Database = {
       evaluate_forecast_readiness: {
         Args: { _mae_threshold?: number }
         Returns: Json
+      }
+      expire_stale_risk_actions: {
+        Args: never
+        Returns: {
+          expired_count: number
+        }[]
       }
       find_stalled_pipelines: {
         Args: never
