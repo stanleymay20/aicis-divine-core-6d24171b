@@ -812,6 +812,60 @@ export type Database = {
         }
         Relationships: []
       }
+      aicis_source_registry: {
+        Row: {
+          access_type: string
+          created_at: string
+          display_name: string | null
+          domains: string[]
+          feed_url: string | null
+          id: string
+          last_checked_at: string | null
+          last_success_at: string | null
+          notes: string | null
+          region_focus: string[]
+          reliability_score: number
+          source_name: string
+          source_type: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          access_type?: string
+          created_at?: string
+          display_name?: string | null
+          domains?: string[]
+          feed_url?: string | null
+          id?: string
+          last_checked_at?: string | null
+          last_success_at?: string | null
+          notes?: string | null
+          region_focus?: string[]
+          reliability_score?: number
+          source_name: string
+          source_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          access_type?: string
+          created_at?: string
+          display_name?: string | null
+          domains?: string[]
+          feed_url?: string | null
+          id?: string
+          last_checked_at?: string | null
+          last_success_at?: string | null
+          notes?: string | null
+          region_focus?: string[]
+          reliability_score?: number
+          source_name?: string
+          source_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       alert_preferences: {
         Row: {
           countries: string[]
@@ -13252,6 +13306,16 @@ export type Database = {
           p_proxy_boost?: number
           p_source_count: number
           p_temporal_density: number
+        }
+        Returns: number
+      }
+      lril_compute_severity: {
+        Args: {
+          p_domain: string
+          p_matched_keywords: Json
+          p_source_reliability?: number
+          p_subtype: string
+          p_text: string
         }
         Returns: number
       }
