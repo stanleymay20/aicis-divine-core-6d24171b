@@ -508,6 +508,75 @@ export type Database = {
         }
         Relationships: []
       }
+      aicis_early_warnings: {
+        Row: {
+          admin_level_1: string | null
+          confidence: number
+          dedup_key: string
+          escalation_probability: number
+          event_count: number
+          event_type: string
+          first_detected_at: string
+          id: string
+          iso3: string | null
+          last_updated_at: string
+          locality: string | null
+          metric: Json | null
+          recommended_next_action: string | null
+          resolved_at: string | null
+          severity: number
+          source_count: number
+          status: string
+          subtype: string | null
+          time_window_hours: number
+          warning_kind: string
+        }
+        Insert: {
+          admin_level_1?: string | null
+          confidence?: number
+          dedup_key: string
+          escalation_probability?: number
+          event_count?: number
+          event_type: string
+          first_detected_at?: string
+          id?: string
+          iso3?: string | null
+          last_updated_at?: string
+          locality?: string | null
+          metric?: Json | null
+          recommended_next_action?: string | null
+          resolved_at?: string | null
+          severity?: number
+          source_count?: number
+          status?: string
+          subtype?: string | null
+          time_window_hours?: number
+          warning_kind: string
+        }
+        Update: {
+          admin_level_1?: string | null
+          confidence?: number
+          dedup_key?: string
+          escalation_probability?: number
+          event_count?: number
+          event_type?: string
+          first_detected_at?: string
+          id?: string
+          iso3?: string | null
+          last_updated_at?: string
+          locality?: string | null
+          metric?: Json | null
+          recommended_next_action?: string | null
+          resolved_at?: string | null
+          severity?: number
+          source_count?: number
+          status?: string
+          subtype?: string | null
+          time_window_hours?: number
+          warning_kind?: string
+        }
+        Relationships: []
+      }
       aicis_geo_aliases: {
         Row: {
           alias: string
@@ -946,6 +1015,69 @@ export type Database = {
           source_type?: string
           status?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      aicis_warning_evidence: {
+        Row: {
+          contribution: number | null
+          local_event_id: string
+          warning_id: string
+        }
+        Insert: {
+          contribution?: number | null
+          local_event_id: string
+          warning_id: string
+        }
+        Update: {
+          contribution?: number | null
+          local_event_id?: string
+          warning_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aicis_warning_evidence_local_event_id_fkey"
+            columns: ["local_event_id"]
+            isOneToOne: false
+            referencedRelation: "aicis_local_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "aicis_warning_evidence_warning_id_fkey"
+            columns: ["warning_id"]
+            isOneToOne: false
+            referencedRelation: "aicis_early_warnings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      aicis_warning_snapshots: {
+        Row: {
+          avg_confidence: number | null
+          avg_escalation: number | null
+          by_country: Json | null
+          by_kind: Json | null
+          id: string
+          snapshot_at: string
+          total_warnings: number
+        }
+        Insert: {
+          avg_confidence?: number | null
+          avg_escalation?: number | null
+          by_country?: Json | null
+          by_kind?: Json | null
+          id?: string
+          snapshot_at?: string
+          total_warnings?: number
+        }
+        Update: {
+          avg_confidence?: number | null
+          avg_escalation?: number | null
+          by_country?: Json | null
+          by_kind?: Json | null
+          id?: string
+          snapshot_at?: string
+          total_warnings?: number
         }
         Relationships: []
       }
@@ -13232,6 +13364,13 @@ export type Database = {
       cleanup_rate_limits: { Args: never; Returns: undefined }
       cleanup_zombie_jobs: { Args: never; Returns: undefined }
       compute_cross_domain_influence: { Args: never; Returns: Json }
+      compute_early_warnings: {
+        Args: never
+        Returns: {
+          warnings_created: number
+          warnings_updated: number
+        }[]
+      }
       compute_intelligence_score: {
         Args: { _change_threshold?: number; _window_days?: number }
         Returns: Json
