@@ -5704,6 +5704,39 @@ export type Database = {
         }
         Relationships: []
       }
+      forecast_realization_runs: {
+        Row: {
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          limit_count: number
+          rows_realized: number
+          rows_skipped: number
+          started_at: string
+          status: string
+        }
+        Insert: {
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          limit_count: number
+          rows_realized?: number
+          rows_skipped?: number
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          limit_count?: number
+          rows_realized?: number
+          rows_skipped?: number
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       forecast_residuals: {
         Row: {
           created_at: string
@@ -14051,6 +14084,38 @@ export type Database = {
         }
         Relationships: []
       }
+      v_outcome_cockpit_queue: {
+        Row: {
+          accepted_at: string | null
+          action_id: string | null
+          country_iso3: string | null
+          days_pending: number | null
+          domain: string | null
+          estimated_roi_eur: number | null
+          executed_at: string | null
+          intervention_title: string | null
+          outcome_logged_at: string | null
+          pilot_run_id: string | null
+          review_reason: string | null
+          status: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pilot_run_actions_pilot_run_id_fkey"
+            columns: ["pilot_run_id"]
+            isOneToOne: false
+            referencedRelation: "controlled_pilot_run_status"
+            referencedColumns: ["pilot_run_id"]
+          },
+          {
+            foreignKeyName: "pilot_run_actions_pilot_run_id_fkey"
+            columns: ["pilot_run_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       aggregate_country_snapshots: {
@@ -14490,6 +14555,13 @@ export type Database = {
       prospective_model_breakdown: { Args: never; Returns: Json }
       prospective_summary_stats: { Args: never; Returns: Json }
       prune_retention_logs: { Args: never; Returns: Json }
+      realize_due_prospective_forecasts: {
+        Args: { limit_count?: number }
+        Returns: {
+          rows_realized: number
+          run_id: string
+        }[]
+      }
       realize_risk_predictions: {
         Args: { p_horizon_days?: number }
         Returns: {
