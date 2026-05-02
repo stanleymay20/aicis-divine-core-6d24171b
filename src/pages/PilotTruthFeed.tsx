@@ -8,6 +8,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycleControls";
 import { LearningSection } from "@/components/pilot-truth/LearningSection";
+import { PilotQueueSection } from "@/components/pilot-truth/PilotQueueSection";
 
 type TruthRow = {
   outcome_id: string | null;
