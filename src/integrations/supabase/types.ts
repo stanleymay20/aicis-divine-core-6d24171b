@@ -9427,6 +9427,42 @@ export type Database = {
           },
         ]
       }
+      risk_action_score_adjustments: {
+        Row: {
+          adjustment_multiplier: number
+          computed_at: string
+          created_at: string
+          id: string
+          intervention_type: string
+          quality_score: number
+          rationale: string
+          sample_size: number
+          updated_at: string
+        }
+        Insert: {
+          adjustment_multiplier?: number
+          computed_at?: string
+          created_at?: string
+          id?: string
+          intervention_type: string
+          quality_score: number
+          rationale: string
+          sample_size?: number
+          updated_at?: string
+        }
+        Update: {
+          adjustment_multiplier?: number
+          computed_at?: string
+          created_at?: string
+          id?: string
+          intervention_type?: string
+          quality_score?: number
+          rationale?: string
+          sample_size?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       risk_ml_predictions: {
         Row: {
           audit_hash: string | null
@@ -13388,6 +13424,36 @@ export type Database = {
         }
         Relationships: []
       }
+      recommendation_quality_score: {
+        Row: {
+          accepted_n: number | null
+          avg_roi_realization: number | null
+          dismissal_rate: number | null
+          dismissed_n: number | null
+          executed_n: number | null
+          execution_rate: number | null
+          intervention_type: string | null
+          outcome_n: number | null
+          quality_score: number | null
+          sample_confidence: number | null
+          score_explanation: string | null
+          scored_n: number | null
+          success_n: number | null
+          success_rate: number | null
+          total_proposed: number | null
+        }
+        Relationships: []
+      }
+      risk_action_learning_leaderboard: {
+        Row: {
+          detail: string | null
+          key: string | null
+          sample_size: number | null
+          scope: string | null
+          score: number | null
+        }
+        Relationships: []
+      }
       risk_action_lifecycle_metrics: {
         Row: {
           accepted_count: number | null
@@ -13400,6 +13466,89 @@ export type Database = {
           stale_proposed_count: number | null
         }
         Relationships: []
+      }
+      risk_action_performance_summary: {
+        Row: {
+          accepted_count: number | null
+          avg_net_value: number | null
+          avg_roi_realization_ratio: number | null
+          country_iso3: string | null
+          dismissed_count: number | null
+          domain: string | null
+          executed_count: number | null
+          expired_count: number | null
+          intervention_type: string | null
+          last_outcome_at: string | null
+          outcome_logged_count: number | null
+          success_rate: number | null
+          total_count: number | null
+        }
+        Relationships: []
+      }
+      risk_action_recommendations_adjusted: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          adjusted_priority_score: number | null
+          adjustment_rationale: string | null
+          adjustment_sample_size: number | null
+          batch_id: string | null
+          confidence: number | null
+          counterfactual_md: string | null
+          country_iso3: string | null
+          created_at: string | null
+          dismissal_reason: string | null
+          dismissed_at: string | null
+          dismissed_by: string | null
+          domain: string | null
+          estimated_cost_eur: number | null
+          estimated_roi_eur: number | null
+          evidence_chain: Json | null
+          executed_at: string | null
+          executed_by: string | null
+          execution_note: string | null
+          expected_roi_lower: number | null
+          expected_roi_upper: number | null
+          first_approver: string | null
+          generated_at: string | null
+          id: string | null
+          intervention_quality_score: number | null
+          intervention_title: string | null
+          intervention_type: string | null
+          learning_multiplier: number | null
+          lifecycle_audit_hash: string | null
+          linked_outcome_id: string | null
+          outcome_logged_at: string | null
+          outcome_logged_by: string | null
+          outcome_notes_md: string | null
+          rank_position: number | null
+          ranking_id: string | null
+          rationale_md: string | null
+          requires_dual_approval: boolean | null
+          responsible_domain: string | null
+          risk_probability: number | null
+          second_approver: string | null
+          status: string | null
+          updated_at: string | null
+          urgency_hours: number | null
+          urgency_window: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "risk_action_recommendations_ranking_id_fkey"
+            columns: ["ranking_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_risk_predictions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "risk_action_recommendations_ranking_id_fkey"
+            columns: ["ranking_id"]
+            isOneToOne: false
+            referencedRelation: "risk_ranking_predictions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       risk_rankings_current: {
         Row: {
@@ -14004,6 +14153,15 @@ export type Database = {
         }[]
       }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
+      refresh_recommendation_quality_scores: {
+        Args: never
+        Returns: {
+          out_adjustment_multiplier: number
+          out_intervention_type: string
+          out_quality_score: number
+          out_sample_size: number
+        }[]
+      }
       refresh_risk_rankings_current: { Args: never; Returns: undefined }
       register_pipeline_heartbeat: {
         Args: {
