@@ -170,6 +170,9 @@ export default function PilotTruthFeed() {
         <SummaryTile icon={<Lock className="h-4 w-4" />} label="Locked Forecasts" value={summary.data?.lockedForecasts ?? "…"} />
       </div>
 
+      {/* Pilot Execution Wave: curated execution surface */}
+      <PilotQueueSection isPrivileged={isPrivileged} />
+
       {/* Active lifecycle queue */}
       <Card>
         <CardHeader>
