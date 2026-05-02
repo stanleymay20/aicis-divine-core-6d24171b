@@ -5819,72 +5819,6 @@ export type Database = {
         }
         Relationships: []
       }
-      geonames_staging: {
-        Row: {
-          admin1_code: string | null
-          admin2_code: string | null
-          admin3_code: string | null
-          admin4_code: string | null
-          alternatenames: string | null
-          asciiname: string | null
-          cc2: string | null
-          country_code: string | null
-          dem: number | null
-          elevation: number | null
-          feature_class: string | null
-          feature_code: string | null
-          geonameid: number | null
-          latitude: number | null
-          longitude: number | null
-          modification_date: string | null
-          name: string | null
-          population: number | null
-          timezone: string | null
-        }
-        Insert: {
-          admin1_code?: string | null
-          admin2_code?: string | null
-          admin3_code?: string | null
-          admin4_code?: string | null
-          alternatenames?: string | null
-          asciiname?: string | null
-          cc2?: string | null
-          country_code?: string | null
-          dem?: number | null
-          elevation?: number | null
-          feature_class?: string | null
-          feature_code?: string | null
-          geonameid?: number | null
-          latitude?: number | null
-          longitude?: number | null
-          modification_date?: string | null
-          name?: string | null
-          population?: number | null
-          timezone?: string | null
-        }
-        Update: {
-          admin1_code?: string | null
-          admin2_code?: string | null
-          admin3_code?: string | null
-          admin4_code?: string | null
-          alternatenames?: string | null
-          asciiname?: string | null
-          cc2?: string | null
-          country_code?: string | null
-          dem?: number | null
-          elevation?: number | null
-          feature_class?: string | null
-          feature_code?: string | null
-          geonameid?: number | null
-          latitude?: number | null
-          longitude?: number | null
-          modification_date?: string | null
-          name?: string | null
-          population?: number | null
-          timezone?: string | null
-        }
-        Relationships: []
-      }
       global_domain_benchmarks: {
         Row: {
           domain: string
@@ -6868,6 +6802,39 @@ export type Database = {
           root_hash?: string
           timestamp?: string | null
           verified?: boolean | null
+        }
+        Relationships: []
+      }
+      lril_country_corrections: {
+        Row: {
+          confidence_penalty: number | null
+          created_at: string
+          detected_iso3: string
+          id: string
+          original_country_hint: string | null
+          raw_text_excerpt: string | null
+          signal_id: string | null
+          source_name: string | null
+        }
+        Insert: {
+          confidence_penalty?: number | null
+          created_at?: string
+          detected_iso3: string
+          id?: string
+          original_country_hint?: string | null
+          raw_text_excerpt?: string | null
+          signal_id?: string | null
+          source_name?: string | null
+        }
+        Update: {
+          confidence_penalty?: number | null
+          created_at?: string
+          detected_iso3?: string
+          id?: string
+          original_country_hint?: string | null
+          raw_text_excerpt?: string | null
+          signal_id?: string | null
+          source_name?: string | null
         }
         Relationships: []
       }
@@ -13802,6 +13769,19 @@ export type Database = {
       }
       lril_resolve_geo_fuzzy_v2: {
         Args: { p_iso3: string; p_text: string }
+        Returns: {
+          admin_level_1: string
+          geo_confidence: number
+          geo_entity_id: string
+          lat: number
+          locality: string
+          lon: number
+          match_kind: string
+          match_strength: number
+        }[]
+      }
+      lril_resolve_geo_fuzzy_v3: {
+        Args: { p_iso3: string; p_signal_id: string; p_text: string }
         Returns: {
           admin_level_1: string
           geo_confidence: number
