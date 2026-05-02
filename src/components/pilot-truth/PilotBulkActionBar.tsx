@@ -480,6 +480,72 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
                 </div>
               </div>
 
+              {/* Pilot run notes (top 3) */}
+              {confirmMode?.mode === "accept" && confirmMode.cohortKind === "pilot_run" && (
+                <div className="rounded border border-primary/30 bg-primary/5 p-2 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold">
+                    <FlaskConical className="h-3.5 w-3.5 text-primary" />
+                    Controlled Pilot Run
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    These {summary.count} actions will be tagged as one auditable cohort.
+                    Bulk accept &gt;3 stays blocked until ≥3 outcomes are logged.
+                  </p>
+                  <Label htmlFor="pilot-notes" className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Cohort notes (optional)
+                  </Label>
+                  <Textarea
+                    id="pilot-notes"
+                    value={pilotNotes}
+                    onChange={(e) => setPilotNotes(e.target.value)}
+                    placeholder="Why this cohort, what we're testing, who owns it…"
+                    rows={2}
+                    className="text-sm"
+                  />
+                  {activeRun.data?.pilot_run_id && (
+                    <div className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      An active pilot run already exists ({String(activeRun.data.pilot_run_id).slice(0, 8)}). This will fail until it completes.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Scaling guard / admin override (accept >3, non-pilot) */}
+              {confirmMode?.mode === "accept" &&
+                confirmMode.cohortKind !== "pilot_run" &&
+                confirmMode.targets.length > 3 && (
+                  <div className="rounded border border-amber-500/40 bg-amber-500/5 p-2 space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      <ShieldAlert className="h-3.5 w-3.5" />
+                      Scaling guard ({confirmMode.targets.length} actions)
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Bulk accept &gt;3 requires ≥3 outcomes logged on the prior controlled pilot.
+                      {activeRun.data?.outcomes_logged_count != null && (
+                        <> Current: <span className="font-mono">{activeRun.data.outcomes_logged_count}/3</span>.</>
+                      )}{" "}
+                      {!isAdmin.data && "You are not an admin — this will be blocked."}
+                      {isAdmin.data && " As admin, you may override with a logged reason."}
+                    </p>
+                    {isAdmin.data && (
+                      <>
+                        <Label htmlFor="override-reason" className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Admin override reason (min 10 chars) <span className="text-destructive">*</span>
+                        </Label>
+                        <Textarea
+                          id="override-reason"
+                          value={overrideReason}
+                          onChange={(e) => setOverrideReason(e.target.value)}
+                          placeholder="Why scaling beyond pilot limit is justified now…"
+                          rows={2}
+                          className="text-sm"
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+
               {confirmMode?.mode === "dismiss" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="bulk-dismiss-reason" className="text-xs">
