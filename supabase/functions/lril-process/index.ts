@@ -165,11 +165,11 @@ serve(async (req) => {
           if (geo) break;
         }
       }
-      // v14: phrase-aware fuzzy resolver (admin-suffix > preposition > trigram > legacy)
+      // v17: signal-linked phrase-aware fuzzy resolver (audit rows now carry signal_id)
       if (!geo && iso3 && s.raw_text) {
         try {
-          const { data: fuzzy } = await supabase.rpc("lril_resolve_geo_fuzzy_v2", {
-            p_text: s.raw_text.slice(0, 1500), p_iso3: iso3,
+          const { data: fuzzy } = await supabase.rpc("lril_resolve_geo_fuzzy_v3", {
+            p_text: s.raw_text.slice(0, 1500), p_iso3: iso3, p_signal_id: s.id,
           });
           if (Array.isArray(fuzzy) && fuzzy.length > 0) {
             const f = fuzzy[0];
@@ -181,7 +181,8 @@ serve(async (req) => {
           }
         } catch (_) { /* keep null */ }
       }
-      const geo_confidence = geo ? geo.geo_confidence : (iso3 ? 0.4 : 0.15);
+      let geo_confidence = geo ? geo.geo_confidence : (iso3 ? 0.4 : 0.15);
+      if (countryCorrected) geo_confidence = Math.max(0.05, geo_confidence - 0.05);
       if (geo) stats.geo_resolved++;
       stats.classified++;
 
