@@ -151,6 +151,7 @@ const App = () => (
 
               {/* ── Export Center (admin/operator only at edge fn level) ── */}
               <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
+              <Route path="/pilot-truth" element={<Protected><PilotTruthFeed /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
