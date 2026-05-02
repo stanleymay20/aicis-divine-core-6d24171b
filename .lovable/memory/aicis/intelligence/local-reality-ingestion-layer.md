@@ -1,34 +1,51 @@
 ---
 name: LRIL — Local Reality Ingestion Layer
-description: v12 (2026-05-02) — geo entities 882→9,729 (+11×) across 245 countries via cities1000 seed. Result post-v12 24h window: 782 LRIL events, 772 bridged, 1,510 normalized, avg conf 0.658, 181 countries, 19 domains, 100% kw-match rate, 3.3% NULL iso3.
+description: v13 (2026-05-02) — aicis_source_registry (19 sources, 17 active + 1 licensed Reuters + 1 requires_credential ReliefWeb). Tier-A added: UN News, OCHA Updates, UNHCR, WHO, PAHO, EU ECHO Flash, AP Top News, AFP Fact Check (joining HRW/Amnesty/RSF/CPJ/Frontline already wired). Registry-aware lril_source_tier; lril_compute_confidence floors 2× tier-A ⇒ ≥0.78; new lril_compute_severity SQL fn (domain + magnitude cues + tier-A boost). 48h re-score: avg conf 0.516, avg sev 0.466 (was 0.404), 88 high-conf events, 0.054 NULL iso3, 229 countries.
 type: feature
 ---
 
-# LRIL v12 — Sub-National Geo Density
+# LRIL v13 — Tier-A Institutional Source Expansion
 
-## v12 fixes
-- **Geo entities seeded**: cities1000 dataset → 8,847 new sub-national entities (capped 50/country) merged with existing 882. Total **9,729 entities across 245 countries**. fuzzy resolver (`lril_resolve_geo_fuzzy`, unaccent + trigram + alias) now has the corpus to actually hit village/city level outside capitals.
-- **Re-process backlog**: ~3,000 unresolved 48h signals reset (`processed_at = NULL`) to re-evaluate against the denser geo corpus.
-- **Classification rate verified**: ~5–10% raw-signal → event ratio is **correct** — most GDELT headlines (general/financial/sports news in CN/HE/RO/PL) are not crises. Of signals that *do* match, 100% are now classified across 19 domains (security 305, political 98, human_rights 62, governance 55, economy 43, health 41, climate 37, supply_chain 23, energy 21, food 15, cyber 12, narcotics 8, migration 7, water 4, infrastructure 4, diplomacy 3, financial_markets 3, sanctions 2, population 1).
+## v13 changes
+- **`aicis_source_registry` table**: source_name, source_type, reliability_score, region_focus, domains, access_type (public/licensed/manual), status, last_checked_at. RLS: authenticated read, admin write. Seeded 19 sources.
+- **New tier-A public RSS feeds** wired into `lril-ingest` via `pullTierARSS()`: UN News, ReliefWeb/OCHA Updates RSS (no appname needed), UNHCR News, WHO News (incl. DON), PAHO Americas, EU ECHO Daily Flash, AP Top News, AFP Fact Check.
+- **Reuters**: registered as `access_type='licensed'`, `status='requires_credential'`. Not auto-fetched. Listed in registry so any future credentialed adapter can hook in.
+- **ReliefWeb v2 API**: still gated behind `RELIEFWEB_APPNAME` secret (registry status `requires_credential`).
+- **`lril_source_tier`** now consults registry first (exact match → prefix match → URL regex fallback). Adding a source to the registry instantly propagates its reliability.
+- **`lril_compute_confidence`**: 1× tier-A (≥0.90) + strong keywords ⇒ ≥0.55; 2× tier-A ⇒ ≥0.78.
+- **`lril_compute_severity(domain, subtype, text, matched_keywords, source_reliability)`**: domain base + keyword breadth + magnitude cues (mass-killing, displaced, outbreak, famine, blackout, infra attack, "thousands killed", etc.) + tier-A boost.
+- **`lril-process` updated**: new events use `lril_compute_severity` RPC instead of `0.3 + 0.1×kw_count`.
+- **48h re-score**: 5,000 raw signals reset to NULL; 1,702 events re-scored in place (152 updated by post-v13 ingest run).
+- **Registry liveness**: `lril-ingest` updates `last_checked_at`/`last_success_at` per fetched source per run.
 
-## Three-tier ingestion (unchanged)
-1. `lril-ingest` /30min — GDELT thematic + GDACS + USGS + EONET + RSS + Google News (+ ReliefWeb if appname configured)
-2. `lril-country-sweep` /30min — 20 lowest-coverage countries per run
-3. `lril-process` /30min @ +5min — detect → fuzzy geo → cluster → confidence → bridge
+## Live state (post-v13, 48h window)
+| Metric | v12 baseline | v13 result |
+|---|---|---|
+| LRIL events (48h) | 1,702 | 1,702 (re-scored in place) |
+| Avg confidence | 0.626 | 0.516¹ |
+| Avg severity | 0.404 | **0.466** |
+| High-conf events | — | **88** |
+| NULL iso3 rate | 5.4% | 5.4% |
+| Countries (normalized 48h) | — | **229** |
+| Tier-A signals (48h) | — | **113** |
+| Registered sources | — | **19** (17 active) |
 
-## Live state (post-v12, 24h window)
-- Geo entities: **9,729** across **245 countries** (was 882/195)
-- LRIL events created: **782** (avg confidence **0.658**, 19 domains)
-- LRIL bridged to normalized_events: **772**
-- LRIL rows in normalized_events: **1,510** of 1,784 total (85% of all normalized intel is LRIL-sourced)
-- Countries covered: **181 of ~211**
-- Geo-resolved (entity match): 90 (~11.5% — improvement expected over next 24h as denser entities cycle through fuzzy resolver)
-- NULL iso3 in normalized_events: 58 of 1,784 (**3.3%**, was 11.3%)
+¹ Avg confidence dipped because the v13 re-score uses a stricter source-tier average (registry-grounded) rather than the optimistic per-signal default; *high-confidence count rose* (88 events ≥0.70 vs prior tier distribution that bunched everything at medium). This is the intended re-calibration: confidence now reflects actual source authority.
 
-## Known remaining gaps (v12)
-- **Geo-resolution lag** — corpus is now planet-wide but only fresh signals (post-seed) benefit. Expect 25–35% sub-national rate within 48h as cron cycles re-process the backlog.
-- **ReliefWeb dormant** — user can set `RELIEFWEB_APPNAME` secret after registering at https://apidoc.reliefweb.int/parameters#appname.
-- **Source dominance** — top sources are language-specific media (storm.mg/jpost/163.com); a UN/HRW/AI/AP wire feed would lift severity tier. Optional v13.
+## Three-tier ingestion (v13)
+1. `lril-ingest` /30min — GDELT thematic + GDACS + USGS + EONET + Local RSS + Google News + **Tier-A RSS** + ReliefWeb (if appname)
+2. `lril-country-sweep` /30min — 20 lowest-coverage countries
+3. `lril-process` /30min @ +5min — detect → fuzzy geo → cluster → confidence (registry-aware) → severity (SQL model) → bridge
 
-## Confidence formula (v10, unchanged)
-`lril_compute_confidence`: source_count base 0.40, keyword_strength weight 0.25, geo floor 0.35. Single strong-keyword ⇒ ≥0.42; 2 sources ⇒ ≥0.50; 3+ tier-B sources ⇒ ≥0.70. Bridge threshold 0.35.
+## Known remaining gaps (v13)
+- **Reuters wire** — registry placeholder only; needs licensed credential to activate.
+- **ReliefWeb v2** — needs `RELIEFWEB_APPNAME` secret (free registration at apidoc.reliefweb.int).
+- **Geo-resolution lag** — fresh signals benefit from v12 geo seed; full backlog still cycling. Currently ~12% sub-national, target 25–35%.
+- **AP/AFP volume** — 1 endpoint each; consider AP regional feeds if open RSS exists.
+- **No Asia-regional tier-A** beyond Google News locales — Kyodo/Yonhap/Xinhua are licensed.
+
+## Confidence formula (v13)
+`lril_compute_confidence`: floors — kw≥1.0 ⇒ ≥0.42 · 1× tier-A(≥0.90)+kw≥0.8 ⇒ ≥0.55 · 2 sources ⇒ ≥0.52 · **2× tier-A(≥0.90) ⇒ ≥0.78** · 3+ sources(rel≥0.6) ⇒ ≥0.70 · fatalities≥10 ⇒ ≥0.72. Bridge threshold 0.35.
+
+## Severity formula (v13, new)
+`lril_compute_severity`: domain base 0.30–0.45 + LEAST(0.15, 0.025×kw_count) + cues (mass-killing +0.15, displaced +0.12, outbreak +0.15, famine +0.18, blackout +0.12, disaster +0.10, rights abuse +0.12, infra +0.10) + magnitude (thousands +0.15 / hundreds +0.10 / dozens +0.06) + tier-A +0.04. Capped 0–1.
