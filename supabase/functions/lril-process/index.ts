@@ -22,7 +22,7 @@ const corsHeaders = {
 };
 
 const FN = "lril-process";
-const BATCH = 750;             // v18: 1500 timed out -> 750 (stable middle ground)
+const BATCH = 500;             // v18: 750 also timed out per call -> settle at 500 (parallel callers scale throughput)
 const CLUSTER_RADIUS_KM = 25;
 const CLUSTER_WINDOW_HOURS = 12;
 
