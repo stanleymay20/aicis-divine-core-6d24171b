@@ -57,6 +57,7 @@ const Simulation = lazy(() => import("./pages/Simulation"));
 const Predictions = lazy(() => import("./pages/Predictions"));
 const ApiAudit = lazy(() => import("./pages/ApiAudit"));
 const LocalEvents = lazy(() => import("./pages/LocalEvents"));
+const ExportCenter = lazy(() => import("./pages/ExportCenter"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -146,6 +147,9 @@ const App = () => (
               <Route path="/local-events" element={<Protected><LocalEvents /></Protected>} />
               <Route path="/local-events/:iso3" element={<Protected><LocalEvents /></Protected>} />
               <Route path="/local-events/:iso3/:locality" element={<Protected><LocalEvents /></Protected>} />
+
+              {/* ── Export Center (admin/operator only at edge fn level) ── */}
+              <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
