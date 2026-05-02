@@ -39,8 +39,20 @@ const REASON_META: Record<Row["review_reason"], { label: string; tone: string; i
 };
 
 export default function OutcomeCockpit() {
-  const { hasRole } = useAuth();
-  const isPrivileged = hasRole("admin") || hasRole("operator");
+  const { user } = useAuth();
+  const rolesQ = useQuery({
+    queryKey: ["my-roles", user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user!.id);
+      if (error) throw error;
+      return (data ?? []).map((r) => r.role as string);
+    },
+  });
+  const isPrivileged = !!rolesQ.data?.some((r) => r === "admin" || r === "operator");
 
   const [search, setSearch] = useState("");
   const [reasonFilter, setReasonFilter] = useState<string>("all");
