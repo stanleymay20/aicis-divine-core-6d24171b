@@ -75,10 +75,31 @@ export function PilotQueueSection({ isPrivileged }: { isPrivileged: boolean }) {
   });
 
   const rows = queue.data ?? [];
-  const top10Proposed = rows.filter((r) => r.queue_stage === "rank_for_execution").slice(0, 10);
+  const top10Proposed = useMemo(
+    () => rows.filter((r) => r.queue_stage === "rank_for_execution").slice(0, 10),
+    [rows]
+  );
   const awaitingExecution = rows.filter((r) => r.queue_stage === "awaiting_execution");
   const awaitingOutcome = rows.filter((r) => r.queue_stage === "awaiting_outcome");
   const outcomeNeeded = rows.filter((r) => r.outcome_needed);
+
+  // Selection state — only proposed rows in the top-10 are selectable
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectableIds = useMemo(() => new Set(top10Proposed.map((r) => r.id)), [top10Proposed]);
+  const toggleOne = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const allSelected = top10Proposed.length > 0 && top10Proposed.every((r) => selectedIds.has(r.id));
+  const toggleAll = () =>
+    setSelectedIds((prev) => {
+      if (allSelected) return new Set();
+      return new Set(selectableIds);
+    });
+  const clearSelection = () => setSelectedIds(new Set());
 
   return (
     <Card className="border-primary/30">
