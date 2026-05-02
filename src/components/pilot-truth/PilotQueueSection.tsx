@@ -264,12 +264,33 @@ export function PilotQueueSection({ isPrivileged }: { isPrivileged: boolean }) {
   );
 }
 
-function PilotRow({ row, rank, isPrivileged }: { row: QueueRow; rank: number; isPrivileged: boolean }) {
+function PilotRow({
+  row,
+  rank,
+  isPrivileged,
+  selected,
+  onToggle,
+}: {
+  row: QueueRow;
+  rank: number;
+  isPrivileged: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const isBoosted = row.learning_multiplier > 1.05;
   const isReduced = row.learning_multiplier < 0.95;
   return (
-    <div className="rounded-lg border bg-card/50 p-3 space-y-2">
+    <div className={`rounded-lg border p-3 space-y-2 ${selected ? "bg-primary/5 border-primary/40" : "bg-card/50"}`}>
       <div className="flex items-start gap-3">
+        {isPrivileged && (
+          <div className="pt-1 shrink-0">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={onToggle}
+              aria-label={`Select action for ${row.country_iso3} ${row.domain}`}
+            />
+          </div>
+        )}
         <div className="text-lg font-bold tabular-nums text-muted-foreground w-6 shrink-0">
           {rank}
         </div>
