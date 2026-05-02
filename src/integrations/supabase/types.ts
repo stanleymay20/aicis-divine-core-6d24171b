@@ -585,6 +585,71 @@ export type Database = {
         }
         Relationships: []
       }
+      aicis_geo_resolution_audit: {
+        Row: {
+          attempted_match: string | null
+          country_hint: string | null
+          created_at: string
+          extracted_place: string
+          id: string
+          language: string | null
+          match_score: number | null
+          reason_unresolved: string | null
+          signal_id: string | null
+          source_name: string | null
+        }
+        Insert: {
+          attempted_match?: string | null
+          country_hint?: string | null
+          created_at?: string
+          extracted_place: string
+          id?: string
+          language?: string | null
+          match_score?: number | null
+          reason_unresolved?: string | null
+          signal_id?: string | null
+          source_name?: string | null
+        }
+        Update: {
+          attempted_match?: string | null
+          country_hint?: string | null
+          created_at?: string
+          extracted_place?: string
+          id?: string
+          language?: string | null
+          match_score?: number | null
+          reason_unresolved?: string | null
+          signal_id?: string | null
+          source_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aicis_geo_resolution_audit_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "aicis_raw_local_signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      aicis_geo_stoplist: {
+        Row: {
+          added_at: string
+          category: string
+          phrase: string
+        }
+        Insert: {
+          added_at?: string
+          category?: string
+          phrase: string
+        }
+        Update: {
+          added_at?: string
+          category?: string
+          phrase?: string
+        }
+        Relationships: []
+      }
       aicis_keyword_packs: {
         Row: {
           country: string | null
@@ -12210,6 +12275,17 @@ export type Database = {
           sample_size: number | null
           success_count: number | null
           success_rate_pct: number | null
+        }
+        Relationships: []
+      }
+      aicis_unresolved_place_candidates: {
+        Row: {
+          country_hint: string | null
+          extracted_place: string | null
+          last_seen: string | null
+          mention_count: number | null
+          reasons: string[] | null
+          sources: string[] | null
         }
         Relationships: []
       }
