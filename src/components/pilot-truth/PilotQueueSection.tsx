@@ -1,11 +1,14 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Rocket, AlertTriangle, CheckCircle2, PlayCircle, ClipboardCheck, Clock } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycleControls";
+import { PilotBulkActionBar } from "@/components/pilot-truth/PilotBulkActionBar";
 
 type QueueRow = {
   id: string;
@@ -72,10 +75,31 @@ export function PilotQueueSection({ isPrivileged }: { isPrivileged: boolean }) {
   });
 
   const rows = queue.data ?? [];
-  const top10Proposed = rows.filter((r) => r.queue_stage === "rank_for_execution").slice(0, 10);
+  const top10Proposed = useMemo(
+    () => rows.filter((r) => r.queue_stage === "rank_for_execution").slice(0, 10),
+    [rows]
+  );
   const awaitingExecution = rows.filter((r) => r.queue_stage === "awaiting_execution");
   const awaitingOutcome = rows.filter((r) => r.queue_stage === "awaiting_outcome");
   const outcomeNeeded = rows.filter((r) => r.outcome_needed);
+
+  // Selection state — only proposed rows in the top-10 are selectable
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectableIds = useMemo(() => new Set(top10Proposed.map((r) => r.id)), [top10Proposed]);
+  const toggleOne = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const allSelected = top10Proposed.length > 0 && top10Proposed.every((r) => selectedIds.has(r.id));
+  const toggleAll = () =>
+    setSelectedIds((prev) => {
+      if (allSelected) return new Set();
+      return new Set(selectableIds);
+    });
+  const clearSelection = () => setSelectedIds(new Set());
 
   return (
     <Card className="border-primary/30">
@@ -154,9 +178,37 @@ export function PilotQueueSection({ isPrivileged }: { isPrivileged: boolean }) {
 
         {/* Top 10 proposed for execution */}
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Rocket className="h-3 w-3" /> Top 10 ranked for execution
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Rocket className="h-3 w-3" /> Top 10 ranked for execution
+            </div>
+            {isPrivileged && top10Proposed.length > 0 && (
+              <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all top 10"
+                />
+                <span className="text-muted-foreground">Select all ({selectedIds.size}/{top10Proposed.length})</span>
+              </label>
+            )}
           </div>
+
+          {/* Bulk action bar */}
+          {top10Proposed.length > 0 && (
+            <PilotBulkActionBar
+              isPrivileged={isPrivileged}
+              visibleRows={top10Proposed.map((r) => ({
+                id: r.id,
+                country_iso3: r.country_iso3,
+                domain: r.domain,
+                intervention_title: r.intervention_title,
+                estimated_roi_eur: r.estimated_roi_eur,
+              }))}
+              selectedIds={selectedIds}
+              onClearSelection={clearSelection}
+            />
+          )}
 
           {queue.isLoading && <Skeleton className="h-48 w-full" />}
 
@@ -168,7 +220,14 @@ export function PilotQueueSection({ isPrivileged }: { isPrivileged: boolean }) {
 
           <div className="space-y-2">
             {top10Proposed.map((r, i) => (
-              <PilotRow key={r.id} row={r} rank={i + 1} isPrivileged={isPrivileged} />
+              <PilotRow
+                key={r.id}
+                row={r}
+                rank={i + 1}
+                isPrivileged={isPrivileged}
+                selected={selectedIds.has(r.id)}
+                onToggle={() => toggleOne(r.id)}
+              />
             ))}
           </div>
         </div>
@@ -205,12 +264,33 @@ export function PilotQueueSection({ isPrivileged }: { isPrivileged: boolean }) {
   );
 }
 
-function PilotRow({ row, rank, isPrivileged }: { row: QueueRow; rank: number; isPrivileged: boolean }) {
+function PilotRow({
+  row,
+  rank,
+  isPrivileged,
+  selected,
+  onToggle,
+}: {
+  row: QueueRow;
+  rank: number;
+  isPrivileged: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const isBoosted = row.learning_multiplier > 1.05;
   const isReduced = row.learning_multiplier < 0.95;
   return (
-    <div className="rounded-lg border bg-card/50 p-3 space-y-2">
+    <div className={`rounded-lg border p-3 space-y-2 ${selected ? "bg-primary/5 border-primary/40" : "bg-card/50"}`}>
       <div className="flex items-start gap-3">
+        {isPrivileged && (
+          <div className="pt-1 shrink-0">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={onToggle}
+              aria-label={`Select action for ${row.country_iso3} ${row.domain}`}
+            />
+          </div>
+        )}
         <div className="text-lg font-bold tabular-nums text-muted-foreground w-6 shrink-0">
           {rank}
         </div>
