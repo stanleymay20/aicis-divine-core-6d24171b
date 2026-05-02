@@ -300,6 +300,31 @@ export default function PilotTruthFeed() {
                     <Lock className="h-2.5 w-2.5 mr-0.5" /> Locked forecast
                   </Badge>
                 )}
+                {r.evidence_badge === "strong" && (
+                  <Badge className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+                    Evidence strong
+                  </Badge>
+                )}
+                {r.evidence_badge === "acceptable" && (
+                  <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
+                    Evidence acceptable
+                  </Badge>
+                )}
+                {r.evidence_badge === "weak" && (
+                  <Badge variant="outline" className="text-[10px] border-destructive/40 text-destructive">
+                    Evidence weak
+                  </Badge>
+                )}
+                {r.evidence_badge === "inconclusive" && (
+                  <Badge variant="outline" className="text-[10px] border-muted-foreground/40 text-muted-foreground">
+                    Inconclusive
+                  </Badge>
+                )}
+                {r.excluded_from_learning && (
+                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-400">
+                    Excluded from learning
+                  </Badge>
+                )}
                 <span className="text-xs text-muted-foreground ml-auto">
                   {formatDistanceToNow(new Date(r.outcome_recorded_at), { addSuffix: true })}
                 </span>
