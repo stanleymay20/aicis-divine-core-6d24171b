@@ -1049,6 +1049,13 @@ export type Database = {
             referencedRelation: "aicis_early_warnings"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "aicis_warning_evidence_warning_id_fkey"
+            columns: ["warning_id"]
+            isOneToOne: false
+            referencedRelation: "v_lril_warning_false_positive_risk"
+            referencedColumns: ["id"]
+          },
         ]
       }
       aicis_warning_snapshots: {
@@ -13278,6 +13285,77 @@ export type Database = {
         }
         Relationships: []
       }
+      v_lril_unresolved_geo_evidence: {
+        Row: {
+          extracted_place: string | null
+          first_seen: string | null
+          iso3: string | null
+          last_seen: string | null
+          occurrences: number | null
+          reason_unresolved: string | null
+        }
+        Relationships: []
+      }
+      v_lril_warning_false_positive_risk: {
+        Row: {
+          confidence: number | null
+          event_count: number | null
+          first_detected_at: string | null
+          fp_risk_tier: string | null
+          fp_score: number | null
+          id: string | null
+          iso3: string | null
+          locality: string | null
+          severity: number | null
+          source_count: number | null
+          subtype: string | null
+          warning_kind: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          event_count?: number | null
+          first_detected_at?: string | null
+          fp_risk_tier?: never
+          fp_score?: never
+          id?: string | null
+          iso3?: string | null
+          locality?: string | null
+          severity?: number | null
+          source_count?: number | null
+          subtype?: string | null
+          warning_kind?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          event_count?: number | null
+          first_detected_at?: string | null
+          fp_risk_tier?: never
+          fp_score?: never
+          id?: string | null
+          iso3?: string | null
+          locality?: string | null
+          severity?: number | null
+          source_count?: number | null
+          subtype?: string | null
+          warning_kind?: string | null
+        }
+        Relationships: []
+      }
+      v_lril_warning_quality: {
+        Row: {
+          avg_confidence: number | null
+          avg_escalation: number | null
+          avg_event_count: number | null
+          avg_severity: number | null
+          avg_source_count: number | null
+          high_conf_count: number | null
+          low_conf_count: number | null
+          open_count: number | null
+          total: number | null
+          warning_kind: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       aggregate_country_snapshots: {
@@ -13599,6 +13677,7 @@ export type Database = {
         }[]
       }
       lril_fips_to_iso3: { Args: { p_code: string }; Returns: string }
+      lril_is_negative_phrase: { Args: { p_phrase: string }; Returns: boolean }
       lril_promote_unresolved_to_aliases: {
         Args: { p_min_hits?: number; p_sim_threshold?: number }
         Returns: number
