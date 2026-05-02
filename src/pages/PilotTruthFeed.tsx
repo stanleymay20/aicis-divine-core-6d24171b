@@ -7,6 +7,7 @@ import { AlertTriangle, CheckCircle2, Clock, Lock, TrendingUp, PlayCircle, Clipb
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycleControls";
+import { LearningSection } from "@/components/pilot-truth/LearningSection";
 
 type TruthRow = {
   outcome_id: string | null;
