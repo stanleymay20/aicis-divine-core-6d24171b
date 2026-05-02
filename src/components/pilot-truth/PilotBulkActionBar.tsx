@@ -170,11 +170,54 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
     qc.invalidateQueries({ queryKey: ["pilot-scaling-overrides"] });
   }
 
+  /** Pre-flight: scaling guard for accept >3 (server-validated). */
+  async function preflightScalingGuard(targetCount: number, kind: CohortKind): Promise<boolean> {
+    if (targetCount <= 3 || kind === "pilot_run") return true;
+    const { data, error } = await supabase.rpc("check_pilot_scaling_guard" as any, {
+      p_requested_cohort_size: targetCount,
+    });
+    if (error) {
+      toast.error(`Scaling guard check failed: ${error.message}`);
+      return false;
+    }
+    const r: any = data ?? {};
+    if (r.allowed) return true;
+
+    // Blocked → require admin override
+    if (!isAdmin.data) {
+      toast.error(
+        `Bulk accept >3 blocked: ${r.reason}. ${r.outcomes_logged ?? 0}/3 outcomes logged. Admin override required.`
+      );
+      return false;
+    }
+    if (overrideReason.trim().length < 10) {
+      toast.error("Admin override reason required (min 10 chars).");
+      return false;
+    }
+    const { error: oErr } = await supabase.rpc("log_pilot_scaling_override" as any, {
+      p_reason: overrideReason.trim(),
+      p_requested_cohort_size: targetCount,
+    });
+    if (oErr) {
+      toast.error(`Override logging failed: ${oErr.message}`);
+      return false;
+    }
+    invalidateAll();
+    toast.warning(`Admin override logged for cohort=${targetCount}.`);
+    return true;
+  }
+
   /** Core executor: drift-check then sequential RPC with live progress. */
-  async function execute(targets: QueueItem[], mode: Mode, reason: string) {
+  async function execute(targets: QueueItem[], mode: Mode, reason: string, kind: CohortKind) {
     if (mode === "dismiss" && reason.trim().length < 3) {
       toast.error("Dismissal reason is required (min 3 chars).");
       return;
+    }
+
+    // Phase 0: scaling guard (accept only, >3)
+    if (mode === "accept") {
+      const ok = await preflightScalingGuard(targets.length, kind);
+      if (!ok) return;
     }
 
     // Phase 1: drift re-check
@@ -253,6 +296,21 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
       }
     }
 
+    // Phase 3: if this is a controlled pilot run, register it now (only successful ids)
+    if (mode === "accept" && kind === "pilot_run" && succeeded.length > 0) {
+      try {
+        const { data, error } = await supabase.rpc("start_controlled_pilot_run" as any, {
+          p_action_ids: succeeded.map((s) => s.id),
+          p_notes: pilotNotes.trim() || null,
+        });
+        if (error) throw error;
+        setPilotRunId(data as unknown as string);
+        toast.success(`Controlled pilot run started (${succeeded.length} actions).`);
+      } catch (e: any) {
+        toast.error(`Pilot run registration failed: ${e?.message ?? e}`);
+      }
+    }
+
     setRun((prev) => ({ ...prev, phase: "done" }));
     invalidateAll();
 
@@ -268,19 +326,23 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
 
   function handleConfirm() {
     if (!confirmMode) return;
-    void execute(confirmMode.targets, confirmMode.mode, dismissReason);
+    void execute(confirmMode.targets, confirmMode.mode, dismissReason, confirmMode.cohortKind);
   }
 
   function handleRetryFailed() {
     if (!confirmMode || run.failed.length === 0) return;
     const retryTargets = run.failed.map((f) => f.item);
-    void execute(retryTargets, confirmMode.mode, dismissReason);
+    // Retries are not pilot-run registrations
+    void execute(retryTargets, confirmMode.mode, dismissReason, "free");
   }
 
   function handleClose() {
     if (run.phase === "running" || run.phase === "checking") return;
     setConfirmMode(null);
     setDismissReason("");
+    setPilotNotes("");
+    setOverrideReason("");
+    setPilotRunId(null);
     setRun(initialRun);
     onClearSelection();
   }
