@@ -10,6 +10,7 @@ import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycl
 import { LearningSection } from "@/components/pilot-truth/LearningSection";
 import { PilotQueueSection } from "@/components/pilot-truth/PilotQueueSection";
 import { ControlledPilotRunPanel } from "@/components/pilot-truth/ControlledPilotRunPanel";
+import { EvidenceTimelineSection } from "@/components/pilot-truth/EvidenceTimelineSection";
 
 type TruthRow = {
   outcome_id: string | null;
@@ -260,6 +261,9 @@ export default function PilotTruthFeed() {
           })}
         </CardContent>
       </Card>
+
+      {/* Evidence Timeline — read-only truth chain */}
+      <EvidenceTimelineSection />
 
       {/* Wave 1C: Action Learning Loop */}
       <LearningSection isPrivileged={isPrivileged} />
