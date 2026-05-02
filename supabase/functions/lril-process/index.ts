@@ -120,8 +120,10 @@ serve(async (req) => {
       const subtype: string = top.subtype;
       const keyword_strength = Number(top.score || 0);
 
-      // Country resolution: (1) normalize FIPS→ISO3, (2) override from text if stronger match
+      // Country resolution: (1) normalize FIPS→ISO3, (2) override from text if mismatch detected
       let effectiveIso3: string | null = s.country_hint;
+      const originalHint: string | null = s.country_hint;
+      let countryCorrected = false;
       try {
         const { data: norm } = await supabase.rpc("lril_fips_to_iso3", { p_code: effectiveIso3 || "" });
         if (typeof norm === "string" && norm) effectiveIso3 = norm;
@@ -129,7 +131,22 @@ serve(async (req) => {
       try {
         const { data: detected } = await supabase.rpc("lril_detect_country_from_text", { p_text: s.raw_text || "" });
         if (detected && typeof detected === "string") {
-          if (!effectiveIso3 || effectiveIso3 !== detected) effectiveIso3 = detected;
+          if (!effectiveIso3 || effectiveIso3 !== detected) {
+            if (effectiveIso3 && effectiveIso3 !== detected) {
+              countryCorrected = true;
+              try {
+                await supabase.from("lril_country_corrections").insert({
+                  signal_id: s.id,
+                  original_country_hint: originalHint,
+                  detected_iso3: detected,
+                  raw_text_excerpt: (s.raw_text || "").slice(0, 500),
+                  source_name: s.source_name,
+                  confidence_penalty: -0.05,
+                });
+              } catch (_) { /* non-blocking */ }
+            }
+            effectiveIso3 = detected;
+          }
         }
       } catch (_) { /* keep original */ }
       (s as any).country_hint = effectiveIso3;
