@@ -3431,9 +3431,12 @@ export type Database = {
           event_confirmed: boolean | null
           event_confirmed_date: string | null
           event_description: string | null
+          evidence_checklist: Json | null
           evidence_note: string | null
+          evidence_quality_score: number | null
           evidence_source_type: string | null
           evidence_type: string
+          evidence_url: string | null
           execution_blocker: string | null
           execution_completed_at: string | null
           execution_note: string | null
@@ -3447,6 +3450,7 @@ export type Database = {
           measured_impact_score: number | null
           measured_outcome: string | null
           net_value: number | null
+          outcome_confidence: string | null
           outcome_source: string | null
           outcome_success: boolean | null
           outcome_timestamp: string | null
@@ -3503,9 +3507,12 @@ export type Database = {
           event_confirmed?: boolean | null
           event_confirmed_date?: string | null
           event_description?: string | null
+          evidence_checklist?: Json | null
           evidence_note?: string | null
+          evidence_quality_score?: number | null
           evidence_source_type?: string | null
           evidence_type?: string
+          evidence_url?: string | null
           execution_blocker?: string | null
           execution_completed_at?: string | null
           execution_note?: string | null
@@ -3519,6 +3526,7 @@ export type Database = {
           measured_impact_score?: number | null
           measured_outcome?: string | null
           net_value?: number | null
+          outcome_confidence?: string | null
           outcome_source?: string | null
           outcome_success?: boolean | null
           outcome_timestamp?: string | null
@@ -3575,9 +3583,12 @@ export type Database = {
           event_confirmed?: boolean | null
           event_confirmed_date?: string | null
           event_description?: string | null
+          evidence_checklist?: Json | null
           evidence_note?: string | null
+          evidence_quality_score?: number | null
           evidence_source_type?: string | null
           evidence_type?: string
+          evidence_url?: string | null
           execution_blocker?: string | null
           execution_completed_at?: string | null
           execution_note?: string | null
@@ -3591,6 +3602,7 @@ export type Database = {
           measured_impact_score?: number | null
           measured_outcome?: string | null
           net_value?: number | null
+          outcome_confidence?: string | null
           outcome_source?: string | null
           outcome_success?: boolean | null
           outcome_timestamp?: string | null
@@ -3719,6 +3731,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "decision_outcome_log"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "decision_review_history_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_outcome_evidence_badges"
+            referencedColumns: ["outcome_id"]
           },
         ]
       }
@@ -6232,6 +6251,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "decision_outcome_log"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "governance_discrepancies_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "pilot_outcome_evidence_badges"
+            referencedColumns: ["outcome_id"]
           },
         ]
       }
@@ -13067,6 +13093,36 @@ export type Database = {
         }
         Relationships: []
       }
+      pilot_outcome_evidence_badges: {
+        Row: {
+          evidence_badge: string | null
+          evidence_checklist: Json | null
+          evidence_quality_score: number | null
+          excluded_from_learning: boolean | null
+          outcome_confidence: string | null
+          outcome_id: string | null
+          outcome_success: boolean | null
+        }
+        Insert: {
+          evidence_badge?: never
+          evidence_checklist?: Json | null
+          evidence_quality_score?: number | null
+          excluded_from_learning?: never
+          outcome_confidence?: string | null
+          outcome_id?: string | null
+          outcome_success?: boolean | null
+        }
+        Update: {
+          evidence_badge?: never
+          evidence_checklist?: Json | null
+          evidence_quality_score?: number | null
+          excluded_from_learning?: never
+          outcome_confidence?: string | null
+          outcome_id?: string | null
+          outcome_success?: boolean | null
+        }
+        Relationships: []
+      }
       pilot_truth_feed: {
         Row: {
           absolute_error: number | null
@@ -13608,19 +13664,11 @@ export type Database = {
           sample_confidence: number | null
           score_explanation: string | null
           scored_n: number | null
+          strong_outcome_n: number | null
           success_n: number | null
           success_rate: number | null
           total_proposed: number | null
-        }
-        Relationships: []
-      }
-      risk_action_learning_leaderboard: {
-        Row: {
-          detail: string | null
-          key: string | null
-          sample_size: number | null
-          scope: string | null
-          score: number | null
+          weak_outcome_n: number | null
         }
         Relationships: []
       }
@@ -13650,8 +13698,10 @@ export type Database = {
           intervention_type: string | null
           last_outcome_at: string | null
           outcome_logged_count: number | null
+          strong_outcome_count: number | null
           success_rate: number | null
           total_count: number | null
+          weak_outcome_count: number | null
         }
         Relationships: []
       }

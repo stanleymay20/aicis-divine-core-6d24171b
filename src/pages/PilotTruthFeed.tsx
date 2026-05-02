@@ -36,6 +36,9 @@ type TruthRow = {
   absolute_error: number | null;
   evaluation_locked: boolean | null;
   roi_realization_ratio: number | null;
+  evidence_quality_score?: number | null;
+  evidence_badge?: "strong" | "acceptable" | "weak" | "inconclusive" | null;
+  excluded_from_learning?: boolean | null;
 };
 
 type StaleAction = {
@@ -90,7 +93,20 @@ export default function PilotTruthFeed() {
         .order("outcome_recorded_at", { ascending: false })
         .limit(100);
       if (error) throw error;
-      return (data ?? []) as unknown as TruthRow[];
+      const rows = (data ?? []) as unknown as TruthRow[];
+      const ids = rows.map((r) => r.outcome_id).filter(Boolean) as string[];
+      if (ids.length === 0) return rows;
+      const { data: badges } = await supabase
+        .from("pilot_outcome_evidence_badges" as any)
+        .select("outcome_id,evidence_quality_score,evidence_badge,excluded_from_learning")
+        .in("outcome_id", ids);
+      const byId = new Map<string, any>((badges ?? []).map((b: any) => [b.outcome_id, b]));
+      return rows.map((r) => {
+        const b = r.outcome_id ? byId.get(r.outcome_id) : null;
+        return b
+          ? { ...r, evidence_quality_score: b.evidence_quality_score, evidence_badge: b.evidence_badge, excluded_from_learning: b.excluded_from_learning }
+          : r;
+      });
     },
   });
 
@@ -282,6 +298,31 @@ export default function PilotTruthFeed() {
                 {r.evaluation_locked && (
                   <Badge className="text-[10px] bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30">
                     <Lock className="h-2.5 w-2.5 mr-0.5" /> Locked forecast
+                  </Badge>
+                )}
+                {r.evidence_badge === "strong" && (
+                  <Badge className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+                    Evidence strong
+                  </Badge>
+                )}
+                {r.evidence_badge === "acceptable" && (
+                  <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-700 dark:text-emerald-400">
+                    Evidence acceptable
+                  </Badge>
+                )}
+                {r.evidence_badge === "weak" && (
+                  <Badge variant="outline" className="text-[10px] border-destructive/40 text-destructive">
+                    Evidence weak
+                  </Badge>
+                )}
+                {r.evidence_badge === "inconclusive" && (
+                  <Badge variant="outline" className="text-[10px] border-muted-foreground/40 text-muted-foreground">
+                    Inconclusive
+                  </Badge>
+                )}
+                {r.excluded_from_learning && (
+                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-400">
+                    Excluded from learning
                   </Badge>
                 )}
                 <span className="text-xs text-muted-foreground ml-auto">
