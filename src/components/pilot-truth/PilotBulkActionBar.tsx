@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,10 +10,11 @@ import { Progress } from "@/components/ui/progress";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { CheckCircle2, XCircle, Zap, Loader2, AlertTriangle, RotateCcw } from "lucide-react";
+import { CheckCircle2, XCircle, Zap, Loader2, AlertTriangle, RotateCcw, FlaskConical, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
 type Mode = "accept" | "dismiss";
+type CohortKind = "pilot_run" | "scaled" | "free";
 
 interface QueueItem {
   id: string;
@@ -96,9 +97,49 @@ async function refetchStatuses(items: QueueItem[]): Promise<{ live: QueueItem[];
 
 export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onClearSelection }: Props) {
   const qc = useQueryClient();
-  const [confirmMode, setConfirmMode] = useState<null | { mode: Mode; targets: QueueItem[] }>(null);
+  const [confirmMode, setConfirmMode] = useState<
+    null | { mode: Mode; targets: QueueItem[]; cohortKind: CohortKind }
+  >(null);
   const [dismissReason, setDismissReason] = useState("");
+  const [pilotNotes, setPilotNotes] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
   const [run, setRun] = useState<RunState>(initialRun);
+  const [pilotRunId, setPilotRunId] = useState<string | null>(null);
+
+  // Active pilot run (controls scaling guard messaging)
+  const activeRun = useQuery({
+    queryKey: ["controlled-pilot-runs-active"],
+    enabled: isPrivileged,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("controlled_pilot_run_status" as any)
+        .select("pilot_run_id,status,outcomes_logged_count,cohort_size")
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  // Is current user admin (gates override option)
+  const isAdmin = useQuery({
+    queryKey: ["is-admin-check"],
+    enabled: isPrivileged,
+    queryFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u.user?.id;
+      if (!uid) return false;
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", uid)
+        .eq("role", "admin")
+        .limit(1);
+      if (error) return false;
+      return (data ?? []).length > 0;
+    },
+  });
 
   const summary = useMemo(() => {
     if (!confirmMode) return null;
@@ -124,13 +165,59 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
     qc.invalidateQueries({ queryKey: ["risk-action-lifecycle-metrics"] });
     qc.invalidateQueries({ queryKey: ["stale-proposed-actions"] });
     qc.invalidateQueries({ queryKey: ["pilot-truth-feed"] });
+    qc.invalidateQueries({ queryKey: ["controlled-pilot-runs"] });
+    qc.invalidateQueries({ queryKey: ["controlled-pilot-runs-active"] });
+    qc.invalidateQueries({ queryKey: ["pilot-scaling-overrides"] });
+  }
+
+  /** Pre-flight: scaling guard for accept >3 (server-validated). */
+  async function preflightScalingGuard(targetCount: number, kind: CohortKind): Promise<boolean> {
+    if (targetCount <= 3 || kind === "pilot_run") return true;
+    const { data, error } = await supabase.rpc("check_pilot_scaling_guard" as any, {
+      p_requested_cohort_size: targetCount,
+    });
+    if (error) {
+      toast.error(`Scaling guard check failed: ${error.message}`);
+      return false;
+    }
+    const r: any = data ?? {};
+    if (r.allowed) return true;
+
+    // Blocked → require admin override
+    if (!isAdmin.data) {
+      toast.error(
+        `Bulk accept >3 blocked: ${r.reason}. ${r.outcomes_logged ?? 0}/3 outcomes logged. Admin override required.`
+      );
+      return false;
+    }
+    if (overrideReason.trim().length < 10) {
+      toast.error("Admin override reason required (min 10 chars).");
+      return false;
+    }
+    const { error: oErr } = await supabase.rpc("log_pilot_scaling_override" as any, {
+      p_reason: overrideReason.trim(),
+      p_requested_cohort_size: targetCount,
+    });
+    if (oErr) {
+      toast.error(`Override logging failed: ${oErr.message}`);
+      return false;
+    }
+    invalidateAll();
+    toast.warning(`Admin override logged for cohort=${targetCount}.`);
+    return true;
   }
 
   /** Core executor: drift-check then sequential RPC with live progress. */
-  async function execute(targets: QueueItem[], mode: Mode, reason: string) {
+  async function execute(targets: QueueItem[], mode: Mode, reason: string, kind: CohortKind) {
     if (mode === "dismiss" && reason.trim().length < 3) {
       toast.error("Dismissal reason is required (min 3 chars).");
       return;
+    }
+
+    // Phase 0: scaling guard (accept only, >3)
+    if (mode === "accept") {
+      const ok = await preflightScalingGuard(targets.length, kind);
+      if (!ok) return;
     }
 
     // Phase 1: drift re-check
@@ -209,6 +296,21 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
       }
     }
 
+    // Phase 3: if this is a controlled pilot run, register it now (only successful ids)
+    if (mode === "accept" && kind === "pilot_run" && succeeded.length > 0) {
+      try {
+        const { data, error } = await supabase.rpc("start_controlled_pilot_run" as any, {
+          p_action_ids: succeeded.map((s) => s.id),
+          p_notes: pilotNotes.trim() || null,
+        });
+        if (error) throw error;
+        setPilotRunId(data as unknown as string);
+        toast.success(`Controlled pilot run started (${succeeded.length} actions).`);
+      } catch (e: any) {
+        toast.error(`Pilot run registration failed: ${e?.message ?? e}`);
+      }
+    }
+
     setRun((prev) => ({ ...prev, phase: "done" }));
     invalidateAll();
 
@@ -224,19 +326,23 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
 
   function handleConfirm() {
     if (!confirmMode) return;
-    void execute(confirmMode.targets, confirmMode.mode, dismissReason);
+    void execute(confirmMode.targets, confirmMode.mode, dismissReason, confirmMode.cohortKind);
   }
 
   function handleRetryFailed() {
     if (!confirmMode || run.failed.length === 0) return;
     const retryTargets = run.failed.map((f) => f.item);
-    void execute(retryTargets, confirmMode.mode, dismissReason);
+    // Retries are not pilot-run registrations
+    void execute(retryTargets, confirmMode.mode, dismissReason, "free");
   }
 
   function handleClose() {
     if (run.phase === "running" || run.phase === "checking") return;
     setConfirmMode(null);
     setDismissReason("");
+    setPilotNotes("");
+    setOverrideReason("");
+    setPilotRunId(null);
     setRun(initialRun);
     onClearSelection();
   }
@@ -265,16 +371,16 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
           variant="outline"
           className="gap-1.5 h-8"
           disabled={top3.length === 0 || isBusy}
-          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: top3 }); }}
+          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: top3, cohortKind: "pilot_run" }); }}
         >
-          <Zap className="h-3.5 w-3.5" /> Accept top 3
+          <FlaskConical className="h-3.5 w-3.5" /> Accept top 3 (Pilot)
         </Button>
         <Button
           size="sm"
           variant="outline"
           className="gap-1.5 h-8"
           disabled={top5.length === 0 || isBusy}
-          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: top5 }); }}
+          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: top5, cohortKind: "scaled" }); }}
         >
           <Zap className="h-3.5 w-3.5" /> Accept top 5
         </Button>
@@ -283,7 +389,14 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
           size="sm"
           className="gap-1.5 h-8"
           disabled={!hasSelection || isBusy}
-          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "accept", targets: selected }); }}
+          onClick={() => {
+            setRun(initialRun);
+            setConfirmMode({
+              mode: "accept",
+              targets: selected,
+              cohortKind: selected.length > 3 ? "scaled" : "free",
+            });
+          }}
         >
           <CheckCircle2 className="h-3.5 w-3.5" /> Accept selected ({selected.length})
         </Button>
@@ -292,7 +405,7 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
           variant="destructive"
           className="gap-1.5 h-8"
           disabled={!hasSelection || isBusy}
-          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "dismiss", targets: selected }); }}
+          onClick={() => { setRun(initialRun); setConfirmMode({ mode: "dismiss", targets: selected, cohortKind: "free" }); }}
         >
           <XCircle className="h-3.5 w-3.5" /> Dismiss selected ({selected.length})
         </Button>
@@ -366,6 +479,72 @@ export function PilotBulkActionBar({ isPrivileged, visibleRows, selectedIds, onC
                   ))}
                 </div>
               </div>
+
+              {/* Pilot run notes (top 3) */}
+              {confirmMode?.mode === "accept" && confirmMode.cohortKind === "pilot_run" && (
+                <div className="rounded border border-primary/30 bg-primary/5 p-2 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold">
+                    <FlaskConical className="h-3.5 w-3.5 text-primary" />
+                    Controlled Pilot Run
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    These {summary.count} actions will be tagged as one auditable cohort.
+                    Bulk accept &gt;3 stays blocked until ≥3 outcomes are logged.
+                  </p>
+                  <Label htmlFor="pilot-notes" className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Cohort notes (optional)
+                  </Label>
+                  <Textarea
+                    id="pilot-notes"
+                    value={pilotNotes}
+                    onChange={(e) => setPilotNotes(e.target.value)}
+                    placeholder="Why this cohort, what we're testing, who owns it…"
+                    rows={2}
+                    className="text-sm"
+                  />
+                  {activeRun.data?.pilot_run_id && (
+                    <div className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      An active pilot run already exists ({String(activeRun.data.pilot_run_id).slice(0, 8)}). This will fail until it completes.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Scaling guard / admin override (accept >3, non-pilot) */}
+              {confirmMode?.mode === "accept" &&
+                confirmMode.cohortKind !== "pilot_run" &&
+                confirmMode.targets.length > 3 && (
+                  <div className="rounded border border-amber-500/40 bg-amber-500/5 p-2 space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                      <ShieldAlert className="h-3.5 w-3.5" />
+                      Scaling guard ({confirmMode.targets.length} actions)
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Bulk accept &gt;3 requires ≥3 outcomes logged on the prior controlled pilot.
+                      {activeRun.data?.outcomes_logged_count != null && (
+                        <> Current: <span className="font-mono">{activeRun.data.outcomes_logged_count}/3</span>.</>
+                      )}{" "}
+                      {!isAdmin.data && "You are not an admin — this will be blocked."}
+                      {isAdmin.data && " As admin, you may override with a logged reason."}
+                    </p>
+                    {isAdmin.data && (
+                      <>
+                        <Label htmlFor="override-reason" className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Admin override reason (min 10 chars) <span className="text-destructive">*</span>
+                        </Label>
+                        <Textarea
+                          id="override-reason"
+                          value={overrideReason}
+                          onChange={(e) => setOverrideReason(e.target.value)}
+                          placeholder="Why scaling beyond pilot limit is justified now…"
+                          rows={2}
+                          className="text-sm"
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
 
               {confirmMode?.mode === "dismiss" && (
                 <div className="space-y-1.5">

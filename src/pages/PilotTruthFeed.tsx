@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycleControls";
 import { LearningSection } from "@/components/pilot-truth/LearningSection";
 import { PilotQueueSection } from "@/components/pilot-truth/PilotQueueSection";
+import { ControlledPilotRunPanel } from "@/components/pilot-truth/ControlledPilotRunPanel";
 
 type TruthRow = {
   outcome_id: string | null;
@@ -169,6 +170,9 @@ export default function PilotTruthFeed() {
         <SummaryTile icon={<CheckCircle2 className="h-4 w-4" />} label="Outcomes Logged (DOL)" value={summary.data?.outcomes ?? "…"} />
         <SummaryTile icon={<Lock className="h-4 w-4" />} label="Locked Forecasts" value={summary.data?.lockedForecasts ?? "…"} />
       </div>
+
+      {/* Phase 1 — Controlled Pilot Run audit panel */}
+      <ControlledPilotRunPanel isPrivileged={isPrivileged} />
 
       {/* Pilot Execution Wave: curated execution surface */}
       <PilotQueueSection isPrivileged={isPrivileged} />
