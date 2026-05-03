@@ -64,6 +64,7 @@ type ChainRow = {
     | "community_stale"
     | "village_stale";
 };
+type SeedRow = {
   country_iso3: string;
   best_villages_found: number | null;
   retry_count: number | null;
