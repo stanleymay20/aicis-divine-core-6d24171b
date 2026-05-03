@@ -46,7 +46,24 @@ type RunHealthRow = {
   last_run_at: string | null;
   three_consecutive_failures: boolean;
 };
-type SeedRow = {
+type ChainRow = {
+  country_iso3: string;
+  last_national: string | null;
+  last_l0: string | null;
+  last_community: string | null;
+  last_urban: string | null;
+  regions: number | null;
+  regions_with_pop: number | null;
+  chain_status:
+    | "healthy"
+    | "no_local_anchor"
+    | "no_population_data"
+    | "no_community_metrics"
+    | "no_village_indicators"
+    | "no_national_snapshot"
+    | "community_stale"
+    | "village_stale";
+};
   country_iso3: string;
   best_villages_found: number | null;
   retry_count: number | null;
