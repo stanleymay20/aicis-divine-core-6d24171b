@@ -46,6 +46,24 @@ type RunHealthRow = {
   last_run_at: string | null;
   three_consecutive_failures: boolean;
 };
+type ChainRow = {
+  country_iso3: string;
+  last_national: string | null;
+  last_l0: string | null;
+  last_community: string | null;
+  last_urban: string | null;
+  regions: number | null;
+  regions_with_pop: number | null;
+  chain_status:
+    | "healthy"
+    | "no_local_anchor"
+    | "no_population_data"
+    | "no_community_metrics"
+    | "no_village_indicators"
+    | "no_national_snapshot"
+    | "community_stale"
+    | "village_stale";
+};
 type SeedRow = {
   country_iso3: string;
   best_villages_found: number | null;
@@ -130,6 +148,26 @@ export default function DataPipeline() {
     },
   });
 
+  const chain = useQuery({
+    queryKey: ["v-local-to-national-freshness"],
+    enabled: isPrivileged,
+    refetchInterval: 120_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("v_local_to_national_freshness" as any)
+        .select("*");
+      if (error) throw error;
+      return (data ?? []) as unknown as ChainRow[];
+    },
+  });
+
+  const chainSummary = useMemo(() => {
+    const c = chain.data ?? [];
+    const by: Record<string, number> = {};
+    for (const r of c) by[r.chain_status] = (by[r.chain_status] ?? 0) + 1;
+    return { total: c.length, by };
+  }, [chain.data]);
+
   const summary = useMemo(() => {
     const f = freshness.data ?? [];
     return {
@@ -190,6 +228,43 @@ export default function DataPipeline() {
         <SummaryTile icon={<AlertTriangle className="h-4 w-4 text-rose-400" />} label="Stale (>7d)" value={summary.stale + summary.never} />
         <SummaryTile icon={<GitBranch className="h-4 w-4" />} label="Rows written 24h" value={summary.rows_24h.toLocaleString()} />
       </div>
+
+      {/* ─── Local → National chain status ─── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <GitBranch className="h-4 w-4 text-primary" />
+            Local → National Chain Integrity ({chainSummary.total} countries)
+          </CardTitle>
+          <CardDescription>
+            Per-country chain status across L0 villages → L1 community → L2 urban → national snapshot.
+            Sourced live from <span className="font-mono">v_local_to_national_freshness</span>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {chain.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(chainSummary.by)
+                .sort((a, b) => b[1] - a[1])
+                .map(([status, n]) => {
+                  const tone =
+                    status === "healthy"
+                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                      : status.includes("stale")
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                      : "bg-rose-500/15 text-rose-300 border-rose-500/30";
+                  return (
+                    <Badge key={status} variant="outline" className={`text-xs ${tone}`}>
+                      {status}: {n}
+                    </Badge>
+                  );
+                })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ─── Inference run health ─── */}
       <Card>
