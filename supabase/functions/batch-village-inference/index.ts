@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const FN = "batch-village-inference";
-const REGIONS_PER_BATCH = 10;
+const REGIONS_PER_BATCH = 50; // GAP FIX: 5x throughput so 24k regions refresh in <12h
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
