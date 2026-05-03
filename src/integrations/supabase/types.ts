@@ -14039,6 +14039,19 @@ export type Database = {
         }
         Relationships: []
       }
+      v_local_to_national_freshness: {
+        Row: {
+          chain_status: string | null
+          country_iso3: string | null
+          last_community: string | null
+          last_l0: string | null
+          last_national: string | null
+          last_urban: string | null
+          regions: number | null
+          regions_with_pop: number | null
+        }
+        Relationships: []
+      }
       v_lril_geo_audit_null_iso3: {
         Row: {
           null_iso3_count: number | null
