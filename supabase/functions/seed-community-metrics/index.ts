@@ -112,15 +112,26 @@ serve(async (req) => {
       bootstrapped = await bootstrapAdminRegions(supabase);
     }
 
-    // 1. Pull eligible regions across ALL admin levels (0-3) — was limited to <=1.
-    // The system has 24k+ regions across L1/L2/L3 from overpass; tap them all.
-    const { data: regions, error } = await supabase
-      .from("admin_regions")
-      .select("id,country_iso3,admin_level,population_est,area_km2,urban_rural")
-      .lte("admin_level", 3)
-      .not("population_est", "is", null)
-      .gt("population_est", 0)
-      .limit(8000);
+    // 1. Pull eligible regions across ALL admin levels (0-4).
+    // GAP FIX: previously limited to admin_level<=3, missing 17,904 L4 regions.
+    // Paginate to bypass PostgREST 1000-row default cap.
+    const regions: any[] = [];
+    const PAGE = 1000;
+    for (let from = 0; from < 30000; from += PAGE) {
+      const { data: page, error } = await supabase
+        .from("admin_regions")
+        .select("id,country_iso3,admin_level,population_est,area_km2,urban_rural")
+        .lte("admin_level", 4)
+        .not("population_est", "is", null)
+        .gt("population_est", 0)
+        .order("id")
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!page || page.length === 0) break;
+      regions.push(...page);
+      if (page.length < PAGE) break;
+    }
+    const error = null as any;
 
     if (error) throw error;
     if (!regions || regions.length === 0) {
