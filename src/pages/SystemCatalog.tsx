@@ -52,7 +52,7 @@ export default function SystemCatalog() {
         .select("*")
         .order("fail_24h", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as SloRow[];
+      return (data ?? []) as unknown as SloRow[];
     },
     staleTime: 30_000,
   });
@@ -66,7 +66,7 @@ export default function SystemCatalog() {
         .order("criticality", { ascending: true })
         .order("name", { ascending: true });
       if (error) throw error;
-      return (data ?? []) as CatalogRow[];
+      return (data ?? []) as unknown as CatalogRow[];
     },
     staleTime: 60_000,
   });

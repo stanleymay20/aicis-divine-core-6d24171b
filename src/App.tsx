@@ -61,6 +61,7 @@ const ExportCenter = lazy(() => import("./pages/ExportCenter"));
 const PilotTruthFeed = lazy(() => import("./pages/PilotTruthFeed"));
 const DataPipeline = lazy(() => import("./pages/DataPipeline"));
 const OutcomeCockpit = lazy(() => import("./pages/OutcomeCockpit"));
+const SystemCatalog = lazy(() => import("./pages/SystemCatalog"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -156,6 +157,7 @@ const App = () => (
               <Route path="/pilot-truth" element={<Protected><PilotTruthFeed /></Protected>} />
               <Route path="/data-pipeline" element={<Protected><DataPipeline /></Protected>} />
               <Route path="/outcome-cockpit" element={<Protected><OutcomeCockpit /></Protected>} />
+              <Route path="/system-catalog" element={<Protected><SystemCatalog /></Protected>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
