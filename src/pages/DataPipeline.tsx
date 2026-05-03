@@ -229,6 +229,43 @@ export default function DataPipeline() {
         <SummaryTile icon={<GitBranch className="h-4 w-4" />} label="Rows written 24h" value={summary.rows_24h.toLocaleString()} />
       </div>
 
+      {/* ─── Local → National chain status ─── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <GitBranch className="h-4 w-4 text-primary" />
+            Local → National Chain Integrity ({chainSummary.total} countries)
+          </CardTitle>
+          <CardDescription>
+            Per-country chain status across L0 villages → L1 community → L2 urban → national snapshot.
+            Sourced live from <span className="font-mono">v_local_to_national_freshness</span>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {chain.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(chainSummary.by)
+                .sort((a, b) => b[1] - a[1])
+                .map(([status, n]) => {
+                  const tone =
+                    status === "healthy"
+                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                      : status.includes("stale")
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                      : "bg-rose-500/15 text-rose-300 border-rose-500/30";
+                  return (
+                    <Badge key={status} variant="outline" className={`text-xs ${tone}`}>
+                      {status}: {n}
+                    </Badge>
+                  );
+                })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* ─── Inference run health ─── */}
       <Card>
         <CardHeader>
