@@ -148,6 +148,26 @@ export default function DataPipeline() {
     },
   });
 
+  const chain = useQuery({
+    queryKey: ["v-local-to-national-freshness"],
+    enabled: isPrivileged,
+    refetchInterval: 120_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("v_local_to_national_freshness" as any)
+        .select("*");
+      if (error) throw error;
+      return (data ?? []) as unknown as ChainRow[];
+    },
+  });
+
+  const chainSummary = useMemo(() => {
+    const c = chain.data ?? [];
+    const by: Record<string, number> = {};
+    for (const r of c) by[r.chain_status] = (by[r.chain_status] ?? 0) + 1;
+    return { total: c.length, by };
+  }, [chain.data]);
+
   const summary = useMemo(() => {
     const f = freshness.data ?? [];
     return {
