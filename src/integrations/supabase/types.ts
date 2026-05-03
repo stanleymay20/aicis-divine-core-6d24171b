@@ -11474,6 +11474,45 @@ export type Database = {
         }
         Relationships: []
       }
+      system_service_catalog: {
+        Row: {
+          created_at: string
+          criticality: string
+          description: string | null
+          enabled: boolean
+          id: string
+          kind: string
+          name: string
+          owner: string | null
+          schedule: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          criticality?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          kind: string
+          name: string
+          owner?: string | null
+          schedule?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          criticality?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          kind?: string
+          name?: string
+          owner?: string | null
+          schedule?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tenant_action_log: {
         Row: {
           action: string
@@ -13950,6 +13989,18 @@ export type Database = {
           proxy_share: number | null
           rank_position: number | null
           risk_probability: number | null
+        }
+        Relationships: []
+      }
+      system_slo_recent_v: {
+        Row: {
+          enabled: boolean | null
+          fail_24h: number | null
+          last_failure_at: string | null
+          last_success_at: string | null
+          ok_24h: number | null
+          pipeline_name: string | null
+          schedule: string | null
         }
         Relationships: []
       }
