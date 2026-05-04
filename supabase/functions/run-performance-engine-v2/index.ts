@@ -312,10 +312,15 @@ Deno.serve(async (req) => {
   const startMs = Date.now();
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const body = await req.json().catch(() => ({}));
+    const targetIso3s = Array.isArray(body.iso3s)
+      ? body.iso3s.map((v: unknown) => String(v).toUpperCase()).filter((v: string) => /^[A-Z0-9]{3}$/.test(v))
+      : null;
+    const batchSize = Math.max(1, Math.min(100, Number(body.batch_size ?? 80)));
+    const offset = Math.max(0, Number(body.offset ?? 0));
 
     // 1. Check freeze state from DB
     const { data: freezeFlag } = await supabase
@@ -325,10 +330,22 @@ Deno.serve(async (req) => {
       .single();
     const frozen = freezeFlag?.enabled === true;
 
+    const { data: repairedAnchors, error: anchorErr } = await supabase
+      .rpc("ensure_l0_reporting_anchors");
+    if (anchorErr) throw new Error(`Failed to ensure local anchors: ${anchorErr.message}`);
+
+    const { data: repairedProfiles, error: profileRepairErr } = await supabase
+      .rpc("ensure_country_profiles_from_normalized");
+    if (profileRepairErr) throw new Error(`Failed to ensure country profiles: ${profileRepairErr.message}`);
+
     // 2. Load country profiles
-    const { data: profiles, error: profErr } = await supabase
+    let profileQuery = supabase
       .from("country_profiles")
-      .select("iso3, country_name, kpis");
+      .select("iso3, country_name, kpis", { count: "exact" })
+      .order("iso3", { ascending: true });
+    if (targetIso3s?.length) profileQuery = profileQuery.in("iso3", targetIso3s);
+    else profileQuery = profileQuery.range(offset, offset + batchSize - 1);
+    const { data: profiles, error: profErr, count: profileCount } = await profileQuery;
     if (profErr) throw new Error(`Failed to load profiles: ${profErr.message}`);
     const validProfiles = (profiles || []).filter((p: any) => p.iso3 && p.country_name && p.kpis);
 
@@ -573,8 +590,9 @@ Deno.serve(async (req) => {
     const avgMAPE = allCalibMetrics.filter(m => m.metric_name === "mape").reduce((s, m) => s + m.metric_value, 0) / Math.max(1, allCalibMetrics.filter(m => m.metric_name === "mape").length);
     const currentBreakRate = totalDomains > 0 ? (breakCount / totalDomains) * 100 : 0;
     const killSwitchTriggered = avgMAPE > 50 || currentBreakRate > 60;
+    const killSwitchEvaluated = !targetIso3s?.length && offset === 0 && profileCount !== null && batchSize >= profileCount;
 
-    if (killSwitchTriggered && !frozen) {
+    if (killSwitchEvaluated && killSwitchTriggered && !frozen) {
       // Activate freeze
       await supabase.from("system_flags").update({ enabled: true, updated_at: new Date().toISOString() }).eq("flag_key", "freeze_forecasts");
       // Log critical alert
@@ -593,17 +611,31 @@ Deno.serve(async (req) => {
       job_name: "run-performance-engine-v2",
       status: "success",
       message: JSON.stringify({
+        repairedAnchors: repairedAnchors ?? 0, repairedProfiles: repairedProfiles ?? 0,
+        offset, batchSize, profileCount: profileCount ?? null,
         countriesProcessed, totalDomains, breakCount,
         archiveEntries: allArchive.length, snapshotEntries: allSnapshots.length,
         calibrationEntries: allCalibMetrics.length, spcEntries: allSPCObs.length,
         residualEntries: allResiduals.length,
         auditEntries: auditEntries.length, auditWriteMs: auditElapsedMs,
-        killSwitchTriggered, frozen, elapsedMs: elapsed,
+        killSwitchTriggered, killSwitchEvaluated, frozen, elapsedMs: elapsed,
       }),
     });
 
+    const nextOffset = offset + batchSize;
+    const autoContinuing = !targetIso3s?.length && profileCount !== null && nextOffset < profileCount;
+    if (autoContinuing) {
+      fetch(`${supabaseUrl}/functions/v1/run-performance-engine-v2`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ offset: nextOffset, batch_size: batchSize }),
+      }).catch(() => {});
+    }
+
     return new Response(JSON.stringify({
-      success: true, frozen, killSwitchTriggered,
+      success: true, frozen, killSwitchTriggered, killSwitchEvaluated,
+      repairedAnchors: repairedAnchors ?? 0, repairedProfiles: repairedProfiles ?? 0,
+      offset, batchSize, profileCount: profileCount ?? null, autoContinuing,
       countriesProcessed, totalDomains, breakCount,
       entries: { archive: allArchive.length, snapshots: allSnapshots.length, calibration: allCalibMetrics.length, spc: allSPCObs.length, residuals: allResiduals.length },
       elapsedMs: elapsed,

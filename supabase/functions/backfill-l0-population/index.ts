@@ -16,6 +16,10 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
   try {
+    const { data: canonicalAnchors, error: anchorErr } = await supabase
+      .rpc("ensure_l0_reporting_anchors");
+    if (anchorErr) throw anchorErr;
+
     const r = await fetch(
       "https://restcountries.com/v3.1/all?fields=cca3,population,area,latlng",
       { signal: AbortSignal.timeout(20000) },
@@ -39,7 +43,7 @@ serve(async (req) => {
     // excluded them from village-inference and broke the L0→L2 chain).
     const { data: rows, error } = await supabase
       .from("admin_regions")
-      .select("id,country_iso3,lat,lon,population_est")
+      .select("id,country_iso3,lat,lon,population_est,area_km2,urban_rural")
       .eq("admin_level", 0);
     if (error) throw error;
 
@@ -49,13 +53,17 @@ serve(async (req) => {
       if (!m) { skipped++; continue; }
       const needsPop = !row.population_est || row.population_est === 0 || row.population_est === 1_000_000;
       const needsGeo = row.lat == null || row.lon == null;
-      if (!needsPop && !needsGeo) { skipped++; continue; }
+      const needsArea = !(row as any).area_km2 || (row as any).area_km2 <= 0;
+      const needsClass = !(row as any).urban_rural;
+      if (!needsPop && !needsGeo && !needsArea && !needsClass) { skipped++; continue; }
       const patch: Record<string, unknown> = {
         lat: row.lat ?? m.lat ?? null,
         lon: row.lon ?? m.lon ?? null,
+        urban_rural: (row as any).urban_rural ?? "unknown",
         metadata: { backfilled_from: "restcountries_v3.1", backfilled_at: new Date().toISOString() },
       };
       if (needsPop) { patch.population_est = m.pop; patch.area_km2 = m.area || null; }
+      else if (needsArea) patch.area_km2 = m.area || null;
       const { error: uerr } = await supabase
         .from("admin_regions")
         .update(patch)
@@ -65,10 +73,10 @@ serve(async (req) => {
 
     await supabase.from("automation_logs").insert({
       job_name: FN, status: "success",
-      message: `Backfilled L0 pop for ${updated}/${rows?.length ?? 0} rows (${skipped} no match)`,
+      message: `Created ${canonicalAnchors ?? 0} canonical L0 anchors; backfilled L0 pop for ${updated}/${rows?.length ?? 0} rows (${skipped} no match)`,
     });
 
-    return new Response(JSON.stringify({ ok: true, updated, considered: rows?.length ?? 0, skipped }), {
+    return new Response(JSON.stringify({ ok: true, canonicalAnchors: canonicalAnchors ?? 0, updated, considered: rows?.length ?? 0, skipped }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
