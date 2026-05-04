@@ -101,6 +101,9 @@ serve(async (req) => {
 
   try {
     // 0. Bootstrap admin_regions if starved (<50 eligible).
+    const { error: anchorErr } = await supabase.rpc("ensure_l0_reporting_anchors");
+    if (anchorErr) throw anchorErr;
+
     const { count: eligibleCount } = await supabase
       .from("admin_regions")
       .select("*", { count: "exact", head: true })
