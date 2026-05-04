@@ -53,8 +53,12 @@ serve(async (req) => {
       const patch: Record<string, unknown> = {
         lat: row.lat ?? m.lat ?? null,
         lon: row.lon ?? m.lon ?? null,
-          metadata: { backfilled_from: "restcountries_v3.1", backfilled_at: new Date().toISOString() },
-        })
+        metadata: { backfilled_from: "restcountries_v3.1", backfilled_at: new Date().toISOString() },
+      };
+      if (needsPop) { patch.population_est = m.pop; patch.area_km2 = m.area || null; }
+      const { error: uerr } = await supabase
+        .from("admin_regions")
+        .update(patch)
         .eq("id", row.id);
       if (!uerr) updated++;
     }
