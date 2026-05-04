@@ -43,7 +43,7 @@ serve(async (req) => {
     // excluded them from village-inference and broke the L0→L2 chain).
     const { data: rows, error } = await supabase
       .from("admin_regions")
-      .select("id,country_iso3,lat,lon,population_est")
+      .select("id,country_iso3,lat,lon,population_est,area_km2,urban_rural")
       .eq("admin_level", 0);
     if (error) throw error;
 
