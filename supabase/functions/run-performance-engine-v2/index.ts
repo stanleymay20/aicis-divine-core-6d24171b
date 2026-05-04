@@ -611,6 +611,7 @@ Deno.serve(async (req) => {
       status: "success",
       message: JSON.stringify({
         repairedAnchors: repairedAnchors ?? 0, repairedProfiles: repairedProfiles ?? 0,
+        offset, batchSize, profileCount: profileCount ?? null,
         countriesProcessed, totalDomains, breakCount,
         archiveEntries: allArchive.length, snapshotEntries: allSnapshots.length,
         calibrationEntries: allCalibMetrics.length, spcEntries: allSPCObs.length,
@@ -620,9 +621,20 @@ Deno.serve(async (req) => {
       }),
     });
 
+    const nextOffset = offset + batchSize;
+    const autoContinuing = !targetIso3s?.length && profileCount !== null && nextOffset < profileCount;
+    if (autoContinuing) {
+      fetch(`${supabaseUrl}/functions/v1/run-performance-engine-v2`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ offset: nextOffset, batch_size: batchSize }),
+      }).catch(() => {});
+    }
+
     return new Response(JSON.stringify({
       success: true, frozen, killSwitchTriggered,
       repairedAnchors: repairedAnchors ?? 0, repairedProfiles: repairedProfiles ?? 0,
+      offset, batchSize, profileCount: profileCount ?? null, autoContinuing,
       countriesProcessed, totalDomains, breakCount,
       entries: { archive: allArchive.length, snapshots: allSnapshots.length, calibration: allCalibMetrics.length, spc: allSPCObs.length, residuals: allResiduals.length },
       elapsedMs: elapsed,
