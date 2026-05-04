@@ -590,8 +590,9 @@ Deno.serve(async (req) => {
     const avgMAPE = allCalibMetrics.filter(m => m.metric_name === "mape").reduce((s, m) => s + m.metric_value, 0) / Math.max(1, allCalibMetrics.filter(m => m.metric_name === "mape").length);
     const currentBreakRate = totalDomains > 0 ? (breakCount / totalDomains) * 100 : 0;
     const killSwitchTriggered = avgMAPE > 50 || currentBreakRate > 60;
+    const killSwitchEvaluated = !targetIso3s?.length && offset === 0 && profileCount !== null && batchSize >= profileCount;
 
-    if (killSwitchTriggered && !frozen) {
+    if (killSwitchEvaluated && killSwitchTriggered && !frozen) {
       // Activate freeze
       await supabase.from("system_flags").update({ enabled: true, updated_at: new Date().toISOString() }).eq("flag_key", "freeze_forecasts");
       // Log critical alert
@@ -617,7 +618,7 @@ Deno.serve(async (req) => {
         calibrationEntries: allCalibMetrics.length, spcEntries: allSPCObs.length,
         residualEntries: allResiduals.length,
         auditEntries: auditEntries.length, auditWriteMs: auditElapsedMs,
-        killSwitchTriggered, frozen, elapsedMs: elapsed,
+        killSwitchTriggered, killSwitchEvaluated, frozen, elapsedMs: elapsed,
       }),
     });
 
@@ -632,7 +633,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      success: true, frozen, killSwitchTriggered,
+      success: true, frozen, killSwitchTriggered, killSwitchEvaluated,
       repairedAnchors: repairedAnchors ?? 0, repairedProfiles: repairedProfiles ?? 0,
       offset, batchSize, profileCount: profileCount ?? null, autoContinuing,
       countriesProcessed, totalDomains, breakCount,
