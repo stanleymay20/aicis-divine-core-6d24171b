@@ -23,6 +23,8 @@ const GDELT_QUERIES = [
   "outbreak OR epidemic OR vaccine OR WHO OR public health emergency",
   "cyber attack OR ransomware OR breach OR vulnerability OR zero-day",
   "earthquake OR flood OR drought OR wildfire OR storm OR blackout",
+  "pirates OR piracy OR hijacked OR tanker OR vessel OR maritime OR Gulf of Aden OR Red Sea OR Strait of Hormuz OR Bab el-Mandeb",
+  "ship attack OR boarded OR navy intercept OR Houthi OR UKMTO OR EUNAVFOR OR convoy",
 ];
 
 function stripSourceSuffix(title: string): string {
@@ -70,7 +72,8 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   supply_chain: ["supply chain","shipping","port","logistics","shortage","tariff","import","export","freight","container"],
   elections: ["election","vote","ballot","candidate","polling","referendum","inauguration","campaign"],
   social_unrest: ["protest","riot","demonstration","strike","unrest","civil","march","activist"],
-  infrastructure: ["bridge","dam","grid","telecom","internet","rail","airport","infrastructure","blackout","aviation"]
+  infrastructure: ["bridge","dam","grid","telecom","internet","rail","airport","infrastructure","blackout","aviation"],
+  maritime_security: ["pirate","piracy","hijack","hijacked","tanker","vessel","ship attack","boarded","ukmto","eunavfor","gulf of aden","red sea","strait of hormuz","bab el-mandeb","houthi","navy intercept","convoy","maritime"]
 };
 
 function classifyCategory(title: string, description: string): string {
