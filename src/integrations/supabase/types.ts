@@ -14320,6 +14320,7 @@ export type Database = {
         Args: { p_event_type: string; p_payload: Json; p_target_url?: string }
         Returns: string
       }
+      ensure_l0_reporting_anchors: { Args: never; Returns: number }
       evaluate_auto_block: { Args: never; Returns: Json }
       evaluate_forecast_readiness: {
         Args: { _mae_threshold?: number }
