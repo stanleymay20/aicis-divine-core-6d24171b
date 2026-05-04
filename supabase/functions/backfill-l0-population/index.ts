@@ -34,25 +34,25 @@ serve(async (req) => {
       }
     }
 
-    // Get all L0 regions missing population
+    // Get all L0 regions missing population OR missing lat/lon (gap fix:
+    // 19 small territories had placeholder pop=1e6 but null lat/lon, which
+    // excluded them from village-inference and broke the L0→L2 chain).
     const { data: rows, error } = await supabase
       .from("admin_regions")
-      .select("id,country_iso3")
-      .eq("admin_level", 0)
-      .or("population_est.is.null,population_est.eq.0");
+      .select("id,country_iso3,lat,lon,population_est")
+      .eq("admin_level", 0);
     if (error) throw error;
 
     let updated = 0, skipped = 0;
     for (const row of rows ?? []) {
       const m = popMap.get(row.country_iso3);
       if (!m) { skipped++; continue; }
-      const { error: uerr } = await supabase
-        .from("admin_regions")
-        .update({
-          population_est: m.pop,
-          area_km2: m.area || null,
-          lat: m.lat ?? null,
-          lon: m.lon ?? null,
+      const needsPop = !row.population_est || row.population_est === 0 || row.population_est === 1_000_000;
+      const needsGeo = row.lat == null || row.lon == null;
+      if (!needsPop && !needsGeo) { skipped++; continue; }
+      const patch: Record<string, unknown> = {
+        lat: row.lat ?? m.lat ?? null,
+        lon: row.lon ?? m.lon ?? null,
           metadata: { backfilled_from: "restcountries_v3.1", backfilled_at: new Date().toISOString() },
         })
         .eq("id", row.id);
