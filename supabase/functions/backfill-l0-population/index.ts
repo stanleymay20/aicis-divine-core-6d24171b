@@ -53,13 +53,16 @@ serve(async (req) => {
       if (!m) { skipped++; continue; }
       const needsPop = !row.population_est || row.population_est === 0 || row.population_est === 1_000_000;
       const needsGeo = row.lat == null || row.lon == null;
-      if (!needsPop && !needsGeo) { skipped++; continue; }
+      const needsArea = !(row as any).area_km2 || (row as any).area_km2 <= 0;
+      if (!needsPop && !needsGeo && !needsArea) { skipped++; continue; }
       const patch: Record<string, unknown> = {
         lat: row.lat ?? m.lat ?? null,
         lon: row.lon ?? m.lon ?? null,
+        urban_rural: (row as any).urban_rural ?? "unknown",
         metadata: { backfilled_from: "restcountries_v3.1", backfilled_at: new Date().toISOString() },
       };
       if (needsPop) { patch.population_est = m.pop; patch.area_km2 = m.area || null; }
+      else if (needsArea) patch.area_km2 = m.area || null;
       const { error: uerr } = await supabase
         .from("admin_regions")
         .update(patch)
