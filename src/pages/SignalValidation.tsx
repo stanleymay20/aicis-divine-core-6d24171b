@@ -187,9 +187,8 @@ export default function SignalValidation() {
     );
   }
 
-  const { pipeline, sourceQuality, eventQuality, routing, decisions } = data;
+  const { pipeline, sourceQuality, eventQuality, routing, decisions, coverage } = data;
 
-  // Compute overall grade
   const scores: MetricStatus[] = [];
   const pipelineMetrics: ScorecardMetric[] = [
     { label: "Intake success rate", value: `${pipeline.intakeSuccessRate}%`, target: "≥ 98%", status: pipeline.intakeSuccessRate >= 98 ? "pass" : pipeline.intakeSuccessRate >= 90 ? "warn" : "fail" },
@@ -203,19 +202,21 @@ export default function SignalValidation() {
   pipelineMetrics.forEach(m => scores.push(m.status));
 
   const sourceMetrics: ScorecardMetric[] = [
-    { label: "Total signals", value: sourceQuality.total, target: "rising", status: sourceQuality.total > 50 ? "pass" : sourceQuality.total > 10 ? "warn" : "fail" },
-    { label: "Tier 1 count", value: sourceQuality.tier1, target: "rising", status: sourceQuality.tier1 > 20 ? "pass" : sourceQuality.tier1 > 5 ? "warn" : "fail" },
-    { label: "Tier 2 count", value: sourceQuality.tier2, target: "rising", status: sourceQuality.tier2 > 10 ? "pass" : sourceQuality.tier2 > 3 ? "warn" : "fail" },
-    { label: "Tier 3 count", value: sourceQuality.tier3, target: "declining", status: sourceQuality.tier3 < sourceQuality.total * 0.5 ? "pass" : sourceQuality.tier3 < sourceQuality.total * 0.7 ? "warn" : "fail" },
+    { label: "Tracked sources", value: sourceQuality.registryTotal, target: "≥ 15", status: sourceQuality.registryTotal >= 15 ? "pass" : sourceQuality.registryTotal >= 10 ? "warn" : "fail" },
+    { label: "Official feeds", value: sourceQuality.registryOfficial, target: "≥ 8", status: sourceQuality.registryOfficial >= 8 ? "pass" : sourceQuality.registryOfficial >= 5 ? "warn" : "fail" },
+    { label: "Live unique sources", value: sourceQuality.uniqueSources, target: "≥ 15", status: sourceQuality.uniqueSources >= 15 ? "pass" : sourceQuality.uniqueSources >= 8 ? "warn" : "fail" },
     { label: "Tier 1+2 share", value: `${sourceQuality.tier12pct}%`, target: "≥ 30%", status: sourceQuality.tier12pct >= 30 ? "pass" : sourceQuality.tier12pct >= 15 ? "warn" : "fail" },
     { label: "Official-source %", value: `${sourceQuality.officialPct}%`, target: "≥ 15%", status: sourceQuality.officialPct >= 15 ? "pass" : sourceQuality.officialPct >= 5 ? "warn" : "fail" },
-    { label: "Unique sources", value: sourceQuality.uniqueSources, target: "≥ 15", status: sourceQuality.uniqueSources >= 15 ? "pass" : sourceQuality.uniqueSources >= 8 ? "warn" : "fail" },
+    { label: "Tier 3 count", value: sourceQuality.tier3, target: "declining", status: sourceQuality.tier3 < sourceQuality.total * 0.5 ? "pass" : sourceQuality.tier3 < sourceQuality.total * 0.7 ? "warn" : "fail" },
+    { label: "Signals in window", value: sourceQuality.total, target: "rising", status: sourceQuality.total > 50 ? "pass" : sourceQuality.total > 10 ? "warn" : "fail" },
   ];
   sourceMetrics.forEach(m => scores.push(m.status));
 
   const eventMetrics: ScorecardMetric[] = [
     { label: "Multi-source confirmed", value: eventQuality.multiConfirmed, target: "rising", status: eventQuality.multiConfirmed > 5 ? "pass" : eventQuality.multiConfirmed > 0 ? "warn" : "fail" },
     { label: "Avg source count", value: eventQuality.avgSourceCount, target: "> 1.0", status: parseFloat(eventQuality.avgSourceCount) > 1.0 ? "pass" : "warn" },
+    { label: "Benchmarks detected", value: `${coverage.benchmarkDetected}/${coverage.benchmarkTotal}`, target: "all", status: coverage.benchmarkTotal === 0 ? "no_data" : coverage.benchmarkDetected === coverage.benchmarkTotal ? "pass" : coverage.benchmarkDetected >= Math.ceil(coverage.benchmarkTotal * 0.7) ? "warn" : "fail" },
+    { label: "Avg benchmark latency", value: coverage.benchmarkTotal > 0 ? `${coverage.avgBenchmarkLatency}m` : "—", target: "< 120m", status: coverage.benchmarkTotal === 0 ? "no_data" : coverage.avgBenchmarkLatency <= 120 ? "pass" : coverage.avgBenchmarkLatency <= 360 ? "warn" : "fail" },
   ];
   eventMetrics.forEach(m => scores.push(m.status));
 
@@ -242,10 +243,11 @@ export default function SignalValidation() {
   const overallGrade = failCount >= 5 ? "UNSTABLE" : failCount >= 3 ? "TECHNICALLY PROMISING" : failCount >= 1 ? "PILOT-READY" : "COMMERCIALLY DEFENSIBLE";
   const gradeColor = failCount >= 5 ? "text-red-400" : failCount >= 3 ? "text-amber-400" : failCount >= 1 ? "text-yellow-400" : "text-emerald-400";
 
-  // Forensic findings
   const findings: { severity: "critical" | "medium" | "low"; text: string }[] = [];
-  if (sourceQuality.tier3 > sourceQuality.total * 0.7) findings.push({ severity: "critical", text: `Tier 3 sources dominate at ${Math.round(sourceQuality.tier3 / sourceQuality.total * 100)}% — weak source mix` });
+  if (sourceQuality.tier3 > sourceQuality.total * 0.7) findings.push({ severity: "critical", text: `Tier 3 sources dominate at ${Math.round(sourceQuality.tier3 / Math.max(sourceQuality.total, 1) * 100)}% — weak source mix` });
   if (sourceQuality.officialPct < 5) findings.push({ severity: "critical", text: `Official sources at ${sourceQuality.officialPct}% — below 15% target` });
+  if (sourceQuality.registryTotal < 15) findings.push({ severity: "critical", text: `Only ${sourceQuality.registryTotal} tracked intake sources — not yet planetary enough` });
+  if (coverage.benchmarkMissed > 0) findings.push({ severity: "critical", text: `${coverage.benchmarkMissed} benchmark events were missed — planetary blind spots remain` });
   if (pipeline.avgEnrichSecs > 120) findings.push({ severity: "medium", text: `Avg enrichment ${pipeline.avgEnrichSecs}s — well above 30s target` });
   if (routing.feedbackTotal === 0) findings.push({ severity: "critical", text: "Zero routing feedback — precision metrics are blind" });
   if (eventQuality.multiConfirmed <= 1) findings.push({ severity: "medium", text: `Only ${eventQuality.multiConfirmed} multi-source confirmed signals — weak verification` });
