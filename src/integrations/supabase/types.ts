@@ -10609,6 +10609,123 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_coverage_snapshots: {
+        Row: {
+          active_sources: number
+          avg_detection_latency_minutes: number | null
+          benchmarks_detected: number
+          benchmarks_missed: number
+          benchmarks_total: number
+          created_at: string
+          failed_runs_24h: number
+          id: string
+          metadata: Json
+          new_signals_24h: number
+          official_sources: number
+          snapshot_date: string
+          total_runs_24h: number
+          total_sources: number
+          unique_sources_24h: number
+        }
+        Insert: {
+          active_sources?: number
+          avg_detection_latency_minutes?: number | null
+          benchmarks_detected?: number
+          benchmarks_missed?: number
+          benchmarks_total?: number
+          created_at?: string
+          failed_runs_24h?: number
+          id?: string
+          metadata?: Json
+          new_signals_24h?: number
+          official_sources?: number
+          snapshot_date?: string
+          total_runs_24h?: number
+          total_sources?: number
+          unique_sources_24h?: number
+        }
+        Update: {
+          active_sources?: number
+          avg_detection_latency_minutes?: number | null
+          benchmarks_detected?: number
+          benchmarks_missed?: number
+          benchmarks_total?: number
+          created_at?: string
+          failed_runs_24h?: number
+          id?: string
+          metadata?: Json
+          new_signals_24h?: number
+          official_sources?: number
+          snapshot_date?: string
+          total_runs_24h?: number
+          total_sources?: number
+          unique_sources_24h?: number
+        }
+        Relationships: []
+      }
+      signal_detection_benchmarks: {
+        Row: {
+          benchmark_key: string
+          created_at: string
+          detected: boolean
+          detected_at: string | null
+          detected_signal_id: string | null
+          detection_latency_minutes: number | null
+          event_occurred_at: string | null
+          event_summary: string | null
+          event_title: string
+          expected_categories: string[]
+          expected_countries: string[]
+          id: string
+          severity_hint: string | null
+          source_name: string | null
+          source_url: string | null
+          updated_at: string
+          validation_notes: string | null
+          validation_status: string
+        }
+        Insert: {
+          benchmark_key: string
+          created_at?: string
+          detected?: boolean
+          detected_at?: string | null
+          detected_signal_id?: string | null
+          detection_latency_minutes?: number | null
+          event_occurred_at?: string | null
+          event_summary?: string | null
+          event_title: string
+          expected_categories?: string[]
+          expected_countries?: string[]
+          id?: string
+          severity_hint?: string | null
+          source_name?: string | null
+          source_url?: string | null
+          updated_at?: string
+          validation_notes?: string | null
+          validation_status?: string
+        }
+        Update: {
+          benchmark_key?: string
+          created_at?: string
+          detected?: boolean
+          detected_at?: string | null
+          detected_signal_id?: string | null
+          detection_latency_minutes?: number | null
+          event_occurred_at?: string | null
+          event_summary?: string | null
+          event_title?: string
+          expected_categories?: string[]
+          expected_countries?: string[]
+          id?: string
+          severity_hint?: string | null
+          source_name?: string | null
+          source_url?: string | null
+          updated_at?: string
+          validation_notes?: string | null
+          validation_status?: string
+        }
+        Relationships: []
+      }
       signal_feedback: {
         Row: {
           category: string | null
@@ -10754,6 +10871,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      signal_source_registry: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          geo_scope: string
+          id: string
+          official_source: boolean
+          parser_type: string
+          priority: number
+          source_name: string
+          source_type: string
+          thematic_scope: string[]
+          trust_weight: number
+          updated_at: string
+          urls: string[]
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          geo_scope?: string
+          id?: string
+          official_source?: boolean
+          parser_type?: string
+          priority?: number
+          source_name: string
+          source_type: string
+          thematic_scope?: string[]
+          trust_weight?: number
+          updated_at?: string
+          urls?: string[]
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          geo_scope?: string
+          id?: string
+          official_source?: boolean
+          parser_type?: string
+          priority?: number
+          source_name?: string
+          source_type?: string
+          thematic_scope?: string[]
+          trust_weight?: number
+          updated_at?: string
+          urls?: string[]
+        }
+        Relationships: []
       }
       signal_truth_scores: {
         Row: {
