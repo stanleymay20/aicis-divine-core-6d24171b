@@ -54,19 +54,27 @@ function usePipelineMetrics() {
         signalsRes,
         feedbackRes,
         decisionsRes,
+        coverageRes,
+        benchmarksRes,
+        registryRes,
       ] = await Promise.all([
         supabase.from("source_connector_runs").select("*").order("run_at", { ascending: false }).limit(50),
         supabase.from("global_signals").select("id, enrichment_status, source_trust_tier, official_source_present, multi_source_confirmed, impact_score, confidence_score, category, status, routing_suppressed_reason, ingested_at, enriched_at, routed_at, source_count, primary_source, enrichment_error"),
         supabase.from("signal_routing_feedback").select("signal_id, feedback, created_at"),
         supabase.from("decision_outcome_log").select("id, signal_id, action_taken, outcome_success, execution_status").not("signal_id", "is", null),
+        supabase.from("signal_coverage_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("signal_detection_benchmarks").select("id, detected, validation_status, detection_latency_minutes, event_title").order("created_at", { ascending: false }).limit(100),
+        supabase.from("signal_source_registry").select("source_name, official_source, enabled, source_type").order("priority", { ascending: true }),
       ]);
 
       const runs = connectorRes.data || [];
       const signals = signalsRes.data || [];
       const feedback = feedbackRes.data || [];
       const decisions = decisionsRes.data || [];
+      const latestCoverage = coverageRes.data || null;
+      const benchmarks = benchmarksRes.data || [];
+      const registry = registryRes.data || [];
 
-      // Pipeline reliability
       const successRuns = runs.filter(r => r.run_status === "success").length;
       const intakeSuccessRate = runs.length > 0 ? Math.round(successRuns / runs.length * 100) : 0;
       const avgDuration = runs.length > 0 ? Math.round(runs.reduce((s, r) => s + (r.duration_ms || 0), 0) / runs.length) : 0;
@@ -76,7 +84,6 @@ function usePipelineMetrics() {
       const withErrors = signals.filter(s => s.enrichment_error).length;
       const enrichSuccessRate = signals.length > 0 ? Math.round(enriched / signals.length * 100) : 0;
 
-      // Source quality
       const tier1 = signals.filter(s => s.source_trust_tier === "tier_1").length;
       const tier2 = signals.filter(s => s.source_trust_tier === "tier_2").length;
       const tier3 = signals.filter(s => s.source_trust_tier === "tier_3").length;
@@ -85,11 +92,9 @@ function usePipelineMetrics() {
       const officialPct = signals.length > 0 ? Math.round(official / signals.length * 100) : 0;
       const uniqueSources = new Set(signals.map(s => s.primary_source)).size;
 
-      // Event quality
       const multiConfirmed = signals.filter(s => s.multi_source_confirmed).length;
       const avgSourceCount = signals.length > 0 ? (signals.reduce((s, sig) => s + (sig.source_count || 1), 0) / signals.length).toFixed(1) : "0";
 
-      // Routing
       const routed = signals.filter(s => s.routed_at).length;
       const suppressed = signals.filter(s => s.routing_suppressed_reason).length;
       const confirmed = feedback.filter(f => f.feedback === "confirmed").length;
@@ -99,19 +104,14 @@ function usePipelineMetrics() {
       const confirmRate = feedbackTotal > 0 ? Math.round(confirmed / feedbackTotal * 100) : 0;
       const rejectRate = feedbackTotal > 0 ? Math.round(rejected / feedbackTotal * 100) : 0;
 
-      // Decisions
       const signalDecisions = decisions.length;
       const accepted = decisions.filter(d => d.action_taken).length;
       const completed = decisions.filter(d => d.execution_status === "completed").length;
       const withOutcomes = decisions.filter(d => d.outcome_success !== null).length;
 
-      // Category breakdown
       const catCounts: Record<string, number> = {};
-      for (const s of signals) {
-        catCounts[s.category] = (catCounts[s.category] || 0) + 1;
-      }
+      for (const s of signals) catCounts[s.category] = (catCounts[s.category] || 0) + 1;
 
-      // Enrichment timing
       const enrichTimes: number[] = [];
       for (const s of signals) {
         if (s.ingested_at && s.enriched_at) {
@@ -121,12 +121,29 @@ function usePipelineMetrics() {
       }
       const avgEnrichSecs = enrichTimes.length > 0 ? Math.round(enrichTimes.reduce((a, b) => a + b, 0) / enrichTimes.length) : 0;
 
+      const benchmarkDetected = benchmarks.filter(b => b.detected || b.validation_status === "detected").length;
+      const benchmarkMissed = benchmarks.filter(b => b.validation_status === "missed").length;
+      const benchmarkLatencies = benchmarks.map(b => b.detection_latency_minutes).filter((v): v is number => typeof v === "number");
+      const avgBenchmarkLatency = benchmarkLatencies.length > 0 ? Math.round(benchmarkLatencies.reduce((a, b) => a + b, 0) / benchmarkLatencies.length) : 0;
+
       return {
         pipeline: { intakeSuccessRate, avgDuration, enrichSuccessRate, pending, stuck, withErrors, avgEnrichSecs, totalRuns: runs.length },
-        sourceQuality: { tier1, tier2, tier3, official, tier12pct, officialPct, uniqueSources, total: signals.length },
+        sourceQuality: {
+          tier1, tier2, tier3, official, tier12pct, officialPct, uniqueSources, total: signals.length,
+          registryTotal: registry.length,
+          registryOfficial: registry.filter(r => r.official_source).length,
+          registryEnabled: registry.filter(r => r.enabled).length,
+        },
         eventQuality: { multiConfirmed, avgSourceCount, total: signals.length },
         routing: { routed, suppressed, confirmed, rejected, unclear, feedbackTotal, confirmRate, rejectRate },
         decisions: { signalDecisions, accepted, completed, withOutcomes },
+        coverage: {
+          latest: latestCoverage,
+          benchmarkTotal: benchmarks.length,
+          benchmarkDetected,
+          benchmarkMissed,
+          avgBenchmarkLatency,
+        },
         categories: catCounts,
       };
     },
