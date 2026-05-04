@@ -1,0 +1,1 @@
+ALTER TYPE signal_category ADD VALUE IF NOT EXISTS 'maritime_security';

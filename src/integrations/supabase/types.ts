@@ -15053,6 +15053,7 @@ export type Database = {
         | "food_agriculture"
         | "water_hydrology"
         | "migration_displacement"
+        | "maritime_security"
       signal_status:
         | "new"
         | "developing"
@@ -15297,6 +15298,7 @@ export const Constants = {
         "food_agriculture",
         "water_hydrology",
         "migration_displacement",
+        "maritime_security",
       ],
       signal_status: [
         "new",
