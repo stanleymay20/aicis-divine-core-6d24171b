@@ -54,7 +54,8 @@ serve(async (req) => {
       const needsPop = !row.population_est || row.population_est === 0 || row.population_est === 1_000_000;
       const needsGeo = row.lat == null || row.lon == null;
       const needsArea = !(row as any).area_km2 || (row as any).area_km2 <= 0;
-      if (!needsPop && !needsGeo && !needsArea) { skipped++; continue; }
+      const needsClass = !(row as any).urban_rural;
+      if (!needsPop && !needsGeo && !needsArea && !needsClass) { skipped++; continue; }
       const patch: Record<string, unknown> = {
         lat: row.lat ?? m.lat ?? null,
         lon: row.lon ?? m.lon ?? null,
