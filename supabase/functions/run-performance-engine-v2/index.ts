@@ -312,10 +312,15 @@ Deno.serve(async (req) => {
   const startMs = Date.now();
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const body = await req.json().catch(() => ({}));
+    const targetIso3s = Array.isArray(body.iso3s)
+      ? body.iso3s.map((v: unknown) => String(v).toUpperCase()).filter((v: string) => /^[A-Z0-9]{3}$/.test(v))
+      : null;
+    const batchSize = Math.max(1, Math.min(100, Number(body.batch_size ?? 80)));
+    const offset = Math.max(0, Number(body.offset ?? 0));
 
     // 1. Check freeze state from DB
     const { data: freezeFlag } = await supabase
@@ -334,9 +339,13 @@ Deno.serve(async (req) => {
     if (profileRepairErr) throw new Error(`Failed to ensure country profiles: ${profileRepairErr.message}`);
 
     // 2. Load country profiles
-    const { data: profiles, error: profErr } = await supabase
+    let profileQuery = supabase
       .from("country_profiles")
-      .select("iso3, country_name, kpis");
+      .select("iso3, country_name, kpis", { count: "exact" })
+      .order("iso3", { ascending: true });
+    if (targetIso3s?.length) profileQuery = profileQuery.in("iso3", targetIso3s);
+    else profileQuery = profileQuery.range(offset, offset + batchSize - 1);
+    const { data: profiles, error: profErr, count: profileCount } = await profileQuery;
     if (profErr) throw new Error(`Failed to load profiles: ${profErr.message}`);
     const validProfiles = (profiles || []).filter((p: any) => p.iso3 && p.country_name && p.kpis);
 
