@@ -16,6 +16,10 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
   try {
+    const { data: canonicalAnchors, error: anchorErr } = await supabase
+      .rpc("ensure_l0_reporting_anchors");
+    if (anchorErr) throw anchorErr;
+
     const r = await fetch(
       "https://restcountries.com/v3.1/all?fields=cca3,population,area,latlng",
       { signal: AbortSignal.timeout(20000) },
@@ -65,10 +69,10 @@ serve(async (req) => {
 
     await supabase.from("automation_logs").insert({
       job_name: FN, status: "success",
-      message: `Backfilled L0 pop for ${updated}/${rows?.length ?? 0} rows (${skipped} no match)`,
+      message: `Created ${canonicalAnchors ?? 0} canonical L0 anchors; backfilled L0 pop for ${updated}/${rows?.length ?? 0} rows (${skipped} no match)`,
     });
 
-    return new Response(JSON.stringify({ ok: true, updated, considered: rows?.length ?? 0, skipped }), {
+    return new Response(JSON.stringify({ ok: true, canonicalAnchors: canonicalAnchors ?? 0, updated, considered: rows?.length ?? 0, skipped }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
