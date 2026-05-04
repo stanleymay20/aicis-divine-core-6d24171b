@@ -325,6 +325,14 @@ Deno.serve(async (req) => {
       .single();
     const frozen = freezeFlag?.enabled === true;
 
+    const { data: repairedAnchors, error: anchorErr } = await supabase
+      .rpc("ensure_l0_reporting_anchors");
+    if (anchorErr) throw new Error(`Failed to ensure local anchors: ${anchorErr.message}`);
+
+    const { data: repairedProfiles, error: profileRepairErr } = await supabase
+      .rpc("ensure_country_profiles_from_normalized");
+    if (profileRepairErr) throw new Error(`Failed to ensure country profiles: ${profileRepairErr.message}`);
+
     // 2. Load country profiles
     const { data: profiles, error: profErr } = await supabase
       .from("country_profiles")
@@ -593,6 +601,7 @@ Deno.serve(async (req) => {
       job_name: "run-performance-engine-v2",
       status: "success",
       message: JSON.stringify({
+        repairedAnchors: repairedAnchors ?? 0, repairedProfiles: repairedProfiles ?? 0,
         countriesProcessed, totalDomains, breakCount,
         archiveEntries: allArchive.length, snapshotEntries: allSnapshots.length,
         calibrationEntries: allCalibMetrics.length, spcEntries: allSPCObs.length,
@@ -604,6 +613,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true, frozen, killSwitchTriggered,
+      repairedAnchors: repairedAnchors ?? 0, repairedProfiles: repairedProfiles ?? 0,
       countriesProcessed, totalDomains, breakCount,
       entries: { archive: allArchive.length, snapshots: allSnapshots.length, calibration: allCalibMetrics.length, spc: allSPCObs.length, residuals: allResiduals.length },
       elapsedMs: elapsed,
