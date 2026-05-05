@@ -417,25 +417,38 @@ async function snapshotCoverage(supabase: any, registrySources: RegistrySource[]
   }, { onConflict: "snapshot_date" });
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
+// Background-safe runner so the HTTP response returns immediately and the
+// cron worker doesn't have to wait for the full ingestion (which can exceed
+// the edge function's ~30s wall-clock budget).
+async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; shardIndex: number; shardSize: number }) {
   const intakeStart = Date.now();
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !supabaseKey) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !supabaseKey) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
+  const [trustDataRes, allRegistrySources, newsArticles, gdeltArticles] = await Promise.all([
+    supabase.from("source_trust_scores").select("source_name, credibility_weight, source_type, verification_level, official_source"),
+    loadRegistrySources(supabase),
+    fetchNewsApiArticles(NEWSAPI_KEY),
+    fetchGdeltArticles(),
+  ]);
 
-    const [trustDataRes, registrySources, newsArticles, gdeltArticles] = await Promise.all([
-      supabase.from("source_trust_scores").select("source_name, credibility_weight, source_type, verification_level, official_source"),
-      loadRegistrySources(supabase),
-      fetchNewsApiArticles(NEWSAPI_KEY),
-      fetchGdeltArticles(),
-    ]);
+  // Shard the registry by minute so each cron tick only fetches a slice and
+  // the full registry is rotated through every `shardCount` runs.
+  const sortedRegistry = [...allRegistrySources];
+  let registrySources = sortedRegistry;
+  if (opts.shardSize > 0 && sortedRegistry.length > opts.shardSize) {
+    const shards: RegistrySource[][] = [];
+    for (let i = 0; i < sortedRegistry.length; i += opts.shardSize) {
+      shards.push(sortedRegistry.slice(i, i + opts.shardSize));
+    }
+    const idx = ((opts.shardIndex % shards.length) + shards.length) % shards.length;
+    registrySources = shards[idx];
+    console.log(`[intake] sharded registry: shard ${idx + 1}/${shards.length} (${registrySources.length}/${sortedRegistry.length} sources)`);
+  }
 
     const trustData = trustDataRes.data || [];
     const trustMap: Record<string, { weight: number; type: string; level: string; official: boolean }> = {};
