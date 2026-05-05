@@ -294,13 +294,13 @@ Deno.serve(async (req) => {
       JSON.stringify({ processed: written, new_canonicals: newCanonicals, duplicates: dupes, duration_ms: duration }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : (typeof e === "object" ? JSON.stringify(e) : String(e));
-    console.error("signal-canonicalizer error:", msg, e);
+  } catch (e: any) {
+    const msg = e?.message || e?.error_description || e?.error || e?.details || e?.hint || e?.code || JSON.stringify(e, Object.getOwnPropertyNames(e || {})) || String(e);
+    console.error("signal-canonicalizer error:", msg, JSON.stringify(e, Object.getOwnPropertyNames(e || {})));
     await supa.from("automation_logs").insert({
       job_name: "signal-canonicalizer",
       status: "error",
-      message: msg.slice(0, 500),
+      message: String(msg).slice(0, 500),
     });
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
