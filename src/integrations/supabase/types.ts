@@ -6013,13 +6013,19 @@ export type Database = {
           affected_sectors: string[] | null
           affected_stakeholders: string[] | null
           audience_framing: Json | null
+          canonical_event_id: string | null
+          canonical_event_status: string | null
           canonical_source_name: string | null
+          canonicalized_at: string | null
           category: Database["public"]["Enums"]["signal_category"]
           classification_time_ms: number | null
+          confidence_explanation: Json | null
           confidence_score: number
+          corroboration_count: number | null
           created_at: string
           decision_candidates: Json | null
           dedup_key: string | null
+          duplicate_of_signal_id: string | null
           enriched_at: string | null
           enrichment_attempts: number | null
           enrichment_error: string | null
@@ -6039,10 +6045,12 @@ export type Database = {
           model_version: string | null
           multi_source_confirmed: boolean | null
           normalized_summary: string | null
+          novelty_score: number | null
           occurred_at: string | null
           official_source: boolean | null
           official_source_present: boolean | null
           primary_source: string | null
+          propaganda_risk_score: number | null
           recommended_actions: Json | null
           related_signal_ids: string[] | null
           routed_at: string | null
@@ -6050,6 +6058,7 @@ export type Database = {
           routing_suppressed_reason: string | null
           routing_targets: string[] | null
           source_count: number
+          source_credibility_score: number | null
           source_rank_score: number | null
           source_references: Json | null
           source_trust_tier: string | null
@@ -6068,13 +6077,19 @@ export type Database = {
           affected_sectors?: string[] | null
           affected_stakeholders?: string[] | null
           audience_framing?: Json | null
+          canonical_event_id?: string | null
+          canonical_event_status?: string | null
           canonical_source_name?: string | null
+          canonicalized_at?: string | null
           category: Database["public"]["Enums"]["signal_category"]
           classification_time_ms?: number | null
+          confidence_explanation?: Json | null
           confidence_score?: number
+          corroboration_count?: number | null
           created_at?: string
           decision_candidates?: Json | null
           dedup_key?: string | null
+          duplicate_of_signal_id?: string | null
           enriched_at?: string | null
           enrichment_attempts?: number | null
           enrichment_error?: string | null
@@ -6094,10 +6109,12 @@ export type Database = {
           model_version?: string | null
           multi_source_confirmed?: boolean | null
           normalized_summary?: string | null
+          novelty_score?: number | null
           occurred_at?: string | null
           official_source?: boolean | null
           official_source_present?: boolean | null
           primary_source?: string | null
+          propaganda_risk_score?: number | null
           recommended_actions?: Json | null
           related_signal_ids?: string[] | null
           routed_at?: string | null
@@ -6105,6 +6122,7 @@ export type Database = {
           routing_suppressed_reason?: string | null
           routing_targets?: string[] | null
           source_count?: number
+          source_credibility_score?: number | null
           source_rank_score?: number | null
           source_references?: Json | null
           source_trust_tier?: string | null
@@ -6123,13 +6141,19 @@ export type Database = {
           affected_sectors?: string[] | null
           affected_stakeholders?: string[] | null
           audience_framing?: Json | null
+          canonical_event_id?: string | null
+          canonical_event_status?: string | null
           canonical_source_name?: string | null
+          canonicalized_at?: string | null
           category?: Database["public"]["Enums"]["signal_category"]
           classification_time_ms?: number | null
+          confidence_explanation?: Json | null
           confidence_score?: number
+          corroboration_count?: number | null
           created_at?: string
           decision_candidates?: Json | null
           dedup_key?: string | null
+          duplicate_of_signal_id?: string | null
           enriched_at?: string | null
           enrichment_attempts?: number | null
           enrichment_error?: string | null
@@ -6149,10 +6173,12 @@ export type Database = {
           model_version?: string | null
           multi_source_confirmed?: boolean | null
           normalized_summary?: string | null
+          novelty_score?: number | null
           occurred_at?: string | null
           official_source?: boolean | null
           official_source_present?: boolean | null
           primary_source?: string | null
+          propaganda_risk_score?: number | null
           recommended_actions?: Json | null
           related_signal_ids?: string[] | null
           routed_at?: string | null
@@ -6160,6 +6186,7 @@ export type Database = {
           routing_suppressed_reason?: string | null
           routing_targets?: string[] | null
           source_count?: number
+          source_credibility_score?: number | null
           source_rank_score?: number | null
           source_references?: Json | null
           source_trust_tier?: string | null
@@ -6172,7 +6199,15 @@ export type Database = {
           updated_at?: string
           urgency_score?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "global_signals_duplicate_of_signal_id_fkey"
+            columns: ["duplicate_of_signal_id"]
+            isOneToOne: false
+            referencedRelation: "global_signals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       gov_policies: {
         Row: {
@@ -10962,6 +10997,39 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_source_trust_registry: {
+        Row: {
+          created_at: string
+          credibility_score: number
+          id: string
+          is_official: boolean
+          notes: string | null
+          pattern: string
+          propaganda_risk_score: number
+          tier: string
+        }
+        Insert: {
+          created_at?: string
+          credibility_score: number
+          id?: string
+          is_official?: boolean
+          notes?: string | null
+          pattern: string
+          propaganda_risk_score?: number
+          tier: string
+        }
+        Update: {
+          created_at?: string
+          credibility_score?: number
+          id?: string
+          is_official?: boolean
+          notes?: string | null
+          pattern?: string
+          propaganda_risk_score?: number
+          tier?: string
+        }
+        Relationships: []
+      }
       signal_truth_scores: {
         Row: {
           country_mapping_accuracy: number | null
@@ -14896,6 +14964,15 @@ export type Database = {
           _success?: boolean
         }
         Returns: undefined
+      }
+      resolve_source_trust: {
+        Args: { p_source: string }
+        Returns: {
+          credibility_score: number
+          is_official: boolean
+          propaganda_risk_score: number
+          tier: string
+        }[]
       }
       rollup_community_to_urban: { Args: never; Returns: number }
       rollup_country_to_regional: { Args: never; Returns: number }
