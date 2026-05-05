@@ -144,16 +144,15 @@ serve(async (req) => {
         published: hit.publishedDate || null,
       });
       benchmarksToInsert.push({
+        benchmark_key: `audit_${norm(hit.title).split(" ").slice(0,8).join("_")}`.slice(0,200),
         event_title: hit.title.slice(0, 500),
         event_summary: (hit.description || hit.title).slice(0, 1000),
-        event_url: hit.url,
+        source_url: hit.url,
+        source_name: "firecrawl_audit",
         event_occurred_at: eventOccurredAt,
-        category: "geopolitical",
-        expected_keywords: [],
         validation_status: "missed",
         detected: false,
         validation_notes: `Auto-flagged by detection-audit (best similarity ${bestScore.toFixed(2)})`,
-        impact_score: 50,
       });
     }
   }
