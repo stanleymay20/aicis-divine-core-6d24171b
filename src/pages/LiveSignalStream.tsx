@@ -38,6 +38,10 @@ type Signal = {
   source_language: string | null;
   translated_title: string | null;
   translation_status: string | null;
+  language_tier: string | null;
+  script_detected: string | null;
+  country_extraction_method: string | null;
+  country_extraction_confidence: number | null;
 };
 
 const WINDOW_MS = 30 * 60 * 1000;
