@@ -10,18 +10,20 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Download, FileDown, Lock, Loader2, ShieldCheck, History, ExternalLink } from "lucide-react";
+import { Download, FileDown, Lock, Loader2, ShieldCheck, History, ExternalLink, Eye, Archive } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 type DatasetKey = "local_events" | "early_warnings" | "geo_audit"
-                | "country_corrections" | "normalized_events" | "training_dataset";
+                | "country_corrections" | "normalized_events" | "training_dataset"
+                | "global_signals";
 
 const DATASETS: { key: DatasetKey; label: string; description: string; tier: "public"|"private"|"training" }[] = [
+  { key: "global_signals",      label: "Global Signals (raw)",     description: "All ingested signals — wires, recoveries, official sources. The richest planetary feed.", tier: "private" },
   { key: "local_events",        label: "Local Reality Events",     description: "Geo-localized events with severity, confidence, evidence chain", tier: "private" },
   { key: "early_warnings",      label: "Early Warnings",           description: "Active and resolved warning signals with escalation probability", tier: "private" },
+  { key: "normalized_events",   label: "Normalized Events",        description: "Cross-provider canonical events (provenance preserved)", tier: "private" },
   { key: "geo_audit",           label: "Geo Resolution Audit",     description: "Per-signal geocoding attempts and unresolved-phrase reasons", tier: "training" },
   { key: "country_corrections", label: "Country Corrections",      description: "Mismatch detections rerouting signals to detected ISO3", tier: "training" },
-  { key: "normalized_events",   label: "Normalized Events",        description: "Cross-provider canonical events (provenance preserved)", tier: "private" },
   { key: "training_dataset",    label: "ML Training Dataset",      description: "Leakage-safe country-domain features with z-score labels", tier: "training" },
 ];
 
@@ -41,21 +43,45 @@ type ExportLog = {
   exported_by_email: string | null;
 };
 
+function fmtBytes(n: number | null | undefined) {
+  if (!n) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n/1024).toFixed(1)} KB`;
+  return `${(n/1024/1024).toFixed(2)} MB`;
+}
+
 export default function ExportCenter() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [dataset, setDataset] = useState<DatasetKey>("local_events");
+  const [dataset, setDataset] = useState<DatasetKey>("global_signals");
   const [format, setFormat] = useState<"csv"|"json"|"ndjson">("csv");
   const [iso3, setIso3] = useState("");
   const [eventType, setEventType] = useState("");
   const [warningKind, setWarningKind] = useState("");
+  const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [minConfidence, setMinConfidence] = useState<string>("");
   const [minSeverity, setMinSeverity] = useState<string>("");
   const [localityOnly, setLocalityOnly] = useState(false);
-  const [limit, setLimit] = useState(10_000);
+  const [gzipOn, setGzipOn] = useState(true);
+  const [limit, setLimit] = useState(50_000);
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
+
+  const buildFilters = () => {
+    const filters: Record<string, unknown> = {};
+    if (iso3.trim()) filters.iso3 = iso3.trim().toUpperCase();
+    if (eventType.trim()) filters.event_type = eventType.trim();
+    if (warningKind.trim()) filters.warning_kind = warningKind.trim();
+    if (search.trim()) filters.search = search.trim();
+    if (dateFrom) filters.date_from = dateFrom;
+    if (dateTo) filters.date_to = dateTo;
+    if (minConfidence !== "") filters.min_confidence = Number(minConfidence);
+    if (minSeverity !== "") filters.min_severity = Number(minSeverity);
+    if (localityOnly) filters.locality_only = true;
+    return filters;
+  };
 
   const history = useQuery({
     queryKey: ["export-history"],
@@ -71,29 +97,40 @@ export default function ExportCenter() {
     staleTime: 30_000,
   });
 
+  const previewMut = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("export-aicis-dataset", {
+        body: { action: "preview", dataset_name: dataset, filters: buildFilters() },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.ok) throw new Error(data?.error || "Preview failed");
+      return data;
+    },
+    onSuccess: (d) => {
+      setPreviewCount(d.estimated_row_count);
+      toast({
+        title: "Preview",
+        description: `${d.estimated_row_count.toLocaleString()} matching rows · cap ${d.hard_cap.toLocaleString()}`,
+      });
+    },
+    onError: (e: Error) => toast({ title: "Preview failed", description: e.message, variant: "destructive" }),
+  });
+
   const exportMut = useMutation({
     mutationFn: async () => {
-      const filters: Record<string, unknown> = {};
-      if (iso3.trim()) filters.iso3 = iso3.trim().toUpperCase();
-      if (eventType.trim()) filters.event_type = eventType.trim();
-      if (warningKind.trim()) filters.warning_kind = warningKind.trim();
-      if (dateFrom) filters.date_from = dateFrom;
-      if (dateTo) filters.date_to = dateTo;
-      if (minConfidence !== "") filters.min_confidence = Number(minConfidence);
-      if (minSeverity !== "") filters.min_severity = Number(minSeverity);
-      if (localityOnly) filters.locality_only = true;
-
       const { data, error } = await supabase.functions.invoke("export-aicis-dataset", {
-        body: { dataset_name: dataset, format, filters, limit },
+        body: { action: "export", dataset_name: dataset, format, filters: buildFilters(), limit, gzip: gzipOn },
       });
       if (error) throw new Error(error.message);
       if (!data?.ok) throw new Error(data?.error || "Export failed");
       return data;
     },
     onSuccess: (data) => {
+      const ratio = data.compression_ratio && data.compression_ratio > 1
+        ? ` · gzip ${data.compression_ratio}×` : "";
       toast({
         title: "Export ready",
-        description: `${data.row_count.toLocaleString()} rows • ${(data.file_size_bytes/1024).toFixed(1)} KB • SHA-256 ${data.sha256_checksum.slice(0,12)}…`,
+        description: `${data.row_count.toLocaleString()} rows · ${fmtBytes(data.file_size_bytes)}${ratio} · sha256 ${data.sha256_checksum.slice(0,12)}…`,
       });
       if (data.signed_url) window.open(data.signed_url, "_blank", "noopener,noreferrer");
       qc.invalidateQueries({ queryKey: ["export-history"] });
@@ -107,6 +144,7 @@ export default function ExportCenter() {
     : "bg-sky-500/15 text-sky-300 border-sky-700/50";
 
   const datasetMeta = DATASETS.find(d => d.key === dataset)!;
+  const overCap = previewCount !== null && previewCount > limit;
 
   return (
     <div className="container mx-auto py-8 max-w-7xl space-y-6">
@@ -121,16 +159,15 @@ export default function ExportCenter() {
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <ShieldCheck className="h-4 w-4 text-emerald-400" />
-          Non-Surveillance Guarantee · No PII · SHA-256 verified
+          Non-Surveillance Guarantee · No PII · SHA-256 verified · Keyset-stable pagination
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Builder */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-lg">Build export</CardTitle>
-            <CardDescription>Choose dataset, format, and apply filters. Hard cap 250,000 rows.</CardDescription>
+            <CardDescription>Choose dataset, format, and apply filters. Hard cap 250,000 rows. Always preview first.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div>
@@ -139,8 +176,8 @@ export default function ExportCenter() {
                 {DATASETS.map(d => (
                   <button
                     key={d.key}
-                    onClick={() => setDataset(d.key)}
-                    className={`text-left rounded-md border p-3 transition-colors ${
+                    onClick={() => { setDataset(d.key); setPreviewCount(null); }}
+                    className={`text-left rounded-md border p-3 transition-colors min-h-[44px] ${
                       dataset === d.key ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"
                     }`}
                   >
@@ -175,7 +212,7 @@ export default function ExportCenter() {
               </div>
               <div>
                 <Label htmlFor="iso3">Country (ISO3)</Label>
-                <Input id="iso3" maxLength={3} placeholder="e.g. KEN" value={iso3}
+                <Input id="iso3" maxLength={3} placeholder="e.g. LBR, KEN" value={iso3}
                   onChange={(e) => setIso3(e.target.value.toUpperCase())} />
               </div>
 
@@ -188,9 +225,15 @@ export default function ExportCenter() {
                 <Input id="to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="etype">Event type</Label>
-                <Input id="etype" placeholder="e.g. flood, conflict" value={eventType}
+                <Label htmlFor="etype">Event type / category</Label>
+                <Input id="etype" placeholder="flood, conflict, geopolitical…" value={eventType}
                   onChange={(e) => setEventType(e.target.value)} />
+              </div>
+
+              <div className="md:col-span-3">
+                <Label htmlFor="search">Free-text search (title / summary)</Label>
+                <Input id="search" placeholder='e.g. "noise pollution Liberia"' value={search}
+                  onChange={(e) => setSearch(e.target.value)} />
               </div>
 
               <div>
@@ -205,16 +248,37 @@ export default function ExportCenter() {
                   onChange={(e) => setMinConfidence(e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="sev">Min severity (0–1)</Label>
+                <Label htmlFor="sev">Min severity / impact (0–1)</Label>
                 <Input id="sev" type="number" step="0.05" min={0} max={1} value={minSeverity}
                   onChange={(e) => setMinSeverity(e.target.value)} />
               </div>
             </div>
 
-            <div className="flex items-center gap-3 pt-1">
-              <Switch id="loc" checked={localityOnly} onCheckedChange={setLocalityOnly} />
-              <Label htmlFor="loc" className="cursor-pointer">Only rows with a resolved locality</Label>
+            <div className="flex items-center gap-6 pt-1 flex-wrap">
+              <div className="flex items-center gap-3">
+                <Switch id="loc" checked={localityOnly} onCheckedChange={setLocalityOnly} />
+                <Label htmlFor="loc" className="cursor-pointer">Only rows with a resolved locality</Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch id="gz" checked={gzipOn} onCheckedChange={setGzipOn} />
+                <Label htmlFor="gz" className="cursor-pointer flex items-center gap-1">
+                  <Archive className="h-4 w-4" /> gzip compress (typically 5–15× smaller)
+                </Label>
+              </div>
             </div>
+
+            {previewCount !== null && (
+              <div className={`rounded-md border p-3 text-xs ${
+                overCap
+                  ? "border-amber-700/50 bg-amber-500/10 text-amber-200"
+                  : "border-emerald-700/50 bg-emerald-500/10 text-emerald-200"
+              }`}>
+                Preview matched <strong>{previewCount.toLocaleString()}</strong> rows.
+                {overCap && (
+                  <> Your row limit is <strong>{limit.toLocaleString()}</strong> — only the most recent {limit.toLocaleString()} will be exported. Raise limit or tighten filters.</>
+                )}
+              </div>
+            )}
 
             <div className="rounded-md border border-amber-700/40 bg-amber-500/5 p-3 text-xs text-amber-200/90 flex items-start gap-2">
               <Lock className="h-4 w-4 mt-0.5 shrink-0" />
@@ -225,20 +289,31 @@ export default function ExportCenter() {
               </div>
             </div>
 
-            <Button
-              onClick={() => exportMut.mutate()}
-              disabled={exportMut.isPending}
-              className="w-full md:w-auto min-h-[44px]"
-              size="lg"
-            >
-              {exportMut.isPending
-                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating…</>
-                : <><Download className="h-4 w-4 mr-2" /> Generate export</>}
-            </Button>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                onClick={() => previewMut.mutate()}
+                disabled={previewMut.isPending}
+                variant="outline"
+                className="min-h-[44px]"
+              >
+                {previewMut.isPending
+                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Counting…</>
+                  : <><Eye className="h-4 w-4 mr-2" /> Preview row count</>}
+              </Button>
+              <Button
+                onClick={() => exportMut.mutate()}
+                disabled={exportMut.isPending}
+                className="min-h-[44px]"
+                size="lg"
+              >
+                {exportMut.isPending
+                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating…</>
+                  : <><Download className="h-4 w-4 mr-2" /> Generate export</>}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
-        {/* History */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -261,7 +336,7 @@ export default function ExportCenter() {
                 </div>
                 <div className="text-muted-foreground">
                   {log.format.toUpperCase()} · {log.row_count.toLocaleString()} rows
-                  {log.file_size_bytes ? ` · ${(log.file_size_bytes/1024).toFixed(1)} KB` : ""}
+                  {log.file_size_bytes ? ` · ${fmtBytes(log.file_size_bytes)}` : ""}
                   {log.duration_ms ? ` · ${log.duration_ms}ms` : ""}
                 </div>
                 {log.sha256_checksum && (
