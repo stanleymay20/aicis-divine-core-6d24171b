@@ -57,7 +57,7 @@ export const PlanetaryDetectionBadge = () => {
         </div>
         <p className="text-[10px] sm:text-[11px] mt-0.5 text-muted-foreground truncate">
           {data.events_detected}/{data.trending_events_checked} trending world events caught ·
-          {" "}{formatDistanceToNow(new Date(data.created_at), { addSuffix: true })}
+          {" "}{formatDistanceToNow(new Date(data.run_at), { addSuffix: true })}
         </p>
       </div>
     </Card>
