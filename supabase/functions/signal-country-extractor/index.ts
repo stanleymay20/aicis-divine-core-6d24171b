@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
       processed++;
       const text = [sig.translated_title, sig.translated_summary, sig.title, sig.summary]
         .filter(Boolean).join("  ");
-      const cands = extractCandidates(text, countryRows);
+      const cands = extractCandidates(text, lookups);
 
       const update: any = {
         country_extracted_at: new Date().toISOString(),
