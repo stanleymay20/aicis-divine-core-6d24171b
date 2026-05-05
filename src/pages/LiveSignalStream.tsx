@@ -30,6 +30,11 @@ type Signal = {
   affected_countries: string[] | null;
   first_detected_at: string;
   ingested_at: string | null;
+  canonical_event_status: string | null;
+  corroboration_count: number | null;
+  propaganda_risk_score: number | null;
+  source_credibility_score: number | null;
+  confidence_explanation: any;
 };
 
 const WINDOW_MS = 30 * 60 * 1000;
