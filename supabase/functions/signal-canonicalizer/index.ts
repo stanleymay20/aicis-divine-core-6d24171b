@@ -270,13 +270,15 @@ Deno.serve(async (req) => {
       return out;
     };
 
-    for (const part of chunk(updates, 200)) {
-      const { error } = await supa.from("global_signals").upsert(part, { onConflict: "id" });
+    for (const u of updates) {
+      const { id, ...patch } = u;
+      const { error } = await supa.from("global_signals").update(patch).eq("id", id);
       if (error) throw error;
-      written += part.length;
+      written++;
     }
-    for (const part of chunk(canonPatch, 200)) {
-      const { error } = await supa.from("global_signals").upsert(part, { onConflict: "id" });
+    for (const u of canonPatch) {
+      const { id, ...patch } = u;
+      const { error } = await supa.from("global_signals").update(patch).eq("id", id);
       if (error) throw error;
     }
 
