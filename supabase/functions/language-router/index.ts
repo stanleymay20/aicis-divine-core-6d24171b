@@ -30,8 +30,8 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const MODEL = "google/gemini-3-flash-preview";
 
-const BATCH = 400;
-const AI_FALLBACK_MAX = 30; // cap on LLM calls per run
+const BATCH = 150;
+const AI_FALLBACK_MAX = 10;
 
 const TIER_1 = new Set(["en","ar","fr","es","pt","ru","zh","hi","id","sw","tr","fa","ur","bn","ha","am","uk"]);
 const TIER_2 = new Set(["de","it","nl","pl","vi","ja","ko","th","he","el","ro","hu","cs","sv","no","da","fi","ms","fil","ne","my","kk","az","uz"]);
