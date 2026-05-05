@@ -256,6 +256,15 @@ export default function LiveSignalStream() {
                     {(s.affected_countries?.length ?? 0) > 0 && (
                       <span>· {s.affected_countries!.slice(0, 4).join(", ")}{s.affected_countries!.length > 4 ? "…" : ""}</span>
                     )}
+                    {s.country_extraction_method && (s.affected_countries?.length ?? 0) > 0 && (
+                      <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-300 border-amber-700/50" title={`country inferred (conf ${s.country_extraction_confidence ?? 0})`}>inferred</Badge>
+                    )}
+                    {s.script_detected && s.script_detected !== "Latn" && (
+                      <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-300 border-violet-700/50">{s.script_detected}</Badge>
+                    )}
+                    {s.language_tier === "tier_3" && (
+                      <Badge variant="outline" className="text-[10px] bg-zinc-500/10 text-zinc-300 border-zinc-700/50">low-resource</Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     {typeof s.impact_score === "number" && <span className="font-mono">imp {s.impact_score}</span>}
