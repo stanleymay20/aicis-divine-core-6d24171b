@@ -3822,6 +3822,48 @@ export type Database = {
         }
         Relationships: []
       }
+      detection_audit_runs: {
+        Row: {
+          avg_latency_minutes: number | null
+          detected_events: Json
+          detection_rate: number
+          events_detected: number
+          events_missed: number
+          id: string
+          metadata: Json
+          missed_events: Json
+          query_set: string
+          run_at: string
+          trending_events_checked: number
+        }
+        Insert: {
+          avg_latency_minutes?: number | null
+          detected_events?: Json
+          detection_rate?: number
+          events_detected?: number
+          events_missed?: number
+          id?: string
+          metadata?: Json
+          missed_events?: Json
+          query_set?: string
+          run_at?: string
+          trending_events_checked?: number
+        }
+        Update: {
+          avg_latency_minutes?: number | null
+          detected_events?: Json
+          detection_rate?: number
+          events_detected?: number
+          events_missed?: number
+          id?: string
+          metadata?: Json
+          missed_events?: Json
+          query_set?: string
+          run_at?: string
+          trending_events_checked?: number
+        }
+        Relationships: []
+      }
       diagnostics_log: {
         Row: {
           created_at: string | null
@@ -12799,6 +12841,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      web_search_sweep_queries: {
+        Row: {
+          category: string
+          created_at: string
+          enabled: boolean
+          id: string
+          priority: number
+          query: string
+          result_limit: number
+          time_filter: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          priority?: number
+          query: string
+          result_limit?: number
+          time_filter?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          priority?: number
+          query?: string
+          result_limit?: number
+          time_filter?: string
+        }
+        Relationships: []
       }
       webhook_event_log: {
         Row: {
