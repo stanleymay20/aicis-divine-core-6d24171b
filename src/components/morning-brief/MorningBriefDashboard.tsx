@@ -25,6 +25,7 @@ import { LayerTrustTiersPanel } from "./LayerTrustTiersPanel";
 import { PersistentAskBar } from "./PersistentAskBar";
 import { FirstRunTour } from "@/components/onboarding/FirstRunTour";
 import { TopEmergingRisksPanel } from "@/components/risk-ranking/TopEmergingRisksPanel";
+import { PlanetaryDetectionBadge } from "./PlanetaryDetectionBadge";
 
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
