@@ -19,7 +19,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const BATCH = 600;
+const BATCH = 250;
 
 // Static demonym/alias map for the most common cases. Keys are lowercase
 // alias tokens; value is ISO3. Multilingual where it's cheap and unambiguous.
