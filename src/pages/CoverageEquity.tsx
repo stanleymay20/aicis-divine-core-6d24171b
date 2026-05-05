@@ -37,6 +37,27 @@ export default function CoverageEquity() {
     staleTime: 60_000,
   });
 
+  const { data: langTiers } = useQuery({
+    queryKey: ["language-tier-breakdown"],
+    queryFn: async () => {
+      const cols = ["language_tier", "translation_status"] as const;
+      const queries = await Promise.all([
+        supabase.from("global_signals").select("id", { count: "exact", head: true }).eq("language_tier", "tier_1"),
+        supabase.from("global_signals").select("id", { count: "exact", head: true }).eq("language_tier", "tier_2"),
+        supabase.from("global_signals").select("id", { count: "exact", head: true }).eq("translation_status", "deferred_low_resource"),
+        supabase.from("global_signals").select("id", { count: "exact", head: true }).eq("language_tier", "unknown"),
+        supabase.from("global_signals").select("id", { count: "exact", head: true }).eq("translation_status", "pending"),
+        supabase.from("global_signals").select("id", { count: "exact", head: true }).eq("translation_status", "translated"),
+      ]);
+      return {
+        tier1: queries[0].count ?? 0, tier2: queries[1].count ?? 0,
+        lowResource: queries[2].count ?? 0, unknown: queries[3].count ?? 0,
+        pending: queries[4].count ?? 0, translated: queries[5].count ?? 0,
+      };
+    },
+    staleTime: 60_000,
+  });
+
   const latestRunAt = data?.[0]?.run_at;
   const latestRows = data?.filter(r => r.run_at === latestRunAt) || [];
   const totalGap = latestRows.reduce((acc, r) => acc + r.gap, 0);
