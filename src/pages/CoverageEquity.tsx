@@ -82,6 +82,25 @@ export default function CoverageEquity() {
         <Stat label="Last run" value={latestRunAt ? formatDistanceToNow(new Date(latestRunAt), { addSuffix: true }) : "—"} accent="text-sky-300" icon={<Globe2 className="h-4 w-4" />} />
       </div>
 
+      {langTiers && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2"><Languages className="h-4 w-4" /> Language tier breakdown</CardTitle>
+            <CardDescription>Tiered detection (Phase 3.1) — translation spend gated to Tier 1/2 high-relevance signals.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+              <Stat label="Tier 1 (high-signal)" value={langTiers.tier1.toString()} accent="text-emerald-300" icon={<Languages className="h-4 w-4" />} />
+              <Stat label="Tier 2 (common)" value={langTiers.tier2.toString()} accent="text-sky-300" icon={<Languages className="h-4 w-4" />} />
+              <Stat label="Low-resource deferred" value={langTiers.lowResource.toString()} accent="text-zinc-300" icon={<Languages className="h-4 w-4" />} />
+              <Stat label="Unknown" value={langTiers.unknown.toString()} accent="text-amber-300" icon={<Languages className="h-4 w-4" />} />
+              <Stat label="Pending translation" value={langTiers.pending.toString()} accent="text-violet-300" icon={<Languages className="h-4 w-4" />} />
+              <Stat label="Translated" value={langTiers.translated.toString()} accent="text-emerald-300" icon={<Languages className="h-4 w-4" />} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Latest equity report</CardTitle>
