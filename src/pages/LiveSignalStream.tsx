@@ -246,15 +246,7 @@ export default function LiveSignalStream() {
                   </div>
                 </div>
                 {isOpen && s.confidence_explanation && (
-                  <div className="mt-2 pt-2 border-t border-border/50 text-[11px] space-y-1">
-                    <div className="font-semibold text-foreground/80">Why AICIS trusts this</div>
-                    {Object.entries(s.confidence_explanation as Record<string, any>).map(([k, v]) => (
-                      <div key={k} className="flex justify-between gap-3 font-mono text-muted-foreground">
-                        <span>{k}</span>
-                        <span className="text-foreground/70 text-right">{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <WhyTrustPanel signal={s} />
                 )}
               </div>
             );
