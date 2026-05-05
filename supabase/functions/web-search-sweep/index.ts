@@ -193,9 +193,11 @@ serve(async (req) => {
   const toInsert: any[] = [];
   for (const c of candidates) {
     if (existing.has(c.k)) continue;
-    const occurredAt = c.hit.publishedDate
-      ? new Date(c.hit.publishedDate).toISOString()
-      : new Date().toISOString();
+    let occurredAt = new Date().toISOString();
+    if (c.hit.publishedDate) {
+      const d = new Date(c.hit.publishedDate);
+      if (!isNaN(d.getTime())) occurredAt = d.toISOString();
+    }
     const enc = new TextEncoder();
     const buf = await crypto.subtle.digest("SHA-256",
       enc.encode(`${c.hit.title}|${c.hit.url}|${occurredAt}`));
