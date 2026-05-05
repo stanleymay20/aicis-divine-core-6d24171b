@@ -105,51 +105,93 @@ const ALIASES: Record<string, string> = {
   "rusia": "RUS", "russie": "RUS", "chine": "CHN", "японии": "JPN",
 };
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 type CountryRow = { iso3: string; canonical_name: string };
-
 type Candidate = { iso3: string; score: number; matched: string[] };
 
-function extractCandidates(text: string, countries: CountryRow[]): Candidate[] {
-  if (!text) return [];
-  const t = ` ${text.toLowerCase()} `;
-  const tUpper = ` ${text} `;
-  const scores = new Map<string, Candidate>();
+// Pre-built lookup tables (built once per request, reused per signal).
+type Lookups = {
+  // lowercase token → [{iso3, weight, label}]
+  nameMap: Map<string, { iso3: string; weight: number; label: string }>;
+  aliasMap: Map<string, { iso3: string; weight: number; label: string }>;
+  iso3Set: Set<string>;
+};
 
-  const bump = (iso3: string, weight: number, matched: string) => {
+function buildLookups(countries: CountryRow[]): Lookups {
+  const nameMap = new Map<string, { iso3: string; weight: number; label: string }>();
+  const aliasMap = new Map<string, { iso3: string; weight: number; label: string }>();
+  const iso3Set = new Set<string>();
+  for (const c of countries) {
+    if (c.iso3?.length === 3) iso3Set.add(c.iso3);
+    if (c.canonical_name && c.canonical_name.length >= 3) {
+      nameMap.set(c.canonical_name.toLowerCase(), {
+        iso3: c.iso3, weight: 60, label: `name:${c.canonical_name}`,
+      });
+    }
+  }
+  for (const [alias, iso3] of Object.entries(ALIASES)) {
+    if (alias.length < 2) continue;
+    aliasMap.set(alias, {
+      iso3, weight: alias.length >= 5 ? 50 : 35, label: `alias:${alias}`,
+    });
+  }
+  return { nameMap, aliasMap, iso3Set };
+}
+
+// Tokenize text once into a set of word tokens (lowercase) and a set of
+// uppercase 3-letter tokens (for bare-ISO3 matching). Avoids per-country regex.
+function tokenizeOnce(text: string): { lowerTokens: Set<string>; lowerBigrams: Set<string>; lowerTrigrams: Set<string>; upperTriTokens: Set<string> } {
+  const lower = text.toLowerCase();
+  const wordsLower = lower.match(/[\p{L}][\p{L}'.-]{0,40}/gu) || [];
+  const wordsUpper = text.match(/[A-Z]{3}/g) || [];
+  const lowerTokens = new Set(wordsLower);
+  // bigrams + trigrams (joined by single space) for multi-word names like "south africa"
+  const lowerBigrams = new Set<string>();
+  const lowerTrigrams = new Set<string>();
+  for (let i = 0; i < wordsLower.length - 1; i++) {
+    lowerBigrams.add(`${wordsLower[i]} ${wordsLower[i + 1]}`);
+    if (i < wordsLower.length - 2) {
+      lowerTrigrams.add(`${wordsLower[i]} ${wordsLower[i + 1]} ${wordsLower[i + 2]}`);
+    }
+  }
+  const upperTriTokens = new Set(wordsUpper);
+  return { lowerTokens, lowerBigrams, lowerTrigrams, upperTriTokens };
+}
+
+function extractCandidates(text: string, lookups: Lookups): Candidate[] {
+  if (!text) return [];
+  const { nameMap, aliasMap, iso3Set } = lookups;
+  const { lowerTokens, lowerBigrams, lowerTrigrams, upperTriTokens } = tokenizeOnce(text);
+  const scores = new Map<string, Candidate>();
+  const bump = (iso3: string, weight: number, label: string) => {
     const c = scores.get(iso3);
     if (c) {
       c.score += weight;
-      if (!c.matched.includes(matched)) c.matched.push(matched);
+      if (!c.matched.includes(label) && c.matched.length < 6) c.matched.push(label);
     } else {
-      scores.set(iso3, { iso3, score: weight, matched: [matched] });
+      scores.set(iso3, { iso3, score: weight, matched: [label] });
     }
   };
 
-  // 1) Canonical name match
-  for (const c of countries) {
-    if (!c.canonical_name || c.canonical_name.length < 3) continue;
-    const name = c.canonical_name.toLowerCase();
-    if (t.includes(` ${name} `) || t.includes(` ${name},`) || t.includes(` ${name}.`) || t.includes(` ${name}'`)) {
-      bump(c.iso3, 60, `name:${c.canonical_name}`);
-    }
-  }
+  // helper to test a candidate phrase against the prebuilt sets
+  const testPhrase = (phrase: string): boolean => {
+    const wc = phrase.split(" ").length;
+    if (wc === 1) return lowerTokens.has(phrase);
+    if (wc === 2) return lowerBigrams.has(phrase);
+    if (wc === 3) return lowerTrigrams.has(phrase);
+    return false;
+  };
 
-  // 2) Alias / demonym map
-  for (const [alias, iso3] of Object.entries(ALIASES)) {
-    if (alias.length < 2) continue;
-    const re = new RegExp(`(^|[^\\p{L}])${escapeRegex(alias)}([^\\p{L}]|$)`, "iu");
-    if (re.test(text)) bump(iso3, alias.length >= 5 ? 50 : 35, `alias:${alias}`);
+  // 1) Canonical names (max 3 words via tokenized sets)
+  for (const [name, meta] of nameMap) {
+    if (testPhrase(name)) bump(meta.iso3, meta.weight, meta.label);
   }
-
-  // 3) Bare ISO3 token (uppercase word) — lower weight, only if surrounded by non-letters
-  for (const c of countries) {
-    if (c.iso3.length !== 3) continue;
-    const re = new RegExp(`(^|[^A-Za-z])${c.iso3}([^A-Za-z]|$)`);
-    if (re.test(tUpper)) bump(c.iso3, 25, `iso3:${c.iso3}`);
+  // 2) Aliases
+  for (const [alias, meta] of aliasMap) {
+    if (testPhrase(alias)) bump(meta.iso3, meta.weight, meta.label);
+  }
+  // 3) Bare uppercase ISO3 tokens
+  for (const tok of upperTriTokens) {
+    if (iso3Set.has(tok)) bump(tok, 25, `iso3:${tok}`);
   }
 
   return Array.from(scores.values()).sort((a, b) => b.score - a.score);
