@@ -60,8 +60,10 @@ function sourceBadge(s: Signal) {
 export default function LiveSignalStream() {
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState<"all" | "recovery" | "high_impact">("all");
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [tickCount, setTickCount] = useState(0);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const seen = useRef<Set<string>>(new Set());
 
   const initial = useQuery({
@@ -70,7 +72,7 @@ export default function LiveSignalStream() {
       const since = new Date(Date.now() - WINDOW_MS).toISOString();
       const { data, error } = await supabase
         .from("global_signals")
-        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at")
+        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation")
         .gte("first_detected_at", since)
         .order("first_detected_at", { ascending: false })
         .limit(200);
@@ -117,11 +119,14 @@ export default function LiveSignalStream() {
 
   const filtered = useMemo(() => {
     return signals.filter(s => {
+      if (!showDuplicates && s.canonical_event_status === "duplicate") return false;
       if (filter === "recovery") return s.ingestion_source === "detection_audit_recovery";
       if (filter === "high_impact") return (s.impact_score ?? 0) >= 65;
       return true;
     });
-  }, [signals, filter]);
+  }, [signals, filter, showDuplicates]);
+
+  const dupeCount = signals.filter(s => s.canonical_event_status === "duplicate").length;
 
   const recoveryCount = signals.filter(s => s.ingestion_source === "detection_audit_recovery").length;
   const sourceSet = new Set(signals.map(s => s.canonical_source_name || s.primary_source).filter(Boolean));
@@ -162,6 +167,9 @@ export default function LiveSignalStream() {
         <FilterPill active={filter === "all"} onClick={() => setFilter("all")}>All</FilterPill>
         <FilterPill active={filter === "recovery"} onClick={() => setFilter("recovery")}>Recovered only</FilterPill>
         <FilterPill active={filter === "high_impact"} onClick={() => setFilter("high_impact")}>High impact (≥65)</FilterPill>
+        <FilterPill active={showDuplicates} onClick={() => setShowDuplicates(v => !v)}>
+          {showDuplicates ? "Hiding none" : `Show duplicate reports (${dupeCount})`}
+        </FilterPill>
         {tickCount > 0 && (
           <span className="ml-auto text-xs text-muted-foreground">
             {tickCount} live insert{tickCount === 1 ? "" : "s"} since page load
