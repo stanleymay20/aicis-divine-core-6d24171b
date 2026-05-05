@@ -58,6 +58,7 @@ const Predictions = lazy(() => import("./pages/Predictions"));
 const ApiAudit = lazy(() => import("./pages/ApiAudit"));
 const LocalEvents = lazy(() => import("./pages/LocalEvents"));
 const ExportCenter = lazy(() => import("./pages/ExportCenter"));
+const LiveSignalStream = lazy(() => import("./pages/LiveSignalStream"));
 const PilotTruthFeed = lazy(() => import("./pages/PilotTruthFeed"));
 const DataPipeline = lazy(() => import("./pages/DataPipeline"));
 const OutcomeCockpit = lazy(() => import("./pages/OutcomeCockpit"));
@@ -116,6 +117,7 @@ const App = () => (
               <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
               <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
+              <Route path="/live-stream" element={<Protected><LiveSignalStream /></Protected>} />
               <Route path="/decision-ops" element={<Protected><DecisionOperations /></Protected>} />
               <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
               <Route path="/evidence-command" element={<Protected><EvidenceCommand /></Protected>} />
