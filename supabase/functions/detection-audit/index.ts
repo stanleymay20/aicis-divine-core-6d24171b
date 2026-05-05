@@ -147,9 +147,9 @@ serve(async (req) => {
   let reEvaluated = 0, nowDetected = 0;
   for (const m of (openMisses || [])) {
     if (isNoise(m.event_title)) {
-      // Drop noise benchmarks so they don't drag the score forever.
+      // Mark noise benchmarks as false_positive so they don't drag the score forever.
       await supabase.from("signal_detection_benchmarks")
-        .update({ validation_status: "ignored_noise", validation_notes: "Auto-pruned by detection-audit (noise pattern)" })
+        .update({ validation_status: "false_positive", validation_notes: "Auto-pruned by detection-audit (noise pattern)" })
         .eq("id", m.id);
       continue;
     }
