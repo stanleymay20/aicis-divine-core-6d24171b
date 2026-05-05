@@ -2203,6 +2203,48 @@ export type Database = {
         }
         Relationships: []
       }
+      coverage_equity_log: {
+        Row: {
+          country_iso3: string
+          country_name: string | null
+          floor: number
+          gap: number
+          id: string
+          language_codes: string[]
+          notes: string | null
+          queries_generated: number
+          run_at: string
+          signals_7d: number
+          status: string
+        }
+        Insert: {
+          country_iso3: string
+          country_name?: string | null
+          floor?: number
+          gap?: number
+          id?: string
+          language_codes?: string[]
+          notes?: string | null
+          queries_generated?: number
+          run_at?: string
+          signals_7d?: number
+          status?: string
+        }
+        Update: {
+          country_iso3?: string
+          country_name?: string | null
+          floor?: number
+          gap?: number
+          id?: string
+          language_codes?: string[]
+          notes?: string | null
+          queries_generated?: number
+          run_at?: string
+          signals_7d?: number
+          status?: string
+        }
+        Relationships: []
+      }
       crisis_events: {
         Row: {
           created_at: string | null
@@ -6033,6 +6075,14 @@ export type Database = {
           event_cluster_id: string | null
           evidence_hash: string | null
           first_detected_at: string
+          geo_admin0_iso3: string | null
+          geo_admin1: string | null
+          geo_admin2: string | null
+          geo_confidence: number | null
+          geo_lat: number | null
+          geo_lng: number | null
+          geo_method: string | null
+          geocoded_at: string | null
           id: string
           impact_reasoning: string | null
           impact_score: number
@@ -6049,6 +6099,8 @@ export type Database = {
           occurred_at: string | null
           official_source: boolean | null
           official_source_present: boolean | null
+          original_summary: string | null
+          original_title: string | null
           primary_source: string | null
           propaganda_risk_score: number | null
           recommended_actions: Json | null
@@ -6059,6 +6111,7 @@ export type Database = {
           routing_targets: string[] | null
           source_count: number
           source_credibility_score: number | null
+          source_language: string | null
           source_rank_score: number | null
           source_references: Json | null
           source_trust_tier: string | null
@@ -6067,6 +6120,11 @@ export type Database = {
           subcategory: string | null
           summary: string
           title: string
+          translated_at: string | null
+          translated_summary: string | null
+          translated_title: string | null
+          translation_model: string | null
+          translation_status: string | null
           uncertainty_notes: string | null
           updated_at: string
           urgency_score: number
@@ -6097,6 +6155,14 @@ export type Database = {
           event_cluster_id?: string | null
           evidence_hash?: string | null
           first_detected_at?: string
+          geo_admin0_iso3?: string | null
+          geo_admin1?: string | null
+          geo_admin2?: string | null
+          geo_confidence?: number | null
+          geo_lat?: number | null
+          geo_lng?: number | null
+          geo_method?: string | null
+          geocoded_at?: string | null
           id?: string
           impact_reasoning?: string | null
           impact_score?: number
@@ -6113,6 +6179,8 @@ export type Database = {
           occurred_at?: string | null
           official_source?: boolean | null
           official_source_present?: boolean | null
+          original_summary?: string | null
+          original_title?: string | null
           primary_source?: string | null
           propaganda_risk_score?: number | null
           recommended_actions?: Json | null
@@ -6123,6 +6191,7 @@ export type Database = {
           routing_targets?: string[] | null
           source_count?: number
           source_credibility_score?: number | null
+          source_language?: string | null
           source_rank_score?: number | null
           source_references?: Json | null
           source_trust_tier?: string | null
@@ -6131,6 +6200,11 @@ export type Database = {
           subcategory?: string | null
           summary: string
           title: string
+          translated_at?: string | null
+          translated_summary?: string | null
+          translated_title?: string | null
+          translation_model?: string | null
+          translation_status?: string | null
           uncertainty_notes?: string | null
           updated_at?: string
           urgency_score?: number
@@ -6161,6 +6235,14 @@ export type Database = {
           event_cluster_id?: string | null
           evidence_hash?: string | null
           first_detected_at?: string
+          geo_admin0_iso3?: string | null
+          geo_admin1?: string | null
+          geo_admin2?: string | null
+          geo_confidence?: number | null
+          geo_lat?: number | null
+          geo_lng?: number | null
+          geo_method?: string | null
+          geocoded_at?: string | null
           id?: string
           impact_reasoning?: string | null
           impact_score?: number
@@ -6177,6 +6259,8 @@ export type Database = {
           occurred_at?: string | null
           official_source?: boolean | null
           official_source_present?: boolean | null
+          original_summary?: string | null
+          original_title?: string | null
           primary_source?: string | null
           propaganda_risk_score?: number | null
           recommended_actions?: Json | null
@@ -6187,6 +6271,7 @@ export type Database = {
           routing_targets?: string[] | null
           source_count?: number
           source_credibility_score?: number | null
+          source_language?: string | null
           source_rank_score?: number | null
           source_references?: Json | null
           source_trust_tier?: string | null
@@ -6195,6 +6280,11 @@ export type Database = {
           subcategory?: string | null
           summary?: string
           title?: string
+          translated_at?: string | null
+          translated_summary?: string | null
+          translated_title?: string | null
+          translation_model?: string | null
+          translation_status?: string | null
           uncertainty_notes?: string | null
           updated_at?: string
           urgency_score?: number
@@ -12912,30 +13002,45 @@ export type Database = {
       }
       web_search_sweep_queries: {
         Row: {
+          auto_generated: boolean
           category: string
+          country_iso3: string | null
           created_at: string
           enabled: boolean
+          expires_at: string | null
           id: string
+          language: string | null
+          last_run_at: string | null
           priority: number
           query: string
           result_limit: number
           time_filter: string
         }
         Insert: {
+          auto_generated?: boolean
           category: string
+          country_iso3?: string | null
           created_at?: string
           enabled?: boolean
+          expires_at?: string | null
           id?: string
+          language?: string | null
+          last_run_at?: string | null
           priority?: number
           query: string
           result_limit?: number
           time_filter?: string
         }
         Update: {
+          auto_generated?: boolean
           category?: string
+          country_iso3?: string | null
           created_at?: string
           enabled?: boolean
+          expires_at?: string | null
           id?: string
+          language?: string | null
+          last_run_at?: string | null
           priority?: number
           query?: string
           result_limit?: number
