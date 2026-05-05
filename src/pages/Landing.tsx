@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { PublicIntelligenceShowcase } from "@/components/landing/PublicIntelligenceShowcase";
+import { PlanetaryPulseMap } from "@/components/planetary/PlanetaryPulseMap";
+import { PlanetaryHeartbeat } from "@/components/planetary/PlanetaryHeartbeat";
 import {
   Shield,
   Activity,
@@ -54,6 +56,7 @@ const Landing = () => {
             </Badge>
           </Link>
           <nav className="flex items-center gap-2">
+            <PlanetaryHeartbeat />
             <Button variant="ghost" size="sm" asChild>
               <Link to="/status">Status</Link>
             </Button>
@@ -104,7 +107,11 @@ const Landing = () => {
             </Button>
           </div>
 
-          <div className="mt-12 flex items-center justify-center gap-6 text-xs text-muted-foreground">
+          <div className="mt-12 max-w-5xl mx-auto">
+            <PlanetaryPulseMap height={420} />
+          </div>
+
+          <div className="mt-8 flex items-center justify-center gap-6 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Lock className="h-3.5 w-3.5 text-success" />
               Non-Surveillance Guaranteed
