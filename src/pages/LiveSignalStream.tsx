@@ -75,7 +75,7 @@ export default function LiveSignalStream() {
       const since = new Date(Date.now() - WINDOW_MS).toISOString();
       const { data, error } = await supabase
         .from("global_signals")
-        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status")
+        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status,language_tier,script_detected,country_extraction_method,country_extraction_confidence")
         .gte("first_detected_at", since)
         .order("first_detected_at", { ascending: false })
         .limit(200);
