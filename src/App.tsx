@@ -117,6 +117,7 @@ const App = () => (
               <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
               <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
+              <Route path="/live-stream" element={<Protected><LiveSignalStream /></Protected>} />
               <Route path="/decision-ops" element={<Protected><DecisionOperations /></Protected>} />
               <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
               <Route path="/evidence-command" element={<Protected><EvidenceCommand /></Protected>} />
