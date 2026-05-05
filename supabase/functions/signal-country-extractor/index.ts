@@ -211,6 +211,7 @@ Deno.serve(async (req) => {
       .eq("entity_type", "country");
     if (cErr) throw cErr;
     const countryRows = (countries || []) as CountryRow[];
+    const lookups = buildLookups(countryRows);
 
     // Pull a batch of signals lacking attribution
     const url = new URL(req.url);
