@@ -56,36 +56,38 @@ const STOPWORDS = new Set([
 function norm(t: string) {
   return t.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
 }
-function tokens(t: string): string[] {
-  return norm(t).split(" ").filter(w => w.length >= 3 && !STOPWORDS.has(w));
+function tokenSet(t: string): Set<string> {
+  const s = new Set<string>();
+  for (const w of norm(t).split(" ")) {
+    if (w.length >= 3 && !STOPWORDS.has(w)) s.add(w);
+  }
+  return s;
 }
-function jaccard(a: string, b: string) {
-  const A = new Set(tokens(a));
-  const B = new Set(tokens(b));
+function jaccardSets(A: Set<string>, B: Set<string>) {
   if (A.size === 0 || B.size === 0) return 0;
-  const inter = [...A].filter(x => B.has(x)).length;
-  const uni = new Set([...A, ...B]).size;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  const uni = A.size + B.size - inter;
   return uni === 0 ? 0 : inter / uni;
 }
-function keyOverlap(a: string, b: string) {
-  const A = new Set(tokens(a));
-  const B = new Set(tokens(b));
+function keyOverlapSets(A: Set<string>, B: Set<string>) {
   if (A.size === 0 || B.size === 0) return 0;
-  const inter = [...A].filter(x => B.has(x)).length;
-  return inter / Math.min(A.size, B.size); // recall against shorter side
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / Math.min(A.size, B.size);
 }
 function isNoise(title: string) {
   return NOISE_PATTERNS.some(p => p.test(title));
 }
 
-function bestMatchScore(hitTitle: string, hitDesc: string, sigTitle: string, sigSummary: string) {
-  const hitText = `${hitTitle} ${hitDesc || ""}`;
-  const sigText = `${sigTitle} ${sigSummary || ""}`;
-  const j = jaccard(hitTitle, sigTitle);
-  const jFull = jaccard(hitText, sigText);
-  const ko = keyOverlap(hitTitle, sigTitle);
-  const koFull = keyOverlap(hitText, sigText);
-  // Weighted blend that rewards either strong jaccard OR strong key overlap.
+function bestMatchScoreSets(
+  hitTitleSet: Set<string>, hitFullSet: Set<string>,
+  sigTitleSet: Set<string>, sigFullSet: Set<string>,
+) {
+  const j = jaccardSets(hitTitleSet, sigTitleSet);
+  const jFull = jaccardSets(hitFullSet, sigFullSet);
+  const ko = keyOverlapSets(hitTitleSet, sigTitleSet);
+  const koFull = keyOverlapSets(hitFullSet, sigFullSet);
   return Math.max(j, jFull * 0.9, ko * 0.85, koFull * 0.8);
 }
 
@@ -135,6 +137,13 @@ serve(async (req) => {
     .limit(2000);
   const recentSignals = (recent || []) as any[];
 
+  // Pre-compute token sets for each signal once (used in both passes).
+  const sigSets = recentSignals.map(s => ({
+    sig: s,
+    titleSet: tokenSet(s.title || ""),
+    fullSet: tokenSet(`${s.title || ""} ${s.summary || ""}`),
+  }));
+
   // ===== Pass A: re-evaluate previously missed benchmarks =====
   const { data: openMisses } = await supabase
     .from("signal_detection_benchmarks")
@@ -142,23 +151,24 @@ serve(async (req) => {
     .eq("validation_status", "missed")
     .eq("detected", false)
     .gte("event_occurred_at", new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString())
-    .limit(500);
+    .limit(300);
 
   let reEvaluated = 0, nowDetected = 0;
   for (const m of (openMisses || [])) {
     if (isNoise(m.event_title)) {
-      // Mark noise benchmarks as false_positive so they don't drag the score forever.
       await supabase.from("signal_detection_benchmarks")
         .update({ validation_status: "false_positive", validation_notes: "Auto-pruned by detection-audit (noise pattern)" })
         .eq("id", m.id);
       continue;
     }
     reEvaluated++;
+    const mTitleSet = tokenSet(m.event_title);
+    const mFullSet = tokenSet(`${m.event_title} ${m.event_summary || ""}`);
     let bestScore = 0;
     let bestSig: any = null;
-    for (const sig of recentSignals) {
-      const sc = bestMatchScore(m.event_title, m.event_summary || "", sig.title, sig.summary || "");
-      if (sc > bestScore) { bestScore = sc; bestSig = sig; }
+    for (const ss of sigSets) {
+      const sc = bestMatchScoreSets(mTitleSet, mFullSet, ss.titleSet, ss.fullSet);
+      if (sc > bestScore) { bestScore = sc; bestSig = ss.sig; if (sc >= 0.9) break; }
     }
     if (bestSig && bestScore >= MATCH_THRESHOLD) {
       nowDetected++;
@@ -166,7 +176,7 @@ serve(async (req) => {
       let latency: number | null = null;
       if (detectedAt && m.event_occurred_at) {
         const lat = (new Date(detectedAt).getTime() - new Date(m.event_occurred_at).getTime()) / 60000;
-        if (lat >= -60 && lat < 14 * 24 * 60) latency = Number(lat.toFixed(2));
+        if (lat >= -60 && lat < 14 * 24 * 60) latency = lat;
       }
       await supabase.from("signal_detection_benchmarks")
         .update({
@@ -189,7 +199,6 @@ serve(async (req) => {
     await new Promise(r => setTimeout(r, 200));
   }
 
-  // Dedup + drop noise
   const seen = new Set<string>();
   const uniqueTrending = trendingHits.filter(h => {
     if (isNoise(h.title)) return false;
@@ -206,11 +215,13 @@ serve(async (req) => {
   const benchmarksToInsert: any[] = [];
 
   for (const hit of uniqueTrending) {
+    const hTitleSet = tokenSet(hit.title);
+    const hFullSet = tokenSet(`${hit.title} ${hit.description || ""}`);
     let bestScore = 0;
     let bestSig: any = null;
-    for (const sig of recentSignals) {
-      const sc = bestMatchScore(hit.title, hit.description || "", sig.title, sig.summary || "");
-      if (sc > bestScore) { bestScore = sc; bestSig = sig; }
+    for (const ss of sigSets) {
+      const sc = bestMatchScoreSets(hTitleSet, hFullSet, ss.titleSet, ss.fullSet);
+      if (sc > bestScore) { bestScore = sc; bestSig = ss.sig; if (sc >= 0.9) break; }
     }
 
     const eventOccurredAt = hit.publishedDate ? new Date(hit.publishedDate).toISOString() : new Date().toISOString();
