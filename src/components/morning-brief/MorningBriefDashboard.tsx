@@ -82,6 +82,9 @@ export const MorningBriefDashboard = () => {
         <SystemHealthBadge />
       </div>
 
+      {/* ── 🌍 LIVE PLANETARY DETECTION SLA ── */}
+      <PlanetaryDetectionBadge />
+
       {/* ── EXPOSURE: 3-4 compact KPIs ── */}
       <BusinessExposureStrip />
 
