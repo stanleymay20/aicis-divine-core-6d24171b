@@ -417,25 +417,38 @@ async function snapshotCoverage(supabase: any, registrySources: RegistrySource[]
   }, { onConflict: "snapshot_date" });
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
+// Background-safe runner so the HTTP response returns immediately and the
+// cron worker doesn't have to wait for the full ingestion (which can exceed
+// the edge function's ~30s wall-clock budget).
+async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; shardIndex: number; shardSize: number }) {
   const intakeStart = Date.now();
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !supabaseKey) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !supabaseKey) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
+  const [trustDataRes, allRegistrySources, newsArticles, gdeltArticles] = await Promise.all([
+    supabase.from("source_trust_scores").select("source_name, credibility_weight, source_type, verification_level, official_source"),
+    loadRegistrySources(supabase),
+    fetchNewsApiArticles(NEWSAPI_KEY),
+    fetchGdeltArticles(),
+  ]);
 
-    const [trustDataRes, registrySources, newsArticles, gdeltArticles] = await Promise.all([
-      supabase.from("source_trust_scores").select("source_name, credibility_weight, source_type, verification_level, official_source"),
-      loadRegistrySources(supabase),
-      fetchNewsApiArticles(NEWSAPI_KEY),
-      fetchGdeltArticles(),
-    ]);
+  // Shard the registry by minute so each cron tick only fetches a slice and
+  // the full registry is rotated through every `shardCount` runs.
+  const sortedRegistry = [...allRegistrySources];
+  let registrySources = sortedRegistry;
+  if (opts.shardSize > 0 && sortedRegistry.length > opts.shardSize) {
+    const shards: RegistrySource[][] = [];
+    for (let i = 0; i < sortedRegistry.length; i += opts.shardSize) {
+      shards.push(sortedRegistry.slice(i, i + opts.shardSize));
+    }
+    const idx = ((opts.shardIndex % shards.length) + shards.length) % shards.length;
+    registrySources = shards[idx];
+    console.log(`[intake] sharded registry: shard ${idx + 1}/${shards.length} (${registrySources.length}/${sortedRegistry.length} sources)`);
+  }
 
     const trustData = trustDataRes.data || [];
     const trustMap: Record<string, { weight: number; type: string; level: string; official: boolean }> = {};
@@ -462,9 +475,11 @@ serve(async (req) => {
     const allArticles: any[] = [...newsArticles, ...gdeltArticles, ...officialResult.articles];
     const newsapiCount = newsArticles.length;
 
-    for (const run of officialResult.runs) {
-      await logConnectorRun(supabase, run.name, run.status, run.count, 0, 0, Date.now() - intakeStart, run.error);
-    }
+    await Promise.allSettled(
+      officialResult.runs.map(run =>
+        logConnectorRun(supabase, run.name, run.status, run.count, 0, 0, Date.now() - intakeStart, run.error)
+      )
+    );
 
     const valid = allArticles.filter(a => a.title && a.title !== "[Removed]" && a.description && a.description !== "[Removed]" && a.url);
 
@@ -545,32 +560,39 @@ serve(async (req) => {
       if (!matchedExisting) newArticles.push(a);
     }
 
-    for (const u of updatedSignals) {
+    await Promise.allSettled(updatedSignals.map(u => {
       const update: any = {
         source_count: u.source_count,
         source_references: u.source_references,
         multi_source_confirmed: u.multi_source_confirmed,
       };
       if (u.official_source_present) update.official_source_present = true;
-      await supabase.from("global_signals").update(update).eq("id", u.id);
-    }
+      return supabase.from("global_signals").update(update).eq("id", u.id);
+    }));
 
     if (newArticles.length === 0) {
-      await logConnectorRun(supabase, "newsapi", "success", newsapiCount, 0, updatedSignals.length, Date.now() - intakeStart);
-      if (gdeltArticles.length > 0) await logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, 0, Date.now() - intakeStart);
+      await Promise.allSettled([
+        logConnectorRun(supabase, "newsapi", "success", newsapiCount, 0, updatedSignals.length, Date.now() - intakeStart),
+        gdeltArticles.length > 0
+          ? logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, 0, Date.now() - intakeStart)
+          : Promise.resolve(),
+      ]);
 
-      const benchmarkAudit = await updateBenchmarks(supabase);
-      await snapshotCoverage(supabase, registrySources, benchmarkAudit);
+      const benchmarkAudit = opts.runBenchmarks
+        ? await updateBenchmarks(supabase)
+        : { detected: 0, missed: 0, total: 0, skipped: true };
+      await snapshotCoverage(supabase, allRegistrySources, benchmarkAudit);
 
-      return new Response(JSON.stringify({
+      return {
         ok: true,
         new_signals: 0,
         updated_signals: updatedSignals.length,
         pending_enrichment: 0,
         official_fetched: officialResult.articles.length,
         benchmark_audit: benchmarkAudit,
+        duration_ms: Date.now() - intakeStart,
         message: "No new signals, updated existing",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      };
     }
 
     const signals: any[] = [];
@@ -635,11 +657,17 @@ serve(async (req) => {
     if (insertErr) throw new Error(`Insert failed: ${insertErr.message}`);
 
     const durationMs = Date.now() - intakeStart;
-    await logConnectorRun(supabase, "newsapi", "success", newsapiCount, inserted?.length || 0, updatedSignals.length, durationMs);
-    if (gdeltArticles.length > 0) await logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, 0, durationMs);
+    await Promise.allSettled([
+      logConnectorRun(supabase, "newsapi", "success", newsapiCount, inserted?.length || 0, updatedSignals.length, durationMs),
+      gdeltArticles.length > 0
+        ? logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, 0, durationMs)
+        : Promise.resolve(),
+    ]);
 
-    const benchmarkAudit = await updateBenchmarks(supabase);
-    await snapshotCoverage(supabase, registrySources, benchmarkAudit);
+    const benchmarkAudit = opts.runBenchmarks
+      ? await updateBenchmarks(supabase)
+      : { detected: 0, missed: 0, total: 0, skipped: true };
+    await snapshotCoverage(supabase, allRegistrySources, benchmarkAudit);
 
     await supabase.from("audit_log").insert({
       action: "global_signal_fast_intake",
@@ -653,6 +681,7 @@ serve(async (req) => {
         pending_enrichment: inserted?.length || 0,
         duration_ms: durationMs,
         benchmark_audit: benchmarkAudit,
+        shard: { index: opts.shardIndex, count: opts.shardCount, size: registrySources.length, total: allRegistrySources.length },
         sources: {
           newsapi: newsapiCount,
           gdelt: gdeltArticles.length,
@@ -664,7 +693,7 @@ serve(async (req) => {
       },
     });
 
-    return new Response(JSON.stringify({
+    return {
       ok: true,
       new_signals: inserted?.length || 0,
       updated_signals: updatedSignals.length,
@@ -677,15 +706,58 @@ serve(async (req) => {
         official: officialResult.articles.length,
         registry_total: registrySources.length,
       },
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (error) {
-    console.error("Intake error:", error);
-    const errMsg = (error as Error).message || "Unknown intake error";
-    return new Response(JSON.stringify({ error: errMsg.slice(0, 500) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    };
+}
+
+declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void } | undefined;
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Parse options (allow manual overrides; defaults are tuned for cron).
+  let body: any = {};
+  if (req.method === "POST") {
+    try { body = await req.json(); } catch { body = {}; }
   }
+  const url = new URL(req.url);
+  const wait = body.wait === true || url.searchParams.get("wait") === "1";
+  const runBenchmarks = body.run_benchmarks === true || url.searchParams.get("run_benchmarks") === "1";
+  const shardSize = Number(body.shard_size ?? url.searchParams.get("shard_size") ?? 40);
+  const shardCount = Number(body.shard_count ?? url.searchParams.get("shard_count") ?? 0);
+  // Default shard rotation by current minute so every cron tick covers a new slice.
+  const defaultShardIndex = Math.floor(Date.now() / 60000);
+  const shardIndex = Number(body.shard_index ?? url.searchParams.get("shard_index") ?? defaultShardIndex);
+
+  const opts = { runBenchmarks, shardCount, shardIndex, shardSize };
+
+  if (wait) {
+    try {
+      const result = await runIntake(opts);
+      return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    } catch (error) {
+      console.error("Intake error:", error);
+      return new Response(JSON.stringify({ error: ((error as Error).message || "Unknown intake error").slice(0, 500) }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // Fire-and-forget: respond immediately so cron pings never time out.
+  const task = runIntake(opts).catch((e) => {
+    console.error("Background intake failed:", e);
+  });
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+    EdgeRuntime.waitUntil(task);
+  }
+
+  return new Response(JSON.stringify({
+    ok: true,
+    accepted: true,
+    mode: "background",
+    shard: { index: shardIndex % Math.max(1, Math.ceil(1 / 1)), size: shardSize },
+    started_at: new Date().toISOString(),
+  }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 202 });
 });
 
 async function logConnectorRun(supabase: any, source: string, status: string, fetched: number, newCount: number, merged: number, durationMs: number, error?: string) {
