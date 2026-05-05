@@ -14945,6 +14945,7 @@ export type Database = {
           trust_rows: number
         }[]
       }
+      reconcile_canonical_clusters: { Args: never; Returns: Json }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
       refresh_recommendation_quality_scores: {
         Args: never
