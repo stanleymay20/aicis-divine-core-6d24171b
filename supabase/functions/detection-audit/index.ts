@@ -56,36 +56,38 @@ const STOPWORDS = new Set([
 function norm(t: string) {
   return t.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
 }
-function tokens(t: string): string[] {
-  return norm(t).split(" ").filter(w => w.length >= 3 && !STOPWORDS.has(w));
+function tokenSet(t: string): Set<string> {
+  const s = new Set<string>();
+  for (const w of norm(t).split(" ")) {
+    if (w.length >= 3 && !STOPWORDS.has(w)) s.add(w);
+  }
+  return s;
 }
-function jaccard(a: string, b: string) {
-  const A = new Set(tokens(a));
-  const B = new Set(tokens(b));
+function jaccardSets(A: Set<string>, B: Set<string>) {
   if (A.size === 0 || B.size === 0) return 0;
-  const inter = [...A].filter(x => B.has(x)).length;
-  const uni = new Set([...A, ...B]).size;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  const uni = A.size + B.size - inter;
   return uni === 0 ? 0 : inter / uni;
 }
-function keyOverlap(a: string, b: string) {
-  const A = new Set(tokens(a));
-  const B = new Set(tokens(b));
+function keyOverlapSets(A: Set<string>, B: Set<string>) {
   if (A.size === 0 || B.size === 0) return 0;
-  const inter = [...A].filter(x => B.has(x)).length;
-  return inter / Math.min(A.size, B.size); // recall against shorter side
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / Math.min(A.size, B.size);
 }
 function isNoise(title: string) {
   return NOISE_PATTERNS.some(p => p.test(title));
 }
 
-function bestMatchScore(hitTitle: string, hitDesc: string, sigTitle: string, sigSummary: string) {
-  const hitText = `${hitTitle} ${hitDesc || ""}`;
-  const sigText = `${sigTitle} ${sigSummary || ""}`;
-  const j = jaccard(hitTitle, sigTitle);
-  const jFull = jaccard(hitText, sigText);
-  const ko = keyOverlap(hitTitle, sigTitle);
-  const koFull = keyOverlap(hitText, sigText);
-  // Weighted blend that rewards either strong jaccard OR strong key overlap.
+function bestMatchScoreSets(
+  hitTitleSet: Set<string>, hitFullSet: Set<string>,
+  sigTitleSet: Set<string>, sigFullSet: Set<string>,
+) {
+  const j = jaccardSets(hitTitleSet, sigTitleSet);
+  const jFull = jaccardSets(hitFullSet, sigFullSet);
+  const ko = keyOverlapSets(hitTitleSet, sigTitleSet);
+  const koFull = keyOverlapSets(hitFullSet, sigFullSet);
   return Math.max(j, jFull * 0.9, ko * 0.85, koFull * 0.8);
 }
 
