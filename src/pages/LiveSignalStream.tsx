@@ -246,15 +246,7 @@ export default function LiveSignalStream() {
                   </div>
                 </div>
                 {isOpen && s.confidence_explanation && (
-                  <div className="mt-2 pt-2 border-t border-border/50 text-[11px] space-y-1">
-                    <div className="font-semibold text-foreground/80">Why AICIS trusts this</div>
-                    {Object.entries(s.confidence_explanation as Record<string, any>).map(([k, v]) => (
-                      <div key={k} className="flex justify-between gap-3 font-mono text-muted-foreground">
-                        <span>{k}</span>
-                        <span className="text-foreground/70 text-right">{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <WhyTrustPanel signal={s} />
                 )}
               </div>
             );
@@ -305,5 +297,65 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
     >
       {children}
     </button>
+  );
+}
+
+const TIER_LABELS: Record<string, string> = {
+  tier_1: "Tier 1 — Official / authoritative",
+  tier_2: "Tier 2 — Major newswire",
+  tier_3: "Tier 3 — Regional outlet",
+  tier_4: "Tier 4 — General web / social",
+};
+
+function WhyTrustPanel({ signal }: { signal: Signal }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const exp = (signal.confidence_explanation || {}) as Record<string, any>;
+  const isDupe = exp.role === "duplicate";
+  const distinct = Number(exp.distinct_sources ?? signal.corroboration_count ?? 1);
+  const tier = String(exp.source_tier ?? signal.source_trust_tier ?? "tier_4");
+  const tierLabel = TIER_LABELS[tier] || tier;
+  const credibility = Number(exp.source_credibility ?? signal.source_credibility_score ?? 0);
+  const propaganda = Number(exp.propaganda_risk ?? signal.propaganda_risk_score ?? 0);
+  const official = Boolean(exp.official_source);
+  const recency = exp.recency_factor != null ? Number(exp.recency_factor) : null;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border/50 text-[11px] space-y-1.5">
+      <div className="font-semibold text-foreground/80">Why AICIS trusts this</div>
+      {isDupe ? (
+        <Row label="Role" value={`Duplicate of an earlier report${exp.similarity ? ` (similarity ${Math.round(Number(exp.similarity) * 100)}%)` : ""}`} />
+      ) : (
+        <Row label="Confirmed by" value={`${distinct} source${distinct === 1 ? "" : "s"}`} />
+      )}
+      <Row label="Source tier" value={tierLabel} />
+      <Row label="Source credibility" value={`${credibility}/100`} />
+      {official && <Row label="Official source" value="Yes" />}
+      <Row label="Propaganda risk" value={`${propaganda}/100`} />
+      {recency != null && <Row label="Recency factor" value={`${Math.round(recency * 100)}%`} />}
+
+      <button
+        onClick={() => setShowAdvanced(v => !v)}
+        className="text-primary hover:underline text-[10px] mt-1"
+      >
+        {showAdvanced ? "Hide formula" : "Show scoring formula"}
+      </button>
+      {showAdvanced && (
+        <div className="mt-1 p-2 bg-muted/20 rounded font-mono text-[10px] text-muted-foreground space-y-1">
+          {exp.formula && <div>{String(exp.formula)}</div>}
+          {exp.corroboration_boost != null && <div>corroboration_boost: +{exp.corroboration_boost}</div>}
+          {exp.official_boost != null && <div>official_boost: +{exp.official_boost}</div>}
+          {exp.propaganda_penalty != null && <div>propaganda_penalty: −{exp.propaganda_penalty}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 text-muted-foreground">
+      <span>{label}</span>
+      <span className="text-foreground/80 text-right">{value}</span>
+    </div>
   );
 }
