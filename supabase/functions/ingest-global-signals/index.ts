@@ -475,9 +475,11 @@ async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; sha
     const allArticles: any[] = [...newsArticles, ...gdeltArticles, ...officialResult.articles];
     const newsapiCount = newsArticles.length;
 
-    for (const run of officialResult.runs) {
-      await logConnectorRun(supabase, run.name, run.status, run.count, 0, 0, Date.now() - intakeStart, run.error);
-    }
+    await Promise.allSettled(
+      officialResult.runs.map(run =>
+        logConnectorRun(supabase, run.name, run.status, run.count, 0, 0, Date.now() - intakeStart, run.error)
+      )
+    );
 
     const valid = allArticles.filter(a => a.title && a.title !== "[Removed]" && a.description && a.description !== "[Removed]" && a.url);
 
