@@ -137,6 +137,13 @@ serve(async (req) => {
     .limit(2000);
   const recentSignals = (recent || []) as any[];
 
+  // Pre-compute token sets for each signal once (used in both passes).
+  const sigSets = recentSignals.map(s => ({
+    sig: s,
+    titleSet: tokenSet(s.title || ""),
+    fullSet: tokenSet(`${s.title || ""} ${s.summary || ""}`),
+  }));
+
   // ===== Pass A: re-evaluate previously missed benchmarks =====
   const { data: openMisses } = await supabase
     .from("signal_detection_benchmarks")
@@ -144,23 +151,24 @@ serve(async (req) => {
     .eq("validation_status", "missed")
     .eq("detected", false)
     .gte("event_occurred_at", new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString())
-    .limit(500);
+    .limit(300);
 
   let reEvaluated = 0, nowDetected = 0;
   for (const m of (openMisses || [])) {
     if (isNoise(m.event_title)) {
-      // Mark noise benchmarks as false_positive so they don't drag the score forever.
       await supabase.from("signal_detection_benchmarks")
         .update({ validation_status: "false_positive", validation_notes: "Auto-pruned by detection-audit (noise pattern)" })
         .eq("id", m.id);
       continue;
     }
     reEvaluated++;
+    const mTitleSet = tokenSet(m.event_title);
+    const mFullSet = tokenSet(`${m.event_title} ${m.event_summary || ""}`);
     let bestScore = 0;
     let bestSig: any = null;
-    for (const sig of recentSignals) {
-      const sc = bestMatchScore(m.event_title, m.event_summary || "", sig.title, sig.summary || "");
-      if (sc > bestScore) { bestScore = sc; bestSig = sig; }
+    for (const ss of sigSets) {
+      const sc = bestMatchScoreSets(mTitleSet, mFullSet, ss.titleSet, ss.fullSet);
+      if (sc > bestScore) { bestScore = sc; bestSig = ss.sig; if (sc >= 0.9) break; }
     }
     if (bestSig && bestScore >= MATCH_THRESHOLD) {
       nowDetected++;
@@ -168,7 +176,7 @@ serve(async (req) => {
       let latency: number | null = null;
       if (detectedAt && m.event_occurred_at) {
         const lat = (new Date(detectedAt).getTime() - new Date(m.event_occurred_at).getTime()) / 60000;
-        if (lat >= -60 && lat < 14 * 24 * 60) latency = Number(lat.toFixed(2));
+        if (lat >= -60 && lat < 14 * 24 * 60) latency = lat;
       }
       await supabase.from("signal_detection_benchmarks")
         .update({
@@ -191,7 +199,6 @@ serve(async (req) => {
     await new Promise(r => setTimeout(r, 200));
   }
 
-  // Dedup + drop noise
   const seen = new Set<string>();
   const uniqueTrending = trendingHits.filter(h => {
     if (isNoise(h.title)) return false;
@@ -208,11 +215,13 @@ serve(async (req) => {
   const benchmarksToInsert: any[] = [];
 
   for (const hit of uniqueTrending) {
+    const hTitleSet = tokenSet(hit.title);
+    const hFullSet = tokenSet(`${hit.title} ${hit.description || ""}`);
     let bestScore = 0;
     let bestSig: any = null;
-    for (const sig of recentSignals) {
-      const sc = bestMatchScore(hit.title, hit.description || "", sig.title, sig.summary || "");
-      if (sc > bestScore) { bestScore = sc; bestSig = sig; }
+    for (const ss of sigSets) {
+      const sc = bestMatchScoreSets(hTitleSet, hFullSet, ss.titleSet, ss.fullSet);
+      if (sc > bestScore) { bestScore = sc; bestSig = ss.sig; if (sc >= 0.9) break; }
     }
 
     const eventOccurredAt = hit.publishedDate ? new Date(hit.publishedDate).toISOString() : new Date().toISOString();
