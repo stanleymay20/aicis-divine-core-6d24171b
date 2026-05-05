@@ -19,8 +19,8 @@ export const PlanetaryDetectionBadge = () => {
     queryFn: async (): Promise<AuditRow | null> => {
       const { data } = await supabase
         .from("detection_audit_runs")
-        .select("detection_rate, trending_events_checked, events_detected, events_missed, avg_latency_minutes, created_at")
-        .order("created_at", { ascending: false })
+        .select("detection_rate, trending_events_checked, events_detected, events_missed, avg_latency_minutes, run_at")
+        .order("run_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       return data as AuditRow | null;
