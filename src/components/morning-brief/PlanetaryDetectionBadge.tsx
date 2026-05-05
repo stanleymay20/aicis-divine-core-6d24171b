@@ -10,7 +10,7 @@ type AuditRow = {
   events_detected: number;
   events_missed: number;
   avg_latency_minutes: number | null;
-  created_at: string;
+  run_at: string;
 };
 
 export const PlanetaryDetectionBadge = () => {
