@@ -260,16 +260,19 @@ serve(async (req) => {
         validation_notes: `Auto-flagged by detection-audit (best score ${bestScore.toFixed(2)})`,
       });
       // ===== Auto-recovery: inject the missed event into global_signals =====
-      // so the next audit pass closes the loop toward 100% detection.
       try {
         const src = (() => { try { return new URL(hit.url).hostname.replace(/^www\./, ""); } catch { return "web"; } })();
         const dedupKey = `${norm(hit.title).split(" ").slice(0, 8).join(" ")}::${src}`;
+        // Skip if already present (dedup_key is indexed but not unique).
+        const { data: existing } = await supabase
+          .from("global_signals").select("id").eq("dedup_key", dedupKey).limit(1);
+        if (existing && existing.length > 0) continue;
         const enc = new TextEncoder();
         const buf = await crypto.subtle.digest("SHA-256",
           enc.encode(`${hit.title}|${hit.url}|${eventOccurredAt}`));
         const evidenceHash = Array.from(new Uint8Array(buf))
           .map(b => b.toString(16).padStart(2, "0")).join("");
-        await supabase.from("global_signals").upsert({
+        const { error: insErr } = await supabase.from("global_signals").insert({
           title: hit.title.slice(0, 500),
           summary: (hit.description || hit.title).slice(0, 2000),
           category: "geopolitical",
@@ -292,9 +295,10 @@ serve(async (req) => {
           canonical_source_name: src,
           source_rank_score: 50,
           merged_source_count: 1,
-        }, { onConflict: "dedup_key", ignoreDuplicates: true });
+        });
+        if (insErr) console.error("recovery insert error:", insErr.message);
       } catch (e) {
-        console.error("recovery insert failed:", (e as Error).message);
+        console.error("recovery insert exception:", (e as Error).message);
       }
     }
   }
