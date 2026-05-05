@@ -160,7 +160,7 @@ serve(async (req) => {
   // Persist auto-created benchmarks (idempotent on event_url if column unique; otherwise just insert)
   if (benchmarksToInsert.length > 0) {
     await supabase.from("signal_detection_benchmarks")
-      .upsert(benchmarksToInsert, { onConflict: "event_url", ignoreDuplicates: true });
+      .upsert(benchmarksToInsert, { onConflict: "benchmark_key", ignoreDuplicates: true });
   }
 
   const total = uniqueTrending.length;
