@@ -58,6 +58,7 @@ const Predictions = lazy(() => import("./pages/Predictions"));
 const ApiAudit = lazy(() => import("./pages/ApiAudit"));
 const LocalEvents = lazy(() => import("./pages/LocalEvents"));
 const ExportCenter = lazy(() => import("./pages/ExportCenter"));
+const LiveSignalStream = lazy(() => import("./pages/LiveSignalStream"));
 const PilotTruthFeed = lazy(() => import("./pages/PilotTruthFeed"));
 const DataPipeline = lazy(() => import("./pages/DataPipeline"));
 const OutcomeCockpit = lazy(() => import("./pages/OutcomeCockpit"));
