@@ -35,6 +35,9 @@ type Signal = {
   propaganda_risk_score: number | null;
   source_credibility_score: number | null;
   confidence_explanation: any;
+  source_language: string | null;
+  translated_title: string | null;
+  translation_status: string | null;
 };
 
 const WINDOW_MS = 30 * 60 * 1000;
@@ -72,7 +75,7 @@ export default function LiveSignalStream() {
       const since = new Date(Date.now() - WINDOW_MS).toISOString();
       const { data, error } = await supabase
         .from("global_signals")
-        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation")
+        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status")
         .gte("first_detected_at", since)
         .order("first_detected_at", { ascending: false })
         .limit(200);
@@ -209,8 +212,21 @@ export default function LiveSignalStream() {
                 }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-1">
-                  <h3 className="text-sm font-medium leading-snug flex-1 min-w-0">{s.title}</h3>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-medium leading-snug">
+                      {s.translated_title || s.title}
+                    </h3>
+                    {s.translated_title && s.translated_title !== s.title && (
+                      <div className="text-[10px] text-muted-foreground mt-0.5 italic line-clamp-1">
+                        {s.source_language && <span className="uppercase font-mono mr-1">[{s.source_language}]</span>}
+                        {s.title}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                    {s.source_language && s.source_language !== "en" && s.source_language !== "und" && (
+                      <Badge variant="outline" className="bg-violet-500/15 text-violet-200 border-violet-700/50 text-[10px] uppercase font-mono">{s.source_language}</Badge>
+                    )}
                     {isDupe && <Badge variant="outline" className="bg-zinc-500/15 text-zinc-300 border-zinc-700/50 text-[10px]">DUPE</Badge>}
                     <Badge variant="outline" className={badge.className + " text-[10px]"}>{badge.label}</Badge>
                     {s.source_trust_tier && (
