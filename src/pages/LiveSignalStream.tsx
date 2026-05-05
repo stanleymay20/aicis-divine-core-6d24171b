@@ -30,6 +30,11 @@ type Signal = {
   affected_countries: string[] | null;
   first_detected_at: string;
   ingested_at: string | null;
+  canonical_event_status: string | null;
+  corroboration_count: number | null;
+  propaganda_risk_score: number | null;
+  source_credibility_score: number | null;
+  confidence_explanation: any;
 };
 
 const WINDOW_MS = 30 * 60 * 1000;
@@ -55,8 +60,10 @@ function sourceBadge(s: Signal) {
 export default function LiveSignalStream() {
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState<"all" | "recovery" | "high_impact">("all");
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [tickCount, setTickCount] = useState(0);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const seen = useRef<Set<string>>(new Set());
 
   const initial = useQuery({
@@ -65,7 +72,7 @@ export default function LiveSignalStream() {
       const since = new Date(Date.now() - WINDOW_MS).toISOString();
       const { data, error } = await supabase
         .from("global_signals")
-        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at")
+        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation")
         .gte("first_detected_at", since)
         .order("first_detected_at", { ascending: false })
         .limit(200);
@@ -112,11 +119,14 @@ export default function LiveSignalStream() {
 
   const filtered = useMemo(() => {
     return signals.filter(s => {
+      if (!showDuplicates && s.canonical_event_status === "duplicate") return false;
       if (filter === "recovery") return s.ingestion_source === "detection_audit_recovery";
       if (filter === "high_impact") return (s.impact_score ?? 0) >= 65;
       return true;
     });
-  }, [signals, filter]);
+  }, [signals, filter, showDuplicates]);
+
+  const dupeCount = signals.filter(s => s.canonical_event_status === "duplicate").length;
 
   const recoveryCount = signals.filter(s => s.ingestion_source === "detection_audit_recovery").length;
   const sourceSet = new Set(signals.map(s => s.canonical_source_name || s.primary_source).filter(Boolean));
@@ -157,6 +167,9 @@ export default function LiveSignalStream() {
         <FilterPill active={filter === "all"} onClick={() => setFilter("all")}>All</FilterPill>
         <FilterPill active={filter === "recovery"} onClick={() => setFilter("recovery")}>Recovered only</FilterPill>
         <FilterPill active={filter === "high_impact"} onClick={() => setFilter("high_impact")}>High impact (≥65)</FilterPill>
+        <FilterPill active={showDuplicates} onClick={() => setShowDuplicates(v => !v)}>
+          {showDuplicates ? "Hiding none" : `Show duplicate reports (${dupeCount})`}
+        </FilterPill>
         {tickCount > 0 && (
           <span className="ml-auto text-xs text-muted-foreground">
             {tickCount} live insert{tickCount === 1 ? "" : "s"} since page load
@@ -180,22 +193,34 @@ export default function LiveSignalStream() {
           {filtered.map(s => {
             const badge = sourceBadge(s);
             const isRecovery = s.ingestion_source === "detection_audit_recovery";
+            const isDupe = s.canonical_event_status === "duplicate";
+            const conf = s.confidence_score ?? 0;
+            const confColor = conf >= 75 ? "bg-emerald-500/15 text-emerald-300 border-emerald-700/50"
+              : conf >= 50 ? "bg-sky-500/15 text-sky-300 border-sky-700/50"
+              : "bg-amber-500/15 text-amber-300 border-amber-700/50";
+            const isOpen = expanded === s.id;
             return (
               <div
                 key={s.id}
                 className={`rounded-md border p-3 transition-colors ${
-                  isRecovery
-                    ? "border-amber-700/40 bg-amber-500/5"
-                    : "border-border hover:border-muted-foreground/40"
+                  isRecovery ? "border-amber-700/40 bg-amber-500/5"
+                  : isDupe ? "border-border/40 bg-muted/10 opacity-75"
+                  : "border-border hover:border-muted-foreground/40"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-1">
                   <h3 className="text-sm font-medium leading-snug flex-1 min-w-0">{s.title}</h3>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                    {isDupe && <Badge variant="outline" className="bg-zinc-500/15 text-zinc-300 border-zinc-700/50 text-[10px]">DUPE</Badge>}
                     <Badge variant="outline" className={badge.className + " text-[10px]"}>{badge.label}</Badge>
                     {s.source_trust_tier && (
                       <Badge variant="outline" className={tierColor(s.source_trust_tier) + " text-[10px]"}>
                         {s.source_trust_tier.replace("_", " ")}
+                      </Badge>
+                    )}
+                    {typeof s.confidence_score === "number" && (
+                      <Badge variant="outline" className={confColor + " text-[10px] font-mono"}>
+                        {conf}% conf
                       </Badge>
                     )}
                   </div>
@@ -207,20 +232,30 @@ export default function LiveSignalStream() {
                   <div className="flex items-center gap-2 flex-wrap">
                     {s.category && <span className="text-foreground/70">{s.category}</span>}
                     {s.canonical_source_name && <span>· {s.canonical_source_name}</span>}
+                    {(s.corroboration_count ?? 0) > 1 && <span>· {s.corroboration_count} sources</span>}
                     {(s.affected_countries?.length ?? 0) > 0 && (
                       <span>· {s.affected_countries!.slice(0, 4).join(", ")}{s.affected_countries!.length > 4 ? "…" : ""}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    {typeof s.impact_score === "number" && (
-                      <span className="font-mono">imp {s.impact_score}</span>
-                    )}
-                    {typeof s.confidence_score === "number" && (
-                      <span className="font-mono">conf {s.confidence_score}</span>
-                    )}
+                    {typeof s.impact_score === "number" && <span className="font-mono">imp {s.impact_score}</span>}
                     <span>{formatDistanceToNow(new Date(s.first_detected_at), { addSuffix: true })}</span>
+                    <button onClick={() => setExpanded(isOpen ? null : s.id)} className="text-primary hover:underline">
+                      {isOpen ? "hide" : "why?"}
+                    </button>
                   </div>
                 </div>
+                {isOpen && s.confidence_explanation && (
+                  <div className="mt-2 pt-2 border-t border-border/50 text-[11px] space-y-1">
+                    <div className="font-semibold text-foreground/80">Why AICIS trusts this</div>
+                    {Object.entries(s.confidence_explanation as Record<string, any>).map(([k, v]) => (
+                      <div key={k} className="flex justify-between gap-3 font-mono text-muted-foreground">
+                        <span>{k}</span>
+                        <span className="text-foreground/70 text-right">{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
