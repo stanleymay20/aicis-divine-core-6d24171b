@@ -172,9 +172,9 @@ serve(async (req) => {
         .update({
           detected: true,
           validation_status: "detected",
-          matched_signal_id: bestSig.id,
-          match_similarity: Number(bestScore.toFixed(3)),
-          detection_latency_minutes: latency,
+          detected_signal_id: bestSig.id,
+          detected_at: detectedAt || new Date().toISOString(),
+          detection_latency_minutes: latency != null ? Math.round(latency) : null,
           validation_notes: `Re-matched by detection-audit (score ${bestScore.toFixed(2)})`,
         })
         .eq("id", m.id);
