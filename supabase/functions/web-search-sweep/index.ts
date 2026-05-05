@@ -133,10 +133,10 @@ serve(async (req) => {
   }
 
   // Parse optional cap from body
-  let maxQueries = 12;
+  let maxQueries = 24;
   try {
     const body = await req.json().catch(() => ({}));
-    if (body?.max_queries) maxQueries = Math.min(30, Math.max(1, Number(body.max_queries)));
+    if (body?.max_queries) maxQueries = Math.min(50, Math.max(1, Number(body.max_queries)));
   } catch { /* ignore */ }
 
   const { data: queries, error: qErr } = await supabase
