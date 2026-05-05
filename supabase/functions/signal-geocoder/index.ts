@@ -69,10 +69,11 @@ Deno.serve(async (req) => {
   let processed = 0, byCountry = 0, byPlace = 0, byCentroid = 0, failed = 0;
 
   try {
+    // Pick rows that are unprocessed OR previously failed but now have a country.
     const { data: pending, error } = await supa
       .from("global_signals")
-      .select("id,title,summary,translated_title,translated_summary,affected_countries")
-      .is("geocoded_at", null)
+      .select("id,title,summary,translated_title,translated_summary,affected_countries,geo_method")
+      .or("geocoded_at.is.null,geo_method.eq.failed")
       .order("first_detected_at", { ascending: false })
       .limit(BATCH);
     if (error) throw error;

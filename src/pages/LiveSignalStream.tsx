@@ -38,6 +38,10 @@ type Signal = {
   source_language: string | null;
   translated_title: string | null;
   translation_status: string | null;
+  language_tier: string | null;
+  script_detected: string | null;
+  country_extraction_method: string | null;
+  country_extraction_confidence: number | null;
 };
 
 const WINDOW_MS = 30 * 60 * 1000;
@@ -75,7 +79,7 @@ export default function LiveSignalStream() {
       const since = new Date(Date.now() - WINDOW_MS).toISOString();
       const { data, error } = await supabase
         .from("global_signals")
-        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status")
+        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status,language_tier,script_detected,country_extraction_method,country_extraction_confidence")
         .gte("first_detected_at", since)
         .order("first_detected_at", { ascending: false })
         .limit(200);
@@ -251,6 +255,15 @@ export default function LiveSignalStream() {
                     {(s.corroboration_count ?? 0) > 1 && <span>· {s.corroboration_count} sources</span>}
                     {(s.affected_countries?.length ?? 0) > 0 && (
                       <span>· {s.affected_countries!.slice(0, 4).join(", ")}{s.affected_countries!.length > 4 ? "…" : ""}</span>
+                    )}
+                    {s.country_extraction_method && (s.affected_countries?.length ?? 0) > 0 && (
+                      <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-300 border-amber-700/50" title={`country inferred (conf ${s.country_extraction_confidence ?? 0})`}>inferred</Badge>
+                    )}
+                    {s.script_detected && s.script_detected !== "Latn" && (
+                      <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-300 border-violet-700/50">{s.script_detected}</Badge>
+                    )}
+                    {s.language_tier === "tier_3" && (
+                      <Badge variant="outline" className="text-[10px] bg-zinc-500/10 text-zinc-300 border-zinc-700/50">low-resource</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
