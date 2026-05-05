@@ -295,7 +295,8 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = e instanceof Error ? e.message : (typeof e === "object" ? JSON.stringify(e) : String(e));
+    console.error("signal-canonicalizer error:", msg, e);
     await supa.from("automation_logs").insert({
       job_name: "signal-canonicalizer",
       status: "error",
