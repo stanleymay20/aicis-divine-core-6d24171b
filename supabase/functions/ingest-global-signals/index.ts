@@ -560,32 +560,39 @@ async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; sha
       if (!matchedExisting) newArticles.push(a);
     }
 
-    for (const u of updatedSignals) {
+    await Promise.allSettled(updatedSignals.map(u => {
       const update: any = {
         source_count: u.source_count,
         source_references: u.source_references,
         multi_source_confirmed: u.multi_source_confirmed,
       };
       if (u.official_source_present) update.official_source_present = true;
-      await supabase.from("global_signals").update(update).eq("id", u.id);
-    }
+      return supabase.from("global_signals").update(update).eq("id", u.id);
+    }));
 
     if (newArticles.length === 0) {
-      await logConnectorRun(supabase, "newsapi", "success", newsapiCount, 0, updatedSignals.length, Date.now() - intakeStart);
-      if (gdeltArticles.length > 0) await logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, 0, Date.now() - intakeStart);
+      await Promise.allSettled([
+        logConnectorRun(supabase, "newsapi", "success", newsapiCount, 0, updatedSignals.length, Date.now() - intakeStart),
+        gdeltArticles.length > 0
+          ? logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, 0, Date.now() - intakeStart)
+          : Promise.resolve(),
+      ]);
 
-      const benchmarkAudit = await updateBenchmarks(supabase);
-      await snapshotCoverage(supabase, registrySources, benchmarkAudit);
+      const benchmarkAudit = opts.runBenchmarks
+        ? await updateBenchmarks(supabase)
+        : { detected: 0, missed: 0, total: 0, skipped: true };
+      await snapshotCoverage(supabase, allRegistrySources, benchmarkAudit);
 
-      return new Response(JSON.stringify({
+      return {
         ok: true,
         new_signals: 0,
         updated_signals: updatedSignals.length,
         pending_enrichment: 0,
         official_fetched: officialResult.articles.length,
         benchmark_audit: benchmarkAudit,
+        duration_ms: Date.now() - intakeStart,
         message: "No new signals, updated existing",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      };
     }
 
     const signals: any[] = [];
