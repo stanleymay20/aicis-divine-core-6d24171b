@@ -6064,6 +6064,10 @@ export type Database = {
           confidence_explanation: Json | null
           confidence_score: number
           corroboration_count: number | null
+          country_extracted_at: string | null
+          country_extraction_confidence: number | null
+          country_extraction_method: string | null
+          country_extraction_status: string | null
           created_at: string
           decision_candidates: Json | null
           dedup_key: string | null
@@ -6074,6 +6078,7 @@ export type Database = {
           enrichment_status: string | null
           event_cluster_id: string | null
           evidence_hash: string | null
+          extracted_country_candidates: Json | null
           first_detected_at: string
           geo_admin0_iso3: string | null
           geo_admin1: string | null
@@ -6088,6 +6093,11 @@ export type Database = {
           impact_score: number
           ingested_at: string | null
           ingestion_source: string | null
+          is_low_resource_language: boolean | null
+          language_detector: string | null
+          language_family: string | null
+          language_routed_at: string | null
+          language_tier: string | null
           latest_update_at: string
           likely_consequences: string | null
           merged_source_count: number | null
@@ -6109,9 +6119,11 @@ export type Database = {
           routing_score: number | null
           routing_suppressed_reason: string | null
           routing_targets: string[] | null
+          script_detected: string | null
           source_count: number
           source_credibility_score: number | null
           source_language: string | null
+          source_language_confidence: number | null
           source_rank_score: number | null
           source_references: Json | null
           source_trust_tier: string | null
@@ -6123,6 +6135,7 @@ export type Database = {
           translated_at: string | null
           translated_summary: string | null
           translated_title: string | null
+          translation_defer_reason: string | null
           translation_model: string | null
           translation_status: string | null
           uncertainty_notes: string | null
@@ -6144,6 +6157,10 @@ export type Database = {
           confidence_explanation?: Json | null
           confidence_score?: number
           corroboration_count?: number | null
+          country_extracted_at?: string | null
+          country_extraction_confidence?: number | null
+          country_extraction_method?: string | null
+          country_extraction_status?: string | null
           created_at?: string
           decision_candidates?: Json | null
           dedup_key?: string | null
@@ -6154,6 +6171,7 @@ export type Database = {
           enrichment_status?: string | null
           event_cluster_id?: string | null
           evidence_hash?: string | null
+          extracted_country_candidates?: Json | null
           first_detected_at?: string
           geo_admin0_iso3?: string | null
           geo_admin1?: string | null
@@ -6168,6 +6186,11 @@ export type Database = {
           impact_score?: number
           ingested_at?: string | null
           ingestion_source?: string | null
+          is_low_resource_language?: boolean | null
+          language_detector?: string | null
+          language_family?: string | null
+          language_routed_at?: string | null
+          language_tier?: string | null
           latest_update_at?: string
           likely_consequences?: string | null
           merged_source_count?: number | null
@@ -6189,9 +6212,11 @@ export type Database = {
           routing_score?: number | null
           routing_suppressed_reason?: string | null
           routing_targets?: string[] | null
+          script_detected?: string | null
           source_count?: number
           source_credibility_score?: number | null
           source_language?: string | null
+          source_language_confidence?: number | null
           source_rank_score?: number | null
           source_references?: Json | null
           source_trust_tier?: string | null
@@ -6203,6 +6228,7 @@ export type Database = {
           translated_at?: string | null
           translated_summary?: string | null
           translated_title?: string | null
+          translation_defer_reason?: string | null
           translation_model?: string | null
           translation_status?: string | null
           uncertainty_notes?: string | null
@@ -6224,6 +6250,10 @@ export type Database = {
           confidence_explanation?: Json | null
           confidence_score?: number
           corroboration_count?: number | null
+          country_extracted_at?: string | null
+          country_extraction_confidence?: number | null
+          country_extraction_method?: string | null
+          country_extraction_status?: string | null
           created_at?: string
           decision_candidates?: Json | null
           dedup_key?: string | null
@@ -6234,6 +6264,7 @@ export type Database = {
           enrichment_status?: string | null
           event_cluster_id?: string | null
           evidence_hash?: string | null
+          extracted_country_candidates?: Json | null
           first_detected_at?: string
           geo_admin0_iso3?: string | null
           geo_admin1?: string | null
@@ -6248,6 +6279,11 @@ export type Database = {
           impact_score?: number
           ingested_at?: string | null
           ingestion_source?: string | null
+          is_low_resource_language?: boolean | null
+          language_detector?: string | null
+          language_family?: string | null
+          language_routed_at?: string | null
+          language_tier?: string | null
           latest_update_at?: string
           likely_consequences?: string | null
           merged_source_count?: number | null
@@ -6269,9 +6305,11 @@ export type Database = {
           routing_score?: number | null
           routing_suppressed_reason?: string | null
           routing_targets?: string[] | null
+          script_detected?: string | null
           source_count?: number
           source_credibility_score?: number | null
           source_language?: string | null
+          source_language_confidence?: number | null
           source_rank_score?: number | null
           source_references?: Json | null
           source_trust_tier?: string | null
@@ -6283,6 +6321,7 @@ export type Database = {
           translated_at?: string | null
           translated_summary?: string | null
           translated_title?: string | null
+          translation_defer_reason?: string | null
           translation_model?: string | null
           translation_status?: string | null
           uncertainty_notes?: string | null
