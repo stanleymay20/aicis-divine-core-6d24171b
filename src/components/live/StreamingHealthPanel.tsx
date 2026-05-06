@@ -53,7 +53,7 @@ export function StreamingHealthPanel() {
     queryFn: async (): Promise<Stats> => {
       const since = new Date(Date.now() - 24 * 3600_000).toISOString();
 
-      const [todayRes, latencyRes, pendCanonRes, pendLangRes, pendGeoRes, runsRes] = await Promise.all([
+      const [todayRes, latencyRes, pendCanonRes, pendLangRes, pendGeoRes, runsRes, healthRes] = await Promise.all([
         supabase.from("global_signals").select("id", { count: "exact", head: true }).gte("ingested_at", since),
         supabase.from("global_signals")
           .select("detection_latency_seconds")
@@ -69,6 +69,8 @@ export function StreamingHealthPanel() {
           .eq("status", "success")
           .order("executed_at", { ascending: false })
           .limit(60),
+        supabase.from("firehose_health" as any)
+          .select("firehose_name,trust_tier,last_success_at,last_failure_at,consecutive_failures,last_error_message"),
       ]);
 
       const lats = ((latencyRes.data ?? []) as { detection_latency_seconds: number }[])
@@ -89,6 +91,7 @@ export function StreamingHealthPanel() {
         pendingLangRoute: pendLangRes.count ?? 0,
         pendingGeo: pendGeoRes.count ?? 0,
         firehoseRuns: Array.from(seenJobs.entries()).map(([job, at]) => ({ job, at })),
+        firehoseHealth: ((healthRes.data ?? []) as unknown as FirehoseHealthRow[]),
       };
     },
     refetchInterval: 60_000,
