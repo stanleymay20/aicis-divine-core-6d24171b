@@ -171,6 +171,11 @@ export default function LiveSignalStream() {
         <StatTile icon={<Radio className="h-4 w-4" />} label="Distinct sources" value={sourceSet.size.toString()} accent="text-violet-300" />
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <BreakingNowLane />
+        <StreamingHealthPanel />
+      </div>
+
       <div className="flex items-center gap-2 flex-wrap">
         <Filter className="h-4 w-4 text-muted-foreground" />
         <FilterPill active={filter === "all"} onClick={() => setFilter("all")}>All</FilterPill>
