@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     // Pick rows that are unprocessed OR previously failed but now have a country.
     const { data: pending, error } = await supa
       .from("global_signals")
-      .select("id,title,summary,translated_title,translated_summary,affected_countries,geo_method")
+      .select("id,title,summary,translated_title,translated_summary,affected_countries,geo_method,ingested_at")
       .or("geocoded_at.is.null,geo_method.eq.failed")
       .order("first_detected_at", { ascending: false })
       .limit(BATCH);
@@ -120,10 +120,15 @@ Deno.serve(async (req) => {
       const iso3 = ac.length === 1 ? ac[0] : null;
 
       const nowIso = new Date().toISOString();
+      const ingestRef = (sig as any).ingested_at;
+      const processingLatencySec = ingestRef
+        ? Math.max(0, Math.round((Date.now() - new Date(ingestRef).getTime()) / 1000))
+        : null;
       const update: any = {
         geocoded_at: nowIso,
         last_pipeline_stage: "geocoded",
         pipeline_completed_at: nowIso,
+        processing_latency_seconds: processingLatencySec,
       };
 
       if (!iso3) {
