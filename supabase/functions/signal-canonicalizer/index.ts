@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
     // 1. Pull pending signals
     const { data: pending, error: pErr } = await supa
       .from("global_signals")
-      .select("id,title,category,affected_countries,occurred_at,first_detected_at,primary_source,canonical_source_name,ingestion_source")
+      .select("id,title,category,affected_countries,occurred_at,first_detected_at,primary_source,canonical_source_name,ingestion_source,ingested_at")
       .is("canonical_event_status", null)
       .order("first_detected_at", { ascending: true })
       .limit(BATCH);
