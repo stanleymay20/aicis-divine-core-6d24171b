@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { IntelligenceMemoryProvider } from "@/contexts/IntelligenceMemoryContext";
 import { DemoModeProvider } from "@/contexts/DemoModeContext";
 import { DemoBanner } from "@/components/demo/DemoBanner";
+import { DegradedModeBanner } from "@/components/live/DegradedModeBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Loader2 } from "lucide-react";
 
@@ -103,6 +104,7 @@ const App = () => (
         <BrowserRouter>
           <DemoModeProvider>
             <IntelligenceMemoryProvider>
+              <DegradedModeBanner />
               <DemoBanner />
               <Routes>
                 {/* ── Public routes ───────────────────────────── */}

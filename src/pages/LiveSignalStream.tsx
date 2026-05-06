@@ -16,6 +16,8 @@ import { Activity, Radio, ShieldAlert, Globe2, Pause, Play, Filter } from "lucid
 import { formatDistanceToNow } from "date-fns";
 import { BreakingNowLane } from "@/components/live/BreakingNowLane";
 import { StreamingHealthPanel } from "@/components/live/StreamingHealthPanel";
+import { PipelineStageLatencyPanel } from "@/components/live/PipelineStageLatencyPanel";
+import { FirehoseHealthGrid } from "@/components/live/FirehoseHealthGrid";
 
 type Signal = {
   id: string;
@@ -176,6 +178,11 @@ export default function LiveSignalStream() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <BreakingNowLane />
         <StreamingHealthPanel />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <PipelineStageLatencyPanel />
+        <FirehoseHealthGrid />
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
