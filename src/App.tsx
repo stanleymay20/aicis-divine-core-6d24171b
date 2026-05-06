@@ -153,30 +153,31 @@ const App = () => (
               <Route path="/system-status" element={<Protected><SystemStatus /></Protected>} />
               <Route path="/infra-ops" element={<Protected><InfraOps /></Protected>} />
               <Route path="/developers" element={<Protected><DeveloperPortal /></Protected>} />
-              <Route path="/forecast-validation" element={<Protected><Lazy><ForecastValidation /></Lazy></Protected>} />
-              <Route path="/system-pulse" element={<Protected><SystemPulse /></Protected>} />
-              <Route path="/atlas/region/:id" element={<Protected><RegionDrillDown /></Protected>} />
-              <Route path="/register-node" element={<Protected><RegisterNode /></Protected>} />
-              <Route path="/accumulation" element={<Protected><Accumulation /></Protected>} />
-              <Route path="/training-dataset" element={<Protected><TrainingDataset /></Protected>} />
+              <Route path="/forecast-validation" element={<Shell><ForecastValidation /></Shell>} />
+              <Route path="/system-pulse" element={<Shell><SystemPulse /></Shell>} />
+              <Route path="/atlas/region/:id" element={<Shell><RegionDrillDown /></Shell>} />
+              <Route path="/register-node" element={<Shell><RegisterNode /></Shell>} />
+              <Route path="/accumulation" element={<Shell><Accumulation /></Shell>} />
+              <Route path="/training-dataset" element={<Shell><TrainingDataset /></Shell>} />
               <Route path="/risk-ranking" element={<Protected><RiskRanking /></Protected>} />
               <Route path="/learning-loop" element={<Protected><LearningLoop /></Protected>} />
-              <Route path="/intelligence-engine" element={<Protected><IntelligenceEngine /></Protected>} />
+              <Route path="/intelligence-engine" element={<Shell><IntelligenceEngine /></Shell>} />
               <Route path="/simulation" element={<Protected><Simulation /></Protected>} />
               <Route path="/predictions" element={<Protected><Predictions /></Protected>} />
               <Route path="/api-audit" element={<Protected><ApiAudit /></Protected>} />
 
               {/* ── LRIL: Local Reality Intelligence ─────────── */}
-              <Route path="/local-events" element={<Protected><LocalEvents /></Protected>} />
-              <Route path="/local-events/:iso3" element={<Protected><LocalEvents /></Protected>} />
-              <Route path="/local-events/:iso3/:locality" element={<Protected><LocalEvents /></Protected>} />
+              <Route path="/local-events" element={<Shell><LocalEvents /></Shell>} />
+              <Route path="/local-events/:iso3" element={<Shell><LocalEvents /></Shell>} />
+              <Route path="/local-events/:iso3/:locality" element={<Shell><LocalEvents /></Shell>} />
 
               {/* ── Export Center (admin/operator only at edge fn level) ── */}
-              <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
-              <Route path="/pilot-truth" element={<Protected><PilotTruthFeed /></Protected>} />
-              <Route path="/data-pipeline" element={<Protected><DataPipeline /></Protected>} />
-              <Route path="/outcome-cockpit" element={<Protected><OutcomeCockpit /></Protected>} />
-              <Route path="/system-catalog" element={<Protected><SystemCatalog /></Protected>} />
+              <Route path="/admin/export-center" element={<Shell><ExportCenter /></Shell>} />
+              <Route path="/pilot-truth" element={<Shell><PilotTruthFeed /></Shell>} />
+              <Route path="/data-pipeline" element={<Shell><DataPipeline /></Shell>} />
+              <Route path="/outcome-cockpit" element={<Shell><OutcomeCockpit /></Shell>} />
+              <Route path="/system-catalog" element={<Shell><SystemCatalog /></Shell>} />
+              <Route path="/coverage-equity" element={<Shell><CoverageEquity /></Shell>} />
 
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
