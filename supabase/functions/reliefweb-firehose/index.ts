@@ -34,6 +34,14 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  const guard = await shouldSkipForBackoff(supabase, FN);
+  if (guard.skip) {
+    return new Response(
+      JSON.stringify({ ok: true, skipped: true, next_retry_at: guard.nextRetryAt }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
   // POST + JSON body is the canonical contract. The legacy GET with
   // profile=full now returns 410 Gone for unauthenticated callers.
   // ReliefWeb v2 (v1 decommissioned 2025-11) requires an approved appname.
