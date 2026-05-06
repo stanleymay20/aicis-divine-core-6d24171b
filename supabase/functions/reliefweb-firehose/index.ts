@@ -36,7 +36,11 @@ serve(async (req) => {
 
   // POST + JSON body is the canonical contract. The legacy GET with
   // profile=full now returns 410 Gone for unauthenticated callers.
-  const url = "https://api.reliefweb.int/v1/reports?appname=aicis-firehose";
+  // ReliefWeb v2 (v1 decommissioned 2025-11) requires an approved appname.
+  // Provide via RELIEFWEB_APPNAME secret. Request one at:
+  // https://apidoc.reliefweb.int/parameters#appname
+  const appname = Deno.env.get("RELIEFWEB_APPNAME") ?? "aicis-firehose";
+  const url = `https://api.reliefweb.int/v2/reports?appname=${encodeURIComponent(appname)}`;
   const body = {
     limit: 100,
     sort: ["date.created:desc"],
