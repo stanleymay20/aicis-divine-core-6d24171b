@@ -80,11 +80,11 @@ async function sha256Hex(input: string) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function pullTheme(theme: string, maxRows = 75): Promise<GdeltArticle[]> {
+async function pullTheme(theme: string, maxRows = 50): Promise<GdeltArticle[]> {
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=theme:${theme}&mode=ArtList&format=JSON&maxrecords=${maxRows}&timespan=30min&sort=DateDesc`;
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12000);
+    const t = setTimeout(() => ctrl.abort(), 8000);
     const res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
     if (!res.ok) return [];
