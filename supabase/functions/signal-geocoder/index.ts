@@ -119,8 +119,11 @@ Deno.serve(async (req) => {
       const ac = (sig.affected_countries || []) as string[];
       const iso3 = ac.length === 1 ? ac[0] : null;
 
+      const nowIso = new Date().toISOString();
       const update: any = {
-        geocoded_at: new Date().toISOString(),
+        geocoded_at: nowIso,
+        last_pipeline_stage: "geocoded",
+        pipeline_completed_at: nowIso,
       };
 
       if (!iso3) {
