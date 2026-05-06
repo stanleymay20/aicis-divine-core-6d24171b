@@ -2,6 +2,7 @@ import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { MorningBriefDashboard } from "@/components/morning-brief/MorningBriefDashboard";
 import { StreamingHealthPanel } from "@/components/live/StreamingHealthPanel";
 import { BreakingNowLane } from "@/components/live/BreakingNowLane";
+import { SignalRecommendationsLane } from "@/components/live/SignalRecommendationsLane";
 
 export default function MorningBrief() {
   return (
@@ -11,6 +12,7 @@ export default function MorningBrief() {
           <BreakingNowLane />
           <StreamingHealthPanel />
         </div>
+        <SignalRecommendationsLane topN={20} />
         <MorningBriefDashboard />
       </div>
     </AICISLayout>

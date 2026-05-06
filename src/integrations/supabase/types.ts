@@ -10022,6 +10022,66 @@ export type Database = {
         }
         Relationships: []
       }
+      risk_notification_queue: {
+        Row: {
+          attempts: number
+          channel: string
+          created_at: string
+          dedup_key: string
+          delivered_at: string | null
+          id: string
+          last_error: string | null
+          payload: Json
+          recommendation_id: string
+          signal_id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          channel?: string
+          created_at?: string
+          dedup_key: string
+          delivered_at?: string | null
+          id?: string
+          last_error?: string | null
+          payload?: Json
+          recommendation_id: string
+          signal_id: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          channel?: string
+          created_at?: string
+          dedup_key?: string
+          delivered_at?: string | null
+          id?: string
+          last_error?: string | null
+          payload?: Json
+          recommendation_id?: string
+          signal_id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "risk_notification_queue_recommendation_id_fkey"
+            columns: ["recommendation_id"]
+            isOneToOne: false
+            referencedRelation: "quantivis_pending_recommendations"
+            referencedColumns: ["recommendation_id"]
+          },
+          {
+            foreignKeyName: "risk_notification_queue_recommendation_id_fkey"
+            columns: ["recommendation_id"]
+            isOneToOne: false
+            referencedRelation: "signal_action_recommendations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       risk_prediction_realizations: {
         Row: {
           actual_label: number
@@ -10886,6 +10946,98 @@ export type Database = {
           source_table?: string | null
         }
         Relationships: []
+      }
+      signal_action_recommendations: {
+        Row: {
+          affected_countries: string[]
+          affected_sectors: string[]
+          category: string
+          confidence: number
+          created_at: string
+          dismissed_at: string | null
+          escalated_at: string | null
+          evidence_count: number
+          generation_method: string
+          id: string
+          impact_score: number | null
+          outcome_notes: string | null
+          outcome_observed_at: string | null
+          outcome_status: string | null
+          rationale: string | null
+          recommendation_effectiveness_score: number | null
+          recommended_action: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          severity: string
+          signal_id: string
+          status: string
+          suggested_time_to_action: string | null
+          updated_at: string
+          urgency_score: number | null
+        }
+        Insert: {
+          affected_countries?: string[]
+          affected_sectors?: string[]
+          category: string
+          confidence?: number
+          created_at?: string
+          dismissed_at?: string | null
+          escalated_at?: string | null
+          evidence_count?: number
+          generation_method?: string
+          id?: string
+          impact_score?: number | null
+          outcome_notes?: string | null
+          outcome_observed_at?: string | null
+          outcome_status?: string | null
+          rationale?: string | null
+          recommendation_effectiveness_score?: number | null
+          recommended_action: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity: string
+          signal_id: string
+          status?: string
+          suggested_time_to_action?: string | null
+          updated_at?: string
+          urgency_score?: number | null
+        }
+        Update: {
+          affected_countries?: string[]
+          affected_sectors?: string[]
+          category?: string
+          confidence?: number
+          created_at?: string
+          dismissed_at?: string | null
+          escalated_at?: string | null
+          evidence_count?: number
+          generation_method?: string
+          id?: string
+          impact_score?: number | null
+          outcome_notes?: string | null
+          outcome_observed_at?: string | null
+          outcome_status?: string | null
+          rationale?: string | null
+          recommendation_effectiveness_score?: number | null
+          recommended_action?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          severity?: string
+          signal_id?: string
+          status?: string
+          suggested_time_to_action?: string | null
+          updated_at?: string
+          urgency_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_action_recommendations_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: true
+            referencedRelation: "global_signals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       signal_audit_chain: {
         Row: {
@@ -14290,6 +14442,36 @@ export type Database = {
           title: string | null
         }
         Relationships: []
+      }
+      quantivis_pending_recommendations: {
+        Row: {
+          affected_countries: string[] | null
+          affected_market: string | null
+          affected_sectors: string[] | null
+          category: string | null
+          confidence: number | null
+          created_at: string | null
+          evidence_count: number | null
+          impact: number | null
+          rationale: string | null
+          recommendation_id: string | null
+          recommended_action: string | null
+          severity: string | null
+          signal_id: string | null
+          signal_title: string | null
+          status: string | null
+          suggested_time_to_action: string | null
+          urgency: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_action_recommendations_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: true
+            referencedRelation: "global_signals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       quantivis_prediction_outcomes: {
         Row: {
