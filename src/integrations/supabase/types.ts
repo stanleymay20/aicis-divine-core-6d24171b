@@ -6058,6 +6058,7 @@ export type Database = {
           canonical_event_id: string | null
           canonical_event_status: string | null
           canonical_source_name: string | null
+          canonicalization_latency_seconds: number | null
           canonicalized_at: string | null
           category: Database["public"]["Enums"]["signal_category"]
           classification_time_ms: number | null
@@ -6071,6 +6072,7 @@ export type Database = {
           created_at: string
           decision_candidates: Json | null
           dedup_key: string | null
+          detection_latency_seconds: number | null
           duplicate_of_signal_id: string | null
           enriched_at: string | null
           enrichment_attempts: number | null
@@ -6098,6 +6100,7 @@ export type Database = {
           language_family: string | null
           language_routed_at: string | null
           language_tier: string | null
+          last_pipeline_stage: string | null
           latest_update_at: string
           likely_consequences: string | null
           merged_source_count: number | null
@@ -6111,7 +6114,9 @@ export type Database = {
           official_source_present: boolean | null
           original_summary: string | null
           original_title: string | null
+          pipeline_completed_at: string | null
           primary_source: string | null
+          processing_latency_seconds: number | null
           propaganda_risk_score: number | null
           recommended_actions: Json | null
           related_signal_ids: string[] | null
@@ -6151,6 +6156,7 @@ export type Database = {
           canonical_event_id?: string | null
           canonical_event_status?: string | null
           canonical_source_name?: string | null
+          canonicalization_latency_seconds?: number | null
           canonicalized_at?: string | null
           category: Database["public"]["Enums"]["signal_category"]
           classification_time_ms?: number | null
@@ -6164,6 +6170,7 @@ export type Database = {
           created_at?: string
           decision_candidates?: Json | null
           dedup_key?: string | null
+          detection_latency_seconds?: number | null
           duplicate_of_signal_id?: string | null
           enriched_at?: string | null
           enrichment_attempts?: number | null
@@ -6191,6 +6198,7 @@ export type Database = {
           language_family?: string | null
           language_routed_at?: string | null
           language_tier?: string | null
+          last_pipeline_stage?: string | null
           latest_update_at?: string
           likely_consequences?: string | null
           merged_source_count?: number | null
@@ -6204,7 +6212,9 @@ export type Database = {
           official_source_present?: boolean | null
           original_summary?: string | null
           original_title?: string | null
+          pipeline_completed_at?: string | null
           primary_source?: string | null
+          processing_latency_seconds?: number | null
           propaganda_risk_score?: number | null
           recommended_actions?: Json | null
           related_signal_ids?: string[] | null
@@ -6244,6 +6254,7 @@ export type Database = {
           canonical_event_id?: string | null
           canonical_event_status?: string | null
           canonical_source_name?: string | null
+          canonicalization_latency_seconds?: number | null
           canonicalized_at?: string | null
           category?: Database["public"]["Enums"]["signal_category"]
           classification_time_ms?: number | null
@@ -6257,6 +6268,7 @@ export type Database = {
           created_at?: string
           decision_candidates?: Json | null
           dedup_key?: string | null
+          detection_latency_seconds?: number | null
           duplicate_of_signal_id?: string | null
           enriched_at?: string | null
           enrichment_attempts?: number | null
@@ -6284,6 +6296,7 @@ export type Database = {
           language_family?: string | null
           language_routed_at?: string | null
           language_tier?: string | null
+          last_pipeline_stage?: string | null
           latest_update_at?: string
           likely_consequences?: string | null
           merged_source_count?: number | null
@@ -6297,7 +6310,9 @@ export type Database = {
           official_source_present?: boolean | null
           original_summary?: string | null
           original_title?: string | null
+          pipeline_completed_at?: string | null
           primary_source?: string | null
+          processing_latency_seconds?: number | null
           propaganda_risk_score?: number | null
           recommended_actions?: Json | null
           related_signal_ids?: string[] | null
