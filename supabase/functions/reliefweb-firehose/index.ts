@@ -10,7 +10,7 @@
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { recordFirehoseHealth } from "../_shared/firehose-health.ts";
+import { recordFirehoseHealth, shouldSkipForBackoff } from "../_shared/firehose-health.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,6 +33,14 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  const guard = await shouldSkipForBackoff(supabase, FN);
+  if (guard.skip) {
+    return new Response(
+      JSON.stringify({ ok: true, skipped: true, next_retry_at: guard.nextRetryAt }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
 
   // POST + JSON body is the canonical contract. The legacy GET with
   // profile=full now returns 410 Gone for unauthenticated callers.
