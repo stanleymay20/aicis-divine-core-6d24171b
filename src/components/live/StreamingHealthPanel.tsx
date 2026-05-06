@@ -54,10 +54,10 @@ export function StreamingHealthPanel() {
         supabase.from("global_signals").select("id", { count: "exact", head: true }).is("language_routed_at", null),
         supabase.from("global_signals").select("id", { count: "exact", head: true }).is("geocoded_at", null),
         supabase.from("automation_logs")
-          .select("job_name,created_at")
+          .select("job_name,executed_at")
           .in("job_name", ["gdelt-firehose", "reliefweb-firehose", "usgs-quake-firehose"])
           .eq("status", "success")
-          .order("created_at", { ascending: false })
+          .order("executed_at", { ascending: false })
           .limit(60),
       ]);
 
@@ -67,8 +67,8 @@ export function StreamingHealthPanel() {
         .sort((a, b) => a - b);
 
       const seenJobs = new Map<string, string>();
-      for (const r of (runsRes.data ?? []) as { job_name: string; created_at: string }[]) {
-        if (!seenJobs.has(r.job_name)) seenJobs.set(r.job_name, r.created_at);
+      for (const r of (runsRes.data ?? []) as { job_name: string; executed_at: string }[]) {
+        if (!seenJobs.has(r.job_name)) seenJobs.set(r.job_name, r.executed_at);
       }
 
       return {
