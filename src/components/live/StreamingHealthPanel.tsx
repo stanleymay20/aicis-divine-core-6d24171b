@@ -8,8 +8,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Activity, Heart, Timer, AlertCircle } from "lucide-react";
+import { Activity, Heart, Timer, AlertCircle, AlertTriangle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+
+type FirehoseHealthRow = {
+  firehose_name: string;
+  trust_tier: string;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  consecutive_failures: number;
+  last_error_message: string | null;
+};
 
 type Stats = {
   signalsToday: number;
@@ -19,6 +28,7 @@ type Stats = {
   pendingLangRoute: number;
   pendingGeo: number;
   firehoseRuns: { job: string; at: string }[];
+  firehoseHealth: FirehoseHealthRow[];
 };
 
 function quantile(sorted: number[], q: number): number | null {
@@ -43,7 +53,7 @@ export function StreamingHealthPanel() {
     queryFn: async (): Promise<Stats> => {
       const since = new Date(Date.now() - 24 * 3600_000).toISOString();
 
-      const [todayRes, latencyRes, pendCanonRes, pendLangRes, pendGeoRes, runsRes] = await Promise.all([
+      const [todayRes, latencyRes, pendCanonRes, pendLangRes, pendGeoRes, runsRes, healthRes] = await Promise.all([
         supabase.from("global_signals").select("id", { count: "exact", head: true }).gte("ingested_at", since),
         supabase.from("global_signals")
           .select("detection_latency_seconds")
@@ -59,6 +69,8 @@ export function StreamingHealthPanel() {
           .eq("status", "success")
           .order("executed_at", { ascending: false })
           .limit(60),
+        supabase.from("firehose_health" as any)
+          .select("firehose_name,trust_tier,last_success_at,last_failure_at,consecutive_failures,last_error_message"),
       ]);
 
       const lats = ((latencyRes.data ?? []) as { detection_latency_seconds: number }[])
@@ -79,6 +91,7 @@ export function StreamingHealthPanel() {
         pendingLangRoute: pendLangRes.count ?? 0,
         pendingGeo: pendGeoRes.count ?? 0,
         firehoseRuns: Array.from(seenJobs.entries()).map(([job, at]) => ({ job, at })),
+        firehoseHealth: ((healthRes.data ?? []) as unknown as FirehoseHealthRow[]),
       };
     },
     refetchInterval: 60_000,
@@ -101,6 +114,26 @@ export function StreamingHealthPanel() {
           <p className="text-xs text-muted-foreground">Loading…</p>
         ) : (
           <>
+            {(() => {
+              const tier1Down = data.firehoseHealth.filter(
+                (h) => h.trust_tier === "tier_1" && h.consecutive_failures >= 3,
+              );
+              if (tier1Down.length === 0) return null;
+              return (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-destructive">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Tier-1 firehose offline
+                  </div>
+                  {tier1Down.map((h) => (
+                    <div key={h.firehose_name} className="font-mono">
+                      {h.firehose_name} — {h.consecutive_failures} consecutive failures
+                      {h.last_error_message ? ` (${h.last_error_message.slice(0, 80)})` : ""}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Stat icon={<Activity className="h-3.5 w-3.5" />} label="Signals (24h)" value={data.signalsToday.toLocaleString()} />
               <Stat icon={<Timer className="h-3.5 w-3.5" />} label="Median detect" value={fmtSec(data.medianDetectionSec)} />
@@ -110,19 +143,29 @@ export function StreamingHealthPanel() {
               <Stat icon={<AlertCircle className="h-3.5 w-3.5" />} label="Pending geo" value={data.pendingGeo.toLocaleString()} />
             </div>
             <div className="border-t border-border/50 pt-2">
-              <div className="text-[11px] text-muted-foreground mb-1">Last successful firehose runs</div>
+              <div className="text-[11px] text-muted-foreground mb-1">Firehose health</div>
               <div className="space-y-1">
-                {data.firehoseRuns.length === 0 && (
-                  <div className="text-[11px] text-muted-foreground">No recent runs.</div>
+                {data.firehoseHealth.length === 0 && (
+                  <div className="text-[11px] text-muted-foreground">No telemetry yet.</div>
                 )}
-                {data.firehoseRuns.map((r) => (
-                  <div key={r.job} className="flex items-center justify-between text-[11px]">
-                    <span className="font-mono text-foreground/80">{r.job}</span>
-                    <span className="text-muted-foreground">
-                      {formatDistanceToNow(new Date(r.at), { addSuffix: true })}
-                    </span>
-                  </div>
-                ))}
+                {data.firehoseHealth.map((h) => {
+                  const ok = h.consecutive_failures === 0 && !!h.last_success_at;
+                  return (
+                    <div key={h.firehose_name} className="flex items-center justify-between text-[11px]">
+                      <span className="font-mono text-foreground/80">
+                        <span className={ok ? "text-emerald-400" : "text-destructive"}>●</span>{" "}
+                        {h.firehose_name}
+                        <span className="text-muted-foreground"> [{h.trust_tier}]</span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        {h.last_success_at
+                          ? `ok ${formatDistanceToNow(new Date(h.last_success_at), { addSuffix: true })}`
+                          : "never"}
+                        {h.consecutive_failures > 0 ? ` · ${h.consecutive_failures} fails` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </>

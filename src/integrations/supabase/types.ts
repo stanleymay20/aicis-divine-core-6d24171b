@@ -5337,6 +5337,42 @@ export type Database = {
         }
         Relationships: []
       }
+      firehose_health: {
+        Row: {
+          consecutive_failures: number
+          firehose_name: string
+          last_duration_ms: number | null
+          last_error_message: string | null
+          last_failure_at: string | null
+          last_inserted_count: number | null
+          last_success_at: string | null
+          trust_tier: string
+          updated_at: string
+        }
+        Insert: {
+          consecutive_failures?: number
+          firehose_name: string
+          last_duration_ms?: number | null
+          last_error_message?: string | null
+          last_failure_at?: string | null
+          last_inserted_count?: number | null
+          last_success_at?: string | null
+          trust_tier?: string
+          updated_at?: string
+        }
+        Update: {
+          consecutive_failures?: number
+          firehose_name?: string
+          last_duration_ms?: number | null
+          last_error_message?: string | null
+          last_failure_at?: string | null
+          last_inserted_count?: number | null
+          last_success_at?: string | null
+          trust_tier?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       food_data: {
         Row: {
           country: string

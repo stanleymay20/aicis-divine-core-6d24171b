@@ -7,6 +7,7 @@
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { recordFirehoseHealth } from "../_shared/firehose-health.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -79,15 +80,22 @@ async function sha256Hex(input: string) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function pullTheme(theme: string, maxRows = 75): Promise<GdeltArticle[]> {
-  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=theme:${theme}&mode=ArtList&format=JSON&maxrecords=${maxRows}&timespan=30min&sort=DateDesc`;
+async function pullTheme(theme: string, maxRows = 50): Promise<GdeltArticle[]> {
+  // GDELT requires timespan >= ~1h reliably. 30min returns "Timespan is too short."
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=theme:${theme}&mode=ArtList&format=JSON&maxrecords=${maxRows}&timespan=1h&sort=DateDesc`;
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12000);
+    const t = setTimeout(() => ctrl.abort(), 15000);
     const res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
     if (!res.ok) return [];
-    const j = await res.json().catch(() => ({}));
+    const txt = await res.text();
+    // GDELT sometimes returns plain-text errors instead of JSON.
+    if (!txt.trim().startsWith("{")) {
+      console.error(`gdelt theme ${theme}: non-json response: ${txt.slice(0, 80)}`);
+      return [];
+    }
+    const j = JSON.parse(txt);
     return (j?.articles ?? []) as GdeltArticle[];
   } catch (e) {
     console.error(`gdelt theme ${theme}:`, (e as Error).message);
@@ -109,14 +117,27 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // Phase 4.1: shard themes per invocation to avoid edge timeouts.
+  // Default 3 shards, rotated by ?shard=1|2|3 or by minute window.
+  const SHARD_COUNT = 3;
+  const url = new URL(req.url);
+  const shardParam = parseInt(url.searchParams.get("shard") ?? "0", 10);
+  const shardIdx = (shardParam > 0 && shardParam <= SHARD_COUNT)
+    ? shardParam - 1
+    : Math.floor(new Date().getUTCMinutes() / Math.ceil(60 / SHARD_COUNT)) % SHARD_COUNT;
+  const myThemes = GDELT_THEMES.filter((_, i) => i % SHARD_COUNT === shardIdx);
+
   let totalRaw = 0;
   const themed: { art: GdeltArticle; category: string }[] = [];
+  let firstErr: string | null = null;
 
-  for (const t of GDELT_THEMES) {
-    const arts = await pullTheme(t.theme, 60);
+  // Fetch shard themes in parallel — bounded by slowest, not sum of timeouts.
+  const results = await Promise.all(
+    myThemes.map(async (t) => ({ t, arts: await pullTheme(t.theme, 50) })),
+  );
+  for (const { t, arts } of results) {
     totalRaw += arts.length;
     for (const a of arts) themed.push({ art: a, category: t.category });
-    await new Promise(r => setTimeout(r, 150));
   }
 
   // Local dedup by normalized title + domain
@@ -186,29 +207,40 @@ serve(async (req) => {
   }
 
   let inserted = 0;
+  let firstInsertErr: string | null = null;
   if (toInsert.length > 0) {
-    // Chunked insert
     for (let i = 0; i < toInsert.length; i += 200) {
       const chunk = toInsert.slice(i, i + 200);
       const { data, error } = await supabase.from("global_signals").insert(chunk).select("id");
       if (error) {
         console.error("gdelt insert error", error.message);
+        if (!firstInsertErr) firstInsertErr = error.message;
       } else {
         inserted += data?.length ?? 0;
       }
     }
   }
 
+  const failure = firstErr || firstInsertErr;
+  const success = !failure;
+
   const dur = Date.now() - start;
   await supabase.from("automation_logs").insert({
     job_name: FN,
-    status: "success",
-    message: `themes=${GDELT_THEMES.length} raw=${totalRaw} unique=${candidates.length} new=${inserted} dur=${dur}ms`,
+    status: success ? "success" : "error",
+    message: `shard=${shardIdx + 1}/${SHARD_COUNT} themes=${myThemes.length} raw=${totalRaw} unique=${candidates.length} new=${inserted} dur=${dur}ms${failure ? " err=" + failure : ""}`,
+  });
+  await recordFirehoseHealth(supabase, {
+    name: FN, trustTier: "tier_3",
+    success, insertedCount: inserted, durationMs: dur,
+    errorMessage: failure ?? undefined,
   });
 
   return new Response(JSON.stringify({
-    ok: true,
-    themes: GDELT_THEMES.length,
+    ok: success,
+    shard: shardIdx + 1,
+    shard_count: SHARD_COUNT,
+    themes: myThemes.length,
     raw: totalRaw,
     unique: candidates.length,
     inserted,

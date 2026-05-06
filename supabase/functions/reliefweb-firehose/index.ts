@@ -1,11 +1,16 @@
 /**
- * reliefweb-firehose — pulls the ReliefWeb (UN OCHA) updates API and
+ * reliefweb-firehose — pulls the ReliefWeb (UN OCHA) reports API and
  * ingests humanitarian disasters/crises into global_signals.
  *
  * Free, no key. https://reliefweb.int/help/api
+ *
+ * Phase 4.1 fix: GET querystring with `profile=full` returned HTTP 410.
+ * Switched to POST with JSON body which is the documented v1 contract and
+ * narrowed `fields.include` so the response stays small + reliable.
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { recordFirehoseHealth } from "../_shared/firehose-health.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,15 +34,57 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Pull latest 100 updates worldwide
-  const url = "https://api.reliefweb.int/v1/reports?appname=aicis&profile=full&limit=100&sort[]=date.created:desc";
-  const res = await fetch(url);
-  if (!res.ok) {
-    await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: `HTTP ${res.status}` });
-    return new Response(JSON.stringify({ error: "reliefweb HTTP " + res.status }), { status: 500, headers: corsHeaders });
+  // POST + JSON body is the canonical contract. The legacy GET with
+  // profile=full now returns 410 Gone for unauthenticated callers.
+  // ReliefWeb v2 (v1 decommissioned 2025-11) requires an approved appname.
+  // Provide via RELIEFWEB_APPNAME secret. Request one at:
+  // https://apidoc.reliefweb.int/parameters#appname
+  const appname = Deno.env.get("RELIEFWEB_APPNAME") ?? "aicis-firehose";
+  const url = `https://api.reliefweb.int/v2/reports?appname=${encodeURIComponent(appname)}`;
+  const body = {
+    limit: 100,
+    sort: ["date.created:desc"],
+    fields: {
+      include: ["title", "url", "date.created", "country.iso3", "country.name", "primary_country.iso3"],
+    },
+  };
+
+  let items: any[] = [];
+  let httpStatus = 0;
+  let errMsg: string | null = null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    httpStatus = res.status;
+    if (!res.ok) {
+      errMsg = `HTTP ${res.status}`;
+      const text = await res.text().catch(() => "");
+      console.error("reliefweb http error", res.status, text.slice(0, 200));
+    } else {
+      const j = await res.json();
+      items = (j?.data ?? []) as any[];
+    }
+  } catch (e) {
+    errMsg = (e as Error).message;
+    console.error("reliefweb fetch failed", errMsg);
   }
-  const j = await res.json();
-  const items = (j?.data ?? []) as any[];
+
+  if (errMsg) {
+    await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: errMsg });
+    await recordFirehoseHealth(supabase, {
+      name: FN, trustTier: "tier_1", success: false, errorMessage: errMsg, durationMs: Date.now() - start,
+    });
+    return new Response(JSON.stringify({ error: errMsg, http_status: httpStatus }), {
+      status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const candidates: any[] = [];
   const seen = new Set<string>();
@@ -54,11 +101,14 @@ serve(async (req) => {
     for (const c of (f.country ?? [])) {
       if (c?.iso3) iso3s.push(c.iso3.toUpperCase());
     }
+    if (f.primary_country?.iso3 && !iso3s.includes(f.primary_country.iso3.toUpperCase())) {
+      iso3s.unshift(f.primary_country.iso3.toUpperCase());
+    }
     const occurredAt = f.date?.created ?? new Date().toISOString();
     const link = f.url ?? `https://reliefweb.int/report/${it.id}`;
 
     let category = "migration_displacement";
-    const t = (title + " " + (f.body_html ?? "")).toLowerCase();
+    const t = title.toLowerCase();
     if (t.includes("flood") || t.includes("storm") || t.includes("earthquake") || t.includes("cyclone")) category = "climate_disaster";
     else if (t.includes("conflict") || t.includes("violence") || t.includes("attack")) category = "defense_conflict";
     else if (t.includes("cholera") || t.includes("outbreak") || t.includes("epidemic")) category = "public_health";
@@ -118,17 +168,25 @@ serve(async (req) => {
   }
 
   let inserted = 0;
+  let insertErr: string | null = null;
   if (toInsert.length > 0) {
     const { data, error } = await supabase.from("global_signals").insert(toInsert).select("id");
-    if (error) console.error("reliefweb insert", error.message);
+    if (error) { insertErr = error.message; console.error("reliefweb insert", error.message); }
     else inserted = data?.length ?? 0;
   }
 
   const dur = Date.now() - start;
   await supabase.from("automation_logs").insert({
-    job_name: FN, status: "success",
-    message: `raw=${items.length} unique=${candidates.length} new=${inserted} dur=${dur}ms`,
+    job_name: FN, status: insertErr ? "error" : "success",
+    message: `raw=${items.length} unique=${candidates.length} new=${inserted} dur=${dur}ms${insertErr ? " err=" + insertErr : ""}`,
   });
-  return new Response(JSON.stringify({ ok: true, raw: items.length, unique: candidates.length, inserted, duration_ms: dur }),
+  await recordFirehoseHealth(supabase, {
+    name: FN, trustTier: "tier_1",
+    success: !insertErr,
+    insertedCount: inserted, durationMs: dur,
+    errorMessage: insertErr ?? undefined,
+  });
+
+  return new Response(JSON.stringify({ ok: !insertErr, raw: items.length, unique: candidates.length, inserted, duration_ms: dur }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
