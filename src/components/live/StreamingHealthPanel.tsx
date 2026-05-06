@@ -114,6 +114,26 @@ export function StreamingHealthPanel() {
           <p className="text-xs text-muted-foreground">Loading…</p>
         ) : (
           <>
+            {(() => {
+              const tier1Down = data.firehoseHealth.filter(
+                (h) => h.trust_tier === "tier_1" && h.consecutive_failures >= 3,
+              );
+              if (tier1Down.length === 0) return null;
+              return (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-destructive">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Tier-1 firehose offline
+                  </div>
+                  {tier1Down.map((h) => (
+                    <div key={h.firehose_name} className="font-mono">
+                      {h.firehose_name} — {h.consecutive_failures} consecutive failures
+                      {h.last_error_message ? ` (${h.last_error_message.slice(0, 80)})` : ""}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Stat icon={<Activity className="h-3.5 w-3.5" />} label="Signals (24h)" value={data.signalsToday.toLocaleString()} />
               <Stat icon={<Timer className="h-3.5 w-3.5" />} label="Median detect" value={fmtSec(data.medianDetectionSec)} />
@@ -123,19 +143,29 @@ export function StreamingHealthPanel() {
               <Stat icon={<AlertCircle className="h-3.5 w-3.5" />} label="Pending geo" value={data.pendingGeo.toLocaleString()} />
             </div>
             <div className="border-t border-border/50 pt-2">
-              <div className="text-[11px] text-muted-foreground mb-1">Last successful firehose runs</div>
+              <div className="text-[11px] text-muted-foreground mb-1">Firehose health</div>
               <div className="space-y-1">
-                {data.firehoseRuns.length === 0 && (
-                  <div className="text-[11px] text-muted-foreground">No recent runs.</div>
+                {data.firehoseHealth.length === 0 && (
+                  <div className="text-[11px] text-muted-foreground">No telemetry yet.</div>
                 )}
-                {data.firehoseRuns.map((r) => (
-                  <div key={r.job} className="flex items-center justify-between text-[11px]">
-                    <span className="font-mono text-foreground/80">{r.job}</span>
-                    <span className="text-muted-foreground">
-                      {formatDistanceToNow(new Date(r.at), { addSuffix: true })}
-                    </span>
-                  </div>
-                ))}
+                {data.firehoseHealth.map((h) => {
+                  const ok = h.consecutive_failures === 0 && !!h.last_success_at;
+                  return (
+                    <div key={h.firehose_name} className="flex items-center justify-between text-[11px]">
+                      <span className="font-mono text-foreground/80">
+                        <span className={ok ? "text-emerald-400" : "text-destructive"}>●</span>{" "}
+                        {h.firehose_name}
+                        <span className="text-muted-foreground"> [{h.trust_tier}]</span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        {h.last_success_at
+                          ? `ok ${formatDistanceToNow(new Date(h.last_success_at), { addSuffix: true })}`
+                          : "never"}
+                        {h.consecutive_failures > 0 ? ` · ${h.consecutive_failures} fails` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </>
