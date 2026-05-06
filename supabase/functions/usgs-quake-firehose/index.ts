@@ -120,17 +120,22 @@ serve(async (req) => {
   }
 
   let inserted = 0;
+  let insertErr: string | null = null;
   if (toInsert.length > 0) {
     const { data, error } = await supabase.from("global_signals").insert(toInsert).select("id");
-    if (error) console.error("usgs insert", error.message);
+    if (error) { insertErr = error.message; console.error("usgs insert", error.message); }
     else inserted = data?.length ?? 0;
   }
 
   const dur = Date.now() - start;
   await supabase.from("automation_logs").insert({
-    job_name: FN, status: "success",
-    message: `quakes=${features.length} unique=${candidates.length} new=${inserted} dur=${dur}ms`,
+    job_name: FN, status: insertErr ? "error" : "success",
+    message: `quakes=${features.length} unique=${candidates.length} new=${inserted} dur=${dur}ms${insertErr ? " err=" + insertErr : ""}`,
   });
-  return new Response(JSON.stringify({ ok: true, quakes: features.length, inserted, duration_ms: dur }),
+  await recordFirehoseHealth(supabase, {
+    name: FN, trustTier: "tier_1", success: !insertErr,
+    insertedCount: inserted, durationMs: dur, errorMessage: insertErr ?? undefined,
+  });
+  return new Response(JSON.stringify({ ok: !insertErr, quakes: features.length, inserted, duration_ms: dur }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
