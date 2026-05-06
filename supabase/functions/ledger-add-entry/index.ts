@@ -1,10 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-aicis-node-key',
 };
+
+const EntrySchema = z.object({
+  entryType: z.string().trim().min(1).max(80),
+  payload: z.record(z.any()).refine(v => JSON.stringify(v).length <= 100_000, 'payload too large'),
+  signature: z.string().max(8000).optional().nullable(),
+});
+
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -12,30 +24,38 @@ serve(async (req) => {
   }
 
   try {
-    const { entryType, payload, signature } = await req.json();
+    const raw = await req.json().catch(() => ({}));
+    const parsed = EntrySchema.safeParse(raw);
+    if (!parsed.success) {
+      return new Response(JSON.stringify({ error: 'Invalid input', issues: parsed.error.flatten() }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const { entryType, payload, signature } = parsed.data;
     const nodeKey = req.headers.get('X-AICIS-Node-Key');
-    
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Verify node API key
-    let nodeId = null;
+    let nodeId: string | null = null;
     if (nodeKey) {
+      const keyHash = await sha256Hex(nodeKey);
       const { data: node } = await supabaseClient
         .from('accountability_nodes')
         .select('id, verified')
-        .eq('api_key', nodeKey)
+        .eq('api_key_hash', keyHash)
         .single();
 
       if (!node || !node.verified) {
-        throw new Error('Invalid or unverified node key');
+        return new Response(JSON.stringify({ error: 'Invalid or unverified node key' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
       nodeId = node.id;
     }
 
-    // Get previous hash for chain integrity
     const { data: lastEntry } = await supabaseClient
       .from('ledger_entries')
       .select('hash')
@@ -44,72 +64,47 @@ serve(async (req) => {
       .single();
 
     const previousHash = lastEntry?.hash || 'genesis';
-
-    // Compute hash for this entry
     const entryData = {
       entry_type: entryType,
-      payload: payload,
+      payload,
       previous_hash: previousHash,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
+    const hash = await sha256Hex(JSON.stringify(entryData));
 
-    const hashBuffer = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode(JSON.stringify(entryData))
-    );
-    const hash = Array.from(new Uint8Array(hashBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    // Insert ledger entry
     const { data: entry, error: entryError } = await supabaseClient
       .from('ledger_entries')
       .insert({
         entry_type: entryType,
         node_id: nodeId,
-        hash: hash,
-        payload: payload,
-        signature: signature,
+        hash,
+        payload,
+        signature: signature ?? null,
         previous_hash: previousHash,
-        verified: !!signature
+        verified: !!signature,
       })
       .select()
       .single();
 
     if (entryError) throw entryError;
 
-    // Log audit trail if node-based
     if (nodeId) {
       await supabaseClient.from('node_audit_trail').insert({
         node_id: nodeId,
         action: 'ledger_entry_added',
         status: 'success',
-        metadata: { 
-          entry_id: entry.id,
-          entry_type: entryType,
-          hash: hash
-        }
+        metadata: { entry_id: entry.id, entry_type: entryType, hash },
       });
     }
 
-    console.log(`Ledger entry added: ${hash}`);
-
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       success: true,
-      entry: {
-        id: entry.id,
-        hash: hash,
-        block_number: entry.block_number,
-        verified: entry.verified
-      }
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      entry: { id: entry.id, hash, block_number: entry.block_number, verified: entry.verified },
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
-    console.error('Error in ledger-add-entry:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    console.error('ledger-add-entry error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to add entry' }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

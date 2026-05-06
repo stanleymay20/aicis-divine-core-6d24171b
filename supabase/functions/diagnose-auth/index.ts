@@ -8,33 +8,64 @@ Deno.serve(async (req) => {
   if (cors) return cors;
 
   const start = Date.now();
-  const required = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
-  const missing = required.filter((v) => !Deno.env.get(v));
-
-  const result: any = { ok: true, missingEnv: missing, authStatus: null, timestamp: new Date().toISOString() };
 
   try {
-    if (missing.length > 0) {
-      result.ok = false;
-      result.message = 'Missing environment variables';
-      structuredLog('error', FN, 'Missing env vars', { missing });
-      return jsonResponse(result);
+    // Require authenticated admin
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return jsonResponse({ status: 'unauthorized' }, 401);
     }
 
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!);
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) return jsonResponse({ status: 'unauthorized' }, 401);
 
-    await supabase.auth.getSession();
-    result.authStatus = '✅ Auth responding';
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    const { data: roles } = await admin
+      .from('user_roles').select('role').eq('user_id', user.id);
+    const isAdmin = roles?.some((r: any) => r.role === 'admin');
+    if (!isAdmin) return jsonResponse({ status: 'forbidden' }, 403);
 
-    const { error: dbError } = await supabase.from('user_roles').select('*').limit(1);
-    result.dbStatus = dbError ? `⚠️ Database: ${dbError.message}` : '✅ Database connected';
+    // Run diagnostics; only return generic status enum to caller
+    const required = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
+    const missing = required.filter((v) => !Deno.env.get(v));
 
-    structuredLog('info', FN, 'Diagnosis complete', undefined, start);
-    return jsonResponse(result);
+    let dbOk = true;
+    try {
+      const { error } = await admin.from('user_roles').select('user_id').limit(1);
+      if (error) dbOk = false;
+    } catch { dbOk = false; }
+
+    let authOk = true;
+    try {
+      await admin.auth.getSession();
+    } catch { authOk = false; }
+
+    const status = missing.length > 0 || !dbOk || !authOk
+      ? (missing.length > 0 || !dbOk ? 'down' : 'degraded')
+      : 'healthy';
+
+    // Write full diagnostic detail to internal log (admin-only RLS expected on system_errors)
+    if (status !== 'healthy') {
+      await admin.from('system_errors').insert({
+        component: 'diagnose-auth',
+        message: `Diagnostic status: ${status}`,
+        details: { missing, dbOk, authOk },
+        severity: status === 'down' ? 'high' : 'medium',
+      });
+    }
+
+    structuredLog('info', FN, 'Diagnosis complete', { status }, start);
+    return jsonResponse({ status, timestamp: new Date().toISOString() });
   } catch (err: any) {
-    result.ok = false;
-    result.error = err.message;
     structuredLog('error', FN, err.message, undefined, start);
-    return errorResponse(err);
+    return errorResponse(new Error('Diagnostic failure'));
   }
 });
