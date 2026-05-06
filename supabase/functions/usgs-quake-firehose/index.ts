@@ -63,12 +63,16 @@ serve(async (req) => {
   }
 
   const toInsert: any[] = [];
+  const nowMs = Date.now();
   for (const c of candidates) {
     if (existing.has(c.dedup)) continue;
+    const detectionLatencySec = Math.max(0, Math.round((nowMs - new Date(c.time).getTime()) / 1000));
     const evidenceHash = await sha256Hex(`${c.title}|${c.url}|${c.time}`);
     const impact = c.mag >= 7 ? 95 : c.mag >= 6 ? 80 : c.mag >= 5 ? 60 : 45;
     const urgency = c.mag >= 6 ? 90 : 65;
     toInsert.push({
+      detection_latency_seconds: detectionLatencySec,
+      last_pipeline_stage: "ingested",
       title: c.title.slice(0, 500),
       summary: `Magnitude ${c.mag} earthquake near ${c.place}.`.slice(0, 2000),
       category: "climate_disaster",

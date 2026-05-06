@@ -454,6 +454,7 @@ Deno.serve(async (req) => {
 
       const update: any = {
         country_extracted_at: new Date().toISOString(),
+        last_pipeline_stage: "country_extracted",
         extracted_country_candidates: cands.slice(0, 5),
         country_extraction_method: "alias_dictionary_v2",
       };

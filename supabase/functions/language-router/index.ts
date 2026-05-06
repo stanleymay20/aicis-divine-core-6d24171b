@@ -247,6 +247,7 @@ Deno.serve(async (req) => {
         translation_status: finalTranslationStatus,
         translation_defer_reason: deferReason,
         language_routed_at: new Date().toISOString(),
+        last_pipeline_stage: "language_routed",
         original_title: (sig as any).original_title ?? sig.title,
         original_summary: (sig as any).original_summary ?? sig.summary,
       }).eq("id", sig.id);

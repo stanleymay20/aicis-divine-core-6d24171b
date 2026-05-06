@@ -90,6 +90,7 @@ Deno.serve(async (req) => {
         translation_status: "translated",
         translation_model: MODEL,
         translated_at: new Date().toISOString(),
+        last_pipeline_stage: "translated",
       }).eq("id", sig.id);
       translated++;
     }

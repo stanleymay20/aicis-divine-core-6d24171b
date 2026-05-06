@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
     // 1. Pull pending signals
     const { data: pending, error: pErr } = await supa
       .from("global_signals")
-      .select("id,title,category,affected_countries,occurred_at,first_detected_at,primary_source,canonical_source_name,ingestion_source")
+      .select("id,title,category,affected_countries,occurred_at,first_detected_at,primary_source,canonical_source_name,ingestion_source,ingested_at")
       .is("canonical_event_status", null)
       .order("first_detected_at", { ascending: true })
       .limit(BATCH);
@@ -245,6 +245,11 @@ Deno.serve(async (req) => {
       }
 
       const trust = resolveTrust(sigSource, registry);
+      const nowIsoLoop = new Date().toISOString();
+      const ingestRef = (sig as any).ingested_at || sig.first_detected_at;
+      const canonLatencySec = ingestRef
+        ? Math.max(0, Math.round((Date.now() - new Date(ingestRef).getTime()) / 1000))
+        : null;
 
       if (best) {
         // duplicate
@@ -257,7 +262,9 @@ Deno.serve(async (req) => {
           canonical_event_id: best.c.canonical_event_id,
           duplicate_of_signal_id: best.c.id,
           canonical_event_status: "duplicate",
-          canonicalized_at: new Date().toISOString(),
+          canonicalized_at: nowIsoLoop,
+          last_pipeline_stage: "canonicalized",
+          canonicalization_latency_seconds: canonLatencySec,
           source_credibility_score: trust.credibility_score,
           propaganda_risk_score: trust.propaganda_risk_score,
           source_trust_tier: trust.tier,
@@ -288,7 +295,9 @@ Deno.serve(async (req) => {
           canonical_event_id: canonId,
           duplicate_of_signal_id: null,
           canonical_event_status: "canonical",
-          canonicalized_at: new Date().toISOString(),
+          canonicalized_at: nowIsoLoop,
+          last_pipeline_stage: "canonicalized",
+          canonicalization_latency_seconds: canonLatencySec,
           source_credibility_score: trust.credibility_score,
           propaganda_risk_score: trust.propaganda_risk_score,
           source_trust_tier: trust.tier,
