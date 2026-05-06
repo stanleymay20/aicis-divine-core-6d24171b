@@ -134,7 +134,7 @@ const App = () => (
               <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-stream" element={<Protected><LiveSignalStream /></Protected>} />
-              <Route path="/coverage-equity" element={<Protected><CoverageEquity /></Protected>} />
+              <Route path="/coverage-equity" element={<Shell><CoverageEquity /></Shell>} />
               <Route path="/decision-ops" element={<Protected><DecisionOperations /></Protected>} />
               <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
               <Route path="/evidence-command" element={<Protected><EvidenceCommand /></Protected>} />
