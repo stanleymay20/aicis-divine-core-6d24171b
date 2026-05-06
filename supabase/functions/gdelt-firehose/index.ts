@@ -110,14 +110,25 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // Phase 4.1: shard themes per invocation to avoid edge timeouts.
+  // Default 3 shards, rotated by ?shard=1|2|3 or by minute window.
+  const SHARD_COUNT = 3;
+  const url = new URL(req.url);
+  const shardParam = parseInt(url.searchParams.get("shard") ?? "0", 10);
+  const shardIdx = (shardParam > 0 && shardParam <= SHARD_COUNT)
+    ? shardParam - 1
+    : Math.floor(new Date().getUTCMinutes() / Math.ceil(60 / SHARD_COUNT)) % SHARD_COUNT;
+  const myThemes = GDELT_THEMES.filter((_, i) => i % SHARD_COUNT === shardIdx);
+
   let totalRaw = 0;
   const themed: { art: GdeltArticle; category: string }[] = [];
+  let firstErr: string | null = null;
 
-  for (const t of GDELT_THEMES) {
-    const arts = await pullTheme(t.theme, 60);
+  for (const t of myThemes) {
+    const arts = await pullTheme(t.theme, 50);
     totalRaw += arts.length;
     for (const a of arts) themed.push({ art: a, category: t.category });
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 100));
   }
 
   // Local dedup by normalized title + domain
