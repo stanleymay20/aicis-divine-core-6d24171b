@@ -198,29 +198,40 @@ serve(async (req) => {
   }
 
   let inserted = 0;
+  let firstInsertErr: string | null = null;
   if (toInsert.length > 0) {
-    // Chunked insert
     for (let i = 0; i < toInsert.length; i += 200) {
       const chunk = toInsert.slice(i, i + 200);
       const { data, error } = await supabase.from("global_signals").insert(chunk).select("id");
       if (error) {
         console.error("gdelt insert error", error.message);
+        if (!firstInsertErr) firstInsertErr = error.message;
       } else {
         inserted += data?.length ?? 0;
       }
     }
   }
 
+  const failure = firstErr || firstInsertErr;
+  const success = !failure;
+
   const dur = Date.now() - start;
   await supabase.from("automation_logs").insert({
     job_name: FN,
-    status: "success",
-    message: `themes=${GDELT_THEMES.length} raw=${totalRaw} unique=${candidates.length} new=${inserted} dur=${dur}ms`,
+    status: success ? "success" : "error",
+    message: `shard=${shardIdx + 1}/${SHARD_COUNT} themes=${myThemes.length} raw=${totalRaw} unique=${candidates.length} new=${inserted} dur=${dur}ms${failure ? " err=" + failure : ""}`,
+  });
+  await recordFirehoseHealth(supabase, {
+    name: FN, trustTier: "tier_3",
+    success, insertedCount: inserted, durationMs: dur,
+    errorMessage: failure ?? undefined,
   });
 
   return new Response(JSON.stringify({
-    ok: true,
-    themes: GDELT_THEMES.length,
+    ok: success,
+    shard: shardIdx + 1,
+    shard_count: SHARD_COUNT,
+    themes: myThemes.length,
     raw: totalRaw,
     unique: candidates.length,
     inserted,
