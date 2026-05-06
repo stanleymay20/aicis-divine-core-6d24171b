@@ -32,10 +32,20 @@ serve(async (req) => {
 
   // Past day, M4.5+ — runs every 30min, dedup handles overlap
   const url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson";
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    const msg = (e as Error).message;
+    await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: msg });
+    await recordFirehoseHealth(supabase, { name: FN, trustTier: "tier_1", success: false, errorMessage: msg, durationMs: Date.now() - start });
+    return new Response(JSON.stringify({ error: msg }), { status: 502, headers: corsHeaders });
+  }
   if (!res.ok) {
-    await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: `HTTP ${res.status}` });
-    return new Response(JSON.stringify({ error: "usgs HTTP " + res.status }), { status: 500, headers: corsHeaders });
+    const msg = `HTTP ${res.status}`;
+    await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: msg });
+    await recordFirehoseHealth(supabase, { name: FN, trustTier: "tier_1", success: false, errorMessage: msg, durationMs: Date.now() - start });
+    return new Response(JSON.stringify({ error: "usgs " + msg }), { status: 500, headers: corsHeaders });
   }
   const j = await res.json();
   const features = (j?.features ?? []) as any[];
