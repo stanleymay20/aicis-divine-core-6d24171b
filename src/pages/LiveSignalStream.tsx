@@ -44,6 +44,8 @@ type Signal = {
   script_detected: string | null;
   country_extraction_method: string | null;
   country_extraction_confidence: number | null;
+  detection_latency_seconds: number | null;
+  last_pipeline_stage: string | null;
 };
 
 const WINDOW_MS = 30 * 60 * 1000;
@@ -81,7 +83,7 @@ export default function LiveSignalStream() {
       const since = new Date(Date.now() - WINDOW_MS).toISOString();
       const { data, error } = await supabase
         .from("global_signals")
-        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status,language_tier,script_detected,country_extraction_method,country_extraction_confidence")
+        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status,language_tier,script_detected,country_extraction_method,country_extraction_confidence,detection_latency_seconds,last_pipeline_stage")
         .gte("first_detected_at", since)
         .order("first_detected_at", { ascending: false })
         .limit(200);
@@ -275,6 +277,11 @@ export default function LiveSignalStream() {
                   </div>
                   <div className="flex items-center gap-3">
                     {typeof s.impact_score === "number" && <span className="font-mono">imp {s.impact_score}</span>}
+                    {typeof s.detection_latency_seconds === "number" && (
+                      <span className="font-mono text-[10px] text-emerald-300/80" title="wire-to-ingest latency">
+                        {s.detection_latency_seconds < 60 ? `${s.detection_latency_seconds}s` : `${Math.round(s.detection_latency_seconds/60)}m`} latency
+                      </span>
+                    )}
                     <span>{formatDistanceToNow(new Date(s.first_detected_at), { addSuffix: true })}</span>
                     <button onClick={() => setExpanded(isOpen ? null : s.id)} className="text-primary hover:underline">
                       {isOpen ? "hide" : "why?"}
