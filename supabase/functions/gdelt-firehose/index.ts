@@ -81,14 +81,21 @@ async function sha256Hex(input: string) {
 }
 
 async function pullTheme(theme: string, maxRows = 50): Promise<GdeltArticle[]> {
-  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=theme:${theme}&mode=ArtList&format=JSON&maxrecords=${maxRows}&timespan=30min&sort=DateDesc`;
+  // GDELT requires timespan >= ~1h reliably. 30min returns "Timespan is too short."
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=theme:${theme}&mode=ArtList&format=JSON&maxrecords=${maxRows}&timespan=1h&sort=DateDesc`;
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000);
+    const t = setTimeout(() => ctrl.abort(), 15000);
     const res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
     if (!res.ok) return [];
-    const j = await res.json().catch(() => ({}));
+    const txt = await res.text();
+    // GDELT sometimes returns plain-text errors instead of JSON.
+    if (!txt.trim().startsWith("{")) {
+      console.error(`gdelt theme ${theme}: non-json response: ${txt.slice(0, 80)}`);
+      return [];
+    }
+    const j = JSON.parse(txt);
     return (j?.articles ?? []) as GdeltArticle[];
   } catch (e) {
     console.error(`gdelt theme ${theme}:`, (e as Error).message);
