@@ -27,18 +27,48 @@ const PROVIDER_URLS: Record<string, (params: Record<string, any>) => string> = {
   },
 };
 
+const ALLOWED_PROVIDERS = new Set(['worldbank', 'imf', 'openalex']);
+const ALLOWED_ACTIONS = new Set([
+  'run', 'replay', 'metrics_by_entity', 'timeseries',
+  'events_by_entity', 'run_health', 'latest_by_country',
+]);
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
+
+  // Require authenticated user with operator/admin role
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    return errorResponse(new Error('Unauthorized'), 401);
+  }
+  const userClient = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    { global: { headers: { Authorization: authHeader } } }
+  );
+  const { data: { user } } = await userClient.auth.getUser();
+  if (!user) return errorResponse(new Error('Unauthorized'), 401);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
+  const { data: roles } = await supabase
+    .from('user_roles').select('role').eq('user_id', user.id);
+  const allowed = roles?.some((r: any) => ['admin', 'operator'].includes(r.role));
+  if (!allowed) return errorResponse(new Error('Forbidden'), 403);
+
   try {
     const body = await req.json();
     const { action, ...params } = body;
+    if (typeof action !== 'string' || !ALLOWED_ACTIONS.has(action)) {
+      return errorResponse(new Error(`Unknown action: ${action}`), 400);
+    }
+    if (params?.provider_name && !ALLOWED_PROVIDERS.has(params.provider_name)) {
+      return errorResponse(new Error(`Provider not allowed: ${params.provider_name}`), 400);
+    }
     switch (action) {
       case "run": return await runIngestion(supabase, params);
       case "replay": return await replayIngestion(supabase, params);
