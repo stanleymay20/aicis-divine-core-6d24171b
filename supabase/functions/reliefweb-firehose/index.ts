@@ -75,10 +75,14 @@ serve(async (req) => {
   }
 
   const toInsert: any[] = [];
+  const nowMs = Date.now();
   for (const c of candidates) {
     if (existing.has(c.dedup)) continue;
+    const detectionLatencySec = Math.max(0, Math.round((nowMs - new Date(c.occurredAt).getTime()) / 1000));
     const evidenceHash = await sha256Hex(`${c.title}|${c.link}|${c.occurredAt}`);
     toInsert.push({
+      detection_latency_seconds: detectionLatencySec,
+      last_pipeline_stage: "ingested",
       title: c.title.slice(0, 500),
       summary: c.title.slice(0, 2000),
       category: c.category,

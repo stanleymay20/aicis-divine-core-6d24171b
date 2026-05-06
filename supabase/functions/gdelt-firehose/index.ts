@@ -141,12 +141,16 @@ serve(async (req) => {
   }
 
   const toInsert: any[] = [];
+  const nowMs = Date.now();
   for (const c of candidates) {
     if (existing.has(c.dedup)) continue;
     const occurredAt = gdeltSeenToIso(c.art.seendate);
+    const detectionLatencySec = Math.max(0, Math.round((nowMs - new Date(occurredAt).getTime()) / 1000));
     const iso3 = c.art.sourcecountry ? FIPS_TO_ISO3[c.art.sourcecountry] : undefined;
     const evidenceHash = await sha256Hex(`${c.art.title}|${c.art.url}|${occurredAt}`);
     toInsert.push({
+      detection_latency_seconds: detectionLatencySec,
+      last_pipeline_stage: "ingested",
       title: c.art.title.slice(0, 500),
       summary: c.art.title.slice(0, 2000),
       category: c.category,
