@@ -8,8 +8,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Activity, Heart, Timer, AlertCircle } from "lucide-react";
+import { Activity, Heart, Timer, AlertCircle, AlertTriangle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+
+type FirehoseHealthRow = {
+  firehose_name: string;
+  trust_tier: string;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  consecutive_failures: number;
+  last_error_message: string | null;
+};
 
 type Stats = {
   signalsToday: number;
@@ -19,6 +28,7 @@ type Stats = {
   pendingLangRoute: number;
   pendingGeo: number;
   firehoseRuns: { job: string; at: string }[];
+  firehoseHealth: FirehoseHealthRow[];
 };
 
 function quantile(sorted: number[], q: number): number | null {
