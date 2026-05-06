@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Menu } from "lucide-react";
+import { User, LogOut, Menu, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -15,6 +15,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/morning-brief": "Today's Brief",
   "/live": "Supply Chain Risks",
   "/live-signals": "Supply Chain Risks",
+  "/live-stream": "Live Signal Stream",
   "/risk-atlas": "Risk Atlas",
   "/decisions": "Actions & Outcomes",
   "/decision-ops": "Actions & Outcomes",
@@ -27,6 +28,46 @@ const PAGE_TITLES: Record<string, string> = {
   "/resolution": "Country & Region Risk Map",
   "/watchlist": "Tracked Markets",
   "/learning": "System Accuracy",
+  "/learning-loop": "Learning Loop",
+  "/risk-ranking": "Risk Ranking",
+  "/intelligence-engine": "Intelligence Engine",
+  "/simulation": "Simulation",
+  "/predictions": "Predictions",
+  "/api-audit": "API Audit",
+  "/forecast-validation": "Forecast Validation",
+  "/training-dataset": "Training Dataset",
+  "/system-pulse": "System Pulse",
+  "/system-status": "System Status",
+  "/system-catalog": "System Catalog",
+  "/data-pipeline": "Data Pipeline",
+  "/infra-ops": "Infrastructure",
+  "/pilot-truth": "Pilot Truth Feed",
+  "/outcome-cockpit": "Outcome Cockpit",
+  "/accumulation": "Accumulation",
+  "/coverage-equity": "Coverage Equity",
+  "/developers": "Developer Portal",
+  "/register-node": "Register Node",
+  "/local-events": "Local Events",
+  "/admin/export-center": "Export Center",
+};
+
+// Routes that should NOT show a back button (primary nav destinations).
+const PRIMARY_ROUTES = new Set([
+  "/morning-brief",
+  "/live",
+  "/decision-ops",
+  "/risk-atlas",
+  "/evidence-command",
+  "/admin",
+]);
+
+const titleFor = (pathname: string): string => {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  // dynamic routes
+  if (pathname.startsWith("/deepdive/")) return "Country Deep Dive";
+  if (pathname.startsWith("/local-events/")) return "Local Events";
+  if (pathname.startsWith("/atlas/region/")) return "Region Drill-Down";
+  return "";
 };
 
 export const AICISTopBar = () => {
@@ -35,12 +76,18 @@ export const AICISTopBar = () => {
   const { user, signOut } = useAuth();
   const isMobile = useIsMobile();
 
-  const pageTitle = PAGE_TITLES[location.pathname] || "";
+  const pageTitle = titleFor(location.pathname);
+  const showBack = !PRIMARY_ROUTES.has(location.pathname) && location.pathname !== "/";
+
+  const handleBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/morning-brief");
+  };
 
   return (
     <header className="h-12 bg-card border-b border-border flex items-center justify-between px-4 z-50 shrink-0">
       {/* Left */}
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
         {isMobile && (
           <Button
             variant="ghost"
@@ -49,11 +96,24 @@ export const AICISTopBar = () => {
             onClick={() => {
               document.dispatchEvent(new CustomEvent("toggle-sidebar"));
             }}
+            aria-label="Open menu"
           >
             <Menu className="h-4 w-4" />
           </Button>
         )}
-        <div className="flex items-center gap-2.5 cursor-pointer shrink-0" onClick={() => navigate("/")}>
+        {showBack && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 shrink-0 gap-1"
+            onClick={handleBack}
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline text-xs">Back</span>
+          </Button>
+        )}
+        <div className="flex items-center gap-2.5 cursor-pointer shrink-0" onClick={() => navigate("/morning-brief")}>
           <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
             <span className="text-primary font-bold text-xs">AI</span>
           </div>
@@ -70,7 +130,7 @@ export const AICISTopBar = () => {
       {/* Right */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Account menu">
             <User className="h-4 w-4 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>

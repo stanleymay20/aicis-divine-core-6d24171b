@@ -10,6 +10,7 @@ import { DemoModeProvider } from "@/contexts/DemoModeContext";
 import { DemoBanner } from "@/components/demo/DemoBanner";
 import { DegradedModeBanner } from "@/components/live/DegradedModeBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Loader2 } from "lucide-react";
 
 // Eager-load: public landing, auth gate, not-found
@@ -95,6 +96,18 @@ const Protected = ({ children }: { children: React.ReactNode }) => (
   </ProtectedRoute>
 );
 
+// Wraps lazy-loaded orphan pages in the standard shell so users always
+// have the topbar (with Back button) and sidebar — no dead-end pages.
+const Shell = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute>
+    <AICISLayout>
+      <div className="overflow-y-auto h-full">
+        <Lazy>{children}</Lazy>
+      </div>
+    </AICISLayout>
+  </ProtectedRoute>
+);
+
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
@@ -121,7 +134,7 @@ const App = () => (
               <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-stream" element={<Protected><LiveSignalStream /></Protected>} />
-              <Route path="/coverage-equity" element={<Protected><CoverageEquity /></Protected>} />
+              <Route path="/coverage-equity" element={<Shell><CoverageEquity /></Shell>} />
               <Route path="/decision-ops" element={<Protected><DecisionOperations /></Protected>} />
               <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
               <Route path="/evidence-command" element={<Protected><EvidenceCommand /></Protected>} />
@@ -140,31 +153,30 @@ const App = () => (
               <Route path="/system-status" element={<Protected><SystemStatus /></Protected>} />
               <Route path="/infra-ops" element={<Protected><InfraOps /></Protected>} />
               <Route path="/developers" element={<Protected><DeveloperPortal /></Protected>} />
-              <Route path="/forecast-validation" element={<Protected><Lazy><ForecastValidation /></Lazy></Protected>} />
-              <Route path="/system-pulse" element={<Protected><SystemPulse /></Protected>} />
-              <Route path="/atlas/region/:id" element={<Protected><RegionDrillDown /></Protected>} />
-              <Route path="/register-node" element={<Protected><RegisterNode /></Protected>} />
-              <Route path="/accumulation" element={<Protected><Accumulation /></Protected>} />
-              <Route path="/training-dataset" element={<Protected><TrainingDataset /></Protected>} />
+              <Route path="/forecast-validation" element={<Shell><ForecastValidation /></Shell>} />
+              <Route path="/system-pulse" element={<Shell><SystemPulse /></Shell>} />
+              <Route path="/atlas/region/:id" element={<Shell><RegionDrillDown /></Shell>} />
+              <Route path="/register-node" element={<Shell><RegisterNode /></Shell>} />
+              <Route path="/accumulation" element={<Shell><Accumulation /></Shell>} />
+              <Route path="/training-dataset" element={<Shell><TrainingDataset /></Shell>} />
               <Route path="/risk-ranking" element={<Protected><RiskRanking /></Protected>} />
               <Route path="/learning-loop" element={<Protected><LearningLoop /></Protected>} />
-              <Route path="/intelligence-engine" element={<Protected><IntelligenceEngine /></Protected>} />
+              <Route path="/intelligence-engine" element={<Shell><IntelligenceEngine /></Shell>} />
               <Route path="/simulation" element={<Protected><Simulation /></Protected>} />
               <Route path="/predictions" element={<Protected><Predictions /></Protected>} />
               <Route path="/api-audit" element={<Protected><ApiAudit /></Protected>} />
 
               {/* ── LRIL: Local Reality Intelligence ─────────── */}
-              <Route path="/local-events" element={<Protected><LocalEvents /></Protected>} />
-              <Route path="/local-events/:iso3" element={<Protected><LocalEvents /></Protected>} />
-              <Route path="/local-events/:iso3/:locality" element={<Protected><LocalEvents /></Protected>} />
+              <Route path="/local-events" element={<Shell><LocalEvents /></Shell>} />
+              <Route path="/local-events/:iso3" element={<Shell><LocalEvents /></Shell>} />
+              <Route path="/local-events/:iso3/:locality" element={<Shell><LocalEvents /></Shell>} />
 
               {/* ── Export Center (admin/operator only at edge fn level) ── */}
-              <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
-              <Route path="/pilot-truth" element={<Protected><PilotTruthFeed /></Protected>} />
-              <Route path="/data-pipeline" element={<Protected><DataPipeline /></Protected>} />
-              <Route path="/outcome-cockpit" element={<Protected><OutcomeCockpit /></Protected>} />
-              <Route path="/system-catalog" element={<Protected><SystemCatalog /></Protected>} />
-
+              <Route path="/admin/export-center" element={<Shell><ExportCenter /></Shell>} />
+              <Route path="/pilot-truth" element={<Shell><PilotTruthFeed /></Shell>} />
+              <Route path="/data-pipeline" element={<Shell><DataPipeline /></Shell>} />
+              <Route path="/outcome-cockpit" element={<Shell><OutcomeCockpit /></Shell>} />
+              <Route path="/system-catalog" element={<Shell><SystemCatalog /></Shell>} />
               {/* ── Catch-all ───────────────────────────────── */}
               <Route path="*" element={<NotFound />} />
             </Routes>
