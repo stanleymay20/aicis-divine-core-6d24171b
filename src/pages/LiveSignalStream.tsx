@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Activity, Radio, ShieldAlert, Globe2, Pause, Play, Filter } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { BreakingNowLane } from "@/components/live/BreakingNowLane";
+import { StreamingHealthPanel } from "@/components/live/StreamingHealthPanel";
 
 type Signal = {
   id: string;
