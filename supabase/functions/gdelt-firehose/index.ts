@@ -124,11 +124,13 @@ serve(async (req) => {
   const themed: { art: GdeltArticle; category: string }[] = [];
   let firstErr: string | null = null;
 
-  for (const t of myThemes) {
-    const arts = await pullTheme(t.theme, 50);
+  // Fetch shard themes in parallel — bounded by slowest, not sum of timeouts.
+  const results = await Promise.all(
+    myThemes.map(async (t) => ({ t, arts: await pullTheme(t.theme, 50) })),
+  );
+  for (const { t, arts } of results) {
     totalRaw += arts.length;
     for (const a of arts) themed.push({ art: a, category: t.category });
-    await new Promise(r => setTimeout(r, 100));
   }
 
   // Local dedup by normalized title + domain
