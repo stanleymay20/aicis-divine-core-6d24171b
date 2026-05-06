@@ -10,6 +10,7 @@ import { DemoModeProvider } from "@/contexts/DemoModeContext";
 import { DemoBanner } from "@/components/demo/DemoBanner";
 import { DegradedModeBanner } from "@/components/live/DegradedModeBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Loader2 } from "lucide-react";
 
 // Eager-load: public landing, auth gate, not-found
@@ -92,6 +93,18 @@ const Lazy = ({ children }: { children: React.ReactNode }) => (
 const Protected = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute>
     <Lazy>{children}</Lazy>
+  </ProtectedRoute>
+);
+
+// Wraps lazy-loaded orphan pages in the standard shell so users always
+// have the topbar (with Back button) and sidebar — no dead-end pages.
+const Shell = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute>
+    <AICISLayout>
+      <div className="overflow-y-auto h-full">
+        <Lazy>{children}</Lazy>
+      </div>
+    </AICISLayout>
   </ProtectedRoute>
 );
 
