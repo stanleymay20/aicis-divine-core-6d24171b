@@ -5339,6 +5339,7 @@ export type Database = {
       }
       firehose_health: {
         Row: {
+          backoff_seconds: number
           consecutive_failures: number
           firehose_name: string
           last_duration_ms: number | null
@@ -5346,10 +5347,12 @@ export type Database = {
           last_failure_at: string | null
           last_inserted_count: number | null
           last_success_at: string | null
+          next_retry_at: string | null
           trust_tier: string
           updated_at: string
         }
         Insert: {
+          backoff_seconds?: number
           consecutive_failures?: number
           firehose_name: string
           last_duration_ms?: number | null
@@ -5357,10 +5360,12 @@ export type Database = {
           last_failure_at?: string | null
           last_inserted_count?: number | null
           last_success_at?: string | null
+          next_retry_at?: string | null
           trust_tier?: string
           updated_at?: string
         }
         Update: {
+          backoff_seconds?: number
           consecutive_failures?: number
           firehose_name?: string
           last_duration_ms?: number | null
@@ -5368,6 +5373,7 @@ export type Database = {
           last_failure_at?: string | null
           last_inserted_count?: number | null
           last_success_at?: string | null
+          next_retry_at?: string | null
           trust_tier?: string
           updated_at?: string
         }
