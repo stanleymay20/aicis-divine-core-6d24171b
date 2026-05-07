@@ -300,6 +300,8 @@ export function SignalCard({
                 affected_regions: signal.affected_regions,
                 affected_sectors: signal.affected_sectors,
               }}
+              organizationId={prefs.organization_id || null}
+              organizationContext={buildOrganizationContext(prefs)}
               onScored={setRelevance}
             />
           </div>
