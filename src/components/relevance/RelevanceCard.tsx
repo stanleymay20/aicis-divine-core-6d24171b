@@ -7,6 +7,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+export interface MatchContributor {
+  kind: string;
+  label: string;
+  weight: number;
+  matched?: string[];
+}
+
 export interface RelevanceEvaluation {
   evaluation_id?: string;
   relevance_score: number;
@@ -18,6 +25,7 @@ export interface RelevanceEvaluation {
   model_used: string;
   prompt_version: string;
   notice?: string | null;
+  match_contributors?: MatchContributor[];
 }
 
 interface SignalLike {
