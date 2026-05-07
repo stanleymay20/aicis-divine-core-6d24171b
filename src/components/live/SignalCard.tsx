@@ -9,6 +9,7 @@ import { getSignalFreshness, freshnessColor, trustTierLabel, trustTierColor, enr
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ScoreRelevanceButton, RelevanceCard, type RelevanceEvaluation } from "@/components/relevance/RelevanceCard";
+import { useRelevancePreferences, buildOrganizationContext } from "@/hooks/useRelevancePreferences";
 
 const CATEGORY_LABELS: Record<string, string> = {
   geopolitical: "Geopolitical", economic: "Economic", financial_markets: "Financial Markets",
