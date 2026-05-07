@@ -173,6 +173,7 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
     model_used: FALLBACK_MODEL,
     prompt_version: PROMPT_VERSION,
     used_fallback: true,
+    match_contributors: contributors,
   };
 }
 
