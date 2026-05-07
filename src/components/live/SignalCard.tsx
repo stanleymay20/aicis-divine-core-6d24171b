@@ -69,6 +69,7 @@ export function SignalCard({
   const { toast } = useToast();
   const [feedbackGiven, setFeedbackGiven] = useState<string | null>(null);
   const [relevance, setRelevance] = useState<RelevanceEvaluation | null>(null);
+  const { prefs } = useRelevancePreferences();
 
   const catLabel = CATEGORY_LABELS[signal.category] || signal.category;
   const catColor = CATEGORY_COLORS[signal.category] || CATEGORY_COLORS.geopolitical;
