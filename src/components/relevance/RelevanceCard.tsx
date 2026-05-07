@@ -183,6 +183,24 @@ export function RelevanceCard({ evaluation }: { evaluation: RelevanceEvaluation 
         {evaluation.explanation && (
           <div className="text-[11px] text-muted-foreground italic">{evaluation.explanation}</div>
         )}
+        {evaluation.match_contributors && evaluation.match_contributors.length > 0 && (
+          <div>
+            <div className="text-muted-foreground uppercase text-[10px] tracking-wide mb-1">Score contributors</div>
+            <div className="flex flex-wrap gap-1">
+              {evaluation.match_contributors.map((c, i) => (
+                <Badge
+                  key={`${c.kind}-${i}`}
+                  variant="outline"
+                  className="text-[10px] gap-1"
+                  title={c.matched?.join(", ")}
+                >
+                  {c.label}
+                  <span className="text-primary font-semibold">+{c.weight}</span>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between pt-2 border-t border-border/40">
