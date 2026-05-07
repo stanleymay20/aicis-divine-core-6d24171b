@@ -284,8 +284,25 @@ export function SignalCard({
                 Create Decision
               </Button>
             )}
+            <ScoreRelevanceButton
+              signal={{
+                id: signal.id,
+                title: signal.title,
+                summary: signal.summary,
+                normalized_summary: signal.normalized_summary,
+                source: signal.canonical_source_name,
+                country: signal.affected_regions?.[0],
+                domain: signal.category,
+                severity: signal.impact_score,
+                confidence_score: signal.confidence_score,
+                affected_regions: signal.affected_regions,
+                affected_sectors: signal.affected_sectors,
+              }}
+              onScored={setRelevance}
+            />
           </div>
         )}
+        {relevance && <RelevanceCard evaluation={relevance} />}
       </div>
     </Card>
   );
