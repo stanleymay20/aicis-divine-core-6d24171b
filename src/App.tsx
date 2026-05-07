@@ -33,6 +33,7 @@ const ResolutionExplorer = lazy(() => import("./pages/ResolutionExplorer"));
 const Watchlist = lazy(() => import("./pages/Watchlist"));
 const LearningIntelligence = lazy(() => import("./pages/LearningIntelligence"));
 const RiskAtlasPage = lazy(() => import("./pages/RiskAtlasPage"));
+const RelevancePreferences = lazy(() => import("./pages/RelevancePreferences"));
 
 // ── Public pages ─────────────────────────────────────────────
 const Terms = lazy(() => import("./pages/Terms"));
