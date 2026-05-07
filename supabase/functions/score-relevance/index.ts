@@ -284,6 +284,7 @@ Deno.serve(async (req) => {
       confidence_score: result.confidence_score,
       model_used: result.model_used,
       prompt_version: result.prompt_version,
+      match_contributors: (result as any).match_contributors || [],
     };
 
     const { data: row, error } = await supabase
