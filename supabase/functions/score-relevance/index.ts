@@ -32,6 +32,10 @@ interface OrgContext {
   domains?: string[];
   keywords?: string[];
   watched_entities?: string[];
+  risk_priorities?: string[];
+  operating_regions?: string[];
+  business_functions?: string[];
+  alert_preferences?: Record<string, unknown>;
 }
 
 function structuredLog(level: string, msg: string, meta?: Record<string, unknown>) {
