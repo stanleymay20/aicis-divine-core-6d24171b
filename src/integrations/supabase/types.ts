@@ -1024,6 +1024,87 @@ export type Database = {
         }
         Relationships: []
       }
+      aicis_relevance_evaluations: {
+        Row: {
+          affected_entities: Json | null
+          confidence: number | null
+          confidence_score: number | null
+          country: string | null
+          created_at: string
+          domain: string | null
+          explanation: string | null
+          feedback_at: string | null
+          feedback_user_id: string | null
+          id: string
+          model_used: string | null
+          organization_context: Json | null
+          organization_id: string | null
+          prompt_version: string | null
+          recommended_action: string | null
+          relevance_score: number | null
+          relevance_tier: string | null
+          severity: string | null
+          signal_id: string | null
+          signal_summary: string | null
+          signal_title: string | null
+          source: string | null
+          user_feedback: string | null
+          why_this_matters: string | null
+        }
+        Insert: {
+          affected_entities?: Json | null
+          confidence?: number | null
+          confidence_score?: number | null
+          country?: string | null
+          created_at?: string
+          domain?: string | null
+          explanation?: string | null
+          feedback_at?: string | null
+          feedback_user_id?: string | null
+          id?: string
+          model_used?: string | null
+          organization_context?: Json | null
+          organization_id?: string | null
+          prompt_version?: string | null
+          recommended_action?: string | null
+          relevance_score?: number | null
+          relevance_tier?: string | null
+          severity?: string | null
+          signal_id?: string | null
+          signal_summary?: string | null
+          signal_title?: string | null
+          source?: string | null
+          user_feedback?: string | null
+          why_this_matters?: string | null
+        }
+        Update: {
+          affected_entities?: Json | null
+          confidence?: number | null
+          confidence_score?: number | null
+          country?: string | null
+          created_at?: string
+          domain?: string | null
+          explanation?: string | null
+          feedback_at?: string | null
+          feedback_user_id?: string | null
+          id?: string
+          model_used?: string | null
+          organization_context?: Json | null
+          organization_id?: string | null
+          prompt_version?: string | null
+          recommended_action?: string | null
+          relevance_score?: number | null
+          relevance_tier?: string | null
+          severity?: string | null
+          signal_id?: string | null
+          signal_summary?: string | null
+          signal_title?: string | null
+          source?: string | null
+          user_feedback?: string | null
+          why_this_matters?: string | null
+        }
+        Relationships: []
+      }
       aicis_source_registry: {
         Row: {
           access_type: string
