@@ -7,6 +7,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+export interface MatchContributor {
+  kind: string;
+  label: string;
+  weight: number;
+  matched?: string[];
+}
+
 export interface RelevanceEvaluation {
   evaluation_id?: string;
   relevance_score: number;
@@ -18,6 +25,7 @@ export interface RelevanceEvaluation {
   model_used: string;
   prompt_version: string;
   notice?: string | null;
+  match_contributors?: MatchContributor[];
 }
 
 interface SignalLike {
@@ -174,6 +182,24 @@ export function RelevanceCard({ evaluation }: { evaluation: RelevanceEvaluation 
         </div>
         {evaluation.explanation && (
           <div className="text-[11px] text-muted-foreground italic">{evaluation.explanation}</div>
+        )}
+        {evaluation.match_contributors && evaluation.match_contributors.length > 0 && (
+          <div>
+            <div className="text-muted-foreground uppercase text-[10px] tracking-wide mb-1">Score contributors</div>
+            <div className="flex flex-wrap gap-1">
+              {evaluation.match_contributors.map((c, i) => (
+                <Badge
+                  key={`${c.kind}-${i}`}
+                  variant="outline"
+                  className="text-[10px] gap-1"
+                  title={c.matched?.join(", ")}
+                >
+                  {c.label}
+                  <span className="text-primary font-semibold">+{c.weight}</span>
+                </Badge>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

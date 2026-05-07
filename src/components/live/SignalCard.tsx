@@ -9,6 +9,7 @@ import { getSignalFreshness, freshnessColor, trustTierLabel, trustTierColor, enr
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ScoreRelevanceButton, RelevanceCard, type RelevanceEvaluation } from "@/components/relevance/RelevanceCard";
+import { useRelevancePreferences, buildOrganizationContext } from "@/hooks/useRelevancePreferences";
 
 const CATEGORY_LABELS: Record<string, string> = {
   geopolitical: "Geopolitical", economic: "Economic", financial_markets: "Financial Markets",
@@ -68,6 +69,7 @@ export function SignalCard({
   const { toast } = useToast();
   const [feedbackGiven, setFeedbackGiven] = useState<string | null>(null);
   const [relevance, setRelevance] = useState<RelevanceEvaluation | null>(null);
+  const { prefs } = useRelevancePreferences();
 
   const catLabel = CATEGORY_LABELS[signal.category] || signal.category;
   const catColor = CATEGORY_COLORS[signal.category] || CATEGORY_COLORS.geopolitical;
@@ -298,6 +300,8 @@ export function SignalCard({
                 affected_regions: signal.affected_regions,
                 affected_sectors: signal.affected_sectors,
               }}
+              organizationId={prefs.organization_id || null}
+              organizationContext={buildOrganizationContext(prefs)}
               onScored={setRelevance}
             />
           </div>

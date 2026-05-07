@@ -32,6 +32,10 @@ interface OrgContext {
   domains?: string[];
   keywords?: string[];
   watched_entities?: string[];
+  risk_priorities?: string[];
+  operating_regions?: string[];
+  business_functions?: string[];
+  alert_preferences?: Record<string, unknown>;
 }
 
 function structuredLog(level: string, msg: string, meta?: Record<string, unknown>) {
@@ -73,20 +77,27 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
     : 60;
 
   const reasons: string[] = [];
+  const contributors: Array<{ kind: string; label: string; weight: number; matched?: string[] }> = [];
   let score = 0;
   // Severity contributes up to 40
-  score += (sevScore / 100) * 40;
+  const sevContrib = (sevScore / 100) * 40;
+  score += sevContrib;
   reasons.push(`severity ${Math.round(sevScore)}`);
+  contributors.push({ kind: "severity", label: `Severity ${Math.round(sevScore)}`, weight: Math.round(sevContrib) });
 
   // Confidence contributes up to 15
-  score += (conf / 100) * 15;
+  const confContrib = (conf / 100) * 15;
+  score += confContrib;
+  contributors.push({ kind: "confidence", label: `Confidence ${Math.round(conf)}`, weight: Math.round(confContrib) });
 
   // Country match: +20
   const sigCountry = (signal.country || "").toLowerCase();
   const orgCountries = (org.countries || []).map((c) => c.toLowerCase());
-  if (sigCountry && orgCountries.includes(sigCountry)) {
+  const orgRegions = (org.operating_regions || []).map((c) => c.toLowerCase());
+  if (sigCountry && (orgCountries.includes(sigCountry) || orgRegions.some((r) => sigCountry.includes(r) || r.includes(sigCountry)))) {
     score += 20;
     reasons.push(`country match (${signal.country})`);
+    contributors.push({ kind: "country", label: `Country: ${signal.country}`, weight: 20, matched: [signal.country!] });
   }
 
   // Domain match: +15
@@ -95,9 +106,11 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
     ...(org.domains || []),
     ...(org.industries || []),
   ].map((d) => d.toLowerCase());
-  if (sigDomain && orgDomains.some((d) => d && (d === sigDomain || sigDomain.includes(d) || d.includes(sigDomain)))) {
+  const matchedDomains = orgDomains.filter((d) => d && (d === sigDomain || sigDomain.includes(d) || d.includes(sigDomain)));
+  if (sigDomain && matchedDomains.length > 0) {
     score += 15;
     reasons.push(`domain match (${signal.domain})`);
+    contributors.push({ kind: "domain", label: `Domain: ${signal.domain}`, weight: 15, matched: matchedDomains });
   }
 
   // Affected entities match: +10
@@ -110,15 +123,26 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
   if (entityHits.length > 0) {
     score += 10;
     reasons.push(`${entityHits.length} watched entity match`);
+    contributors.push({ kind: "entity", label: `Watched entities (${entityHits.length})`, weight: 10, matched: entityHits });
   }
 
   // Keyword hits in title/summary: up to +15
   const keywords = (org.keywords || []).map((k) => k.toLowerCase()).filter(Boolean);
+  const priorities = (org.risk_priorities || []).map((k) => k.toLowerCase()).filter(Boolean);
   const text = `${signal.signal_title || ""} ${signal.signal_summary || ""}`.toLowerCase();
   const kwHits = keywords.filter((k) => text.includes(k));
+  const prHits = priorities.filter((k) => text.includes(k));
   if (kwHits.length > 0) {
-    score += Math.min(15, kwHits.length * 5);
+    const w = Math.min(15, kwHits.length * 5);
+    score += w;
     reasons.push(`keywords: ${kwHits.slice(0, 3).join(", ")}`);
+    contributors.push({ kind: "keyword", label: `Keywords (${kwHits.length})`, weight: w, matched: kwHits });
+  }
+  if (prHits.length > 0) {
+    const w = Math.min(10, prHits.length * 5);
+    score += w;
+    reasons.push(`risk priorities: ${prHits.slice(0, 2).join(", ")}`);
+    contributors.push({ kind: "risk_priority", label: `Risk priority (${prHits.length})`, weight: w, matched: prHits });
   }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
@@ -149,6 +173,7 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
     model_used: FALLBACK_MODEL,
     prompt_version: PROMPT_VERSION,
     used_fallback: true,
+    match_contributors: contributors,
   };
 }
 
@@ -192,6 +217,7 @@ async function modelScore(
     model_used: data.model || "openai-compatible",
     prompt_version: PROMPT_VERSION,
     used_fallback: false,
+    match_contributors: [],
   };
 }
 
@@ -258,6 +284,7 @@ Deno.serve(async (req) => {
       confidence_score: result.confidence_score,
       model_used: result.model_used,
       prompt_version: result.prompt_version,
+      match_contributors: (result as any).match_contributors || [],
     };
 
     const { data: row, error } = await supabase

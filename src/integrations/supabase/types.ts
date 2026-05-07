@@ -1036,6 +1036,7 @@ export type Database = {
           feedback_at: string | null
           feedback_user_id: string | null
           id: string
+          match_contributors: Json
           model_used: string | null
           organization_context: Json | null
           organization_id: string | null
@@ -1062,6 +1063,7 @@ export type Database = {
           feedback_at?: string | null
           feedback_user_id?: string | null
           id?: string
+          match_contributors?: Json
           model_used?: string | null
           organization_context?: Json | null
           organization_id?: string | null
@@ -1088,6 +1090,7 @@ export type Database = {
           feedback_at?: string | null
           feedback_user_id?: string | null
           id?: string
+          match_contributors?: Json
           model_used?: string | null
           organization_context?: Json | null
           organization_id?: string | null
@@ -1102,6 +1105,60 @@ export type Database = {
           source?: string | null
           user_feedback?: string | null
           why_this_matters?: string | null
+        }
+        Relationships: []
+      }
+      aicis_relevance_preferences: {
+        Row: {
+          alert_preferences: Json
+          business_functions: string[]
+          countries: string[]
+          created_at: string
+          domains: string[]
+          id: string
+          industries: string[]
+          keywords: string[]
+          operating_regions: string[]
+          organization_id: string | null
+          organization_name: string | null
+          risk_priorities: string[]
+          updated_at: string
+          user_id: string
+          watched_entities: string[]
+        }
+        Insert: {
+          alert_preferences?: Json
+          business_functions?: string[]
+          countries?: string[]
+          created_at?: string
+          domains?: string[]
+          id?: string
+          industries?: string[]
+          keywords?: string[]
+          operating_regions?: string[]
+          organization_id?: string | null
+          organization_name?: string | null
+          risk_priorities?: string[]
+          updated_at?: string
+          user_id: string
+          watched_entities?: string[]
+        }
+        Update: {
+          alert_preferences?: Json
+          business_functions?: string[]
+          countries?: string[]
+          created_at?: string
+          domains?: string[]
+          id?: string
+          industries?: string[]
+          keywords?: string[]
+          operating_regions?: string[]
+          organization_id?: string | null
+          organization_name?: string | null
+          risk_priorities?: string[]
+          updated_at?: string
+          user_id?: string
+          watched_entities?: string[]
         }
         Relationships: []
       }
