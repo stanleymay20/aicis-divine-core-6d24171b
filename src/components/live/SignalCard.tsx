@@ -8,6 +8,7 @@ import type { GlobalSignal } from "@/hooks/useGlobalSignals";
 import { getSignalFreshness, freshnessColor, trustTierLabel, trustTierColor, enrichmentStatusLabel, enrichmentStatusColor } from "@/hooks/useGlobalSignals";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ScoreRelevanceButton, RelevanceCard, type RelevanceEvaluation } from "@/components/relevance/RelevanceCard";
 
 const CATEGORY_LABELS: Record<string, string> = {
   geopolitical: "Geopolitical", economic: "Economic", financial_markets: "Financial Markets",
