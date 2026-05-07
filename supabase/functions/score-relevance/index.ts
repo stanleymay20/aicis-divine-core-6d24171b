@@ -217,6 +217,7 @@ async function modelScore(
     model_used: data.model || "openai-compatible",
     prompt_version: PROMPT_VERSION,
     used_fallback: false,
+    match_contributors: [],
   };
 }
 
