@@ -150,8 +150,8 @@ serve(async (req) => {
       created_entities: createdEntities, inserted_links: insertedLinks,
       duration_ms: Date.now() - start,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+  } catch (e: any) {
+    const msg = e instanceof Error ? e.message : (typeof e === "object" ? JSON.stringify(e) : String(e));
     console.error("hierarchical-link-builder error:", msg);
     await supabase.from("automation_logs").insert({
       job_name: "hierarchical-link-builder", status: "error", message: msg.slice(0, 500),
