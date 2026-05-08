@@ -10,10 +10,6 @@ interface PersistentAskBarProps {
   className?: string;
 }
 
-interface PersistentAskBarProps {
-  className?: string;
-}
-
 /**
  * The "front door" for non-technical users. Always visible at the top
  * of the brief. Routes any natural-language question to the Decision
