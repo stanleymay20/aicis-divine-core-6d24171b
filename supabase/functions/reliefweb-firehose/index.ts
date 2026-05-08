@@ -65,7 +65,12 @@ serve(async (req) => {
     const t = setTimeout(() => ctrl.abort(), 15000);
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        // ReliefWeb v2 enforces a descriptive User-Agent + approved appname.
+        "User-Agent": `${appname}/1.0 (https://aicis.io; ops@aicis.io)`,
+      },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
@@ -82,6 +87,21 @@ serve(async (req) => {
   } catch (e) {
     errMsg = (e as Error).message;
     console.error("reliefweb fetch failed", errMsg);
+  }
+
+  // 403 = appname not approved by ReliefWeb. Soft-skip with backoff so we don't
+  // spam the silent-failure budget. Operator must request an approved appname at
+  // https://apidoc.reliefweb.int/parameters#appname and set RELIEFWEB_APPNAME secret.
+  if (httpStatus === 403) {
+    await supabase.from("automation_logs").insert({
+      job_name: FN, status: "warning",
+      message: `ReliefWeb 403 — appname '${appname}' not approved. Request one at https://apidoc.reliefweb.int/parameters#appname and update RELIEFWEB_APPNAME.`,
+    });
+    await recordFirehoseHealth(supabase, {
+      name: FN, trustTier: "tier_1", success: true, insertedCount: 0, durationMs: Date.now() - start,
+    });
+    return new Response(JSON.stringify({ ok: true, skipped: true, reason: "appname_not_approved" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   if (errMsg) {
