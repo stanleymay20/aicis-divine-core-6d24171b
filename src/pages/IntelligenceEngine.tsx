@@ -306,6 +306,7 @@ export default function IntelligenceEngine() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AICISLayout>
   );
 }
