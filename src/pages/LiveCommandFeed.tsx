@@ -1,10 +1,9 @@
 import { useState, useMemo } from "react";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
-import { useGlobalSignals, useTopSignals } from "@/hooks/useGlobalSignals";
+import { useGlobalSignals } from "@/hooks/useGlobalSignals";
 import type { GlobalSignal } from "@/hooks/useGlobalSignals";
 import { SignalCard } from "@/components/live/SignalCard";
 import { SignalDetailPanel } from "@/components/live/SignalDetailPanel";
-import { AlertRibbon } from "@/components/live/AlertRibbon";
 import { RoutingPrecisionPanel } from "@/components/live/RoutingPrecisionPanel";
 import { useEnrichmentQueue, useRoutingPrecision } from "@/hooks/useRoutingPrecision";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +18,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import {
-  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu, ClipboardCheck, Package, ChevronDown, ChevronUp
+  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, AlertTriangle, Cpu, ClipboardCheck, Package, ChevronDown, ChevronUp
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -64,7 +63,6 @@ export default function LiveCommandFeed() {
   const [showTools, setShowTools] = useState(false);
 
   const { data: allSignals = [], isLoading, refetch } = useGlobalSignals({ limit: 100 });
-  const { data: topSignals = [] } = useTopSignals(5);
   const { data: pendingCount = 0 } = useEnrichmentQueue();
   const { data: precision } = useRoutingPrecision();
   const { toast } = useToast();
