@@ -240,22 +240,63 @@ export default function DeveloperPortal() {
     <AICISLayout>
       <div className="max-w-5xl mx-auto space-y-6 p-4 md:p-6">
         {/* Header */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Code2 className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold tracking-tight">Developer Platform</h1>
-            <Badge variant="outline" className="text-xs">v1.0</Badge>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Code2 className="h-6 w-6 text-primary" />
+              <h1 className="text-2xl font-bold tracking-tight">Developer Platform</h1>
+              <Badge variant="outline" className="text-xs">v1.0</Badge>
+              <Badge variant="outline" className="text-[10px] gap-1 border-emerald-700/50 text-emerald-300 bg-emerald-500/10">
+                <CheckCircle2 className="h-2.5 w-2.5" /> SLA 99.9%
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Build on AICIS — signals, decisions, outcomes. HMAC webhooks · SHA-256 audit chain · per-key rate limits.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Build on AICIS — integrate signals, decisions, and outcomes into your applications.
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="outline" onClick={() => navigate("/data-export")}>
+              <Download className="h-3.5 w-3.5 mr-1.5" /> Data Export
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate("/api-audit")}>
+              <Shield className="h-3.5 w-3.5 mr-1.5" /> Audit Chain
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate("/system-status")}>
+              <Activity className="h-3.5 w-3.5 mr-1.5" /> Status
+            </Button>
+          </div>
         </div>
 
+        {/* Quick stats */}
+        {org && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Requests · 24h</p>
+              <p className="text-xl font-semibold mt-0.5">{(usage?.total24h ?? 0).toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Error rate · 24h</p>
+              <p className={`text-xl font-semibold mt-0.5 ${((usage?.errorRate ?? 0) > 5) ? "text-destructive" : ""}`}>
+                {(usage?.errorRate ?? 0).toFixed(1)}%
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency p50 / p95</p>
+              <p className="text-xl font-semibold mt-0.5">{usage?.p50 ?? 0} / {usage?.p95 ?? 0} <span className="text-xs text-muted-foreground font-normal">ms</span></p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Active keys · Webhooks</p>
+              <p className="text-xl font-semibold mt-0.5">{activeKeys.length} <span className="text-muted-foreground">·</span> {(webhooks || []).length}</p>
+            </div>
+          </div>
+        )}
+
         <Tabs defaultValue="api-docs" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 h-9">
+          <TabsList className="grid w-full grid-cols-5 h-9">
             <TabsTrigger value="api-docs" className="text-xs"><Book className="h-3 w-3 mr-1" />API Docs</TabsTrigger>
-            <TabsTrigger value="keys" className="text-xs"><Key className="h-3 w-3 mr-1" />API Keys</TabsTrigger>
+            <TabsTrigger value="keys" className="text-xs"><Key className="h-3 w-3 mr-1" />Keys</TabsTrigger>
             <TabsTrigger value="webhooks" className="text-xs"><Webhook className="h-3 w-3 mr-1" />Webhooks</TabsTrigger>
+            <TabsTrigger value="usage" className="text-xs"><BarChart3 className="h-3 w-3 mr-1" />Usage</TabsTrigger>
             <TabsTrigger value="sdk" className="text-xs"><Terminal className="h-3 w-3 mr-1" />SDK</TabsTrigger>
           </TabsList>
 
