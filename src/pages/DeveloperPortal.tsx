@@ -418,8 +418,27 @@ export default function DeveloperPortal() {
                 <CardDescription>Manage API keys for programmatic access. Keys are shown once at creation.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!org ? (
-                  <p className="text-sm text-muted-foreground">Create an organization first to manage API keys.</p>
+                {orgLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading developer access...</p>
+                ) : !org ? (
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">Enable developer access</p>
+                      <p className="text-xs text-muted-foreground mt-1">Create a workspace here, then generate API keys immediately.</p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Input
+                        value={workspaceName}
+                        onChange={(e) => setWorkspaceName(e.target.value)}
+                        className="max-w-sm text-sm h-8"
+                        placeholder="Workspace name"
+                      />
+                      <Button size="sm" onClick={() => createWorkspace.mutate()} disabled={createWorkspace.isPending}>
+                        {createWorkspace.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                        Enable Access
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <div className="space-y-3 border border-border/60 rounded-lg p-3 bg-muted/20">
@@ -529,8 +548,19 @@ export default function DeveloperPortal() {
                 <CardDescription>Receive real-time event notifications when signals, decisions, or outcomes change.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!org ? (
-                  <p className="text-sm text-muted-foreground">Create an organization first to manage webhooks.</p>
+                {orgLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading developer access...</p>
+                ) : !org ? (
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">Enable developer access</p>
+                      <p className="text-xs text-muted-foreground mt-1">Create a workspace here, then add secure webhook endpoints.</p>
+                    </div>
+                    <Button size="sm" onClick={() => createWorkspace.mutate()} disabled={createWorkspace.isPending}>
+                      {createWorkspace.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                      Enable Access
+                    </Button>
+                  </div>
                 ) : (
                   <>
                     <div className="flex gap-2">
