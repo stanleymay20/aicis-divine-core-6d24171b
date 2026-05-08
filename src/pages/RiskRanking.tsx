@@ -83,44 +83,92 @@ export default function RiskRankingPage() {
     enabled: queryIso3.length === 3 && !!queryDomain,
   });
 
-  const filteredRows = (leaderboard.data?.rows ?? []).filter(r =>
+  const allRows = leaderboard.data?.rows ?? [];
+  const filteredRows = allRows.filter(r =>
     !search || r.country_iso3.toLowerCase().includes(search.toLowerCase())
   );
 
+  // KPIs
+  const probs = allRows.map(r => Number(r.risk_probability));
+  const critical = probs.filter(p => p >= 0.7).length;
+  const elevated = probs.filter(p => p >= 0.5 && p < 0.7).length;
+  const watch = probs.filter(p => p >= 0.3 && p < 0.5).length;
+  const avg = probs.length ? probs.reduce((s, p) => s + p, 0) / probs.length : 0;
+  const generatedAt = leaderboard.data?.generated_at ? new Date(leaderboard.data.generated_at) : null;
+  const ageHours = generatedAt ? (Date.now() - generatedAt.getTime()) / 3_600_000 : 999;
+  const isStale = ageHours > 24;
+
   return (
     <AICISLayout>
-      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5">
+      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
               <Flame className="h-5 w-5 text-destructive" />
-              AI Risk Ranking Engine
+              Emerging Risks
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Predicts which country–domain pairs are most likely to deteriorate in the next 7 days.
-              Baseline model · {leaderboard.data?.generated_at && `last updated ${new Date(leaderboard.data.generated_at).toLocaleString()}`}
+            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+              Predicts which country–domain pairs are most likely to deteriorate over the next 7 days.
+              Baseline model · momentum + volatility + z-score blend.
             </p>
           </div>
-          <Button onClick={() => refresh.mutate()} disabled={refresh.isPending} size="sm" className="gap-2">
-            {refresh.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Recompute now
-          </Button>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider border rounded px-2 py-1 ${
+              isStale ? "border-amber-500/30 text-amber-500" : "border-border text-muted-foreground"
+            }`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${isStale ? "bg-amber-500" : "bg-emerald-500 animate-pulse"}`} />
+              {generatedAt ? (isStale ? `Stale ${Math.round(ageHours)}h` : `Updated ${Math.round(ageHours)}h ago`) : "Never run"}
+            </span>
+            <Button onClick={() => refresh.mutate()} disabled={refresh.isPending} size="sm" className="gap-2 h-8">
+              {refresh.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Recompute now
+            </Button>
+          </div>
         </div>
 
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <Card className="p-3">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Predictions</div>
+            <div className="text-2xl font-bold font-mono tabular-nums mt-1">{allRows.length}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Critical ≥70%</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-destructive mt-1">{critical}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Elevated 50–70%</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-amber-500 mt-1">{elevated}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg probability</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-primary mt-1">{(avg * 100).toFixed(0)}%</div>
+          </Card>
+        </div>
+
+        {/* Severity distribution bar */}
+        {allRows.length > 0 && (
+          <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="bg-destructive" style={{ width: `${(critical / allRows.length) * 100}%` }} />
+            <div className="bg-amber-500" style={{ width: `${(elevated / allRows.length) * 100}%` }} />
+            <div className="bg-primary/60" style={{ width: `${(watch / allRows.length) * 100}%` }} />
+          </div>
+        )}
+
         <Tabs defaultValue="leaderboard">
-          <TabsList>
-            <TabsTrigger value="leaderboard" className="gap-2"><Flame className="h-3.5 w-3.5" /> Top emerging risks</TabsTrigger>
-            <TabsTrigger value="actions" className="gap-2"><Target className="h-3.5 w-3.5" /> Recommended actions</TabsTrigger>
-            <TabsTrigger value="query" className="gap-2"><Search className="h-3.5 w-3.5" /> Per-country forecast</TabsTrigger>
+          <TabsList className="bg-muted/50">
+            <TabsTrigger value="leaderboard" className="gap-2 text-xs data-[state=active]:bg-card"><Flame className="h-3.5 w-3.5" /> Top emerging risks</TabsTrigger>
+            <TabsTrigger value="actions" className="gap-2 text-xs data-[state=active]:bg-card"><Target className="h-3.5 w-3.5" /> Recommended actions</TabsTrigger>
+            <TabsTrigger value="query" className="gap-2 text-xs data-[state=active]:bg-card"><Search className="h-3.5 w-3.5" /> Per-country forecast</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="actions" className="space-y-3">
+          <TabsContent value="actions" className="space-y-3 mt-4">
             <RecommendedActionsPanel topN={50} />
           </TabsContent>
 
           {/* ── Leaderboard tab ── */}
-          <TabsContent value="leaderboard" className="space-y-3">
+          <TabsContent value="leaderboard" className="space-y-3 mt-4">
             <div className="flex items-center gap-2 flex-wrap">
               <Select value={domainFilter} onValueChange={setDomainFilter}>
                 <SelectTrigger className="w-[160px] h-9 text-xs"><SelectValue /></SelectTrigger>
@@ -132,9 +180,9 @@ export default function RiskRankingPage() {
                 placeholder="Filter by ISO3 (e.g. GHA)"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-[200px] h-9 text-xs"
+                className="w-[200px] h-9 text-xs font-mono uppercase"
               />
-              <span className="text-xs text-muted-foreground">{filteredRows.length} results</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{filteredRows.length} of {allRows.length}</span>
             </div>
 
             <Card className="border-border">
