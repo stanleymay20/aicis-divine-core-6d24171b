@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2 } from "lucide-react";
+import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2, Download, Activity, BarChart3, CheckCircle2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-api`;
 
