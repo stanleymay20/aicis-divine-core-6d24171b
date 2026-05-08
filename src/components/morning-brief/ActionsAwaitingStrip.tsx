@@ -167,8 +167,11 @@ export function ActionsAwaitingStrip() {
   // Stale = older than 7 days regardless of status. An "in progress" item
   // that's been sitting for 18 days is a zombie, not active work.
   const isStale = (a: PendingAction) => ageDays(a) > 7;
+  // Hero shows only signal-grade items (impact ≥40). LOW noise is demoted.
+  const isHeroGrade = (a: PendingAction) => (a.impact_score ?? 0) >= 40;
 
-  const fresh = actions.filter((a) => !isStale(a));
+  const fresh = actions.filter((a) => !isStale(a) && isHeroGrade(a));
+  const demoted = actions.filter((a) => !isStale(a) && !isHeroGrade(a));
   const stale = actions.filter(isStale);
 
   const overdueCount = fresh.filter(isOverdue).length;
@@ -342,6 +345,19 @@ export function ActionsAwaitingStrip() {
           <div className="space-y-2">
             {fresh.slice(0, 6).map((a) => renderRow(a))}
           </div>
+        )}
+
+        {/* Demoted lane — low-impact noise */}
+        {demoted.length > 0 && (
+          <details className="group">
+            <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1.5 select-none">
+              <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+              <span>Low-priority queue · {demoted.length} item{demoted.length === 1 ? "" : "s"}</span>
+            </summary>
+            <div className="space-y-2 mt-2">
+              {demoted.slice(0, 4).map((a) => renderRow(a, { muted: true }))}
+            </div>
+          </details>
         )}
 
         {/* Stale lane — backlog older than 7 days */}
