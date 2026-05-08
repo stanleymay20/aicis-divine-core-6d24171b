@@ -107,6 +107,35 @@ export const AICISTopBar = () => {
   const backTarget = homeFor(location.pathname);
   const showBack = Boolean(backTarget) && !PRIMARY_ROUTES.has(location.pathname) && location.pathname !== "/";
 
+  // Data freshness — most recent enriched signal heartbeat
+  const { data: lastSignalAt } = useQuery({
+    queryKey: ["topbar-data-freshness"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("global_signals")
+        .select("first_detected_at")
+        .order("first_detected_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.first_detected_at ? new Date(data.first_detected_at) : null;
+    },
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
+
+  const env = (import.meta as any).env?.MODE === "production" ? "LIVE" : "PREVIEW";
+  const freshnessAgeMin = lastSignalAt
+    ? (Date.now() - lastSignalAt.getTime()) / 60_000
+    : null;
+  const freshnessTone =
+    freshnessAgeMin == null
+      ? "text-muted-foreground"
+      : freshnessAgeMin < 30
+      ? "text-emerald-500"
+      : freshnessAgeMin < 180
+      ? "text-amber-500"
+      : "text-destructive";
+
   const handleBack = () => {
     navigate(backTarget || "/morning-brief");
   };
