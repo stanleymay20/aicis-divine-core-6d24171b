@@ -489,6 +489,52 @@ export default function DeveloperPortal() {
                   </div>
                 ) : (
                   <>
+                    {revealedKey && (
+                      <div className="rounded-lg border-2 border-primary/40 bg-primary/5 p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                              Your new API key — “{revealedKey.name}”
+                            </p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Save it now. For security, this is the only time it will be shown in full.
+                            </p>
+                          </div>
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setRevealedKey(null); setTestResult(null); }}>
+                            Dismiss
+                          </Button>
+                        </div>
+                        <div className="flex items-stretch gap-2">
+                          <code className="flex-1 min-w-0 bg-background border border-border rounded px-3 py-2 text-xs font-mono break-all select-all">
+                            {revealedKey.key}
+                          </code>
+                          <Button size="sm" onClick={() => copyToClipboard(revealedKey.key, "API key copied")} className="shrink-0">
+                            <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button size="sm" variant="outline" disabled={testing} onClick={() => testApiKey(revealedKey.key)}>
+                            {testing ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1.5" />}
+                            Test this key live
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => copyToClipboard(`curl -H "x-api-key: ${revealedKey.key}" ${API_BASE}/health`, "cURL copied")}>
+                            <Terminal className="h-3.5 w-3.5 mr-1.5" /> Copy cURL
+                          </Button>
+                          {testResult && (
+                            <Badge variant={testResult.ok ? "default" : "destructive"} className="text-[10px]">
+                              {testResult.ok ? "✓" : "✗"} {testResult.status} · {testResult.ms}ms
+                            </Badge>
+                          )}
+                        </div>
+                        {testResult && (
+                          <pre className="bg-muted/60 rounded p-2 text-[10px] font-mono overflow-x-auto max-h-32">
+                            {testResult.body}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+
                     <div className="space-y-3 border border-border/60 rounded-lg p-3 bg-muted/20">
                       <div className="flex flex-wrap gap-2 items-end">
                         <div className="flex-1 min-w-[200px]">
