@@ -62,6 +62,7 @@ export function BusinessExposureStrip() {
       label: "Markets at risk (open)",
       color: data.marketsAtRisk > 5 ? "text-destructive" : "text-amber-500",
       show: data.marketsAtRisk > 0,
+      to: "/risk-atlas",
     },
     {
       icon: AlertTriangle,
@@ -69,6 +70,7 @@ export function BusinessExposureStrip() {
       label: "Critical signals (today)",
       color: data.criticalSignals > 0 ? "text-destructive" : "text-emerald-500",
       show: data.criticalSignals > 0,
+      to: "/live?severity=critical",
     },
     {
       icon: Activity,
@@ -76,6 +78,7 @@ export function BusinessExposureStrip() {
       label: "Decisions awaiting outcome",
       color: data.pendingDecisions > 3 ? "text-amber-500" : "text-foreground",
       show: data.pendingDecisions > 0,
+      to: "/decision-ops",
     },
     {
       icon: DollarSign,
@@ -84,6 +87,7 @@ export function BusinessExposureStrip() {
       color: data.totalExposure > 1_000_000 ? "text-destructive" : "text-amber-500",
       isString: true,
       show: data.totalExposure > 0,
+      to: "/evidence-command",
     },
   ];
 
@@ -97,17 +101,26 @@ export function BusinessExposureStrip() {
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <Card key={item.label} className="border-border/50">
-            <CardContent className="p-3 flex items-center gap-3">
-              <Icon className={`h-5 w-5 ${item.color} shrink-0`} />
-              <div>
-                <p className={`text-xl font-bold font-mono tabular-nums leading-none ${item.color}`}>
-                  {item.value}
-                </p>
-                <p className="text-[10px] text-muted-foreground">{item.label}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => navigate(item.to)}
+            className="text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-lg"
+            aria-label={`${item.label} — drill into details`}
+          >
+            <Card className="border-border/50 transition-all group-hover:border-primary/40 group-hover:bg-primary/5">
+              <CardContent className="p-3 flex items-center gap-3 relative">
+                <Icon className={`h-5 w-5 ${item.color} shrink-0`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xl font-bold font-mono tabular-nums leading-none ${item.color}`}>
+                    {item.value}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{item.label}</p>
+                </div>
+                <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary transition-colors absolute top-2 right-2" />
+              </CardContent>
+            </Card>
+          </button>
         );
       })}
     </div>
