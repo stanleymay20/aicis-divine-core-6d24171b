@@ -11,11 +11,17 @@ import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
+import { getCountryFlagFromIso3 } from "@/lib/geo/country-flags";
+
 interface PendingAction {
   id: string;
   signal_title: string;
   domain: string;
+  iso3: string | null;
   impact_score: number | null;
+  net_value: number | null;
+  roi_estimate: number | null;
+  recommended_action: string | null;
   execution_status: string | null;
   created_at: string;
   review_sla_hours: number | null;
@@ -38,21 +44,21 @@ export function ActionsAwaitingStrip() {
     queryFn: async () => {
       const { data } = await supabase
         .from("decision_outcome_log")
-        .select("id, signal_title, domain, impact_score, execution_status, created_at, review_sla_hours")
+        .select("id, signal_title, domain, iso3, impact_score, net_value, roi_estimate, recommended_action, execution_status, created_at, review_sla_hours")
         .in("execution_status", ["not_started", "overdue", "in_progress"])
         .order("impact_score", { ascending: false, nullsFirst: false })
-        .limit(40);
-      // Strip internal [SIGNAL] / [TAG] prefixes and dedupe by normalized title+domain
+        .limit(60);
+      // Strip internal [SIGNAL] / [TAG] prefixes and dedupe by normalized title+domain+iso3
       const clean = (t: string) => (t || "").replace(/^\s*\[[A-Z0-9_\-]+\]\s*/i, "").trim();
       const seen = new Set<string>();
       const unique: PendingAction[] = [];
       for (const row of (data as any[]) || []) {
         const title = clean(row.signal_title);
-        const key = `${title.toLowerCase()}|${row.domain || ""}`;
+        const key = `${title.toLowerCase()}|${row.domain || ""}|${row.iso3 || ""}`;
         if (seen.has(key)) continue;
         seen.add(key);
         unique.push({ ...row, signal_title: title });
-        if (unique.length >= 6) break;
+        if (unique.length >= 12) break;
       }
       return unique;
     },
@@ -156,8 +162,125 @@ export function ActionsAwaitingStrip() {
     return Date.now() - created > slaMs;
   };
 
-  const overdueCount = actions.filter(isOverdue).length;
+  const ageDays = (a: PendingAction) =>
+    (Date.now() - new Date(a.created_at).getTime()) / 86_400_000;
+  const isStale = (a: PendingAction) =>
+    ageDays(a) > 7 && a.execution_status !== "in_progress";
+
+  const fresh = actions.filter((a) => !isStale(a));
+  const stale = actions.filter(isStale);
+
+  const overdueCount = fresh.filter(isOverdue).length;
   const isInProgress = (a: PendingAction) => a.execution_status === "in_progress";
+
+  // Severity tier from impact_score
+  const severityOf = (s: number | null): { label: string; cls: string } => {
+    const v = s ?? 0;
+    if (v >= 80) return { label: "CRITICAL", cls: "bg-destructive/20 text-destructive border-destructive/30" };
+    if (v >= 60) return { label: "HIGH", cls: "bg-amber-500/20 text-amber-500 border-amber-500/30" };
+    if (v >= 40) return { label: "MED", cls: "bg-yellow-500/15 text-yellow-600 border-yellow-500/25" };
+    return { label: "LOW", cls: "bg-muted text-muted-foreground border-border" };
+  };
+
+  const fmtEuro = (v: number | null) => {
+    if (!v || v <= 0) return null;
+    if (v >= 1_000_000) return `€${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `€${Math.round(v / 1_000)}K`;
+    return `€${Math.round(v)}`;
+  };
+
+  const renderRow = (action: PendingAction, opts?: { muted?: boolean }) => {
+    const overdue = isOverdue(action);
+    const active = isInProgress(action);
+    const sev = severityOf(action.impact_score);
+    const flag = getCountryFlagFromIso3(action.iso3);
+    const euro = fmtEuro(action.net_value ?? action.roi_estimate ?? null);
+    const why = action.recommended_action?.trim();
+    return (
+      <div
+        key={action.id}
+        className={cn(
+          "flex items-start gap-2 p-2.5 rounded-lg border transition-all",
+          overdue
+            ? "border-destructive/30 bg-destructive/5"
+            : active
+            ? "border-primary/30 bg-primary/5"
+            : opts?.muted
+            ? "border-border/40 bg-muted/20 opacity-80"
+            : "border-border/50 hover:border-primary/30 hover:bg-primary/5"
+        )}
+      >
+        {/* Severity rail */}
+        <Badge variant="outline" className={cn("text-[9px] h-5 px-1.5 font-mono shrink-0 mt-0.5", sev.cls)}>
+          {sev.label}
+        </Badge>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-base leading-none shrink-0" aria-hidden>{flag}</span>
+            <p className="text-xs font-medium truncate">{action.signal_title}</p>
+          </div>
+          {why && (
+            <p className="text-[10px] text-muted-foreground/90 mt-0.5 line-clamp-1">
+              <span className="text-muted-foreground/70">Why act: </span>{why}
+            </p>
+          )}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <Badge variant="outline" className="text-[9px] h-4 px-1.5">{action.domain || "—"}</Badge>
+            {euro && (
+              <span className="text-[10px] font-mono font-semibold text-foreground tabular-nums">
+                {euro}
+              </span>
+            )}
+            <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+              <Clock className="h-2.5 w-2.5" />
+              {formatDistanceToNow(new Date(action.created_at), { addSuffix: true })}
+            </span>
+            {overdue && (
+              <Badge variant="destructive" className="text-[9px] h-4 animate-pulse">SLA BREACH</Badge>
+            )}
+            {active && (
+              <Badge className="text-[9px] h-4 bg-primary/20 text-primary border-0">IN PROGRESS</Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-1 shrink-0">
+          {active ? (
+            <Button
+              size="sm"
+              className="h-7 text-[10px] px-2 gap-1 bg-green-600 hover:bg-green-700"
+              onClick={() => completeAction.mutate(action.id)}
+              disabled={completeAction.isPending}
+            >
+              <CheckCheck className="h-3 w-3" /> Done
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="h-7 text-[10px] px-2 gap-1"
+              onClick={() => executeAction.mutate(action.id)}
+              disabled={executeAction.isPending}
+            >
+              <Play className="h-3 w-3" /> Start
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive"
+            onClick={() => dismissAction.mutate(action.id)}
+            disabled={dismissAction.isPending}
+            aria-label="Dismiss — not applicable"
+            title="Dismiss — not applicable"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Card className={overdueCount > 0 ? "border-destructive/40 bg-destructive/5" : "border-primary/30 bg-primary/5"}>
@@ -178,10 +301,10 @@ export function ActionsAwaitingStrip() {
           </Button>
         </div>
 
-        {/* Compact metrics row — pending · overdue · active · done · rate */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        {/* Compact metrics row — open queue · overdue · active · done · rate */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono tabular-nums">
           <span className="font-semibold text-destructive">
-            {counts?.pending || 0} pending
+            {counts?.pending || 0} open
           </span>
           {(counts?.overdue || 0) > 0 && (
             <span className="font-semibold text-destructive flex items-center gap-1">
@@ -213,76 +336,25 @@ export function ActionsAwaitingStrip() {
           />
         </div>
 
-        {/* Action items */}
-        <div className="space-y-2">
-          {actions.map((action) => {
-            const overdue = isOverdue(action);
-            const active = isInProgress(action);
-            return (
-              <div
-                key={action.id}
-                className={`flex items-center gap-2 p-2.5 rounded-lg border transition-all ${
-                  overdue
-                    ? "border-destructive/30 bg-destructive/5"
-                    : active
-                    ? "border-primary/30 bg-primary/5"
-                    : "border-border/50 hover:border-primary/30 hover:bg-primary/5"
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{action.signal_title}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <Badge variant="outline" className="text-[9px] h-4">{action.domain}</Badge>
-                    <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
-                      <Clock className="h-2.5 w-2.5" />
-                      {formatDistanceToNow(new Date(action.created_at), { addSuffix: true })}
-                    </span>
-                    {overdue && (
-                      <Badge variant="destructive" className="text-[9px] h-4 animate-pulse">SLA BREACH</Badge>
-                    )}
-                    {active && (
-                      <Badge className="text-[9px] h-4 bg-primary/20 text-primary border-0">IN PROGRESS</Badge>
-                    )}
-                  </div>
-                </div>
+        {/* Fresh action items (≤7 days) */}
+        {fresh.length > 0 && (
+          <div className="space-y-2">
+            {fresh.slice(0, 6).map((a) => renderRow(a))}
+          </div>
+        )}
 
-                {/* Action buttons */}
-                <div className="flex items-center gap-1 shrink-0">
-                  {active ? (
-                    <Button
-                      size="sm"
-                      className="h-7 text-[10px] px-2 gap-1 bg-green-600 hover:bg-green-700"
-                      onClick={() => completeAction.mutate(action.id)}
-                      disabled={completeAction.isPending}
-                    >
-                      <CheckCheck className="h-3 w-3" /> Done
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="h-7 text-[10px] px-2 gap-1"
-                      onClick={() => executeAction.mutate(action.id)}
-                      disabled={executeAction.isPending}
-                    >
-                      <Play className="h-3 w-3" /> Start
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => dismissAction.mutate(action.id)}
-                    disabled={dismissAction.isPending}
-                    aria-label="Dismiss — not applicable"
-                    title="Dismiss — not applicable"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Stale lane — backlog older than 7 days */}
+        {stale.length > 0 && (
+          <details className="group">
+            <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1.5 select-none">
+              <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+              <span>Stale backlog · {stale.length} item{stale.length === 1 ? "" : "s"} older than 7 days</span>
+            </summary>
+            <div className="space-y-2 mt-2">
+              {stale.slice(0, 4).map((a) => renderRow(a, { muted: true }))}
+            </div>
+          </details>
+        )}
       </CardContent>
     </Card>
   );

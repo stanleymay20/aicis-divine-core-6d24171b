@@ -57,28 +57,28 @@ export function BusinessExposureStrip() {
     {
       icon: ShieldAlert,
       value: data.marketsAtRisk,
-      label: "Markets at risk",
+      label: "Markets at risk (open)",
       color: data.marketsAtRisk > 5 ? "text-destructive" : "text-amber-500",
       show: data.marketsAtRisk > 0,
     },
     {
       icon: AlertTriangle,
       value: data.criticalSignals,
-      label: "Critical disruptions",
+      label: "Critical signals (today)",
       color: data.criticalSignals > 0 ? "text-destructive" : "text-emerald-500",
       show: data.criticalSignals > 0,
     },
     {
       icon: Activity,
       value: data.pendingDecisions,
-      label: "Actions pending",
+      label: "Decisions awaiting outcome",
       color: data.pendingDecisions > 3 ? "text-amber-500" : "text-foreground",
       show: data.pendingDecisions > 0,
     },
     {
       icon: DollarSign,
       value: fmt(data.totalExposure),
-      label: "Cost exposure",
+      label: "Cost exposure (today)",
       color: data.totalExposure > 1_000_000 ? "text-destructive" : "text-amber-500",
       isString: true,
       show: data.totalExposure > 0,
@@ -99,7 +99,7 @@ export function BusinessExposureStrip() {
             <CardContent className="p-3 flex items-center gap-3">
               <Icon className={`h-5 w-5 ${item.color} shrink-0`} />
               <div>
-                <p className={`text-lg font-bold ${item.color}`}>
+                <p className={`text-xl font-bold font-mono tabular-nums leading-none ${item.color}`}>
                   {item.value}
                 </p>
                 <p className="text-[10px] text-muted-foreground">{item.label}</p>

@@ -6,13 +6,6 @@ import { Sparkles, Search, Mic, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const QUICK_ASKS = [
-  "What needs my attention today?",
-  "Show me top risks this week",
-  "What changed overnight?",
-  "Where am I most exposed?",
-];
-
 interface PersistentAskBarProps {
   className?: string;
 }
@@ -70,7 +63,7 @@ export const PersistentAskBar = ({ className }: PersistentAskBarProps) => {
   return (
     <div
       className={cn(
-        "sticky top-0 z-30 -mx-3 sm:-mx-4 px-3 sm:px-4 py-3",
+        "sticky top-0 z-30 -mx-3 sm:-mx-4 px-3 sm:px-4 py-1.5",
         "bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
         "border-b border-border/50",
         className
@@ -78,59 +71,46 @@ export const PersistentAskBar = ({ className }: PersistentAskBarProps) => {
       data-tour="ask-bar"
     >
       <div className="relative">
-        <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary pointer-events-none" />
+        <Sparkles className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary pointer-events-none" />
 
         <Input
           type="text"
           inputMode="search"
-          placeholder="Ask anything — e.g. 'What's my biggest risk in Europe?'"
+          placeholder="Ask AICIS — e.g. 'biggest risk in Europe?'"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit(query)}
-          className="h-12 pl-9 pr-24 text-sm sm:text-base bg-muted/40 border-primary/20 focus:border-primary placeholder:text-muted-foreground/70"
+          className="h-8 pl-8 pr-20 text-xs sm:text-sm bg-muted/40 border-border focus:border-primary placeholder:text-muted-foreground/70"
           aria-label="Ask AICIS a question"
         />
 
-        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
             className={cn(
-              "h-9 w-9",
+              "h-6 w-6",
               isListening && "bg-destructive/15 text-destructive animate-pulse"
             )}
             onClick={handleVoice}
             aria-label="Ask by voice"
           >
-            <Mic className="h-4 w-4" />
+            <Mic className="h-3.5 w-3.5" />
           </Button>
           <Button
             size="sm"
             onClick={() => submit(query)}
             disabled={submitting || !query.trim()}
-            className="h-9 px-3 gap-1.5"
+            className="h-6 px-2 gap-1 text-[11px]"
           >
             {submitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
-              <Search className="h-3.5 w-3.5" />
+              <Search className="h-3 w-3" />
             )}
             <span className="hidden sm:inline">Ask</span>
           </Button>
         </div>
-      </div>
-
-      {/* Quick-ask chips — guides non-technical users on what to ask */}
-      <div className="flex gap-1.5 mt-2 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
-        {QUICK_ASKS.map((q) => (
-          <button
-            key={q}
-            onClick={() => submit(q)}
-            className="shrink-0 text-[11px] sm:text-xs px-2.5 py-1 rounded-full border border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-colors"
-          >
-            {q}
-          </button>
-        ))}
       </div>
     </div>
   );

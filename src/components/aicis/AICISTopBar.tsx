@@ -1,8 +1,12 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Menu, ArrowLeft, Download, Code2, LayoutGrid, Settings as SettingsIcon, Home } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { User, LogOut, Menu, ArrowLeft, Download, Code2, LayoutGrid, Settings as SettingsIcon, Home, ShieldCheck, Activity } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { formatDistanceToNow } from "date-fns";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,6 +107,35 @@ export const AICISTopBar = () => {
   const backTarget = homeFor(location.pathname);
   const showBack = Boolean(backTarget) && !PRIMARY_ROUTES.has(location.pathname) && location.pathname !== "/";
 
+  // Data freshness — most recent enriched signal heartbeat
+  const { data: lastSignalAt } = useQuery({
+    queryKey: ["topbar-data-freshness"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("global_signals")
+        .select("first_detected_at")
+        .order("first_detected_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.first_detected_at ? new Date(data.first_detected_at) : null;
+    },
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
+
+  const env = (import.meta as any).env?.MODE === "production" ? "LIVE" : "PREVIEW";
+  const freshnessAgeMin = lastSignalAt
+    ? (Date.now() - lastSignalAt.getTime()) / 60_000
+    : null;
+  const freshnessTone =
+    freshnessAgeMin == null
+      ? "text-muted-foreground"
+      : freshnessAgeMin < 30
+      ? "text-emerald-500"
+      : freshnessAgeMin < 180
+      ? "text-amber-500"
+      : "text-destructive";
+
   const handleBack = () => {
     navigate(backTarget || "/morning-brief");
   };
@@ -159,6 +192,37 @@ export const AICISTopBar = () => {
             <span className="text-sm text-muted-foreground truncate">{pageTitle}</span>
           </>
         )}
+      </div>
+
+      {/* Center: trust + freshness badges */}
+      <div className="hidden md:flex items-center gap-2 mx-3">
+        <Badge
+          variant="outline"
+          className="h-6 px-1.5 gap-1 text-[10px] font-mono tracking-wide border-emerald-500/30 bg-emerald-500/5 text-emerald-500"
+          title="Aggregate, public-source data only. No PII processed."
+        >
+          <ShieldCheck className="h-3 w-3" />
+          NON-SURVEILLANCE
+        </Badge>
+        <Badge
+          variant="outline"
+          className={`h-6 px-1.5 gap-1 text-[10px] font-mono tracking-wide border-border ${freshnessTone}`}
+          title={lastSignalAt ? `Last signal ingested ${lastSignalAt.toISOString()}` : "Awaiting signals"}
+        >
+          <Activity className="h-3 w-3" />
+          {lastSignalAt ? `${formatDistanceToNow(lastSignalAt)} ago` : "—"}
+        </Badge>
+        <Badge
+          variant="outline"
+          className={`h-6 px-1.5 text-[10px] font-mono tracking-wide ${
+            env === "LIVE"
+              ? "border-primary/40 text-primary bg-primary/5"
+              : "border-amber-500/40 text-amber-500 bg-amber-500/5"
+          }`}
+          title={`Environment: ${env}`}
+        >
+          {env}
+        </Badge>
       </div>
 
       {/* Right */}
