@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2, Download, Activity, BarChart3, CheckCircle2 } from "lucide-react";
+import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2, Download, Activity, BarChart3, CheckCircle2, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-api`;
@@ -30,6 +30,9 @@ const EVENTS = [
   { type: "decision.executed", desc: "Decision marked as executed" },
   { type: "outcome.recorded", desc: "Outcome with ROI recorded" },
 ];
+
+const errorMessage = (error: any, fallback: string) =>
+  error?.context?.error || error?.message || fallback;
 
 const SDK_EXAMPLE = `import { AICIS } from "aicis-sdk"
 
@@ -82,13 +85,14 @@ export default function DeveloperPortal() {
   const [newKeyScopes, setNewKeyScopes] = useState<string[]>(["read"]);
   const [newKeyExpiry, setNewKeyExpiry] = useState<string>("365"); // days, "" = never
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
+  const [workspaceName, setWorkspaceName] = useState("AICIS Developer Workspace");
 
   const toggleScope = (s: string) => {
     setNewKeyScopes((prev) => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   };
 
   // Fetch user's org
-  const { data: org } = useQuery({
+  const { data: org, isLoading: orgLoading } = useQuery({
     queryKey: ["user-org-dev"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -97,7 +101,7 @@ export default function DeveloperPortal() {
         .from("organizations")
         .select("*")
         .eq("owner_id", user.id)
-        .single();
+        .maybeSingle();
       return data;
     },
   });
