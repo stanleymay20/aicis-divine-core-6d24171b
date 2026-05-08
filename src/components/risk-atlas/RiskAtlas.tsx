@@ -122,11 +122,58 @@ const EXAMPLE_QUERIES = [
   "show health risk in East Africa",
 ];
 
+type Severity = "critical" | "high" | "elevated" | "moderate" | "low";
+type Direction = "up" | "down" | "flat";
+type Basemap = "dark" | "light" | "satellite";
+
+const SEVERITY_TIERS: { key: Severity; color: string; label: string; min: number; max: number }[] = [
+  { key: "critical", color: "#ef4444", label: "Critical (70+)",   min: 70, max: 1000 },
+  { key: "high",     color: "#f97316", label: "High (55–70)",     min: 55, max: 70 },
+  { key: "elevated", color: "#eab308", label: "Elevated (40–55)", min: 40, max: 55 },
+  { key: "moderate", color: "#facc15", label: "Moderate (25–40)", min: 25, max: 40 },
+  { key: "low",      color: "#22c55e", label: "Low (< 25)",       min: 0,  max: 25 },
+];
+function severityOf(score: number): Severity {
+  if (score >= 70) return "critical";
+  if (score >= 55) return "high";
+  if (score >= 40) return "elevated";
+  if (score >= 25) return "moderate";
+  return "low";
+}
+
 export function RiskAtlas() {
   const [queryText, setQueryText] = useState("");
   const [activeQuery, setActiveQuery] = useState<MapQuery | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+
+  // ─── Layer controls ───────────────────────────────────────────────
+  const [severityFilter, setSeverityFilter] = useState<Set<Severity>>(
+    new Set(["critical", "high", "elevated", "moderate", "low"]),
+  );
+  const [directionFilter, setDirectionFilter] = useState<Set<Direction>>(
+    new Set(["up", "down", "flat"]),
+  );
+  const [showRegions, setShowRegions] = useState(true);
+  const [showComparison, setShowComparison] = useState(true);
+  const [showTrendArrows, setShowTrendArrows] = useState(true);
+  const [basemap, setBasemap] = useState<Basemap>("dark");
+  const [layersOpen, setLayersOpen] = useState(false);
+
+  const toggleSeverity = useCallback((s: Severity) => {
+    setSeverityFilter(prev => {
+      const next = new Set(prev);
+      next.has(s) ? next.delete(s) : next.add(s);
+      return next.size === 0 ? new Set(["critical", "high", "elevated", "moderate", "low"] as Severity[]) : next;
+    });
+  }, []);
+  const toggleDirection = useCallback((d: Direction) => {
+    setDirectionFilter(prev => {
+      const next = new Set(prev);
+      next.has(d) ? next.delete(d) : next.add(d);
+      return next.size === 0 ? new Set(["up", "down", "flat"] as Direction[]) : next;
+    });
+  }, []);
 
   const defaultQuery = useMemo<MapQuery>(() => ({
     scope: "global", geography: null, domains: [], threshold: null,
