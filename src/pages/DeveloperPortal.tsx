@@ -79,7 +79,13 @@ export default function DeveloperPortal() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScopes, setNewKeyScopes] = useState<string[]>(["read"]);
+  const [newKeyExpiry, setNewKeyExpiry] = useState<string>("365"); // days, "" = never
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
+
+  const toggleScope = (s: string) => {
+    setNewKeyScopes((prev) => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+  };
 
   // Fetch user's org
   const { data: org } = useQuery({
