@@ -147,23 +147,58 @@ export default function ExportCenter() {
   const datasetMeta = DATASETS.find(d => d.key === dataset)!;
   const overCap = previewCount !== null && previewCount > limit;
 
+  // KPI rollup from recent exports
+  const logs = history.data ?? [];
+  const successLogs = logs.filter(l => l.status === "success");
+  const totalRows = successLogs.reduce((s, l) => s + (l.row_count || 0), 0);
+  const totalBytes = successLogs.reduce((s, l) => s + (l.file_size_bytes || 0), 0);
+  const successRate = logs.length ? Math.round((successLogs.length / logs.length) * 100) : 0;
+  const lastExport = logs[0] ? new Date(logs[0].created_at) : null;
+
   return (
     <AICISLayout>
       <div className="overflow-y-auto h-full">
-        <div className="container mx-auto py-8 max-w-7xl space-y-6 px-4">
+        <div className="container mx-auto py-6 max-w-[1400px] space-y-5 px-4 md:px-6 lg:px-8 animate-fade-in">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <FileDown className="h-7 w-7 text-primary" /> Export Center
+          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+            <FileDown className="h-5 w-5 text-primary" /> Data Export
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Permissioned, logged, provenance-safe data exports. Admin & operator only.
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+            Permissioned, logged, provenance-safe data exports. Every download is identity-bound and SHA-256 verified.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <ShieldCheck className="h-4 w-4 text-emerald-400" />
-          Non-Surveillance Guarantee · No PII · SHA-256 verified · Keyset-stable pagination
-        </div>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-emerald-400 border border-emerald-700/40 bg-emerald-500/5 rounded px-2 py-1">
+          <ShieldCheck className="h-3 w-3" />
+          No PII · SHA-256 · Keyset-stable
+        </span>
+      </div>
+
+      {/* KPI strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <Card className="p-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Exports (20 latest)</div>
+          <div className="text-2xl font-bold font-mono tabular-nums mt-1">{logs.length}</div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Success rate</div>
+          <div className={`text-2xl font-bold font-mono tabular-nums mt-1 ${
+            successRate >= 95 ? "text-emerald-400" : successRate >= 80 ? "text-amber-500" : "text-destructive"
+          }`}>{logs.length ? `${successRate}%` : "—"}</div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Rows delivered</div>
+          <div className="text-2xl font-bold font-mono tabular-nums mt-1 text-primary">{totalRows.toLocaleString()}</div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Bytes shipped</div>
+          <div className="text-2xl font-bold font-mono tabular-nums mt-1">{fmtBytes(totalBytes)}</div>
+          {lastExport && (
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              last {formatDistanceToNow(lastExport, { addSuffix: true })}
+            </div>
+          )}
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
