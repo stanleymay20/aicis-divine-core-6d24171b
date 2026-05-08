@@ -8,19 +8,47 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+async function requireUser(req: Request) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new Error("Unauthorized");
+  }
+
+  const authClient = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    { global: { headers: { Authorization: authHeader } } },
+  );
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data, error } = await authClient.auth.getClaims(token);
+  if (error || !data?.claims?.sub) {
+    throw new Error("Unauthorized");
+  }
+
+  return {
+    id: data.claims.sub as string,
+    email: typeof data.claims.email === "string" ? data.claims.email : null,
+  };
+}
+
 async function generateApiKey(orgId: string): Promise<{ key: string; hash: string; prefix: string }> {
   const randomBytes = new Uint8Array(32);
   crypto.getRandomValues(randomBytes);
-  
-  const key = Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+
+  const key = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   const prefix = `sk_${orgId.substring(0, 8)}`;
   const fullKey = `${prefix}_${key}`;
-  
-  const encoder = new TextEncoder();
-  const data = encoder.encode(fullKey);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hash = Array.from(new Uint8Array(hashBuffer), byte => byte.toString(16).padStart(2, '0')).join('');
-  
+
+  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fullKey));
+  const hash = Array.from(new Uint8Array(hashBuffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
+
   return { key: fullKey, hash, prefix };
 }
 
@@ -30,14 +58,11 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
+    const user = await requireUser(req);
+    const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Unauthorized");
 
     const apiKeySchema = z.object({
       org_id: z.string().uuid(),
@@ -53,59 +78,57 @@ serve(async (req) => {
 
     const { org_id, name, rate_limit_per_minute, scopes, expires_in_days } = apiKeySchema.parse(await req.json());
 
-    // Check for duplicate names
-    const { count: duplicateCount } = await supabase
+    const { data: org, error: orgError } = await supabaseAdmin
+      .from("organizations")
+      .select("id, owner_id, tier, api_enabled, max_api_keys")
+      .eq("id", org_id)
+      .maybeSingle();
+
+    if (orgError) throw orgError;
+    if (!org || org.owner_id !== user.id) {
+      return json({ error: "Only the workspace owner can create API keys" }, 403);
+    }
+
+    if (!org.api_enabled) {
+      return json({ error: "Developer API access is not enabled for this workspace" }, 403);
+    }
+
+    const { count: duplicateCount, error: duplicateError } = await supabaseAdmin
       .from("api_keys")
       .select("*", { count: "exact", head: true })
       .eq("org_id", org_id)
       .eq("name", name)
       .eq("revoked", false);
 
+    if (duplicateError) throw duplicateError;
     if (duplicateCount && duplicateCount > 0) {
-      throw new Error("An API key with this name already exists");
+      return json({ error: "An active API key with this name already exists" }, 409);
     }
 
-    // Verify user is org owner
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("*")
-      .eq("id", org_id)
-      .eq("owner_id", user.id)
-      .single();
-
-    if (!org) throw new Error("Not authorized");
-
-    // Check if API is enabled
-    if (!org.api_enabled) {
-      throw new Error("API access is not enabled for this organization");
-    }
-
-    // Check key limit
-    const { count } = await supabase
+    const { count, error: countError } = await supabaseAdmin
       .from("api_keys")
-      .select("*", { count: 'exact', head: true })
+      .select("*", { count: "exact", head: true })
       .eq("org_id", org_id)
       .eq("revoked", false);
 
-    if (count && count >= (org.max_api_keys || 2)) {
-      throw new Error(`Maximum number of API keys (${org.max_api_keys}) reached`);
+    if (countError) throw countError;
+    const maxKeys = org.max_api_keys || 2;
+    if (count && count >= maxKeys) {
+      return json({ error: `Maximum number of active API keys (${maxKeys}) reached` }, 409);
     }
 
-    // Generate API key
     const { key, hash, prefix } = await generateApiKey(org_id);
 
-    // Determine rate limit based on tier
     let rateLimit = rate_limit_per_minute || 60;
-    if (org.tier === 'starter') rateLimit = Math.min(rateLimit, 60);
-    if (org.tier === 'pro') rateLimit = Math.min(rateLimit, 300);
-    if (org.tier === 'enterprise') rateLimit = Math.min(rateLimit, 1000);
+    if (org.tier === "starter") rateLimit = Math.min(rateLimit, 60);
+    if (org.tier === "pro") rateLimit = Math.min(rateLimit, 300);
+    if (org.tier === "enterprise") rateLimit = Math.min(rateLimit, 1000);
 
     const expiresAt = expires_in_days
       ? new Date(Date.now() + expires_in_days * 86_400_000).toISOString()
       : null;
 
-    // Store API key
-    const { data: apiKey, error } = await supabase
+    const { data: apiKey, error } = await supabaseAdmin
       .from("api_keys")
       .insert({
         org_id,
@@ -117,78 +140,46 @@ serve(async (req) => {
         expires_at: expiresAt,
         created_by: user.id,
       })
-      .select()
+      .select("id")
       .single();
 
     if (error) throw error;
 
-    // Generate HMAC secret
-    const hmacSecret = Deno.env.get("API_HMAC_SECRET");
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(hmacSecret);
-    const hmacKey = await crypto.subtle.importKey(
-      "raw",
-      keyData,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    
-    const signature = await crypto.subtle.sign(
-      "HMAC",
-      hmacKey,
-      encoder.encode(key)
-    );
-    
-    const signatureHex = Array.from(new Uint8Array(signature), byte => 
-      byte.toString(16).padStart(2, '0')
-    ).join('');
-
-    // Log action
-    await supabase.from("tenant_action_log").insert({
-      org_id,
-      user_id: user.id,
-      action: "api_key_issued",
-      details: { name, key_prefix: prefix },
-    });
-
-    await supabase.from("system_logs").insert({
-      division: "system",
-      action: "issue_api_key",
-      user_id: user.id,
-      log_level: "info",
-      result: "API key issued",
-      metadata: { org_id, name, key_prefix: prefix },
-    });
-
-    return new Response(
-      JSON.stringify({ 
-        ok: true, 
-        api_key: key,
-        key_id: apiKey.id,
-        signature: signatureHex,
-        rate_limit: rateLimit,
-        warning: "Store this key securely. It will not be shown again."
+    await Promise.allSettled([
+      supabaseAdmin.from("tenant_action_log").insert({
+        org_id,
+        user_id: user.id,
+        action: "api_key_issued",
+        details: { name, key_prefix: prefix, scopes: scopes ?? ["read"], expires_at: expiresAt },
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+      supabaseAdmin.from("system_logs").insert({
+        division: "system",
+        action: "issue_api_key",
+        user_id: user.id,
+        log_level: "info",
+        result: "API key issued",
+        metadata: { org_id, name, key_prefix: prefix },
+      }),
+    ]);
+
+    return json({
+      ok: true,
+      api_key: key,
+      key_id: apiKey.id,
+      rate_limit: rateLimit,
+      expires_at: expiresAt,
+      scopes: scopes ?? ["read"],
+      warning: "Store this key securely. It will not be shown again.",
+    });
   } catch (e) {
     console.error("Error in issue-api-key:", e);
-    
-    // Handle Zod validation errors
+
     if (e instanceof z.ZodError) {
-      return new Response(
-        JSON.stringify({ 
-          error: "Validation failed", 
-          details: e.errors 
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ error: "Validation failed", details: e.errors }, 400);
     }
-    
-    return new Response(
-      JSON.stringify({ error: (e as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+
+    const message = (e as Error).message || "Unable to create API key";
+    const status = message === "Unauthorized" ? 401 : 500;
+    return json({ error: message }, status);
   }
 });
