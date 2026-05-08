@@ -1,8 +1,12 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Menu, ArrowLeft, Download, Code2, LayoutGrid, Settings as SettingsIcon, Home } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { User, LogOut, Menu, ArrowLeft, Download, Code2, LayoutGrid, Settings as SettingsIcon, Home, ShieldCheck, Activity } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { formatDistanceToNow } from "date-fns";
 import {
   DropdownMenu,
   DropdownMenuContent,
