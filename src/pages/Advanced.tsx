@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Radio, Activity, Eye, Brain, Shield, Cog, Database, FlaskConical,
   LineChart, GitBranch, Server, Code2, Layers, Globe, BookOpen, Gauge,
-  ClipboardCheck, Sparkles, Workflow, MapPin, Send, ArrowRight,
+  ClipboardCheck, Sparkles, Workflow, MapPin, Send, ArrowRight, Download,
 } from "lucide-react";
 
 type Item = { label: string; desc: string; path: string; icon: any };
