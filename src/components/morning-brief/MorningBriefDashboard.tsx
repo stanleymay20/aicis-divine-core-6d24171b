@@ -48,7 +48,23 @@ export const MorningBriefDashboard = () => {
     staleTime: 300_000,
   });
 
-  const firstName = profile?.full_name?.split(" ")[0] || user?.email?.split("@")[0] || "Operator";
+  // Resolve a clean display name. If full_name accidentally holds an email,
+  // fall back to a Title-Cased local-part. Never display a raw address.
+  const cleanName = (raw: string | null | undefined): string | null => {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    // If it looks like an email, take the local-part
+    const base = trimmed.includes("@") ? trimmed.split("@")[0] : trimmed;
+    // Drop digits/punctuation runs at the end (e.g. "stanleymay20" → "stanleymay")
+    const stripped = base.replace(/[._\-+]+/g, " ").replace(/\d+$/g, "").trim();
+    const first = stripped.split(/\s+/)[0] || base;
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+  };
+  const firstName =
+    cleanName(profile?.full_name) ||
+    cleanName(user?.email) ||
+    "Operator";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening";
 

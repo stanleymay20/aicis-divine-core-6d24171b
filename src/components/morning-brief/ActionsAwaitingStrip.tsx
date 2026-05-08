@@ -164,8 +164,9 @@ export function ActionsAwaitingStrip() {
 
   const ageDays = (a: PendingAction) =>
     (Date.now() - new Date(a.created_at).getTime()) / 86_400_000;
-  const isStale = (a: PendingAction) =>
-    ageDays(a) > 7 && a.execution_status !== "in_progress";
+  // Stale = older than 7 days regardless of status. An "in progress" item
+  // that's been sitting for 18 days is a zombie, not active work.
+  const isStale = (a: PendingAction) => ageDays(a) > 7;
 
   const fresh = actions.filter((a) => !isStale(a));
   const stale = actions.filter(isStale);
