@@ -34,6 +34,7 @@ const Watchlist = lazy(() => import("./pages/Watchlist"));
 const LearningIntelligence = lazy(() => import("./pages/LearningIntelligence"));
 const RiskAtlasPage = lazy(() => import("./pages/RiskAtlasPage"));
 const RelevancePreferences = lazy(() => import("./pages/RelevancePreferences"));
+const Advanced = lazy(() => import("./pages/Advanced"));
 
 // ── Public pages ─────────────────────────────────────────────
 const Terms = lazy(() => import("./pages/Terms"));
@@ -147,6 +148,9 @@ const App = () => (
               <Route path="/learning" element={<Protected><LearningIntelligence /></Protected>} />
               <Route path="/risk-atlas" element={<Protected><RiskAtlasPage /></Protected>} />
               <Route path="/relevance-preferences" element={<Protected><RelevancePreferences /></Protected>} />
+              <Route path="/advanced" element={<Protected><Advanced /></Protected>} />
+              {/* legacy aliases */}
+              <Route path="/more" element={<Protected><Advanced /></Protected>} />
 
               {/* ── Secondary (deep-link only, not in nav) ───── */}
               <Route path="/daily-evidence-ops" element={<Protected><DailyEvidenceOps /></Protected>} />

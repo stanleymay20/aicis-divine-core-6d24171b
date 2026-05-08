@@ -66,7 +66,7 @@ export const MorningBriefDashboard = () => {
       {/* ── First-run guided tour (shown once) ── */}
       <FirstRunTour />
 
-      {/* ── HERO: greeting + system health (compact on mobile) ── */}
+      {/* ── HERO: greeting + system health ── */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-base sm:text-xl font-semibold leading-tight truncate">
@@ -82,16 +82,10 @@ export const MorningBriefDashboard = () => {
         <SystemHealthBadge />
       </div>
 
-      {/* ── 🌍 LIVE PLANETARY DETECTION SLA ── */}
-      <PlanetaryDetectionBadge />
-
       {/* ── EXPOSURE: 3-4 compact KPIs ── */}
       <BusinessExposureStrip />
 
-      {/* ── DOMAIN MIX: prove planetary coverage across 12 domains ── */}
-      <DomainMixStrip />
-
-      {/* ── 🔥 TOP EMERGING RISKS · AI Risk Ranking Engine ── */}
+      {/* ── 🔥 TOP EMERGING RISKS ── */}
       <TopEmergingRisksPanel />
 
       {/* ── 🚨 ACTIONS AWAITING: Execution activation ── */}
@@ -122,6 +116,8 @@ export const MorningBriefDashboard = () => {
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-5 pt-3">
+          <PlanetaryDetectionBadge />
+          <DomainMixStrip />
           <WatchlistBriefWidget />
           <RecentDecisionsWidget />
           <LayerTrustTiersPanel />
