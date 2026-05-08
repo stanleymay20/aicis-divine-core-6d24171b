@@ -692,7 +692,7 @@ function AtlasMap({
       markersRef.current.push(marker);
 
       // Trend arrow overlay for selected countries when trend query is active
-      if (query.trend && c.direction === (query.trend === "rising" ? "up" : "down")) {
+      if (showTrendArrows && query.trend && c.direction === (query.trend === "rising" ? "up" : "down")) {
         const arrow = query.trend === "rising" ? "▲" : "▼";
         const arrowColor = query.trend === "rising" ? "#ef4444" : "#22c55e";
         const icon = L.divIcon({
@@ -735,7 +735,7 @@ function AtlasMap({
     }
 
     // --- Comparison highlight ---
-    if (query.comparison) {
+    if (showComparison && query.comparison) {
       const aCoords = CC[query.comparison.a];
       const bCoords = CC[query.comparison.b];
       if (aCoords && bCoords) {
