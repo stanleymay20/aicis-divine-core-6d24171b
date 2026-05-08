@@ -253,8 +253,6 @@ export default function LiveCommandFeed() {
           )}>
             <ScrollArea className="flex-1 p-3">
               <div className="space-y-3">
-                {!reviewMode && <AlertRibbon signals={allSignals} />}
-
                 {/* Review mode banner */}
                 {reviewMode && (
                   <Card className="p-3 bg-primary/5 border-primary/20">
@@ -266,20 +264,6 @@ export default function LiveCommandFeed() {
                       </div>
                     </div>
                   </Card>
-                )}
-
-                {/* Top Signals */}
-                {!reviewMode && topSignals.length > 0 && categoryFilter === "all" && !searchQuery && (
-                  <div className="space-y-2">
-                    <h2 className="text-xs font-semibold flex items-center gap-1 text-primary">
-                      <Zap className="h-3.5 w-3.5" /> Top Global Signals
-                    </h2>
-                    {topSignals.map(s => (
-                      <SignalCard key={s.id} signal={s} audienceMode={audienceMode}
-                        onSelect={setSelectedSignal} selected={selectedSignal?.id === s.id}
-                        showFeedback onFeedbackSubmitted={() => setFeedbackCount(c => c + 1)} />
-                    ))}
-                  </div>
                 )}
 
                 {/* Routing Precision Panel */}
