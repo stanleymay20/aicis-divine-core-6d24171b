@@ -125,7 +125,7 @@ export function RiskAtlas() {
   const [queryText, setQueryText] = useState("");
   const [activeQuery, setActiveQuery] = useState<MapQuery | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const defaultQuery = useMemo<MapQuery>(() => ({
     scope: "global", geography: null, domains: [], threshold: null,
@@ -193,6 +193,17 @@ export function RiskAtlas() {
     return Object.values(countryAgg)
       .sort((a, b) => b.avgRisk - a.avgRisk)
       .slice(0, 10);
+  }, [countryAgg]);
+
+  // Headline KPIs derived from the visible aggregate
+  const kpis = useMemo(() => {
+    const all = Object.values(countryAgg);
+    const total = all.length;
+    const critical = all.filter(c => c.avgRisk >= 70).length;
+    const high = all.filter(c => c.avgRisk >= 55 && c.avgRisk < 70).length;
+    const rising = all.filter(c => c.direction === "up").length;
+    const avg = total ? all.reduce((s, c) => s + c.avgRisk, 0) / total : 0;
+    return { total, critical, high, rising, avg };
   }, [countryAgg]);
 
   const selectedCountryData = selectedCountry ? countryAgg[selectedCountry] : null;
@@ -304,6 +315,16 @@ export function RiskAtlas() {
         </div>
       )}
 
+      {/* Headline KPI strip — Bloomberg-style scope anchor */}
+      <div className="px-4 py-2 border-b border-border bg-background/60 shrink-0 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs font-mono tabular-nums">
+        <span className="text-muted-foreground">Tracked <span className="text-foreground font-semibold">{kpis.total}</span></span>
+        <span className="text-muted-foreground">Critical <span className="text-destructive font-semibold">{kpis.critical}</span></span>
+        <span className="text-muted-foreground">High <span className="text-amber-500 font-semibold">{kpis.high}</span></span>
+        <span className="text-muted-foreground">Rising <span className="text-foreground font-semibold">▲ {kpis.rising}</span></span>
+        <span className="text-muted-foreground">Avg score <span className="text-foreground font-semibold">{kpis.avg.toFixed(1)}</span></span>
+        <span className="ml-auto text-[10px] text-muted-foreground/70 font-sans">Click any marker to drill down</span>
+      </div>
+
       {/* Main content: Map + Panel */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Map */}
@@ -340,12 +361,6 @@ export function RiskAtlas() {
                 <span className="text-muted-foreground">{l.label}</span>
               </div>
             ))}
-          </div>
-          {/* Country count badge */}
-          <div className="absolute top-3 right-3 z-[1000]">
-            <Badge variant="secondary" className="text-xs">
-              {Object.keys(countryAgg).length} countries
-            </Badge>
           </div>
         </div>
 
@@ -400,9 +415,15 @@ function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, qu
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, { center, zoom, scrollWheelZoom: true, zoomControl: true });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: '© CARTO', maxZoom: 18,
+    // Base: CARTO dark, no labels — avoids mixed-language place names.
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
+      attribution: '© OpenStreetMap, © CARTO', maxZoom: 18, subdomains: "abcd",
     }).addTo(map);
+    // Overlay: English-only borders + place labels from ESRI.
+    L.tileLayer(
+      "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+      { attribution: "© Esri", maxZoom: 18, opacity: 0.85 }
+    ).addTo(map);
     mapRef.current = map;
 
     const timer = setTimeout(() => map.invalidateSize(), 200);
