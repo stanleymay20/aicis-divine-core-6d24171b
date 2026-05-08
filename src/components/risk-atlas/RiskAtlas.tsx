@@ -400,9 +400,15 @@ function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, qu
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, { center, zoom, scrollWheelZoom: true, zoomControl: true });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: '© CARTO', maxZoom: 18,
+    // Base: CARTO dark, no labels — avoids mixed-language place names.
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
+      attribution: '© OpenStreetMap, © CARTO', maxZoom: 18, subdomains: "abcd",
     }).addTo(map);
+    // Overlay: English-only borders + place labels from ESRI.
+    L.tileLayer(
+      "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+      { attribution: "© Esri", maxZoom: 18, opacity: 0.85 }
+    ).addTo(map);
     mapRef.current = map;
 
     const timer = setTimeout(() => map.invalidateSize(), 200);
