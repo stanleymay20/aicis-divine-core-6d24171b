@@ -23,7 +23,6 @@ import { SystemStatusStrip } from "./SystemStatusStrip";
 import { DomainMixStrip } from "./DomainMixStrip";
 import { LayerTrustTiersPanel } from "./LayerTrustTiersPanel";
 import { PersistentAskBar } from "./PersistentAskBar";
-import { FirstRunTour } from "@/components/onboarding/FirstRunTour";
 import { TopEmergingRisksPanel } from "@/components/risk-ranking/TopEmergingRisksPanel";
 import { PlanetaryDetectionBadge } from "./PlanetaryDetectionBadge";
 
@@ -63,9 +62,6 @@ export const MorningBriefDashboard = () => {
       {/* ── PERSISTENT ASK BAR: front door for non-technical users ── */}
       <PersistentAskBar />
 
-      {/* ── First-run guided tour (shown once) ── */}
-      <FirstRunTour />
-
       {/* ── HERO: greeting + system health ── */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -84,9 +80,6 @@ export const MorningBriefDashboard = () => {
 
       {/* ── EXPOSURE: 3-4 compact KPIs ── */}
       <BusinessExposureStrip />
-
-      {/* ── 🔥 TOP EMERGING RISKS ── */}
-      <TopEmergingRisksPanel />
 
       {/* ── 🚨 ACTIONS AWAITING: Execution activation ── */}
       <ActionsAwaitingStrip />
@@ -110,13 +103,14 @@ export const MorningBriefDashboard = () => {
             ) : (
               <>
                 <ChevronDown className="h-4 w-4" />
-                View more: tracked markets, recent decisions, system status
+                View more: risk rankings, tracked markets, recent decisions, system status
               </>
             )}
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-5 pt-3">
           <PlanetaryDetectionBadge />
+          <TopEmergingRisksPanel />
           <DomainMixStrip />
           <WatchlistBriefWidget />
           <RecentDecisionsWidget />
