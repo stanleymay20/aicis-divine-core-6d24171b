@@ -362,12 +362,6 @@ export function RiskAtlas() {
               </div>
             ))}
           </div>
-          {/* Country count badge */}
-          <div className="absolute top-3 right-3 z-[1000]">
-            <Badge variant="secondary" className="text-xs">
-              {Object.keys(countryAgg).length} countries
-            </Badge>
-          </div>
         </div>
 
         {/* Insight Panel */}
