@@ -315,6 +315,16 @@ export function RiskAtlas() {
         </div>
       )}
 
+      {/* Headline KPI strip — Bloomberg-style scope anchor */}
+      <div className="px-4 py-2 border-b border-border bg-background/60 shrink-0 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs font-mono tabular-nums">
+        <span className="text-muted-foreground">Tracked <span className="text-foreground font-semibold">{kpis.total}</span></span>
+        <span className="text-muted-foreground">Critical <span className="text-destructive font-semibold">{kpis.critical}</span></span>
+        <span className="text-muted-foreground">High <span className="text-amber-500 font-semibold">{kpis.high}</span></span>
+        <span className="text-muted-foreground">Rising <span className="text-foreground font-semibold">▲ {kpis.rising}</span></span>
+        <span className="text-muted-foreground">Avg score <span className="text-foreground font-semibold">{kpis.avg.toFixed(1)}</span></span>
+        <span className="ml-auto text-[10px] text-muted-foreground/70 font-sans">Click any marker to drill down</span>
+      </div>
+
       {/* Main content: Map + Panel */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Map */}
