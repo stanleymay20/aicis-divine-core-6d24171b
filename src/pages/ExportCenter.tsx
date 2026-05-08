@@ -363,7 +363,9 @@ export default function ExportCenter() {
           </CardContent>
         </Card>
       </div>
-    </div>
+        </div>
+      </div>
+    </AICISLayout>
   );
 }
 
