@@ -16,9 +16,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import {
-  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu, ClipboardCheck, Package
+  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu, ClipboardCheck, Package, ChevronDown, ChevronUp
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -60,6 +61,7 @@ export default function LiveCommandFeed() {
   const [enriching, setEnriching] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
   const [feedbackCount, setFeedbackCount] = useState(0);
+  const [showTools, setShowTools] = useState(false);
 
   const { data: allSignals = [], isLoading, refetch } = useGlobalSignals({ limit: 100 });
   const { data: topSignals = [] } = useTopSignals(5);
