@@ -12,9 +12,9 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Shield, Users, Activity, Database, Settings, 
-  AlertTriangle, CheckCircle, Clock, ArrowLeft,
+  AlertTriangle, CheckCircle, Clock,
   RefreshCw, TrendingUp, Lock, Globe, FileText,
-  Server, Brain, Zap
+  Server, Brain, Zap, Download, Code2, LayoutGrid, ChevronDown, ChevronUp
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
@@ -24,7 +24,8 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedTab, setSelectedTab] = useState("overview");
+  const [selectedTab, setSelectedTab] = useState("settings");
+  const [showAdvancedTools, setShowAdvancedTools] = useState(false);
 
   // Fetch system health
   const { data: systemHealth, refetch: refetchHealth } = useQuery({
@@ -178,55 +179,55 @@ const AdminDashboard = () => {
   return (
     <AICISLayout>
       <div className="p-6 container mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <Shield className="h-8 w-8 text-primary" />
+              <Settings className="h-6 w-6 text-primary" />
               <div>
-                <h1 className="text-xl font-orbitron font-bold">AICIS Admin</h1>
-                <p className="text-xs text-muted-foreground">Enterprise Control Panel</p>
+                <h1 className="text-xl font-semibold">Settings</h1>
+                <p className="text-xs text-muted-foreground">Account, export, developer, and system access.</p>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="font-mono">
-              {user?.email}
-            </Badge>
-            <Badge variant="default">Administrator</Badge>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={() => navigate("/data-export")}> 
+              <Download className="h-4 w-4" /> Data Export
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/developers")}>
+              <Code2 className="h-4 w-4" /> Developer & API
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/advanced")}>
+              <LayoutGrid className="h-4 w-4" /> Advanced
+            </Button>
           </div>
         </div>
 
 
         <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-          <TabsList className="w-full justify-start overflow-x-auto flex-nowrap mb-6">
-            <TabsTrigger value="overview">
-              <Activity className="w-4 h-4 mr-2" />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="divisions">
-              <Brain className="w-4 h-4 mr-2" />
-              Divisions
-            </TabsTrigger>
-            <TabsTrigger value="users">
-              <Users className="w-4 h-4 mr-2" />
-              Users
-            </TabsTrigger>
-            <TabsTrigger value="audit">
-              <FileText className="w-4 h-4 mr-2" />
-              Audit Log
-            </TabsTrigger>
-            <TabsTrigger value="actions">
-              <Zap className="w-4 h-4 mr-2" />
-              Actions
-            </TabsTrigger>
-            <TabsTrigger value="settings">
-              <Settings className="w-4 h-4 mr-2" />
-              Settings
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
+            <TabsList className="justify-start overflow-x-auto flex-nowrap">
+              <TabsTrigger value="settings">
+                <Settings className="w-4 h-4 mr-2" />
+                Account
+              </TabsTrigger>
+              <TabsTrigger value="overview">
+                <Activity className="w-4 h-4 mr-2" />
+                Status
+              </TabsTrigger>
+              {showAdvancedTools && (
+                <>
+                  <TabsTrigger value="divisions"><Brain className="w-4 h-4 mr-2" />Divisions</TabsTrigger>
+                  <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Users</TabsTrigger>
+                  <TabsTrigger value="audit"><FileText className="w-4 h-4 mr-2" />Audit</TabsTrigger>
+                  <TabsTrigger value="actions"><Zap className="w-4 h-4 mr-2" />Actions</TabsTrigger>
+                </>
+              )}
+            </TabsList>
+            <Button variant="ghost" size="sm" onClick={() => setShowAdvancedTools(v => !v)}>
+              {showAdvancedTools ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              {showAdvancedTools ? "Hide admin tools" : "Admin tools"}
+            </Button>
+          </div>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
