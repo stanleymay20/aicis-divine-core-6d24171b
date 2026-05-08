@@ -125,11 +125,15 @@ serve(async (req) => {
   );
 
   if (!apiKey) {
+    // Soft-skip: connector not configured. Log warning (not error) so it stops
+    // counting against the silent-failure budget. Cron stays armed for when
+    // the operator connects Firecrawl via the Connectors panel.
     await supabase.from("automation_logs").insert({
-      job_name: FN, status: "error", message: "FIRECRAWL_API_KEY missing",
+      job_name: FN, status: "warning",
+      message: "FIRECRAWL_API_KEY not configured — sweep skipped (connect Firecrawl in Connectors to enable)",
     });
-    return new Response(JSON.stringify({ error: "FIRECRAWL_API_KEY missing" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true, skipped: true, reason: "firecrawl_not_configured" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   // Parse optional cap from body
