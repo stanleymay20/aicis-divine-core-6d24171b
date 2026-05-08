@@ -389,49 +389,95 @@ export default function DeveloperPortal() {
                   <p className="text-sm text-muted-foreground">Create an organization first to manage API keys.</p>
                 ) : (
                   <>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Key name (e.g. production-backend)"
-                        value={newKeyName}
-                        onChange={(e) => setNewKeyName(e.target.value)}
-                        className="max-w-xs text-sm"
-                      />
-                      <Button
-                        size="sm"
-                        disabled={!newKeyName.trim() || issueKey.isPending}
-                        onClick={() => issueKey.mutate(newKeyName.trim())}
-                      >
-                        {issueKey.isPending ? "Creating..." : "Create Key"}
-                      </Button>
+                    <div className="space-y-3 border border-border/60 rounded-lg p-3 bg-muted/20">
+                      <div className="flex flex-wrap gap-2 items-end">
+                        <div className="flex-1 min-w-[200px]">
+                          <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Key name</label>
+                          <Input
+                            placeholder="production-backend"
+                            value={newKeyName}
+                            onChange={(e) => setNewKeyName(e.target.value)}
+                            className="text-sm h-8"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Expiry (days)</label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={3650}
+                            placeholder="never"
+                            value={newKeyExpiry}
+                            onChange={(e) => setNewKeyExpiry(e.target.value)}
+                            className="text-sm h-8 w-24"
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          disabled={!newKeyName.trim() || newKeyScopes.length === 0 || issueKey.isPending}
+                          onClick={() => issueKey.mutate(newKeyName.trim())}
+                          className="h-8"
+                        >
+                          {issueKey.isPending ? "Creating..." : "Create Key"}
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Scopes:</span>
+                        {(["read", "write", "admin"] as const).map((s) => (
+                          <label key={s} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="h-3.5 w-3.5 accent-primary"
+                              checked={newKeyScopes.includes(s)}
+                              onChange={() => toggleScope(s)}
+                            />
+                            <code className="font-mono">{s}</code>
+                          </label>
+                        ))}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          Least-privilege: prefer <code className="font-mono">read</code> only.
+                        </span>
+                      </div>
                     </div>
 
                     <div className="space-y-2">
                       {activeKeys.length === 0 ? (
                         <p className="text-xs text-muted-foreground py-4 text-center">No active API keys. Create one to get started.</p>
                       ) : (
-                        activeKeys.map((key) => (
-                          <div key={key.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">{key.name}</span>
-                                <code className="text-[10px] text-muted-foreground font-mono">{key.key_prefix}•••</code>
+                        activeKeys.map((key: any) => {
+                          const expired = key.expires_at && new Date(key.expires_at).getTime() < Date.now();
+                          const expiringSoon = key.expires_at && !expired
+                            && new Date(key.expires_at).getTime() - Date.now() < 7 * 86_400_000;
+                          return (
+                            <div key={key.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2 gap-3">
+                              <div className="space-y-0.5 min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-medium truncate">{key.name}</span>
+                                  <code className="text-[10px] text-muted-foreground font-mono">{key.key_prefix}•••</code>
+                                  {(key.scopes || ["read"]).map((s: string) => (
+                                    <Badge key={s} variant="outline" className="text-[9px] h-4 px-1 font-mono">{s}</Badge>
+                                  ))}
+                                  {expired && <Badge variant="destructive" className="text-[9px] h-4 px-1">expired</Badge>}
+                                  {expiringSoon && <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-500/50 text-amber-400">expires soon</Badge>}
+                                </div>
+                                <div className="text-[10px] text-muted-foreground">
+                                  Created {new Date(key.created_at!).toLocaleDateString()}
+                                  {key.last_used_at && ` · Last used ${new Date(key.last_used_at).toLocaleDateString()}`}
+                                  {` · ${key.rate_limit_per_minute}/min`}
+                                  {key.expires_at && ` · Expires ${new Date(key.expires_at).toLocaleDateString()}`}
+                                </div>
                               </div>
-                              <div className="text-[10px] text-muted-foreground">
-                                Created {new Date(key.created_at!).toLocaleDateString()}
-                                {key.last_used_at && ` · Last used ${new Date(key.last_used_at).toLocaleDateString()}`}
-                                {` · ${key.rate_limit_per_minute}/min`}
-                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive text-xs"
+                                onClick={() => revokeKey.mutate(key.id)}
+                              >
+                                Revoke
+                              </Button>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive hover:text-destructive text-xs"
-                              onClick={() => revokeKey.mutate(key.id)}
-                            >
-                              Revoke
-                            </Button>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </>
