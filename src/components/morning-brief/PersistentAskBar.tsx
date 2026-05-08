@@ -6,12 +6,9 @@ import { Sparkles, Search, Mic, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const QUICK_ASKS = [
-  "What needs my attention today?",
-  "Show me top risks this week",
-  "What changed overnight?",
-  "Where am I most exposed?",
-];
+interface PersistentAskBarProps {
+  className?: string;
+}
 
 interface PersistentAskBarProps {
   className?: string;
