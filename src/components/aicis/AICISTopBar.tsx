@@ -194,6 +194,37 @@ export const AICISTopBar = () => {
         )}
       </div>
 
+      {/* Center: trust + freshness badges */}
+      <div className="hidden md:flex items-center gap-2 mx-3">
+        <Badge
+          variant="outline"
+          className="h-6 px-1.5 gap-1 text-[10px] font-mono tracking-wide border-emerald-500/30 bg-emerald-500/5 text-emerald-500"
+          title="Aggregate, public-source data only. No PII processed."
+        >
+          <ShieldCheck className="h-3 w-3" />
+          NON-SURVEILLANCE
+        </Badge>
+        <Badge
+          variant="outline"
+          className={`h-6 px-1.5 gap-1 text-[10px] font-mono tracking-wide border-border ${freshnessTone}`}
+          title={lastSignalAt ? `Last signal ingested ${lastSignalAt.toISOString()}` : "Awaiting signals"}
+        >
+          <Activity className="h-3 w-3" />
+          {lastSignalAt ? `${formatDistanceToNow(lastSignalAt)} ago` : "—"}
+        </Badge>
+        <Badge
+          variant="outline"
+          className={`h-6 px-1.5 text-[10px] font-mono tracking-wide ${
+            env === "LIVE"
+              ? "border-primary/40 text-primary bg-primary/5"
+              : "border-amber-500/40 text-amber-500 bg-amber-500/5"
+          }`}
+          title={`Environment: ${env}`}
+        >
+          {env}
+        </Badge>
+      </div>
+
       {/* Right */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
