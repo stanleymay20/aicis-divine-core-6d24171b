@@ -1436,6 +1436,7 @@ export type Database = {
           revoked: boolean | null
           revoked_at: string | null
           revoked_by: string | null
+          scopes: string[]
         }
         Insert: {
           created_at?: string | null
@@ -1451,6 +1452,7 @@ export type Database = {
           revoked?: boolean | null
           revoked_at?: string | null
           revoked_by?: string | null
+          scopes?: string[]
         }
         Update: {
           created_at?: string | null
@@ -1466,6 +1468,7 @@ export type Database = {
           revoked?: boolean | null
           revoked_at?: string | null
           revoked_by?: string | null
+          scopes?: string[]
         }
         Relationships: [
           {
@@ -13532,6 +13535,56 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_delivery_log: {
+        Row: {
+          attempt: number
+          created_at: string
+          error_message: string | null
+          event_type: string
+          id: string
+          org_id: string
+          payload_size_bytes: number | null
+          response_ms: number | null
+          response_status: number | null
+          signature_sha256: string | null
+          subscription_id: string
+        }
+        Insert: {
+          attempt?: number
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          org_id: string
+          payload_size_bytes?: number | null
+          response_ms?: number | null
+          response_status?: number | null
+          signature_sha256?: string | null
+          subscription_id: string
+        }
+        Update: {
+          attempt?: number
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          org_id?: string
+          payload_size_bytes?: number | null
+          response_ms?: number | null
+          response_status?: number | null
+          signature_sha256?: string | null
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_delivery_log_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_event_log: {
         Row: {
           created_at: string | null
@@ -15268,6 +15321,10 @@ export type Database = {
       }
       compute_risk_scores: { Args: never; Returns: Json }
       compute_uptime_snapshot: { Args: never; Returns: Json }
+      count_api_requests_window: {
+        Args: { _key_id: string; _window_seconds?: number }
+        Returns: number
+      }
       count_districts_needing_settlements: { Args: never; Returns: number }
       count_uncovered_regions: { Args: never; Returns: number }
       country_l0_is_stale: {

@@ -46,14 +46,12 @@ serve(async (req) => {
         .min(3, "Name too short")
         .max(100, "Name too long")
         .regex(/^[a-zA-Z0-9\s-]+$/, "Only alphanumeric, spaces, and hyphens allowed"),
-      rate_limit_per_minute: z.number()
-        .int()
-        .min(1)
-        .max(10000)
-        .optional()
+      rate_limit_per_minute: z.number().int().min(1).max(10000).optional(),
+      scopes: z.array(z.enum(["read", "write", "admin"])).min(1).max(3).optional(),
+      expires_in_days: z.number().int().min(1).max(3650).optional(),
     });
 
-    const { org_id, name, rate_limit_per_minute } = apiKeySchema.parse(await req.json());
+    const { org_id, name, rate_limit_per_minute, scopes, expires_in_days } = apiKeySchema.parse(await req.json());
 
     // Check for duplicate names
     const { count: duplicateCount } = await supabase
@@ -102,6 +100,10 @@ serve(async (req) => {
     if (org.tier === 'pro') rateLimit = Math.min(rateLimit, 300);
     if (org.tier === 'enterprise') rateLimit = Math.min(rateLimit, 1000);
 
+    const expiresAt = expires_in_days
+      ? new Date(Date.now() + expires_in_days * 86_400_000).toISOString()
+      : null;
+
     // Store API key
     const { data: apiKey, error } = await supabase
       .from("api_keys")
@@ -111,6 +113,8 @@ serve(async (req) => {
         key_prefix: prefix,
         name,
         rate_limit_per_minute: rateLimit,
+        scopes: scopes ?? ["read"],
+        expires_at: expiresAt,
         created_by: user.id,
       })
       .select()

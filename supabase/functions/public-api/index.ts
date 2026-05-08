@@ -5,85 +5,159 @@ import { crypto } from "https://deno.land/std@0.224.0/crypto/mod.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
+  "Access-Control-Expose-Headers": "x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset, x-request-id",
 };
 
-async function hashKey(key: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(key);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, "0")).join("");
+async function sha256(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+const READ_SCOPE = "read";
+const WRITE_SCOPE = "write";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
   const url = new URL(req.url);
   const pathParts = url.pathname.split("/").filter(Boolean);
-  // Edge function path: /public-api/{resource}
-  // pathParts after filter: ["public-api", resource, ...]
   const resource = pathParts[1] || "";
-  const subResource = pathParts[2] || "";
-
-  // --- Authenticate via API key ---
-  const apiKey = req.headers.get("x-api-key");
-  if (!apiKey) {
-    return json({ error: "Missing x-api-key header" }, 401);
-  }
 
   const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
-  const keyHash = await hashKey(apiKey);
+  // Helper: write tamper-evident audit row, regardless of outcome
+  const writeAudit = async (params: {
+    keyId: string | null;
+    orgId: string | null;
+    status: number;
+    requestBody: string;
+    responseBody: string;
+  }) => {
+    try {
+      const { data: prev } = await supabaseAdmin
+        .from("api_request_audit")
+        .select("chain_hash")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const prevHash = prev?.chain_hash ?? "";
+      const requestHash = await sha256(`${req.method}|${url.pathname}|${url.search}|${params.requestBody}`);
+      const responseHash = await sha256(params.responseBody);
+      const chainHash = await sha256(`${prevHash}|${requestHash}|${responseHash}|${params.status}|${requestId}`);
+      await supabaseAdmin.from("api_request_audit").insert({
+        api_key_id: params.keyId,
+        org_id: params.orgId,
+        endpoint: url.pathname.replace(/^\/public-api/, "") || "/",
+        method: req.method,
+        request_hash: requestHash,
+        response_hash: responseHash,
+        previous_chain_hash: prevHash || null,
+        chain_hash: chainHash,
+        response_status: params.status,
+        latency_ms: Date.now() - startedAt,
+      });
+    } catch (e) {
+      console.error("audit write failed", e);
+    }
+  };
 
-  const { data: keyRow, error: keyErr } = await supabaseAdmin
-    .from("api_keys")
-    .select("id, org_id, rate_limit_per_minute, revoked, last_used_at")
-    .eq("key_hash", keyHash)
-    .eq("revoked", false)
-    .single();
-
-  if (keyErr || !keyRow) {
-    return json({ error: "Invalid or revoked API key" }, 403);
+  // ── Authenticate via API key ──────────────────────────────
+  const apiKey = req.headers.get("x-api-key");
+  if (!apiKey) {
+    const body = JSON.stringify({ error: "Missing x-api-key header", request_id: requestId });
+    await writeAudit({ keyId: null, orgId: null, status: 401, requestBody: "", responseBody: body });
+    return new Response(body, { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json", "x-request-id": requestId } });
   }
 
-  // Update last_used_at
-  await supabaseAdmin
+  const keyHash = await sha256(apiKey);
+  const { data: keyRow } = await supabaseAdmin
     .from("api_keys")
-    .update({ last_used_at: new Date().toISOString() })
-    .eq("id", keyRow.id);
+    .select("id, org_id, rate_limit_per_minute, revoked, expires_at, scopes")
+    .eq("key_hash", keyHash)
+    .eq("revoked", false)
+    .maybeSingle();
+
+  if (!keyRow) {
+    const body = JSON.stringify({ error: "Invalid or revoked API key", request_id: requestId });
+    await writeAudit({ keyId: null, orgId: null, status: 403, requestBody: "", responseBody: body });
+    return new Response(body, { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json", "x-request-id": requestId } });
+  }
+
+  // Expiry enforcement
+  if (keyRow.expires_at && new Date(keyRow.expires_at).getTime() < Date.now()) {
+    const body = JSON.stringify({ error: "API key expired", expired_at: keyRow.expires_at, request_id: requestId });
+    await writeAudit({ keyId: keyRow.id, orgId: keyRow.org_id, status: 403, requestBody: "", responseBody: body });
+    return new Response(body, { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json", "x-request-id": requestId } });
+  }
+
+  // Rate-limit enforcement (sliding 60-second window)
+  const limit = keyRow.rate_limit_per_minute || 60;
+  const { data: countRes } = await supabaseAdmin.rpc("count_api_requests_window", {
+    _key_id: keyRow.id,
+    _window_seconds: 60,
+  });
+  const used = (countRes as unknown as number) ?? 0;
+  const remaining = Math.max(0, limit - used);
+  const rateHeaders = {
+    "x-ratelimit-limit": String(limit),
+    "x-ratelimit-remaining": String(remaining),
+    "x-ratelimit-reset": String(60),
+    "x-request-id": requestId,
+  };
+  if (used >= limit) {
+    const body = JSON.stringify({ error: "Rate limit exceeded", limit, window_seconds: 60, request_id: requestId });
+    await writeAudit({ keyId: keyRow.id, orgId: keyRow.org_id, status: 429, requestBody: "", responseBody: body });
+    return new Response(body, {
+      status: 429,
+      headers: { ...corsHeaders, ...rateHeaders, "Content-Type": "application/json", "Retry-After": "60" },
+    });
+  }
+
+  // Scope enforcement: writes require explicit `write` scope
+  const scopes = (keyRow.scopes as string[] | null) ?? [READ_SCOPE];
+  const isWrite = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
+  if (isWrite && !scopes.includes(WRITE_SCOPE)) {
+    const body = JSON.stringify({ error: "Insufficient scope: write required", scopes, request_id: requestId });
+    await writeAudit({ keyId: keyRow.id, orgId: keyRow.org_id, status: 403, requestBody: "", responseBody: body });
+    return new Response(body, { status: 403, headers: { ...corsHeaders, ...rateHeaders, "Content-Type": "application/json" } });
+  }
+
+  // Touch last_used_at (best-effort)
+  supabaseAdmin.from("api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", keyRow.id).then(() => {});
 
   const orgId = keyRow.org_id;
 
+  // Capture body once for audit (clone, since handlers may also need it)
+  let rawBody = "";
+  if (isWrite) {
+    try { rawBody = await req.clone().text(); } catch { /* ignore */ }
+  }
+
   try {
+    let res: Response;
     switch (resource) {
-      case "signals":
-        return await handleSignals(supabaseAdmin, url, orgId);
-      case "decisions":
-        return await handleDecisions(supabaseAdmin, url, req, orgId);
-      case "outcomes":
-        return await handleOutcomes(supabaseAdmin, url, orgId);
-      case "priority-decisions":
-        return await handlePriorityDecisions(supabaseAdmin, orgId);
-      case "ml-predictions":
-        return await handleMLPredictions(supabaseAdmin, url);
-      case "propagation":
-        return await handlePropagation(supabaseAdmin, url);
-      case "simulations":
-        return await handleSimulations(supabaseAdmin, url);
-      case "risk-ranking":
-        return await handleRiskRanking(supabaseAdmin, url);
-      case "health":
-        return await handleHealth(supabaseAdmin);
-      case "domains":
-        return await handleDomains(supabaseAdmin, url);
+      case "signals":             res = await handleSignals(supabaseAdmin, url, orgId); break;
+      case "decisions":           res = await handleDecisions(supabaseAdmin, url, req, orgId); break;
+      case "outcomes":            res = await handleOutcomes(supabaseAdmin, url, orgId); break;
+      case "priority-decisions":  res = await handlePriorityDecisions(supabaseAdmin, orgId); break;
+      case "ml-predictions":      res = await handleMLPredictions(supabaseAdmin, url); break;
+      case "propagation":         res = await handlePropagation(supabaseAdmin, url); break;
+      case "simulations":         res = await handleSimulations(supabaseAdmin, url); break;
+      case "risk-ranking":        res = await handleRiskRanking(supabaseAdmin, url); break;
+      case "health":              res = await handleHealth(supabaseAdmin); break;
+      case "domains":             res = await handleDomains(supabaseAdmin, url); break;
       default:
-        return json({
+        res = json({
           api: "AICIS Public API",
-          version: "1.1",
+          version: "1.2",
+          docs: "https://aicis-divine-core.lovable.app/developers",
           endpoints: [
             "GET /signals", "GET /decisions", "POST /decisions",
             "GET /outcomes", "GET /priority-decisions",
@@ -92,9 +166,19 @@ serve(async (req) => {
           ],
         });
     }
+
+    const responseBody = await res.clone().text();
+    await writeAudit({ keyId: keyRow.id, orgId, status: res.status, requestBody: rawBody, responseBody });
+
+    // Merge rate-limit headers into successful response
+    const merged = new Headers(res.headers);
+    Object.entries(rateHeaders).forEach(([k, v]) => merged.set(k, v));
+    return new Response(responseBody, { status: res.status, headers: merged });
   } catch (e) {
     console.error("Public API error:", e);
-    return json({ error: (e as Error).message }, 500);
+    const body = JSON.stringify({ error: (e as Error).message, request_id: requestId });
+    await writeAudit({ keyId: keyRow.id, orgId, status: 500, requestBody: rawBody, responseBody: body });
+    return new Response(body, { status: 500, headers: { ...corsHeaders, ...rateHeaders, "Content-Type": "application/json" } });
   }
 });
 
