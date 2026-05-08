@@ -248,3 +248,21 @@ const Histogram = ({ bins }: { bins?: number[] }) => {
     </div>
   );
 };
+
+const KpiTile = ({
+  icon, label, value, tone = "default",
+}: { icon: React.ReactNode; label: string; value: string; tone?: "default" | "primary" | "destructive" }) => {
+  const valueClass =
+    tone === "primary" ? "text-primary" :
+    tone === "destructive" ? "text-destructive" : "";
+  return (
+    <Card className="border-border">
+      <CardContent className="p-3">
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider">
+          {icon} {label}
+        </div>
+        <div className={`text-lg font-mono font-semibold mt-1 ${valueClass}`}>{value}</div>
+      </CardContent>
+    </Card>
+  );
+};
