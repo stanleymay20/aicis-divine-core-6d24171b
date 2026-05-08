@@ -14,6 +14,9 @@ import {
   Settings,
   X,
   Globe,
+  Download,
+  Code2,
+  LayoutGrid,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -28,6 +31,9 @@ const navItems = [
   { id: "signals", label: "Supply Chain Risks", icon: Radio, path: "/live" },
   { id: "decisions", label: "Actions & Outcomes", icon: Activity, path: "/decision-ops" },
   { id: "atlas", label: "Risk Atlas", icon: Globe, path: "/risk-atlas" },
+  { id: "export", label: "Data Export", icon: Download, path: "/data-export" },
+  { id: "developers", label: "Developer Platform", icon: Code2, path: "/developers" },
+  { id: "advanced", label: "Advanced", icon: LayoutGrid, path: "/advanced" },
   { id: "settings", label: "Settings", icon: Settings, path: "/admin" },
 ];
 

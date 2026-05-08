@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2 } from "lucide-react";
+import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2, Download, Activity, BarChart3, CheckCircle2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-api`;
 
@@ -76,6 +77,7 @@ curl -H "x-api-key: sk_your_key" \\
 
 export default function DeveloperPortal() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [newKeyName, setNewKeyName] = useState("");
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
 
@@ -122,7 +124,44 @@ export default function DeveloperPortal() {
     },
   });
 
-  // Issue key mutation
+  // Fetch usage analytics from api_request_audit (last 7d)
+  const { data: usage } = useQuery({
+    queryKey: ["api-usage", org?.id],
+    enabled: !!org?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from("api_request_audit")
+        .select("endpoint, method, response_status, latency_ms, created_at")
+        .eq("org_id", org!.id)
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(5000);
+      const rows = data || [];
+      const day = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
+      const last24h = rows.filter(r => new Date(r.created_at!).getTime() >= day);
+      const errors24h = last24h.filter(r => r.response_status >= 400).length;
+      const lats = last24h.map(r => r.latency_ms || 0).filter(n => n > 0).sort((a, b) => a - b);
+      const p = (q: number) => lats.length ? lats[Math.min(lats.length - 1, Math.floor(lats.length * q))] : 0;
+      const endpointCounts: Record<string, number> = {};
+      last24h.forEach(r => {
+        const k = `${r.method} ${r.endpoint}`;
+        endpointCounts[k] = (endpointCounts[k] || 0) + 1;
+      });
+      const top = Object.entries(endpointCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      return {
+        total7d: rows.length,
+        total24h: last24h.length,
+        errors24h,
+        errorRate: last24h.length ? (errors24h / last24h.length) * 100 : 0,
+        p50: p(0.5),
+        p95: p(0.95),
+        topEndpoints: top,
+      };
+    },
+  });
+
   const issueKey = useMutation({
     mutationFn: async (name: string) => {
       const { data, error } = await supabase.functions.invoke("issue-api-key", {
@@ -201,22 +240,63 @@ export default function DeveloperPortal() {
     <AICISLayout>
       <div className="max-w-5xl mx-auto space-y-6 p-4 md:p-6">
         {/* Header */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Code2 className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold tracking-tight">Developer Platform</h1>
-            <Badge variant="outline" className="text-xs">v1.0</Badge>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Code2 className="h-6 w-6 text-primary" />
+              <h1 className="text-2xl font-bold tracking-tight">Developer Platform</h1>
+              <Badge variant="outline" className="text-xs">v1.0</Badge>
+              <Badge variant="outline" className="text-[10px] gap-1 border-emerald-700/50 text-emerald-300 bg-emerald-500/10">
+                <CheckCircle2 className="h-2.5 w-2.5" /> SLA 99.9%
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Build on AICIS — signals, decisions, outcomes. HMAC webhooks · SHA-256 audit chain · per-key rate limits.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Build on AICIS — integrate signals, decisions, and outcomes into your applications.
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="outline" onClick={() => navigate("/data-export")}>
+              <Download className="h-3.5 w-3.5 mr-1.5" /> Data Export
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate("/api-audit")}>
+              <Shield className="h-3.5 w-3.5 mr-1.5" /> Audit Chain
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate("/system-status")}>
+              <Activity className="h-3.5 w-3.5 mr-1.5" /> Status
+            </Button>
+          </div>
         </div>
 
+        {/* Quick stats */}
+        {org && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Requests · 24h</p>
+              <p className="text-xl font-semibold mt-0.5">{(usage?.total24h ?? 0).toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Error rate · 24h</p>
+              <p className={`text-xl font-semibold mt-0.5 ${((usage?.errorRate ?? 0) > 5) ? "text-destructive" : ""}`}>
+                {(usage?.errorRate ?? 0).toFixed(1)}%
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency p50 / p95</p>
+              <p className="text-xl font-semibold mt-0.5">{usage?.p50 ?? 0} / {usage?.p95 ?? 0} <span className="text-xs text-muted-foreground font-normal">ms</span></p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Active keys · Webhooks</p>
+              <p className="text-xl font-semibold mt-0.5">{activeKeys.length} <span className="text-muted-foreground">·</span> {(webhooks || []).length}</p>
+            </div>
+          </div>
+        )}
+
         <Tabs defaultValue="api-docs" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 h-9">
+          <TabsList className="grid w-full grid-cols-5 h-9">
             <TabsTrigger value="api-docs" className="text-xs"><Book className="h-3 w-3 mr-1" />API Docs</TabsTrigger>
-            <TabsTrigger value="keys" className="text-xs"><Key className="h-3 w-3 mr-1" />API Keys</TabsTrigger>
+            <TabsTrigger value="keys" className="text-xs"><Key className="h-3 w-3 mr-1" />Keys</TabsTrigger>
             <TabsTrigger value="webhooks" className="text-xs"><Webhook className="h-3 w-3 mr-1" />Webhooks</TabsTrigger>
+            <TabsTrigger value="usage" className="text-xs"><BarChart3 className="h-3 w-3 mr-1" />Usage</TabsTrigger>
             <TabsTrigger value="sdk" className="text-xs"><Terminal className="h-3 w-3 mr-1" />SDK</TabsTrigger>
           </TabsList>
 
@@ -423,6 +503,64 @@ export default function DeveloperPortal() {
                     </div>
                   </>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── SDK ─────────────────────────────── */}
+          {/* ── Usage ─────────────────────────────── */}
+          <TabsContent value="usage" className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-primary" /> API Usage · last 7 days
+                </CardTitle>
+                <CardDescription>
+                  Per-organization request volume, error rate, and latency. Each request is hash-chained in the audit log.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="rounded-lg bg-muted/40 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Requests · 7d</p>
+                    <p className="text-lg font-semibold mt-0.5">{(usage?.total7d ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Errors · 24h</p>
+                    <p className="text-lg font-semibold mt-0.5">{usage?.errors24h ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency p95</p>
+                    <p className="text-lg font-semibold mt-0.5">{usage?.p95 ?? 0} ms</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium mb-2">Top endpoints · 24h</p>
+                  {(usage?.topEndpoints || []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-3 text-center">No requests in the last 24 hours.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {usage!.topEndpoints.map(([k, n]) => (
+                        <div key={k} className="flex items-center justify-between bg-muted/40 rounded-md px-3 py-1.5">
+                          <code className="text-xs font-mono">{k}</code>
+                          <span className="text-xs text-muted-foreground tabular-nums">{n.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-start gap-2 bg-primary/5 border border-primary/10 rounded-lg p-3">
+                  <Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <div className="text-xs">
+                    <p className="font-medium text-foreground">Tamper-evident audit chain</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Every request is recorded with SHA-256 chaining. Verify in the{" "}
+                      <button onClick={() => navigate("/api-audit")} className="text-primary underline underline-offset-2">Audit Chain explorer</button>.
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

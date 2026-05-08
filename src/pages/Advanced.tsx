@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Radio, Activity, Eye, Brain, Shield, Cog, Database, FlaskConical,
   LineChart, GitBranch, Server, Code2, Layers, Globe, BookOpen, Gauge,
-  ClipboardCheck, Sparkles, Workflow, MapPin, Send, ArrowRight,
+  ClipboardCheck, Sparkles, Workflow, MapPin, Send, ArrowRight, Download,
 } from "lucide-react";
 
 type Item = { label: string; desc: string; path: string; icon: any };
@@ -82,6 +82,43 @@ export default function Advanced() {
             Power-user surfaces, engines, and audit tools. Hidden from the executive view to keep daily operations clean.
           </p>
         </div>
+
+        {/* Pinned: most-used power tools */}
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pinned</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Card
+              className="border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all cursor-pointer group"
+              onClick={() => navigate("/data-export")}
+            >
+              <CardContent className="p-4 flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center shrink-0">
+                  <Download className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold group-hover:text-primary transition-colors">Data Export</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Permissioned, logged dataset exports — CSV / JSON / NDJSON, gzip, SHA-256 verified.</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-primary shrink-0 mt-1.5" />
+              </CardContent>
+            </Card>
+            <Card
+              className="border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all cursor-pointer group"
+              onClick={() => navigate("/developers")}
+            >
+              <CardContent className="p-4 flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center shrink-0">
+                  <Code2 className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold group-hover:text-primary transition-colors">Developer Platform</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">API keys, webhooks, usage analytics, SDK and audit chain.</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-primary shrink-0 mt-1.5" />
+              </CardContent>
+            </Card>
+          </div>
+        </section>
 
         {groups.map((g) => (
           <section key={g.title} className="space-y-2">
