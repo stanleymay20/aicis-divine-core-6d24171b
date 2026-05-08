@@ -194,7 +194,22 @@ export default function DeveloperPortal() {
       setNewKeyName("");
       queryClient.invalidateQueries({ queryKey: ["api-keys-dev"] });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(errorMessage(e, "Unable to create API key")),
+  });
+
+  const createWorkspace = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("create-organization", {
+        body: { name: workspaceName.trim() || "AICIS Developer Workspace" },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Developer access enabled");
+      queryClient.invalidateQueries({ queryKey: ["user-org-dev"] });
+    },
+    onError: (e: any) => toast.error(errorMessage(e, "Unable to enable developer access")),
   });
 
   // Revoke key mutation
@@ -214,17 +229,11 @@ export default function DeveloperPortal() {
   // Create webhook mutation
   const createWebhook = useMutation({
     mutationFn: async (url: string) => {
-      const secret = crypto.randomUUID();
-      const { error } = await supabase
-        .from("webhook_subscriptions")
-        .insert({
-          org_id: org!.id,
-          url,
-          events: EVENTS.map((e) => e.type),
-          secret,
-        });
+      const { data, error } = await supabase.functions.invoke("create-webhook-subscription", {
+        body: { org_id: org!.id, url, events: EVENTS.map((e) => e.type) },
+      });
       if (error) throw error;
-      return secret;
+      return data.signing_secret as string;
     },
     onSuccess: (secret) => {
       toast.success("Webhook created", {
@@ -235,7 +244,7 @@ export default function DeveloperPortal() {
       setNewWebhookUrl("");
       queryClient.invalidateQueries({ queryKey: ["webhooks-dev"] });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(errorMessage(e, "Unable to create webhook")),
   });
 
   const deleteWebhook = useMutation({
