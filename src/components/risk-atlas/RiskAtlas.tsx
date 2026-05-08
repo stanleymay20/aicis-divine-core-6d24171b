@@ -125,7 +125,7 @@ export function RiskAtlas() {
   const [queryText, setQueryText] = useState("");
   const [activeQuery, setActiveQuery] = useState<MapQuery | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const defaultQuery = useMemo<MapQuery>(() => ({
     scope: "global", geography: null, domains: [], threshold: null,
