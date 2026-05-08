@@ -621,12 +621,15 @@ export default function DeveloperPortal() {
                                 </div>
                               </div>
                               <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="sm"
-                                className="text-destructive hover:text-destructive text-xs"
-                                onClick={() => revokeKey.mutate(key.id)}
+                                className="text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive text-xs h-8"
+                                disabled={revokeKey.isPending && revokeKey.variables === key.id}
+                                onClick={() => handleRevoke(key.id, key.name)}
                               >
-                                Revoke
+                                {revokeKey.isPending && revokeKey.variables === key.id
+                                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Revoking…</>
+                                  : <><Trash2 className="h-3 w-3 mr-1" /> Revoke</>}
                               </Button>
                             </div>
                           );
