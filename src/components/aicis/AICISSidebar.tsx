@@ -11,11 +11,9 @@ import {
   Sunrise,
   Radio,
   Activity,
-  TrendingUp,
   Settings,
   X,
   Globe,
-  LayoutGrid,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -30,8 +28,6 @@ const navItems = [
   { id: "signals", label: "Supply Chain Risks", icon: Radio, path: "/live" },
   { id: "decisions", label: "Actions & Outcomes", icon: Activity, path: "/decision-ops" },
   { id: "atlas", label: "Risk Atlas", icon: Globe, path: "/risk-atlas" },
-  { id: "outcomes", label: "Proven Results", icon: TrendingUp, path: "/evidence-command" },
-  { id: "advanced", label: "Advanced", icon: LayoutGrid, path: "/advanced" },
   { id: "settings", label: "Settings", icon: Settings, path: "/admin" },
 ];
 
