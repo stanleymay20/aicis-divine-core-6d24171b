@@ -562,20 +562,46 @@ interface AtlasMapProps {
   onCountryClick: (iso3: string) => void;
   query: MapQuery;
   regions: RegionRow[];
+  severityFilter: Set<Severity>;
+  directionFilter: Set<Direction>;
+  showComparison: boolean;
+  showTrendArrows: boolean;
+  basemap: Basemap;
 }
 
-function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, query, regions }: AtlasMapProps) {
+const BASEMAP_TILES: Record<Basemap, { url: string; attr: string; subdomains?: string }> = {
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+    attr: "© OpenStreetMap, © CARTO",
+    subdomains: "abcd",
+  },
+  light: {
+    url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+    attr: "© OpenStreetMap, © CARTO",
+    subdomains: "abcd",
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr: "© Esri, Maxar",
+  },
+};
+
+function AtlasMap({
+  countries, center, zoom, selectedCountry, onCountryClick, query, regions,
+  severityFilter, directionFilter, showComparison, showTrendArrows, basemap,
+}: AtlasMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const baseLayerRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<L.Layer[]>([]);
 
   // Initialize map
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, { center, zoom, scrollWheelZoom: true, zoomControl: true });
-    // Base: CARTO dark, no labels — avoids mixed-language place names.
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
-      attribution: '© OpenStreetMap, © CARTO', maxZoom: 18, subdomains: "abcd",
+    const tiles = BASEMAP_TILES[basemap];
+    baseLayerRef.current = L.tileLayer(tiles.url, {
+      attribution: tiles.attr, maxZoom: 18, subdomains: tiles.subdomains as any,
     }).addTo(map);
     // Overlay: English-only borders + place labels from ESRI.
     L.tileLayer(
@@ -589,7 +615,20 @@ function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, qu
     observer.observe(containerRef.current);
 
     return () => { clearTimeout(timer); observer.disconnect(); map.remove(); mapRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Swap basemap on change
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (baseLayerRef.current) map.removeLayer(baseLayerRef.current);
+    const tiles = BASEMAP_TILES[basemap];
+    baseLayerRef.current = L.tileLayer(tiles.url, {
+      attribution: tiles.attr, maxZoom: 18, subdomains: tiles.subdomains as any,
+    }).addTo(map);
+    baseLayerRef.current.bringToBack();
+  }, [basemap]);
 
   // Fly to center
   useEffect(() => {
