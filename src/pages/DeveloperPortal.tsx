@@ -171,7 +171,12 @@ export default function DeveloperPortal() {
   const issueKey = useMutation({
     mutationFn: async (name: string) => {
       const { data, error } = await supabase.functions.invoke("issue-api-key", {
-        body: { org_id: org!.id, name },
+        body: {
+          org_id: org!.id,
+          name,
+          scopes: newKeyScopes,
+          ...(newKeyExpiry ? { expires_in_days: Number(newKeyExpiry) } : {}),
+        },
       });
       if (error) throw error;
       return data;
