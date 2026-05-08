@@ -3,7 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Search, X, Globe, RotateCcw, Filter,
+  Search, X, Globe, RotateCcw, Filter, Layers, Eye, EyeOff, Map as MapIcon, Sun, Moon, Satellite,
+  TrendingUp, TrendingDown, Minus, MousePointerClick,
 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
