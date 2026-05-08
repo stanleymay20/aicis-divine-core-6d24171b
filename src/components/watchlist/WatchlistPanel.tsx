@@ -88,22 +88,6 @@ export const WatchlistPanel = () => {
 
   return (
     <div className="space-y-2">
-      {/* Summary strip */}
-      <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-        <span>{sortedItems.length} tracked</span>
-        <span>·</span>
-        <span className="text-destructive font-medium">
-          {sortedItems.filter((i) => i.current_status === "critical").length} critical
-        </span>
-        <span>·</span>
-        <span className="text-amber-500 font-medium">
-          {sortedItems.filter((i) => i.current_status === "rising").length} rising risk
-        </span>
-        <span>·</span>
-        <span>
-          {sortedItems.filter((i) => i.alert_enabled).length} alerts active
-        </span>
-      </div>
 
       {sortedItems.map((item) => {
         const meta = TYPE_META[item.watch_type];
