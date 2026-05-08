@@ -77,8 +77,7 @@ serve(async (req) => {
         canonical_name: `${r.name} (${r.country_iso3} L${r.admin_level})`,
         display_name: r.name,
         iso3: r.country_iso3,
-        metadata: { region_id: r.id, admin_level: r.admin_level, parent_id: r.parent_id ?? null, country_iso3: r.country_iso3 },
-        provenance_source: "admin_regions",
+        metadata: { region_id: r.id, admin_level: r.admin_level, parent_id: r.parent_id ?? null, country_iso3: r.country_iso3, source: "admin_regions" },
       } as any));
 
     let createdEntities = 0;
