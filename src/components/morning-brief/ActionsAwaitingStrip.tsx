@@ -347,6 +347,19 @@ export function ActionsAwaitingStrip() {
           </div>
         )}
 
+        {/* Demoted lane — low-impact noise */}
+        {demoted.length > 0 && (
+          <details className="group">
+            <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1.5 select-none">
+              <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+              <span>Low-priority queue · {demoted.length} item{demoted.length === 1 ? "" : "s"}</span>
+            </summary>
+            <div className="space-y-2 mt-2">
+              {demoted.slice(0, 4).map((a) => renderRow(a, { muted: true }))}
+            </div>
+          </details>
+        )}
+
         {/* Stale lane — backlog older than 7 days */}
         {stale.length > 0 && (
           <details className="group">
