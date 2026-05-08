@@ -91,32 +91,81 @@ export default function IntelligenceEngine() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-            <Brain className="h-6 w-6 text-primary" /> Intelligence Engine
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            ML inference · Graph propagation · Scenario simulation
-          </p>
-        </div>
-        <Select value={domain} onValueChange={setDomain}>
-          <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All domains</SelectItem>
-            {DOMAINS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
+  // KPI rollup
+  const mlRows = (ml.data as any)?.rows ?? [];
+  const propRows = (prop.data as any)?.rows ?? [];
+  const simRows = (sims.data as any)?.rows ?? [];
+  const stats = useMemo(() => {
+    const probs = mlRows.map((r: any) => Number(r.risk_probability ?? 0));
+    const critical = probs.filter((p: number) => p >= 0.7).length;
+    const propScores = propRows.map((r: any) => Number(r.propagation_score ?? 0));
+    const highSpill = propScores.filter((s: number) => s >= 0.5).length;
+    return {
+      predictions: mlRows.length,
+      critical,
+      paths: propRows.length,
+      highSpill,
+      sims: simRows.length,
+    };
+  }, [mlRows, propRows, simRows]);
 
-      <Tabs defaultValue="ml" className="space-y-4">
-        <TabsList className="grid grid-cols-3 w-full max-w-2xl">
-          <TabsTrigger value="ml"><Brain className="h-3.5 w-3.5 mr-1.5" /> ML</TabsTrigger>
-          <TabsTrigger value="graph"><Network className="h-3.5 w-3.5 mr-1.5" /> Graph</TabsTrigger>
-          <TabsTrigger value="sim"><FlaskConical className="h-3.5 w-3.5 mr-1.5" /> Simulate</TabsTrigger>
-        </TabsList>
+  return (
+    <AICISLayout>
+      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+              <Brain className="h-5 w-5 text-primary" /> Intelligence Engine
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+              ML inference · graph propagation · scenario simulation. Logistic baseline v1 · cross-border contagion walk · deterministic what-if shocks.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground border border-border rounded px-2 py-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live
+            </span>
+            <Select value={domain} onValueChange={setDomain}>
+              <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All domains</SelectItem>
+                {DOMAINS.map(d => <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><Brain className="h-3 w-3" /> ML predictions</div>
+            <div className="text-2xl font-bold font-mono tabular-nums mt-1">{stats.predictions}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><AlertTriangle className="h-3 w-3" /> Critical ≥70%</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-destructive mt-1">{stats.critical}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><Network className="h-3 w-3" /> Contagion paths</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-primary mt-1">{stats.paths}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><Globe className="h-3 w-3" /> High spillover</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-amber-500 mt-1">{stats.highSpill}</div>
+          </Card>
+          <Card className="p-3 col-span-2 sm:col-span-1">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><FlaskConical className="h-3 w-3" /> Simulations</div>
+            <div className="text-2xl font-bold font-mono tabular-nums mt-1">{stats.sims}</div>
+          </Card>
+        </div>
+
+        <Tabs defaultValue="ml" className="space-y-4">
+          <TabsList className="bg-muted/50 grid grid-cols-3 w-full max-w-2xl">
+            <TabsTrigger value="ml" className="text-xs data-[state=active]:bg-card"><Brain className="h-3.5 w-3.5 mr-1.5" /> ML inference</TabsTrigger>
+            <TabsTrigger value="graph" className="text-xs data-[state=active]:bg-card"><Network className="h-3.5 w-3.5 mr-1.5" /> Graph propagation</TabsTrigger>
+            <TabsTrigger value="sim" className="text-xs data-[state=active]:bg-card"><FlaskConical className="h-3.5 w-3.5 mr-1.5" /> Simulate</TabsTrigger>
+          </TabsList>
 
         {/* ── ML Predictions ── */}
         <TabsContent value="ml">
