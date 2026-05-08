@@ -34,6 +34,15 @@ const EVENTS = [
 const errorMessage = (error: any, fallback: string) =>
   error?.context?.error || error?.message || fallback;
 
+const functionErrorMessage = async (error: any, fallback: string) => {
+  try {
+    const body = await error?.context?.clone?.().json?.();
+    return body?.error || error?.message || fallback;
+  } catch {
+    return error?.message || fallback;
+  }
+};
+
 const SDK_EXAMPLE = `import { AICIS } from "aicis-sdk"
 
 const aicis = new AICIS({ apiKey: "sk_your_key_here" })
@@ -182,7 +191,7 @@ export default function DeveloperPortal() {
           ...(newKeyExpiry ? { expires_in_days: Number(newKeyExpiry) } : {}),
         },
       });
-      if (error) throw new Error(data?.error || error.message);
+      if (error) throw new Error(await functionErrorMessage(error, "Unable to create API key"));
       return data;
     },
     onSuccess: (data) => {
@@ -202,7 +211,7 @@ export default function DeveloperPortal() {
       const { data, error } = await supabase.functions.invoke("create-organization", {
         body: { name: workspaceName.trim() || "AICIS Developer Workspace" },
       });
-      if (error) throw new Error(data?.error || error.message);
+      if (error) throw new Error(await functionErrorMessage(error, "Unable to enable developer access"));
       return data;
     },
     onSuccess: () => {
@@ -232,7 +241,7 @@ export default function DeveloperPortal() {
       const { data, error } = await supabase.functions.invoke("create-webhook-subscription", {
         body: { org_id: org!.id, url, events: EVENTS.map((e) => e.type) },
       });
-      if (error) throw new Error(data?.error || error.message);
+      if (error) throw new Error(await functionErrorMessage(error, "Unable to create webhook"));
       return data.signing_secret as string;
     },
     onSuccess: (secret) => {
