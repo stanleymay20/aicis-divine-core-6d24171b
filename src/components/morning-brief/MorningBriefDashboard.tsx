@@ -65,13 +65,16 @@ export const MorningBriefDashboard = () => {
       {/* ── HERO: greeting + system health ── */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-base sm:text-xl font-semibold leading-tight truncate">
-            {greeting}, {firstName}.
+          <h1
+            className="font-serif text-xl sm:text-3xl font-semibold leading-tight tracking-tight truncate"
+            title={user?.email || ""}
+          >
+            {greeting}, <span className="text-primary">{firstName}</span>.
           </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Here's what needs your attention.
           </p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground">
+          <p className="text-[10px] sm:text-xs text-muted-foreground font-mono tabular-nums">
             {format(new Date(), "EEE, MMM d · HH:mm")} UTC
           </p>
         </div>
