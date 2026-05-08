@@ -761,7 +761,7 @@ function AtlasMap({
         });
       }
     }
-  }, [countries, selectedCountry, onCountryClick, query, regions]);
+  }, [countries, selectedCountry, onCountryClick, query, regions, severityFilter, directionFilter, showComparison, showTrendArrows]);
 
   // Expose click handler for popups
   useEffect(() => {
