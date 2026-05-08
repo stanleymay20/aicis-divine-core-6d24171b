@@ -195,6 +195,17 @@ export function RiskAtlas() {
       .slice(0, 10);
   }, [countryAgg]);
 
+  // Headline KPIs derived from the visible aggregate
+  const kpis = useMemo(() => {
+    const all = Object.values(countryAgg);
+    const total = all.length;
+    const critical = all.filter(c => c.avgRisk >= 70).length;
+    const high = all.filter(c => c.avgRisk >= 55 && c.avgRisk < 70).length;
+    const rising = all.filter(c => c.direction === "up").length;
+    const avg = total ? all.reduce((s, c) => s + c.avgRisk, 0) / total : 0;
+    return { total, critical, high, rising, avg };
+  }, [countryAgg]);
+
   const selectedCountryData = selectedCountry ? countryAgg[selectedCountry] : null;
 
   return (
