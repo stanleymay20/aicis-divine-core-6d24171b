@@ -64,7 +64,10 @@ serve(async (req) => {
 
     while (true) {
       const url = `https://ucdpapi.pcr.uu.se/api/gedevents/${UCDP_VERSION}?pagesize=${pageSize}&page=${page}&StartDate=${nextYear}-01-01&EndDate=${nextYear}-12-31`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(40000) });
+      const resp = await fetch(url, {
+        signal: AbortSignal.timeout(40000),
+        headers: { "x-ucdp-access-token": UCDP_TOKEN },
+      });
       if (!resp.ok) {
         if (resp.status === 404) break;
         throw new Error(`UCDP HTTP ${resp.status}`);
