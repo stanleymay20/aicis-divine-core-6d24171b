@@ -508,6 +508,64 @@ export default function DeveloperPortal() {
           </TabsContent>
 
           {/* ── SDK ─────────────────────────────── */}
+          {/* ── Usage ─────────────────────────────── */}
+          <TabsContent value="usage" className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-primary" /> API Usage · last 7 days
+                </CardTitle>
+                <CardDescription>
+                  Per-organization request volume, error rate, and latency. Each request is hash-chained in the audit log.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="rounded-lg bg-muted/40 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Requests · 7d</p>
+                    <p className="text-lg font-semibold mt-0.5">{(usage?.total7d ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Errors · 24h</p>
+                    <p className="text-lg font-semibold mt-0.5">{usage?.errors24h ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/40 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency p95</p>
+                    <p className="text-lg font-semibold mt-0.5">{usage?.p95 ?? 0} ms</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium mb-2">Top endpoints · 24h</p>
+                  {(usage?.topEndpoints || []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-3 text-center">No requests in the last 24 hours.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {usage!.topEndpoints.map(([k, n]) => (
+                        <div key={k} className="flex items-center justify-between bg-muted/40 rounded-md px-3 py-1.5">
+                          <code className="text-xs font-mono">{k}</code>
+                          <span className="text-xs text-muted-foreground tabular-nums">{n.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-start gap-2 bg-primary/5 border border-primary/10 rounded-lg p-3">
+                  <Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <div className="text-xs">
+                    <p className="font-medium text-foreground">Tamper-evident audit chain</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Every request is recorded with SHA-256 chaining. Verify in the{" "}
+                      <button onClick={() => navigate("/api-audit")} className="text-primary underline underline-offset-2">Audit Chain explorer</button>.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── SDK ─────────────────────────────── */}
           <TabsContent value="sdk" className="space-y-4">
             <Card>
               <CardHeader className="pb-3">
