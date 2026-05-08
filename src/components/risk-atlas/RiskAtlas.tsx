@@ -653,6 +653,13 @@ function AtlasMap({
       const isSelected = c.iso3 === selectedCountry;
       const name = CN[c.iso3] || c.iso3;
 
+      // Layer filters (always show selected country)
+      if (!isSelected) {
+        if (!severityFilter.has(severityOf(c.avgRisk))) continue;
+        const dirKey: Direction = c.direction === "up" ? "up" : c.direction === "down" ? "down" : "flat";
+        if (!directionFilter.has(dirKey)) continue;
+      }
+
       const marker = L.circleMarker(coords, {
         radius: isSelected ? radius + 4 : radius,
         fillColor: color,
