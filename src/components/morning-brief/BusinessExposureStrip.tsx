@@ -53,36 +53,45 @@ export function BusinessExposureStrip() {
     return `€${val}`;
   };
 
-  const items = [
+  const allItems = [
     {
       icon: ShieldAlert,
       value: data.marketsAtRisk,
       label: "Markets at risk",
       color: data.marketsAtRisk > 5 ? "text-destructive" : "text-amber-500",
+      show: data.marketsAtRisk > 0,
     },
     {
       icon: AlertTriangle,
       value: data.criticalSignals,
       label: "Critical disruptions",
       color: data.criticalSignals > 0 ? "text-destructive" : "text-emerald-500",
+      show: data.criticalSignals > 0,
     },
     {
       icon: Activity,
       value: data.pendingDecisions,
       label: "Actions pending",
       color: data.pendingDecisions > 3 ? "text-amber-500" : "text-foreground",
+      show: data.pendingDecisions > 0,
     },
     {
       icon: DollarSign,
-      value: data.totalExposure > 0 ? fmt(data.totalExposure) : "—",
+      value: fmt(data.totalExposure),
       label: "Cost exposure",
       color: data.totalExposure > 1_000_000 ? "text-destructive" : "text-amber-500",
       isString: true,
+      show: data.totalExposure > 0,
     },
   ];
 
+  const items = allItems.filter(i => i.show);
+  if (items.length === 0) return null;
+
+  const cols = items.length === 1 ? "grid-cols-1" : items.length === 2 ? "grid-cols-2" : items.length === 3 ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4";
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+    <div className={`grid ${cols} gap-2`}>
       {items.map((item) => {
         const Icon = item.icon;
         return (
@@ -91,7 +100,7 @@ export function BusinessExposureStrip() {
               <Icon className={`h-5 w-5 ${item.color} shrink-0`} />
               <div>
                 <p className={`text-lg font-bold ${item.color}`}>
-                  {item.isString ? item.value : item.value}
+                  {item.value}
                 </p>
                 <p className="text-[10px] text-muted-foreground">{item.label}</p>
               </div>

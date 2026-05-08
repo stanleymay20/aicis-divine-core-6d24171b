@@ -41,8 +41,20 @@ export function ActionsAwaitingStrip() {
         .select("id, signal_title, domain, impact_score, execution_status, created_at, review_sla_hours")
         .in("execution_status", ["not_started", "overdue", "in_progress"])
         .order("impact_score", { ascending: false, nullsFirst: false })
-        .limit(6);
-      return (data as any) || [];
+        .limit(40);
+      // Strip internal [SIGNAL] / [TAG] prefixes and dedupe by normalized title+domain
+      const clean = (t: string) => (t || "").replace(/^\s*\[[A-Z0-9_\-]+\]\s*/i, "").trim();
+      const seen = new Set<string>();
+      const unique: PendingAction[] = [];
+      for (const row of (data as any[]) || []) {
+        const title = clean(row.signal_title);
+        const key = `${title.toLowerCase()}|${row.domain || ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push({ ...row, signal_title: title });
+        if (unique.length >= 6) break;
+      }
+      return unique;
     },
     staleTime: 30_000,
   });
