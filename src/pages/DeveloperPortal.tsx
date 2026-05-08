@@ -263,16 +263,23 @@ export default function DeveloperPortal() {
   // Revoke key mutation
   const revokeKey = useMutation({
     mutationFn: async (keyId: string) => {
-      const { error } = await supabase.functions.invoke("revoke-api-key", {
+      const { data, error } = await supabase.functions.invoke("revoke-api-key", {
         body: { org_id: org!.id, key_id: keyId },
       });
-      if (error) throw error;
+      if (error) throw new Error(await functionErrorMessage(error, "Unable to revoke key"));
+      return data;
     },
     onSuccess: () => {
       toast.success("API key revoked");
       queryClient.invalidateQueries({ queryKey: ["api-keys-dev"] });
     },
+    onError: (e: any) => toast.error(errorMessage(e, "Unable to revoke key")),
   });
+
+  const handleRevoke = (keyId: string, keyName: string) => {
+    if (!window.confirm(`Revoke API key "${keyName}"?\n\nThis is immediate and irreversible. Any service using this key will start receiving 403 errors.`)) return;
+    revokeKey.mutate(keyId);
+  };
 
   // Create webhook mutation
   const createWebhook = useMutation({
@@ -614,12 +621,15 @@ export default function DeveloperPortal() {
                                 </div>
                               </div>
                               <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="sm"
-                                className="text-destructive hover:text-destructive text-xs"
-                                onClick={() => revokeKey.mutate(key.id)}
+                                className="text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive text-xs h-8"
+                                disabled={revokeKey.isPending && revokeKey.variables === key.id}
+                                onClick={() => handleRevoke(key.id, key.name)}
                               >
-                                Revoke
+                                {revokeKey.isPending && revokeKey.variables === key.id
+                                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Revoking…</>
+                                  : <><Trash2 className="h-3 w-3 mr-1" /> Revoke</>}
                               </Button>
                             </div>
                           );
