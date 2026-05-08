@@ -9,7 +9,7 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 const FN = "pull-ucdp-historical";
-const UCDP_VERSION = "24.1"; // latest GED release
+const UCDP_VERSION = "25.1"; // latest GED release (Feb 2026)
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -19,8 +19,18 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
   const start = Date.now();
+  const UCDP_TOKEN = Deno.env.get("UCDP_ACCESS_TOKEN");
 
   try {
+    if (!UCDP_TOKEN) {
+      await supabase.from("automation_logs").insert({
+        job_name: FN, status: "skipped",
+        message: "UCDP_ACCESS_TOKEN not set — awaiting token from api maintainer (Mert Can Yilmaz)",
+      });
+      return new Response(JSON.stringify({ ok: true, skipped: "no_token" }), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
     // Determine which year to pull next. State stored in automation_logs.
     const { data: state } = await supabase
       .from("automation_logs")
