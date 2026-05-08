@@ -100,6 +100,10 @@ serve(async (req) => {
     if (org.tier === 'pro') rateLimit = Math.min(rateLimit, 300);
     if (org.tier === 'enterprise') rateLimit = Math.min(rateLimit, 1000);
 
+    const expiresAt = expires_in_days
+      ? new Date(Date.now() + expires_in_days * 86_400_000).toISOString()
+      : null;
+
     // Store API key
     const { data: apiKey, error } = await supabase
       .from("api_keys")
@@ -109,6 +113,8 @@ serve(async (req) => {
         key_prefix: prefix,
         name,
         rate_limit_per_minute: rateLimit,
+        scopes: scopes ?? ["read"],
+        expires_at: expiresAt,
         created_by: user.id,
       })
       .select()
