@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { QueryPanel } from "@/components/ui/query-panel";
 import { toast } from "sonner";
-import { Brain, Network, FlaskConical, RefreshCw, Play } from "lucide-react";
+import { Brain, Network, FlaskConical, RefreshCw, Play, AlertTriangle, Activity, Globe } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const DOMAINS = ["governance", "health", "energy", "finance", "food", "security", "education", "climate", "population"];
 
