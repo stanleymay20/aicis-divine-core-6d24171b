@@ -11,11 +11,17 @@ import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
+import { getCountryFlagFromIso3 } from "@/lib/geo/country-flags";
+
 interface PendingAction {
   id: string;
   signal_title: string;
   domain: string;
+  iso3: string | null;
   impact_score: number | null;
+  net_value: number | null;
+  roi_estimate: number | null;
+  recommended_action: string | null;
   execution_status: string | null;
   created_at: string;
   review_sla_hours: number | null;
