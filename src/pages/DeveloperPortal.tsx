@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2, Download, Activity, BarChart3, CheckCircle2 } from "lucide-react";
+import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2, Download, Activity, BarChart3, CheckCircle2, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-api`;
@@ -30,6 +30,18 @@ const EVENTS = [
   { type: "decision.executed", desc: "Decision marked as executed" },
   { type: "outcome.recorded", desc: "Outcome with ROI recorded" },
 ];
+
+const errorMessage = (error: any, fallback: string) =>
+  error?.context?.error || error?.message || fallback;
+
+const functionErrorMessage = async (error: any, fallback: string) => {
+  try {
+    const body = await error?.context?.clone?.().json?.();
+    return body?.error || error?.message || fallback;
+  } catch {
+    return error?.message || fallback;
+  }
+};
 
 const SDK_EXAMPLE = `import { AICIS } from "aicis-sdk"
 
@@ -82,13 +94,14 @@ export default function DeveloperPortal() {
   const [newKeyScopes, setNewKeyScopes] = useState<string[]>(["read"]);
   const [newKeyExpiry, setNewKeyExpiry] = useState<string>("365"); // days, "" = never
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
+  const [workspaceName, setWorkspaceName] = useState("AICIS Developer Workspace");
 
   const toggleScope = (s: string) => {
     setNewKeyScopes((prev) => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   };
 
   // Fetch user's org
-  const { data: org } = useQuery({
+  const { data: org, isLoading: orgLoading } = useQuery({
     queryKey: ["user-org-dev"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -97,7 +110,7 @@ export default function DeveloperPortal() {
         .from("organizations")
         .select("*")
         .eq("owner_id", user.id)
-        .single();
+        .maybeSingle();
       return data;
     },
   });
@@ -178,7 +191,7 @@ export default function DeveloperPortal() {
           ...(newKeyExpiry ? { expires_in_days: Number(newKeyExpiry) } : {}),
         },
       });
-      if (error) throw error;
+      if (error) throw new Error(await functionErrorMessage(error, "Unable to create API key"));
       return data;
     },
     onSuccess: (data) => {
@@ -190,7 +203,22 @@ export default function DeveloperPortal() {
       setNewKeyName("");
       queryClient.invalidateQueries({ queryKey: ["api-keys-dev"] });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(errorMessage(e, "Unable to create API key")),
+  });
+
+  const createWorkspace = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("create-organization", {
+        body: { name: workspaceName.trim() || "AICIS Developer Workspace" },
+      });
+      if (error) throw new Error(await functionErrorMessage(error, "Unable to enable developer access"));
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Developer access enabled");
+      queryClient.invalidateQueries({ queryKey: ["user-org-dev"] });
+    },
+    onError: (e: any) => toast.error(errorMessage(e, "Unable to enable developer access")),
   });
 
   // Revoke key mutation
@@ -210,17 +238,11 @@ export default function DeveloperPortal() {
   // Create webhook mutation
   const createWebhook = useMutation({
     mutationFn: async (url: string) => {
-      const secret = crypto.randomUUID();
-      const { error } = await supabase
-        .from("webhook_subscriptions")
-        .insert({
-          org_id: org!.id,
-          url,
-          events: EVENTS.map((e) => e.type),
-          secret,
-        });
-      if (error) throw error;
-      return secret;
+      const { data, error } = await supabase.functions.invoke("create-webhook-subscription", {
+        body: { org_id: org!.id, url, events: EVENTS.map((e) => e.type) },
+      });
+      if (error) throw new Error(await functionErrorMessage(error, "Unable to create webhook"));
+      return data.signing_secret as string;
     },
     onSuccess: (secret) => {
       toast.success("Webhook created", {
@@ -231,7 +253,7 @@ export default function DeveloperPortal() {
       setNewWebhookUrl("");
       queryClient.invalidateQueries({ queryKey: ["webhooks-dev"] });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(errorMessage(e, "Unable to create webhook")),
   });
 
   const deleteWebhook = useMutation({
@@ -405,8 +427,27 @@ export default function DeveloperPortal() {
                 <CardDescription>Manage API keys for programmatic access. Keys are shown once at creation.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!org ? (
-                  <p className="text-sm text-muted-foreground">Create an organization first to manage API keys.</p>
+                {orgLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading developer access...</p>
+                ) : !org ? (
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">Enable developer access</p>
+                      <p className="text-xs text-muted-foreground mt-1">Create a workspace here, then generate API keys immediately.</p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Input
+                        value={workspaceName}
+                        onChange={(e) => setWorkspaceName(e.target.value)}
+                        className="max-w-sm text-sm h-8"
+                        placeholder="Workspace name"
+                      />
+                      <Button size="sm" onClick={() => createWorkspace.mutate()} disabled={createWorkspace.isPending}>
+                        {createWorkspace.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                        Enable Access
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <div className="space-y-3 border border-border/60 rounded-lg p-3 bg-muted/20">
@@ -516,8 +557,19 @@ export default function DeveloperPortal() {
                 <CardDescription>Receive real-time event notifications when signals, decisions, or outcomes change.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!org ? (
-                  <p className="text-sm text-muted-foreground">Create an organization first to manage webhooks.</p>
+                {orgLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading developer access...</p>
+                ) : !org ? (
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-medium">Enable developer access</p>
+                      <p className="text-xs text-muted-foreground mt-1">Create a workspace here, then add secure webhook endpoints.</p>
+                    </div>
+                    <Button size="sm" onClick={() => createWorkspace.mutate()} disabled={createWorkspace.isPending}>
+                      {createWorkspace.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                      Enable Access
+                    </Button>
+                  </div>
                 ) : (
                   <>
                     <div className="flex gap-2">
