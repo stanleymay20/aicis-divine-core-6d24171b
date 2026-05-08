@@ -2,9 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, ShieldAlert, Activity, DollarSign } from "lucide-react";
+import { AlertTriangle, ShieldAlert, Activity, DollarSign, ArrowUpRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export function BusinessExposureStrip() {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ["business-exposure-strip"],
     queryFn: async () => {
