@@ -99,7 +99,7 @@ export function BusinessExposureStrip() {
             <CardContent className="p-3 flex items-center gap-3">
               <Icon className={`h-5 w-5 ${item.color} shrink-0`} />
               <div>
-                <p className={`text-lg font-bold ${item.color}`}>
+                <p className={`text-xl font-bold font-mono tabular-nums leading-none ${item.color}`}>
                   {item.value}
                 </p>
                 <p className="text-[10px] text-muted-foreground">{item.label}</p>
