@@ -148,7 +148,7 @@ const App = () => (
               <Route path="/resolution" element={<Protected><ResolutionExplorer /></Protected>} />
               <Route path="/watchlist" element={<Protected><Watchlist /></Protected>} />
               <Route path="/learning" element={<Protected><LearningIntelligence /></Protected>} />
-              <Route path="/risk-atlas" element={<Protected><RiskAtlasPage /></Protected>} />
+              <Route path="/risk-atlas" element={<Shell><RiskAtlasPage /></Shell>} />
               <Route path="/relevance-preferences" element={<Shell><RelevancePreferences /></Shell>} />
               <Route path="/advanced" element={<Protected><Advanced /></Protected>} />
               {/* legacy aliases */}
