@@ -182,7 +182,7 @@ export default function DeveloperPortal() {
           ...(newKeyExpiry ? { expires_in_days: Number(newKeyExpiry) } : {}),
         },
       });
-      if (error) throw error;
+      if (error) throw new Error(data?.error || error.message);
       return data;
     },
     onSuccess: (data) => {
@@ -202,7 +202,7 @@ export default function DeveloperPortal() {
       const { data, error } = await supabase.functions.invoke("create-organization", {
         body: { name: workspaceName.trim() || "AICIS Developer Workspace" },
       });
-      if (error) throw error;
+      if (error) throw new Error(data?.error || error.message);
       return data;
     },
     onSuccess: () => {
@@ -232,7 +232,7 @@ export default function DeveloperPortal() {
       const { data, error } = await supabase.functions.invoke("create-webhook-subscription", {
         body: { org_id: org!.id, url, events: EVENTS.map((e) => e.type) },
       });
-      if (error) throw error;
+      if (error) throw new Error(data?.error || error.message);
       return data.signing_secret as string;
     },
     onSuccess: (secret) => {
