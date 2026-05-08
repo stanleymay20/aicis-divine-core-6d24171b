@@ -178,7 +178,9 @@ const App = () => (
               <Route path="/local-events/:iso3/:locality" element={<Shell><LocalEvents /></Shell>} />
 
               {/* ── Export Center (admin/operator only at edge fn level) ── */}
-              <Route path="/admin/export-center" element={<Shell><ExportCenter /></Shell>} />
+              <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
+              <Route path="/export-center" element={<Protected><ExportCenter /></Protected>} />
+              <Route path="/data-export" element={<Protected><ExportCenter /></Protected>} />
               <Route path="/pilot-truth" element={<Shell><PilotTruthFeed /></Shell>} />
               <Route path="/data-pipeline" element={<Shell><DataPipeline /></Shell>} />
               <Route path="/outcome-cockpit" element={<Shell><OutcomeCockpit /></Shell>} />

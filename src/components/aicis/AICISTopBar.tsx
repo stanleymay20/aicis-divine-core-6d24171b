@@ -1,12 +1,13 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Menu, ArrowLeft } from "lucide-react";
+import { User, LogOut, Menu, ArrowLeft, Download, Code2, LayoutGrid, Settings as SettingsIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -48,7 +49,10 @@ const PAGE_TITLES: Record<string, string> = {
   "/developers": "Developer Portal",
   "/register-node": "Register Node",
   "/local-events": "Local Events",
-  "/admin/export-center": "Export Center",
+  "/admin/export-center": "Data Export",
+  "/export-center": "Data Export",
+  "/data-export": "Data Export",
+  "/advanced": "Advanced",
 };
 
 // Routes that should NOT show a back button (primary nav destinations).
@@ -134,11 +138,25 @@ export const AICISTopBar = () => {
             <User className="h-4 w-4 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent align="end" className="w-56">
           <div className="px-2 py-1.5">
             <p className="text-sm font-medium truncate">{user?.email?.split("@")[0] || "Operator"}</p>
             <p className="text-xs text-muted-foreground truncate">{user?.email || ""}</p>
           </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => navigate("/data-export")}>
+            <Download className="h-4 w-4 mr-2" /> Data Export
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate("/developers")}>
+            <Code2 className="h-4 w-4 mr-2" /> Developer & API
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate("/advanced")}>
+            <LayoutGrid className="h-4 w-4 mr-2" /> Advanced
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate("/admin")}>
+            <SettingsIcon className="h-4 w-4 mr-2" /> Settings
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={signOut} className="text-destructive">
             <LogOut className="h-4 w-4 mr-2" />
             Sign Out

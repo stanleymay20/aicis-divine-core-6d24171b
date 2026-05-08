@@ -61,7 +61,7 @@ const groups: Group[] = [
       { label: "Data Pipeline", desc: "Ingestion orchestrator", path: "/data-pipeline", icon: Workflow },
       { label: "Infrastructure", desc: "Edge functions, cron, jobs", path: "/infra-ops", icon: Server },
       { label: "Accumulation", desc: "Heartbeat & metric accumulation", path: "/accumulation", icon: Gauge },
-      { label: "Export Center", desc: "Bulk data export (admin)", path: "/admin/export-center", icon: Send },
+      { label: "Data Export", desc: "Permissioned, logged dataset exports", path: "/data-export", icon: Send },
       { label: "Developer Portal", desc: "API keys, webhooks, docs", path: "/developers", icon: Code2 },
       { label: "Register Node", desc: "Federation node registration", path: "/register-node", icon: GitBranch },
       { label: "Settings", desc: "Account & admin settings", path: "/admin", icon: Cog },
