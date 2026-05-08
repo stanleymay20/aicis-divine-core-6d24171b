@@ -77,6 +77,7 @@ curl -H "x-api-key: sk_your_key" \\
 
 export default function DeveloperPortal() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [newKeyName, setNewKeyName] = useState("");
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
 
