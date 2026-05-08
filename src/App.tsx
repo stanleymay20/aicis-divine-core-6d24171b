@@ -11,6 +11,7 @@ import { DemoBanner } from "@/components/demo/DemoBanner";
 import { DegradedModeBanner } from "@/components/live/DegradedModeBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
+import ScrollToTop from "@/components/ScrollToTop";
 import { Loader2 } from "lucide-react";
 
 // Eager-load: public landing, auth gate, not-found
@@ -103,7 +104,7 @@ const Protected = ({ children }: { children: React.ReactNode }) => (
 const Shell = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute>
     <AICISLayout>
-      <div className="overflow-y-auto h-full">
+      <div className="overflow-y-auto h-full flex flex-col">
         <Lazy>{children}</Lazy>
       </div>
     </AICISLayout>
@@ -117,6 +118,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ScrollToTop />
           <DemoModeProvider>
             <IntelligenceMemoryProvider>
               <DegradedModeBanner />
@@ -135,7 +137,7 @@ const App = () => (
               <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
               <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
-              <Route path="/live-stream" element={<Protected><LiveSignalStream /></Protected>} />
+              <Route path="/live-stream" element={<Shell><LiveSignalStream /></Shell>} />
               <Route path="/coverage-equity" element={<Shell><CoverageEquity /></Shell>} />
               <Route path="/decision-ops" element={<Protected><DecisionOperations /></Protected>} />
               <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
@@ -146,8 +148,8 @@ const App = () => (
               <Route path="/resolution" element={<Protected><ResolutionExplorer /></Protected>} />
               <Route path="/watchlist" element={<Protected><Watchlist /></Protected>} />
               <Route path="/learning" element={<Protected><LearningIntelligence /></Protected>} />
-              <Route path="/risk-atlas" element={<Protected><RiskAtlasPage /></Protected>} />
-              <Route path="/relevance-preferences" element={<Protected><RelevancePreferences /></Protected>} />
+              <Route path="/risk-atlas" element={<Shell><RiskAtlasPage /></Shell>} />
+              <Route path="/relevance-preferences" element={<Shell><RelevancePreferences /></Shell>} />
               <Route path="/advanced" element={<Protected><Advanced /></Protected>} />
               {/* legacy aliases */}
               <Route path="/more" element={<Protected><Advanced /></Protected>} />

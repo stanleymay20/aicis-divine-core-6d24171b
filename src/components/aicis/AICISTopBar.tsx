@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Menu, ArrowLeft, Download, Code2, LayoutGrid, Settings as SettingsIcon } from "lucide-react";
+import { User, LogOut, Menu, ArrowLeft, Download, Code2, LayoutGrid, Settings as SettingsIcon, Home } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -55,13 +55,26 @@ const PAGE_TITLES: Record<string, string> = {
   "/advanced": "Advanced",
 };
 
+const ROUTE_HOME: Record<string, string> = {
+  "/morning-brief": "",
+  "/live": "/morning-brief",
+  "/live-signals": "/morning-brief",
+  "/decision-ops": "/morning-brief",
+  "/risk-atlas": "/morning-brief",
+  "/admin": "/morning-brief",
+  "/advanced": "/morning-brief",
+  "/data-export": "/advanced",
+  "/export-center": "/advanced",
+  "/admin/export-center": "/advanced",
+  "/developers": "/advanced",
+};
+
 // Routes that should NOT show a back button (primary nav destinations).
 const PRIMARY_ROUTES = new Set([
   "/morning-brief",
   "/live",
   "/decision-ops",
   "/risk-atlas",
-  "/evidence-command",
   "/admin",
 ]);
 
@@ -74,6 +87,12 @@ const titleFor = (pathname: string): string => {
   return "";
 };
 
+const homeFor = (pathname: string) => {
+  if (ROUTE_HOME[pathname] !== undefined) return ROUTE_HOME[pathname];
+  if (pathname.startsWith("/deepdive/") || pathname.startsWith("/local-events/") || pathname.startsWith("/atlas/region/")) return "/risk-atlas";
+  return "/advanced";
+};
+
 export const AICISTopBar = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -81,11 +100,11 @@ export const AICISTopBar = () => {
   const isMobile = useIsMobile();
 
   const pageTitle = titleFor(location.pathname);
-  const showBack = !PRIMARY_ROUTES.has(location.pathname) && location.pathname !== "/";
+  const backTarget = homeFor(location.pathname);
+  const showBack = Boolean(backTarget) && !PRIMARY_ROUTES.has(location.pathname) && location.pathname !== "/";
 
   const handleBack = () => {
-    if (window.history.length > 1) navigate(-1);
-    else navigate("/morning-brief");
+    navigate(backTarget || "/morning-brief");
   };
 
   return (
@@ -115,6 +134,17 @@ export const AICISTopBar = () => {
           >
             <ArrowLeft className="h-4 w-4" />
             <span className="hidden sm:inline text-xs">Back</span>
+          </Button>
+        )}
+        {!showBack && location.pathname !== "/morning-brief" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => navigate("/morning-brief")}
+            aria-label="Go to today's brief"
+          >
+            <Home className="h-4 w-4" />
           </Button>
         )}
         <div className="flex items-center gap-2.5 cursor-pointer shrink-0" onClick={() => navigate("/morning-brief")}>

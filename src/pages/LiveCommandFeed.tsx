@@ -1,10 +1,9 @@
 import { useState, useMemo } from "react";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
-import { useGlobalSignals, useTopSignals } from "@/hooks/useGlobalSignals";
+import { useGlobalSignals } from "@/hooks/useGlobalSignals";
 import type { GlobalSignal } from "@/hooks/useGlobalSignals";
 import { SignalCard } from "@/components/live/SignalCard";
 import { SignalDetailPanel } from "@/components/live/SignalDetailPanel";
-import { AlertRibbon } from "@/components/live/AlertRibbon";
 import { RoutingPrecisionPanel } from "@/components/live/RoutingPrecisionPanel";
 import { useEnrichmentQueue, useRoutingPrecision } from "@/hooks/useRoutingPrecision";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +15,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import {
-  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, Zap, AlertTriangle, Cpu, ClipboardCheck, Package
+  Radio, Globe, TrendingUp, Shield, Search, RefreshCw, Loader2, AlertTriangle, Cpu, ClipboardCheck, Package, ChevronDown, ChevronUp
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -60,9 +60,9 @@ export default function LiveCommandFeed() {
   const [enriching, setEnriching] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
   const [feedbackCount, setFeedbackCount] = useState(0);
+  const [showTools, setShowTools] = useState(false);
 
   const { data: allSignals = [], isLoading, refetch } = useGlobalSignals({ limit: 100 });
-  const { data: topSignals = [] } = useTopSignals(5);
   const { data: pendingCount = 0 } = useEnrichmentQueue();
   const { data: precision } = useRoutingPrecision();
   const { toast } = useToast();
@@ -159,44 +159,19 @@ export default function LiveCommandFeed() {
       <div className="h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="p-3 sm:p-4 border-b space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Radio className="h-5 w-5 text-red-500 animate-pulse" />
-              <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Radio className="h-5 w-5 text-primary" />
+              <div className="min-w-0">
                 <h1 className="text-base sm:text-lg font-semibold">Supply Chain Risks</h1>
-                <p className="text-[10px] sm:text-xs text-muted-foreground">
-                  Live risk detection for trade, logistics, and sourcing • {filteredSignals.length} risks
-                  {pendingCount > 0 && (
-                    <span className="text-amber-400 ml-1">• {pendingCount} pending</span>
-                  )}
-                  {officialCount > 0 && (
-                    <span className="text-blue-400 ml-1">• {officialCount} official</span>
-                  )}
+                <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
+                  {filteredSignals.length} risks that may affect trade, logistics, and sourcing
                 </p>
               </div>
             </div>
-            <div className="flex gap-1.5">
-              <Button size="sm" variant={supplyChainMode ? "default" : "outline"} className="h-8 text-xs"
-                onClick={() => setSupplyChainMode(!supplyChainMode)}>
-                <Package className="h-3 w-3 mr-1" />
-                {supplyChainMode ? "Supply Chain ✓" : "All"}
-              </Button>
-              <Button size="sm" variant={reviewMode ? "default" : "outline"} className="h-8 text-xs"
-                onClick={() => setReviewMode(!reviewMode)}>
-                <ClipboardCheck className="h-3 w-3 mr-1" />
-                Review{reviewMode ? " ✓" : ""}
-              </Button>
-              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={triggerIngestion} disabled={ingesting}>
-                {ingesting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-                {ingesting ? "…" : "Ingest"}
-              </Button>
-              {pendingCount > 0 && (
-                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={triggerEnrichment} disabled={enriching}>
-                  {enriching ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Cpu className="h-3 w-3 mr-1" />}
-                  Enrich ({pendingCount})
-                </Button>
-              )}
-            </div>
+            <Button size="sm" variant={reviewMode ? "default" : "outline"} className="h-8 text-xs shrink-0" onClick={() => setReviewMode(!reviewMode)}>
+              <ClipboardCheck className="h-3 w-3 mr-1" /> Review{reviewMode ? " ✓" : ""}
+            </Button>
           </div>
 
           {/* Warnings */}
@@ -211,70 +186,62 @@ export default function LiveCommandFeed() {
             </div>
           )}
 
-          {/* KPI Bar */}
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-            <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono">{allSignals.length}</div>
-              <div className="text-[10px] text-muted-foreground">Total</div>
-            </Card>
-            <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono text-destructive">{highImpactCount}</div>
-              <div className="text-[10px] text-muted-foreground">High Impact</div>
-            </Card>
-            <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono">{avgConfidence}%</div>
-              <div className="text-[10px] text-muted-foreground">Avg Conf</div>
-            </Card>
-            <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono text-primary">{confirmedCount}</div>
-              <div className="text-[10px] text-muted-foreground">Confirmed</div>
-            </Card>
-            <Card className="p-2 text-center">
-              <div className="text-lg font-bold font-mono text-blue-400">{officialCount}</div>
-              <div className="text-[10px] text-muted-foreground">Official</div>
-            </Card>
+          <div className="relative">
+            <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search risks..."
+              className="h-8 text-xs pl-7"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
           </div>
 
-          {/* Controls */}
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Tabs value={audienceMode} onValueChange={v => setAudienceMode(v as AudienceMode)} className="w-full sm:w-auto">
-              <TabsList className="h-8 w-full sm:w-auto">
-                <TabsTrigger value="government" className="text-[10px] px-2 h-6">
-                  <Shield className="h-3 w-3 mr-0.5" /> Gov
-                </TabsTrigger>
-                <TabsTrigger value="media" className="text-[10px] px-2 h-6">
-                  <Radio className="h-3 w-3 mr-0.5" /> Media
-                </TabsTrigger>
-                <TabsTrigger value="business" className="text-[10px] px-2 h-6">
-                  <TrendingUp className="h-3 w-3 mr-0.5" /> Business
-                </TabsTrigger>
-                <TabsTrigger value="public" className="text-[10px] px-2 h-6">
-                  <Globe className="h-3 w-3 mr-0.5" /> Public
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <div className="flex gap-2 flex-1">
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="h-8 text-xs flex-1 sm:max-w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(c => (
-                    <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="relative flex-1">
-                <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Search signals..."
-                  className="h-8 text-xs pl-7"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                />
+          <Collapsible open={showTools} onOpenChange={setShowTools}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-full justify-between text-xs text-muted-foreground">
+                Filters, counts, and intake tools
+                {showTools ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-2">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono">{allSignals.length}</div><div className="text-[10px] text-muted-foreground">Total</div></Card>
+                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono text-destructive">{highImpactCount}</div><div className="text-[10px] text-muted-foreground">High Impact</div></Card>
+                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono">{avgConfidence}%</div><div className="text-[10px] text-muted-foreground">Avg Conf</div></Card>
+                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono text-primary">{confirmedCount}</div><div className="text-[10px] text-muted-foreground">Confirmed</div></Card>
+                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono text-primary">{officialCount}</div><div className="text-[10px] text-muted-foreground">Official</div></Card>
               </div>
-            </div>
-          </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Tabs value={audienceMode} onValueChange={v => setAudienceMode(v as AudienceMode)} className="w-full sm:w-auto">
+                  <TabsList className="h-8 w-full sm:w-auto">
+                    <TabsTrigger value="government" className="text-[10px] px-2 h-6"><Shield className="h-3 w-3 mr-0.5" /> Gov</TabsTrigger>
+                    <TabsTrigger value="media" className="text-[10px] px-2 h-6"><Radio className="h-3 w-3 mr-0.5" /> Media</TabsTrigger>
+                    <TabsTrigger value="business" className="text-[10px] px-2 h-6"><TrendingUp className="h-3 w-3 mr-0.5" /> Business</TabsTrigger>
+                    <TabsTrigger value="public" className="text-[10px] px-2 h-6"><Globe className="h-3 w-3 mr-0.5" /> Public</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <div className="flex gap-2 flex-1 flex-wrap">
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="h-8 text-xs flex-1 min-w-[160px] sm:max-w-[180px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" variant={supplyChainMode ? "default" : "outline"} className="h-8 text-xs" onClick={() => setSupplyChainMode(!supplyChainMode)}>
+                    <Package className="h-3 w-3 mr-1" />{supplyChainMode ? "Supply Chain" : "All"}
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={triggerIngestion} disabled={ingesting}>
+                    {ingesting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}{ingesting ? "…" : "Ingest"}
+                  </Button>
+                  {pendingCount > 0 && (
+                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={triggerEnrichment} disabled={enriching}>
+                      {enriching ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Cpu className="h-3 w-3 mr-1" />}Enrich ({pendingCount})
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
 
         {/* Main Content */}
@@ -286,8 +253,6 @@ export default function LiveCommandFeed() {
           )}>
             <ScrollArea className="flex-1 p-3">
               <div className="space-y-3">
-                {!reviewMode && <AlertRibbon signals={allSignals} />}
-
                 {/* Review mode banner */}
                 {reviewMode && (
                   <Card className="p-3 bg-primary/5 border-primary/20">
@@ -299,20 +264,6 @@ export default function LiveCommandFeed() {
                       </div>
                     </div>
                   </Card>
-                )}
-
-                {/* Top Signals */}
-                {!reviewMode && topSignals.length > 0 && categoryFilter === "all" && !searchQuery && (
-                  <div className="space-y-2">
-                    <h2 className="text-xs font-semibold flex items-center gap-1 text-primary">
-                      <Zap className="h-3.5 w-3.5" /> Top Global Signals
-                    </h2>
-                    {topSignals.map(s => (
-                      <SignalCard key={s.id} signal={s} audienceMode={audienceMode}
-                        onSelect={setSelectedSignal} selected={selectedSignal?.id === s.id}
-                        showFeedback onFeedbackSubmitted={() => setFeedbackCount(c => c + 1)} />
-                    ))}
-                  </div>
                 )}
 
                 {/* Routing Precision Panel */}
