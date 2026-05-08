@@ -3,7 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Search, X, Globe, RotateCcw, Filter,
+  Search, X, Globe, RotateCcw, Filter, Layers, Eye, EyeOff, Map as MapIcon, Sun, Moon, Satellite,
+  TrendingUp, TrendingDown, Minus, MousePointerClick,
 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -121,11 +122,58 @@ const EXAMPLE_QUERIES = [
   "show health risk in East Africa",
 ];
 
+type Severity = "critical" | "high" | "elevated" | "moderate" | "low";
+type Direction = "up" | "down" | "flat";
+type Basemap = "dark" | "light" | "satellite";
+
+const SEVERITY_TIERS: { key: Severity; color: string; label: string; min: number; max: number }[] = [
+  { key: "critical", color: "#ef4444", label: "Critical (70+)",   min: 70, max: 1000 },
+  { key: "high",     color: "#f97316", label: "High (55–70)",     min: 55, max: 70 },
+  { key: "elevated", color: "#eab308", label: "Elevated (40–55)", min: 40, max: 55 },
+  { key: "moderate", color: "#facc15", label: "Moderate (25–40)", min: 25, max: 40 },
+  { key: "low",      color: "#22c55e", label: "Low (< 25)",       min: 0,  max: 25 },
+];
+function severityOf(score: number): Severity {
+  if (score >= 70) return "critical";
+  if (score >= 55) return "high";
+  if (score >= 40) return "elevated";
+  if (score >= 25) return "moderate";
+  return "low";
+}
+
 export function RiskAtlas() {
   const [queryText, setQueryText] = useState("");
   const [activeQuery, setActiveQuery] = useState<MapQuery | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+
+  // ─── Layer controls ───────────────────────────────────────────────
+  const [severityFilter, setSeverityFilter] = useState<Set<Severity>>(
+    new Set(["critical", "high", "elevated", "moderate", "low"]),
+  );
+  const [directionFilter, setDirectionFilter] = useState<Set<Direction>>(
+    new Set(["up", "down", "flat"]),
+  );
+  const [showRegions, setShowRegions] = useState(true);
+  const [showComparison, setShowComparison] = useState(true);
+  const [showTrendArrows, setShowTrendArrows] = useState(true);
+  const [basemap, setBasemap] = useState<Basemap>("dark");
+  const [layersOpen, setLayersOpen] = useState(false);
+
+  const toggleSeverity = useCallback((s: Severity) => {
+    setSeverityFilter(prev => {
+      const next = new Set(prev);
+      next.has(s) ? next.delete(s) : next.add(s);
+      return next.size === 0 ? new Set(["critical", "high", "elevated", "moderate", "low"] as Severity[]) : next;
+    });
+  }, []);
+  const toggleDirection = useCallback((d: Direction) => {
+    setDirectionFilter(prev => {
+      const next = new Set(prev);
+      next.has(d) ? next.delete(d) : next.add(d);
+      return next.size === 0 ? new Set(["up", "down", "flat"] as Direction[]) : next;
+    });
+  }, []);
 
   const defaultQuery = useMemo<MapQuery>(() => ({
     scope: "global", geography: null, domains: [], threshold: null,
@@ -344,23 +392,133 @@ export function RiskAtlas() {
             selectedCountry={selectedCountry}
             onCountryClick={handleCountryClick}
             query={currentQuery}
-            regions={selectedCountry && regions ? regions : []}
+            regions={selectedCountry && showRegions && regions ? regions : []}
+            severityFilter={severityFilter}
+            directionFilter={directionFilter}
+            showComparison={showComparison}
+            showTrendArrows={showTrendArrows}
+            basemap={basemap}
           />
-          {/* Legend */}
-          <div className="absolute bottom-3 left-3 z-[1000] bg-background/90 backdrop-blur rounded-lg p-2 border border-border shadow-lg text-xs space-y-1">
-            <p className="font-semibold text-foreground text-[11px]">Risk Level</p>
-            {[
-              { color: "#22c55e", label: "Low (< 25)" },
-              { color: "#facc15", label: "Moderate (25–40)" },
-              { color: "#eab308", label: "Elevated (40–55)" },
-              { color: "#f97316", label: "High (55–70)" },
-              { color: "#ef4444", label: "Critical (70+)" },
-            ].map(l => (
-              <div key={l.label} className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-full shrink-0" style={{ background: l.color }} />
-                <span className="text-muted-foreground">{l.label}</span>
+
+          {/* ─── Layer Controls (top-right) ─── */}
+          <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-2 items-end">
+            <Button
+              size="sm"
+              variant={layersOpen ? "default" : "secondary"}
+              onClick={() => setLayersOpen(o => !o)}
+              className="h-8 gap-1.5 text-xs shadow-lg backdrop-blur bg-background/90 hover:bg-background border border-border"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Layers
+              <Badge variant="outline" className="h-4 px-1 text-[10px] font-mono ml-1">
+                {severityFilter.size}/{SEVERITY_TIERS.length}
+              </Badge>
+            </Button>
+
+            {layersOpen && (
+              <div className="w-64 bg-background/95 backdrop-blur rounded-lg border border-border shadow-xl text-xs animate-fade-in">
+                <div className="p-2.5 border-b border-border">
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Basemap</div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {([
+                      { k: "dark" as const, icon: Moon, label: "Dark" },
+                      { k: "light" as const, icon: Sun, label: "Light" },
+                      { k: "satellite" as const, icon: Satellite, label: "Sat" },
+                    ]).map(b => (
+                      <button
+                        key={b.k}
+                        onClick={() => setBasemap(b.k)}
+                        className={`flex flex-col items-center gap-1 py-1.5 rounded border text-[10px] transition-colors ${
+                          basemap === b.k
+                            ? "border-primary bg-primary/15 text-foreground"
+                            : "border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        <b.icon className="w-3.5 h-3.5" />
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-2.5 border-b border-border">
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Trajectory</div>
+                  <div className="space-y-1">
+                    {([
+                      { k: "up" as const,   icon: TrendingUp,   label: "Rising",  color: "text-destructive" },
+                      { k: "down" as const, icon: TrendingDown, label: "Falling", color: "text-emerald-500" },
+                      { k: "flat" as const, icon: Minus,        label: "Stable",  color: "text-muted-foreground" },
+                    ]).map(d => {
+                      const on = directionFilter.has(d.k);
+                      return (
+                        <button
+                          key={d.k}
+                          onClick={() => toggleDirection(d.k)}
+                          className={`w-full flex items-center justify-between px-2 py-1 rounded border transition-colors ${
+                            on ? "border-border bg-muted/30" : "border-border/40 bg-background opacity-50"
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <d.icon className={`w-3 h-3 ${d.color}`} />
+                            <span className="text-foreground">{d.label}</span>
+                          </span>
+                          {on ? <Eye className="w-3 h-3 text-primary" /> : <EyeOff className="w-3 h-3 text-muted-foreground" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-2.5">
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Overlays</div>
+                  <div className="space-y-1">
+                    <ToggleRow label="Region pins" checked={showRegions} onChange={setShowRegions} hint={selectedCountry ? "Drill-down active" : "Select a country first"} />
+                    <ToggleRow label="Trend arrows" checked={showTrendArrows} onChange={setShowTrendArrows} />
+                    <ToggleRow label="Comparison line" checked={showComparison} onChange={setShowComparison} hint={currentQuery.comparison ? "Active" : "No comparison"} />
+                  </div>
+                </div>
               </div>
-            ))}
+            )}
+          </div>
+
+          {/* ─── Interactive Severity Legend (bottom-left) ─── */}
+          <div className="absolute bottom-3 left-3 z-[1000] bg-background/90 backdrop-blur rounded-lg p-2.5 border border-border shadow-lg text-xs">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="font-semibold text-foreground text-[11px] tracking-wide">Risk Level</p>
+              {severityFilter.size < SEVERITY_TIERS.length && (
+                <button
+                  onClick={() => setSeverityFilter(new Set(["critical", "high", "elevated", "moderate", "low"]))}
+                  className="text-[10px] text-primary hover:underline"
+                >
+                  reset
+                </button>
+              )}
+            </div>
+            <div className="space-y-0.5">
+              {SEVERITY_TIERS.map(t => {
+                const on = severityFilter.has(t.key);
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => toggleSeverity(t.key)}
+                    className={`w-full flex items-center gap-2 px-1.5 py-1 rounded transition-colors ${
+                      on ? "hover:bg-muted/40" : "opacity-40 hover:opacity-70"
+                    }`}
+                    title={on ? `Hide ${t.label}` : `Show ${t.label}`}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full shrink-0 border"
+                      style={{ background: on ? t.color : "transparent", borderColor: t.color }}
+                    />
+                    <span className={on ? "text-foreground" : "text-muted-foreground line-through"}>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-2 pt-1.5 border-t border-border/60 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <MousePointerClick className="w-3 h-3" />
+              Click marker → drill down
+            </div>
           </div>
         </div>
 
@@ -404,20 +562,46 @@ interface AtlasMapProps {
   onCountryClick: (iso3: string) => void;
   query: MapQuery;
   regions: RegionRow[];
+  severityFilter: Set<Severity>;
+  directionFilter: Set<Direction>;
+  showComparison: boolean;
+  showTrendArrows: boolean;
+  basemap: Basemap;
 }
 
-function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, query, regions }: AtlasMapProps) {
+const BASEMAP_TILES: Record<Basemap, { url: string; attr: string; subdomains?: string }> = {
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+    attr: "© OpenStreetMap, © CARTO",
+    subdomains: "abcd",
+  },
+  light: {
+    url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+    attr: "© OpenStreetMap, © CARTO",
+    subdomains: "abcd",
+  },
+  satellite: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr: "© Esri, Maxar",
+  },
+};
+
+function AtlasMap({
+  countries, center, zoom, selectedCountry, onCountryClick, query, regions,
+  severityFilter, directionFilter, showComparison, showTrendArrows, basemap,
+}: AtlasMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const baseLayerRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<L.Layer[]>([]);
 
   // Initialize map
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, { center, zoom, scrollWheelZoom: true, zoomControl: true });
-    // Base: CARTO dark, no labels — avoids mixed-language place names.
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
-      attribution: '© OpenStreetMap, © CARTO', maxZoom: 18, subdomains: "abcd",
+    const tiles = BASEMAP_TILES[basemap];
+    baseLayerRef.current = L.tileLayer(tiles.url, {
+      attribution: tiles.attr, maxZoom: 18, subdomains: tiles.subdomains as any,
     }).addTo(map);
     // Overlay: English-only borders + place labels from ESRI.
     L.tileLayer(
@@ -431,7 +615,20 @@ function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, qu
     observer.observe(containerRef.current);
 
     return () => { clearTimeout(timer); observer.disconnect(); map.remove(); mapRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Swap basemap on change
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (baseLayerRef.current) map.removeLayer(baseLayerRef.current);
+    const tiles = BASEMAP_TILES[basemap];
+    baseLayerRef.current = L.tileLayer(tiles.url, {
+      attribution: tiles.attr, maxZoom: 18, subdomains: tiles.subdomains as any,
+    }).addTo(map);
+    baseLayerRef.current.bringToBack();
+  }, [basemap]);
 
   // Fly to center
   useEffect(() => {
@@ -455,6 +652,13 @@ function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, qu
       const radius = Math.max(6, Math.min(24, c.avgRisk / 3));
       const isSelected = c.iso3 === selectedCountry;
       const name = CN[c.iso3] || c.iso3;
+
+      // Layer filters (always show selected country)
+      if (!isSelected) {
+        if (!severityFilter.has(severityOf(c.avgRisk))) continue;
+        const dirKey: Direction = c.direction === "up" ? "up" : c.direction === "down" ? "down" : "flat";
+        if (!directionFilter.has(dirKey)) continue;
+      }
 
       const marker = L.circleMarker(coords, {
         radius: isSelected ? radius + 4 : radius,
@@ -488,7 +692,7 @@ function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, qu
       markersRef.current.push(marker);
 
       // Trend arrow overlay for selected countries when trend query is active
-      if (query.trend && c.direction === (query.trend === "rising" ? "up" : "down")) {
+      if (showTrendArrows && query.trend && c.direction === (query.trend === "rising" ? "up" : "down")) {
         const arrow = query.trend === "rising" ? "▲" : "▼";
         const arrowColor = query.trend === "rising" ? "#ef4444" : "#22c55e";
         const icon = L.divIcon({
@@ -531,7 +735,7 @@ function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, qu
     }
 
     // --- Comparison highlight ---
-    if (query.comparison) {
+    if (showComparison && query.comparison) {
       const aCoords = CC[query.comparison.a];
       const bCoords = CC[query.comparison.b];
       if (aCoords && bCoords) {
@@ -557,7 +761,7 @@ function AtlasMap({ countries, center, zoom, selectedCountry, onCountryClick, qu
         });
       }
     }
-  }, [countries, selectedCountry, onCountryClick, query, regions]);
+  }, [countries, selectedCountry, onCountryClick, query, regions, severityFilter, directionFilter, showComparison, showTrendArrows]);
 
   // Expose click handler for popups
   useEffect(() => {
