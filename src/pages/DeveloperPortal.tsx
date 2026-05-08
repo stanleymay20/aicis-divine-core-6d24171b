@@ -106,12 +106,11 @@ export default function DeveloperPortal() {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
-      const { data } = await supabase
-        .from("organizations")
-        .select("*")
-        .eq("owner_id", user.id)
-        .maybeSingle();
-      return data;
+      const { data, error } = await supabase.functions.invoke("create-organization", {
+        body: { name: workspaceName.trim() || "AICIS Developer Workspace" },
+      });
+      if (error) throw new Error(await functionErrorMessage(error, "Unable to load developer access"));
+      return data?.organization ?? null;
     },
   });
 
@@ -214,8 +213,9 @@ export default function DeveloperPortal() {
       if (error) throw new Error(await functionErrorMessage(error, "Unable to enable developer access"));
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Developer access enabled");
+      queryClient.setQueryData(["user-org-dev"], data?.organization ?? null);
       queryClient.invalidateQueries({ queryKey: ["user-org-dev"] });
     },
     onError: (e: any) => toast.error(errorMessage(e, "Unable to enable developer access")),
