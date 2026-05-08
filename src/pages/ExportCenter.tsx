@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Download, FileDown, Lock, Loader2, ShieldCheck, History, ExternalLink, Eye, Archive } from "lucide-react";
+import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { formatDistanceToNow } from "date-fns";
 
 type DatasetKey = "local_events" | "early_warnings" | "geo_audit"
@@ -147,7 +148,9 @@ export default function ExportCenter() {
   const overCap = previewCount !== null && previewCount > limit;
 
   return (
-    <div className="container mx-auto py-8 max-w-7xl space-y-6">
+    <AICISLayout>
+      <div className="overflow-y-auto h-full">
+        <div className="container mx-auto py-8 max-w-7xl space-y-6 px-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
