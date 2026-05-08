@@ -124,7 +124,44 @@ export default function DeveloperPortal() {
     },
   });
 
-  // Issue key mutation
+  // Fetch usage analytics from api_request_audit (last 7d)
+  const { data: usage } = useQuery({
+    queryKey: ["api-usage", org?.id],
+    enabled: !!org?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from("api_request_audit")
+        .select("endpoint, method, response_status, latency_ms, created_at")
+        .eq("org_id", org!.id)
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(5000);
+      const rows = data || [];
+      const day = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
+      const last24h = rows.filter(r => new Date(r.created_at!).getTime() >= day);
+      const errors24h = last24h.filter(r => r.response_status >= 400).length;
+      const lats = last24h.map(r => r.latency_ms || 0).filter(n => n > 0).sort((a, b) => a - b);
+      const p = (q: number) => lats.length ? lats[Math.min(lats.length - 1, Math.floor(lats.length * q))] : 0;
+      const endpointCounts: Record<string, number> = {};
+      last24h.forEach(r => {
+        const k = `${r.method} ${r.endpoint}`;
+        endpointCounts[k] = (endpointCounts[k] || 0) + 1;
+      });
+      const top = Object.entries(endpointCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      return {
+        total7d: rows.length,
+        total24h: last24h.length,
+        errors24h,
+        errorRate: last24h.length ? (errors24h / last24h.length) * 100 : 0,
+        p50: p(0.5),
+        p95: p(0.95),
+        topEndpoints: top,
+      };
+    },
+  });
+
   const issueKey = useMutation({
     mutationFn: async (name: string) => {
       const { data, error } = await supabase.functions.invoke("issue-api-key", {
