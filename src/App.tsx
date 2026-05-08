@@ -104,7 +104,7 @@ const Protected = ({ children }: { children: React.ReactNode }) => (
 const Shell = ({ children }: { children: React.ReactNode }) => (
   <ProtectedRoute>
     <AICISLayout>
-      <div className="overflow-y-auto h-full">
+      <div className="overflow-y-auto h-full flex flex-col">
         <Lazy>{children}</Lazy>
       </div>
     </AICISLayout>
