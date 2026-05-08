@@ -1,6 +1,6 @@
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity, PlayCircle, BarChart3, Beaker, Flame, Shield } from "lucide-react";
+import { Activity, PlayCircle, BarChart3, Beaker, Flame } from "lucide-react";
 import DailyTaskPanel from "@/components/decision-engine/DailyTaskPanel";
 import ExecutionCommandCenter from "@/components/decision-engine/ExecutionCommandCenter";
 import OutcomeInputPanel from "@/components/decision-engine/OutcomeInputPanel";
