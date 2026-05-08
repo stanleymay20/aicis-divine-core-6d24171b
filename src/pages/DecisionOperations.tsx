@@ -9,20 +9,28 @@ import OutcomeBacklogBurner from "@/components/decision-engine/OutcomeBacklogBur
 import MeasuredOutcomeKPI from "@/components/decision-engine/MeasuredOutcomeKPI";
 import DecisionReviewQueue from "@/components/decision-engine/DecisionReviewQueue";
 import { RecommendedActionsPanel } from "@/components/risk-ranking/RecommendedActionsPanel";
+import { DecisionOpsKPIStrip } from "@/components/decision-engine/DecisionOpsKPIStrip";
 
 export default function DecisionOperations() {
   return (
     <AICISLayout>
-      <div className="p-4 md:p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto animate-fade-in overflow-y-auto h-full">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
-            Actions & Outcomes
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Actions that protect margin, continuity, and delivery performance. Execute, measure, and prove savings.
-          </p>
+      <div className="p-4 md:p-6 lg:p-8 space-y-5 max-w-[1400px] mx-auto animate-fade-in overflow-y-auto h-full">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              Actions & Outcomes
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+              Decisions that protect margin, continuity, and delivery performance. Execute, measure, and prove savings.
+            </p>
+          </div>
+          <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground border border-border rounded px-2 py-1">
+            Live · auto-refresh 30s
+          </span>
         </div>
+
+        <DecisionOpsKPIStrip />
 
         <RecommendedActionsPanel topN={20} />
         <DecisionReviewQueue />
@@ -32,16 +40,16 @@ export default function DecisionOperations() {
         <Tabs defaultValue="execution" className="w-full">
           <TabsList className="bg-muted/50 p-0.5 h-auto flex-wrap">
             <TabsTrigger value="backlog" className="text-xs gap-1.5 data-[state=active]:bg-card">
-              <Flame className="h-3.5 w-3.5" /> Pending
+              <Flame className="h-3.5 w-3.5" /> Pending queue
             </TabsTrigger>
             <TabsTrigger value="execution" className="text-xs gap-1.5 data-[state=active]:bg-card">
-              <PlayCircle className="h-3.5 w-3.5" /> Execute
+              <PlayCircle className="h-3.5 w-3.5" /> Execute now
             </TabsTrigger>
             <TabsTrigger value="outcomes" className="text-xs gap-1.5 data-[state=active]:bg-card">
-              <BarChart3 className="h-3.5 w-3.5" /> Results
+              <BarChart3 className="h-3.5 w-3.5" /> Recorded outcomes
             </TabsTrigger>
             <TabsTrigger value="pilot" className="text-xs gap-1.5 data-[state=active]:bg-card">
-              <Beaker className="h-3.5 w-3.5" /> Pilot
+              <Beaker className="h-3.5 w-3.5" /> Pilot program
             </TabsTrigger>
           </TabsList>
 
