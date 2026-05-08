@@ -67,6 +67,15 @@ serve(async (req) => {
 
     if (existingError) throw existingError;
     if (existingOrg) {
+      const { error: memberUpsertError } = await supabaseAdmin
+        .from("organization_members")
+        .upsert({
+          org_id: existingOrg.id,
+          user_id: user.id,
+          role: "owner",
+        }, { onConflict: "org_id,user_id" });
+      if (memberUpsertError) throw memberUpsertError;
+
       if (!existingOrg.api_enabled) {
         const { data: enabledOrg, error: enableError } = await supabaseAdmin
           .from("organizations")

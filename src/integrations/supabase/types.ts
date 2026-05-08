@@ -15494,6 +15494,14 @@ export type Database = {
       }
       is_canonical_iso3: { Args: { _iso3: string }; Returns: boolean }
       is_covered_iso3: { Args: { _iso3: string }; Returns: boolean }
+      is_org_member: {
+        Args: { _org_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_org_owner: {
+        Args: { _org_id: string; _user_id: string }
+        Returns: boolean
+      }
       log_audit_event: {
         Args: {
           _action: string
