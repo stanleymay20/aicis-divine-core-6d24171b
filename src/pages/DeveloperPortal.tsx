@@ -109,7 +109,7 @@ export default function DeveloperPortal() {
     queryFn: async () => {
       const { data } = await supabase
         .from("api_keys")
-        .select("id, name, key_prefix, created_at, last_used_at, revoked, rate_limit_per_minute")
+        .select("id, name, key_prefix, created_at, last_used_at, revoked, rate_limit_per_minute, scopes, expires_at")
         .eq("org_id", org!.id)
         .order("created_at", { ascending: false });
       return data || [];
