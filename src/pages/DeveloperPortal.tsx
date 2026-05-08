@@ -230,11 +230,14 @@ export default function DeveloperPortal() {
       return data;
     },
     onSuccess: (data) => {
+      const fullKey = data.api_key as string;
+      setRevealedKey({ key: fullKey, name: newKeyName.trim() });
+      setTestResult(null);
+      copyToClipboard(fullKey, "API key copied to clipboard");
       toast.success("API Key Created", {
-        description: `Key: ${data.api_key?.substring(0, 20)}... — copy it now, it won't be shown again.`,
-        duration: 15000,
+        description: "Copy and store it now — it will not be shown again.",
+        duration: 12000,
       });
-      navigator.clipboard.writeText(data.api_key);
       setNewKeyName("");
       queryClient.invalidateQueries({ queryKey: ["api-keys-dev"] });
     },
