@@ -1,5 +1,5 @@
-// pull-acled-historical — ACLED conflict event backfill.
-// Requires ACLED_API_KEY + ACLED_EMAIL (free academic / NGO key from acleddata.com).
+// pull-acled-historical — ACLED conflict event backfill via OAuth password grant.
+// Requires ACLED_EMAIL + ACLED_PASSWORD (free academic / NGO account at acleddata.com).
 // Pulls one year per invocation (state-tracked) into normalized_events.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -10,6 +10,25 @@ const cors = {
 };
 const FN = "pull-acled-historical";
 
+async function getAcledToken(email: string, password: string): Promise<string> {
+  const form = new URLSearchParams({
+    username: email,
+    password: password,
+    grant_type: "password",
+    client_id: "acled",
+  });
+  const r = await fetch("https://acleddata.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!r.ok) throw new Error(`ACLED OAuth HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const j = await r.json();
+  if (!j.access_token) throw new Error("ACLED OAuth: no access_token in response");
+  return j.access_token as string;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
@@ -18,12 +37,12 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const apiKey = Deno.env.get("ACLED_API_KEY");
   const email = Deno.env.get("ACLED_EMAIL");
-  if (!apiKey || !email) {
+  const password = Deno.env.get("ACLED_PASSWORD");
+  if (!email || !password) {
     await supabase.from("automation_logs").insert({
       job_name: FN, status: "warning",
-      message: "ACLED_API_KEY or ACLED_EMAIL missing — soft-skip until configured.",
+      message: "ACLED_EMAIL or ACLED_PASSWORD missing — soft-skip until configured.",
     });
     return new Response(JSON.stringify({ ok: true, skipped: true, reason: "missing_credentials" }), {
       headers: { ...cors, "Content-Type": "application/json" },
@@ -32,6 +51,7 @@ serve(async (req) => {
 
   const start = Date.now();
   try {
+    // Determine next year to pull
     const { data: state } = await supabase
       .from("automation_logs")
       .select("message")
@@ -41,7 +61,7 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    let nextYear = 1997; // ACLED begins 1997
+    let nextYear = 1997;
     if (state?.message) {
       const m = state.message.match(/year=(\d{4})/);
       if (m) nextYear = parseInt(m[1], 10) + 1;
@@ -57,34 +77,42 @@ serve(async (req) => {
       });
     }
 
+    const token = await getAcledToken(email, password);
+
     let inserted = 0;
     let page = 1;
     const pageSize = 5000;
     const rows: any[] = [];
 
     while (true) {
-      const url = `https://api.acleddata.com/acled/read?key=${apiKey}&email=${encodeURIComponent(email)}&year=${nextYear}&limit=${pageSize}&page=${page}`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(45000) });
-      if (!resp.ok) throw new Error(`ACLED HTTP ${resp.status}`);
+      const url = `https://acleddata.com/api/acled/read?_format=json&limit=${pageSize}&page=${page}&year=${nextYear}`;
+      const resp = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(45000),
+      });
+      if (!resp.ok) throw new Error(`ACLED HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
       const data = await resp.json();
-      if (data.success === false) throw new Error(data.error?.message || "ACLED returned success=false");
+      if (data.success === false) throw new Error(data.error?.message || "ACLED success=false");
       const results: any[] = data?.data || [];
       if (results.length === 0) break;
 
       for (const e of results) {
+        const id = e.data_id || e.event_id_cnty;
+        if (!id || !e.event_date) continue;
+        const fatalities = e.fatalities ? +e.fatalities : 0;
         rows.push({
-          dedup_key: `acled:${e.data_id || e.event_id_cnty}`,
+          dedup_key: `acled:${id}`,
           source: "acled",
           provider_name: "acled",
           event_type: (e.event_type || "conflict").toLowerCase().replace(/\s+/g, "_"),
           iso3: e.iso3 || null,
           country_name: e.country,
           period: e.event_date,
-          severity: e.fatalities != null ? Math.min(100, Math.log10(Math.max(1, +e.fatalities)) * 25 + 20) : 30,
-          fatalities: e.fatalities ? +e.fatalities : 0,
+          severity: Math.min(100, Math.log10(Math.max(1, fatalities)) * 25 + 20),
+          fatalities,
           latitude: e.latitude ? parseFloat(e.latitude) : null,
           longitude: e.longitude ? parseFloat(e.longitude) : null,
-          summary: e.notes?.slice(0, 500) || `${e.event_type} in ${e.location}, ${e.country}`,
+          summary: (e.notes?.slice(0, 500)) || `${e.event_type} in ${e.location}, ${e.country}`,
           confidence: 0.9,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -99,6 +127,7 @@ serve(async (req) => {
       if (results.length < pageSize) break;
       page++;
       if (page > 100) break;
+      if (Date.now() - start > 50000) break; // edge runtime budget
     }
 
     for (let i = 0; i < rows.length; i += 500) {
