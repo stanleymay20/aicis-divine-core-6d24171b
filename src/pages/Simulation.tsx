@@ -10,7 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Play, Activity, BarChart3 } from "lucide-react";
+import { Loader2, Play, Activity, BarChart3, RefreshCw, ShieldCheck, Sigma, TrendingUp, Layers } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { useMemo } from "react";
 
 const DOMAINS = ["health", "energy", "food", "finance", "governance", "security", "climate", "education", "population"];
 const DIRECTIONS = ["down", "up"];
@@ -69,16 +71,57 @@ export default function SimulationPage() {
     onError: (e) => toast.error(String(e)),
   });
 
+  const rows = list.data?.rows ?? [];
+  const kpis = useMemo(() => {
+    if (!rows.length) return null;
+    const meanP50 = rows.reduce((s, r) => s + Number(r.p50 ?? 0), 0) / rows.length;
+    const maxP90 = rows.reduce((m, r) => Math.max(m, Number(r.p90 ?? 0)), 0);
+    const meanIter = Math.round(rows.reduce((s, r) => s + Number(r.n_iterations ?? 0), 0) / rows.length);
+    const meanConf = rows.reduce((s, r) => s + Number(r.confidence ?? 0), 0) / rows.length;
+    const last = rows[0]?.created_at ? new Date(rows[0].created_at) : null;
+    return { meanP50, maxP90, meanIter, meanConf, last };
+  }, [rows]);
+
+  const isStale = kpis?.last ? Date.now() - kpis.last.getTime() > 24 * 3600_000 : true;
+
   return (
     <AICISLayout>
-      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-primary" /> Scenario Simulation Engine
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Monte Carlo what-if modeling. Parameter shocks → cascade across domains → probabilistic distribution (p10/p50/p90).
-          </p>
+      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-primary" /> Scenario Simulation Engine
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
+              Monte Carlo what-if modeling. Parameter shocks → cascade across domains → probabilistic distribution (p10/p50/p90).
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="outline"
+              className={`text-[11px] font-mono gap-1.5 ${
+                isStale
+                  ? "bg-amber-500/15 text-amber-600 border-amber-500/30"
+                  : "bg-emerald-500/15 text-emerald-600 border-emerald-500/30"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${isStale ? "bg-amber-500" : "bg-emerald-500 animate-pulse"}`} />
+              {kpis?.last ? `Last run ${formatDistanceToNow(kpis.last, { addSuffix: true })}` : "No runs yet"}
+            </Badge>
+            <Button onClick={() => list.refetch()} disabled={list.isFetching} size="sm" variant="outline" className="gap-2">
+              {list.isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <KpiTile icon={<Sigma className="h-3.5 w-3.5" />} label="Total runs" value={String(rows.length)} />
+          <KpiTile icon={<Activity className="h-3.5 w-3.5" />} label="Mean p50" value={kpis ? kpis.meanP50.toFixed(2) : "—"} tone="primary" />
+          <KpiTile icon={<TrendingUp className="h-3.5 w-3.5" />} label="Max p90" value={kpis ? kpis.maxP90.toFixed(2) : "—"} tone="destructive" />
+          <KpiTile icon={<Layers className="h-3.5 w-3.5" />} label="Mean iterations" value={kpis ? kpis.meanIter.toLocaleString() : "—"} />
+          <KpiTile icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Mean confidence" value={kpis ? `${(kpis.meanConf * 100).toFixed(0)}%` : "—"} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -203,5 +246,23 @@ const Histogram = ({ bins }: { bins?: number[] }) => {
         />
       ))}
     </div>
+  );
+};
+
+const KpiTile = ({
+  icon, label, value, tone = "default",
+}: { icon: React.ReactNode; label: string; value: string; tone?: "default" | "primary" | "destructive" }) => {
+  const valueClass =
+    tone === "primary" ? "text-primary" :
+    tone === "destructive" ? "text-destructive" : "";
+  return (
+    <Card className="border-border">
+      <CardContent className="p-3">
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase tracking-wider">
+          {icon} {label}
+        </div>
+        <div className={`text-lg font-mono font-semibold mt-1 ${valueClass}`}>{value}</div>
+      </CardContent>
+    </Card>
   );
 };

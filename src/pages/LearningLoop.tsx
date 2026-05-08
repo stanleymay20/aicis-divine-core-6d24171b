@@ -128,7 +128,7 @@ export default function LearningLoop() {
 
   return (
     <AICISLayout>
-      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5">
+      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -142,10 +142,18 @@ export default function LearningLoop() {
               future predictions. This is the foundation of the self-improving intelligence loop.
             </p>
           </div>
-          <Button onClick={() => realize.mutate()} disabled={realize.isPending} size="sm" className="gap-2">
-            {realize.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Realize predictions now
-          </Button>
+          <div className="flex items-center gap-2">
+            {kpis && (
+              <Badge variant="outline" className="text-[11px] font-mono gap-1.5 bg-emerald-500/15 text-emerald-600 border-emerald-500/30">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {kpis.total} realized · {kpis.surprises} surprises
+              </Badge>
+            )}
+            <Button onClick={() => realize.mutate()} disabled={realize.isPending} size="sm" className="gap-2">
+              {realize.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Realize predictions now
+            </Button>
+          </div>
         </div>
 
         {/* KPI strip */}
