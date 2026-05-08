@@ -44,21 +44,21 @@ export function ActionsAwaitingStrip() {
     queryFn: async () => {
       const { data } = await supabase
         .from("decision_outcome_log")
-        .select("id, signal_title, domain, impact_score, execution_status, created_at, review_sla_hours")
+        .select("id, signal_title, domain, iso3, impact_score, net_value, roi_estimate, recommended_action, execution_status, created_at, review_sla_hours")
         .in("execution_status", ["not_started", "overdue", "in_progress"])
         .order("impact_score", { ascending: false, nullsFirst: false })
-        .limit(40);
-      // Strip internal [SIGNAL] / [TAG] prefixes and dedupe by normalized title+domain
+        .limit(60);
+      // Strip internal [SIGNAL] / [TAG] prefixes and dedupe by normalized title+domain+iso3
       const clean = (t: string) => (t || "").replace(/^\s*\[[A-Z0-9_\-]+\]\s*/i, "").trim();
       const seen = new Set<string>();
       const unique: PendingAction[] = [];
       for (const row of (data as any[]) || []) {
         const title = clean(row.signal_title);
-        const key = `${title.toLowerCase()}|${row.domain || ""}`;
+        const key = `${title.toLowerCase()}|${row.domain || ""}|${row.iso3 || ""}`;
         if (seen.has(key)) continue;
         seen.add(key);
         unique.push({ ...row, signal_title: title });
-        if (unique.length >= 6) break;
+        if (unique.length >= 12) break;
       }
       return unique;
     },
