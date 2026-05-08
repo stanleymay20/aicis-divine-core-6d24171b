@@ -137,7 +137,7 @@ const App = () => (
               <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
               <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
               <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
-              <Route path="/live-stream" element={<Protected><LiveSignalStream /></Protected>} />
+              <Route path="/live-stream" element={<Shell><LiveSignalStream /></Shell>} />
               <Route path="/coverage-equity" element={<Shell><CoverageEquity /></Shell>} />
               <Route path="/decision-ops" element={<Protected><DecisionOperations /></Protected>} />
               <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
@@ -149,30 +149,30 @@ const App = () => (
               <Route path="/watchlist" element={<Protected><Watchlist /></Protected>} />
               <Route path="/learning" element={<Protected><LearningIntelligence /></Protected>} />
               <Route path="/risk-atlas" element={<Protected><RiskAtlasPage /></Protected>} />
-              <Route path="/relevance-preferences" element={<Protected><RelevancePreferences /></Protected>} />
+              <Route path="/relevance-preferences" element={<Shell><RelevancePreferences /></Shell>} />
               <Route path="/advanced" element={<Protected><Advanced /></Protected>} />
               {/* legacy aliases */}
               <Route path="/more" element={<Protected><Advanced /></Protected>} />
 
               {/* ── Secondary (deep-link only, not in nav) ───── */}
-              <Route path="/daily-evidence-ops" element={<Protected><DailyEvidenceOps /></Protected>} />
-              <Route path="/signal-validation" element={<Protected><SignalValidation /></Protected>} />
-              <Route path="/operational-truth" element={<Protected><OperationalTruth /></Protected>} />
-              <Route path="/system-status" element={<Protected><SystemStatus /></Protected>} />
-              <Route path="/infra-ops" element={<Protected><InfraOps /></Protected>} />
-              <Route path="/developers" element={<Protected><DeveloperPortal /></Protected>} />
+              <Route path="/daily-evidence-ops" element={<Shell><DailyEvidenceOps /></Shell>} />
+              <Route path="/signal-validation" element={<Shell><SignalValidation /></Shell>} />
+              <Route path="/operational-truth" element={<Shell><OperationalTruth /></Shell>} />
+              <Route path="/system-status" element={<Shell><SystemStatus /></Shell>} />
+              <Route path="/infra-ops" element={<Shell><InfraOps /></Shell>} />
+              <Route path="/developers" element={<Shell><DeveloperPortal /></Shell>} />
               <Route path="/forecast-validation" element={<Shell><ForecastValidation /></Shell>} />
               <Route path="/system-pulse" element={<Shell><SystemPulse /></Shell>} />
               <Route path="/atlas/region/:id" element={<Shell><RegionDrillDown /></Shell>} />
               <Route path="/register-node" element={<Shell><RegisterNode /></Shell>} />
               <Route path="/accumulation" element={<Shell><Accumulation /></Shell>} />
               <Route path="/training-dataset" element={<Shell><TrainingDataset /></Shell>} />
-              <Route path="/risk-ranking" element={<Protected><RiskRanking /></Protected>} />
-              <Route path="/learning-loop" element={<Protected><LearningLoop /></Protected>} />
+              <Route path="/risk-ranking" element={<Shell><RiskRanking /></Shell>} />
+              <Route path="/learning-loop" element={<Shell><LearningLoop /></Shell>} />
               <Route path="/intelligence-engine" element={<Shell><IntelligenceEngine /></Shell>} />
-              <Route path="/simulation" element={<Protected><Simulation /></Protected>} />
-              <Route path="/predictions" element={<Protected><Predictions /></Protected>} />
-              <Route path="/api-audit" element={<Protected><ApiAudit /></Protected>} />
+              <Route path="/simulation" element={<Shell><Simulation /></Shell>} />
+              <Route path="/predictions" element={<Shell><Predictions /></Shell>} />
+              <Route path="/api-audit" element={<Shell><ApiAudit /></Shell>} />
 
               {/* ── LRIL: Local Reality Intelligence ─────────── */}
               <Route path="/local-events" element={<Shell><LocalEvents /></Shell>} />
