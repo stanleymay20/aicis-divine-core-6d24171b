@@ -95,6 +95,42 @@ export default function DeveloperPortal() {
   const [newKeyExpiry, setNewKeyExpiry] = useState<string>("365"); // days, "" = never
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
   const [workspaceName, setWorkspaceName] = useState("AICIS Developer Workspace");
+  const [revealedKey, setRevealedKey] = useState<{ key: string; name: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; status: number; ms: number; body: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  const copyToClipboard = async (text: string, label = "Copied") => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(label);
+    } catch {
+      // Fallback for non-secure contexts
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); toast.success(label); }
+      catch { toast.error("Copy failed — select and copy manually"); }
+      document.body.removeChild(ta);
+    }
+  };
+
+  const testApiKey = async (key: string) => {
+    setTesting(true);
+    setTestResult(null);
+    const t0 = performance.now();
+    try {
+      const res = await fetch(`${API_BASE}/health`, { headers: { "x-api-key": key } });
+      const text = await res.text();
+      setTestResult({ ok: res.ok, status: res.status, ms: Math.round(performance.now() - t0), body: text.slice(0, 240) });
+      if (res.ok) toast.success(`Key works · ${res.status} · ${Math.round(performance.now() - t0)}ms`);
+      else toast.error(`Key failed · ${res.status}`);
+    } catch (e: any) {
+      setTestResult({ ok: false, status: 0, ms: Math.round(performance.now() - t0), body: e?.message || "Network error" });
+      toast.error("Network error reaching API");
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const toggleScope = (s: string) => {
     setNewKeyScopes((prev) => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
