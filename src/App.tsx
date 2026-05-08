@@ -11,6 +11,7 @@ import { DemoBanner } from "@/components/demo/DemoBanner";
 import { DegradedModeBanner } from "@/components/live/DegradedModeBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
+import ScrollToTop from "@/components/ScrollToTop";
 import { Loader2 } from "lucide-react";
 
 // Eager-load: public landing, auth gate, not-found
@@ -117,6 +118,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ScrollToTop />
           <DemoModeProvider>
             <IntelligenceMemoryProvider>
               <DegradedModeBanner />
