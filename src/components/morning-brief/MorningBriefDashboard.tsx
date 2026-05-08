@@ -66,10 +66,10 @@ export const MorningBriefDashboard = () => {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1
-            className="font-serif text-xl sm:text-3xl font-semibold leading-tight tracking-tight truncate"
+            className="text-xl sm:text-3xl font-light leading-[1.1] tracking-tight truncate"
             title={user?.email || ""}
           >
-            {greeting}, <span className="text-primary">{firstName}</span>.
+            {greeting}, <span className="font-semibold text-primary">{firstName}</span>.
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Here's what needs your attention.
