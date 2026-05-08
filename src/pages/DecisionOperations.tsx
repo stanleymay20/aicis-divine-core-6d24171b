@@ -1,6 +1,6 @@
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity, PlayCircle, BarChart3, Beaker, Flame } from "lucide-react";
+import { Activity, PlayCircle, BarChart3, Beaker, Flame, Inbox, ListChecks, Sparkles } from "lucide-react";
 import DailyTaskPanel from "@/components/decision-engine/DailyTaskPanel";
 import ExecutionCommandCenter from "@/components/decision-engine/ExecutionCommandCenter";
 import OutcomeInputPanel from "@/components/decision-engine/OutcomeInputPanel";
@@ -32,18 +32,22 @@ export default function DecisionOperations() {
 
         <DecisionOpsKPIStrip />
 
-        <RecommendedActionsPanel topN={20} />
-        <DecisionReviewQueue />
-        <DailyTaskPanel />
-        <MeasuredOutcomeKPI />
-
-        <Tabs defaultValue="execution" className="w-full">
+        <Tabs defaultValue="today" className="w-full">
           <TabsList className="bg-muted/50 p-0.5 h-auto flex-wrap">
-            <TabsTrigger value="backlog" className="text-xs gap-1.5 data-[state=active]:bg-card">
-              <Flame className="h-3.5 w-3.5" /> Pending queue
+            <TabsTrigger value="today" className="text-xs gap-1.5 data-[state=active]:bg-card">
+              <Inbox className="h-3.5 w-3.5" /> Today's queue
+            </TabsTrigger>
+            <TabsTrigger value="recommended" className="text-xs gap-1.5 data-[state=active]:bg-card">
+              <Sparkles className="h-3.5 w-3.5" /> Recommended
+            </TabsTrigger>
+            <TabsTrigger value="review" className="text-xs gap-1.5 data-[state=active]:bg-card">
+              <ListChecks className="h-3.5 w-3.5" /> Review queue
             </TabsTrigger>
             <TabsTrigger value="execution" className="text-xs gap-1.5 data-[state=active]:bg-card">
               <PlayCircle className="h-3.5 w-3.5" /> Execute now
+            </TabsTrigger>
+            <TabsTrigger value="backlog" className="text-xs gap-1.5 data-[state=active]:bg-card">
+              <Flame className="h-3.5 w-3.5" /> Backlog burner
             </TabsTrigger>
             <TabsTrigger value="outcomes" className="text-xs gap-1.5 data-[state=active]:bg-card">
               <BarChart3 className="h-3.5 w-3.5" /> Recorded outcomes
@@ -53,11 +57,21 @@ export default function DecisionOperations() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="backlog" className="mt-4">
-            <OutcomeBacklogBurner />
+          <TabsContent value="today" className="mt-4 space-y-5">
+            <DailyTaskPanel />
+            <MeasuredOutcomeKPI />
+          </TabsContent>
+          <TabsContent value="recommended" className="mt-4">
+            <RecommendedActionsPanel topN={20} />
+          </TabsContent>
+          <TabsContent value="review" className="mt-4">
+            <DecisionReviewQueue />
           </TabsContent>
           <TabsContent value="execution" className="mt-4">
             <ExecutionCommandCenter />
+          </TabsContent>
+          <TabsContent value="backlog" className="mt-4">
+            <OutcomeBacklogBurner />
           </TabsContent>
           <TabsContent value="outcomes" className="mt-4">
             <OutcomeInputPanel />

@@ -159,19 +159,34 @@ export default function LiveCommandFeed() {
       <div className="h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="p-3 sm:p-4 border-b space-y-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
               <Radio className="h-5 w-5 text-primary" />
               <div className="min-w-0">
-                <h1 className="text-base sm:text-lg font-semibold">Supply Chain Risks</h1>
+                <h1 className="text-base sm:text-lg font-semibold tracking-tight">Supply Chain Risks</h1>
                 <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
                   {filteredSignals.length} risks that may affect trade, logistics, and sourcing
                 </p>
               </div>
             </div>
-            <Button size="sm" variant={reviewMode ? "default" : "outline"} className="h-8 text-xs shrink-0" onClick={() => setReviewMode(!reviewMode)}>
-              <ClipboardCheck className="h-3 w-3 mr-1" /> Review{reviewMode ? " ✓" : ""}
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground border border-border rounded px-2 py-1">
+                <span className={cn("h-1.5 w-1.5 rounded-full", isStale ? "bg-amber-500" : "bg-emerald-500 animate-pulse")} />
+                {isStale ? `Stale ${Math.round(hoursSinceLatest)}h` : "Live"}
+              </span>
+              <Button size="sm" variant={reviewMode ? "default" : "outline"} className="h-8 text-xs" onClick={() => setReviewMode(!reviewMode)}>
+                <ClipboardCheck className="h-3 w-3 mr-1" /> Review{reviewMode ? " ✓" : ""}
+              </Button>
+            </div>
+          </div>
+
+          {/* Always-visible KPI strip */}
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            <Card className="p-2 text-center"><div className="text-base font-bold font-mono tabular-nums">{allSignals.length}</div><div className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</div></Card>
+            <Card className="p-2 text-center"><div className="text-base font-bold font-mono tabular-nums text-destructive">{highImpactCount}</div><div className="text-[10px] text-muted-foreground uppercase tracking-wide">High impact</div></Card>
+            <Card className="p-2 text-center"><div className="text-base font-bold font-mono tabular-nums">{avgConfidence}%</div><div className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg conf</div></Card>
+            <Card className="p-2 text-center"><div className="text-base font-bold font-mono tabular-nums text-primary">{confirmedCount}</div><div className="text-[10px] text-muted-foreground uppercase tracking-wide">Confirmed</div></Card>
+            <Card className="p-2 text-center"><div className="text-base font-bold font-mono tabular-nums text-primary">{officialCount}</div><div className="text-[10px] text-muted-foreground uppercase tracking-wide">Official</div></Card>
           </div>
 
           {/* Warnings */}
@@ -189,7 +204,7 @@ export default function LiveCommandFeed() {
           <div className="relative">
             <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search risks..."
+              placeholder="Search risks by title, region, or sector…"
               className="h-8 text-xs pl-7"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
@@ -199,18 +214,11 @@ export default function LiveCommandFeed() {
           <Collapsible open={showTools} onOpenChange={setShowTools}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="h-8 w-full justify-between text-xs text-muted-foreground">
-                Filters, counts, and intake tools
+                Audience, filters & intake tools
                 {showTools ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-3 pt-2">
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono">{allSignals.length}</div><div className="text-[10px] text-muted-foreground">Total</div></Card>
-                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono text-destructive">{highImpactCount}</div><div className="text-[10px] text-muted-foreground">High Impact</div></Card>
-                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono">{avgConfidence}%</div><div className="text-[10px] text-muted-foreground">Avg Conf</div></Card>
-                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono text-primary">{confirmedCount}</div><div className="text-[10px] text-muted-foreground">Confirmed</div></Card>
-                <Card className="p-2 text-center"><div className="text-lg font-bold font-mono text-primary">{officialCount}</div><div className="text-[10px] text-muted-foreground">Official</div></Card>
-              </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <Tabs value={audienceMode} onValueChange={v => setAudienceMode(v as AudienceMode)} className="w-full sm:w-auto">
                   <TabsList className="h-8 w-full sm:w-auto">
