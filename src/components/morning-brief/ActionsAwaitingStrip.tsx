@@ -167,8 +167,11 @@ export function ActionsAwaitingStrip() {
   // Stale = older than 7 days regardless of status. An "in progress" item
   // that's been sitting for 18 days is a zombie, not active work.
   const isStale = (a: PendingAction) => ageDays(a) > 7;
+  // Hero shows only signal-grade items (impact ≥40). LOW noise is demoted.
+  const isHeroGrade = (a: PendingAction) => (a.impact_score ?? 0) >= 40;
 
-  const fresh = actions.filter((a) => !isStale(a));
+  const fresh = actions.filter((a) => !isStale(a) && isHeroGrade(a));
+  const demoted = actions.filter((a) => !isStale(a) && !isHeroGrade(a));
   const stale = actions.filter(isStale);
 
   const overdueCount = fresh.filter(isOverdue).length;
