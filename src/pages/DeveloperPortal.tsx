@@ -275,6 +275,26 @@ export default function DeveloperPortal() {
             <Button size="sm" variant="outline" onClick={() => navigate("/system-status")}>
               <Activity className="h-3.5 w-3.5 mr-1.5" /> Status
             </Button>
+            <Button size="sm" variant="outline" onClick={() => {
+              const spec = {
+                openapi: "3.0.3",
+                info: { title: "AICIS Public API", version: "1.2", description: "Signals, decisions, outcomes, ML predictions." },
+                servers: [{ url: API_BASE }],
+                components: { securitySchemes: { ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key" } } },
+                security: [{ ApiKeyAuth: [] }],
+                paths: Object.fromEntries(ENDPOINTS.map(ep => [ep.path, {
+                  [ep.method.toLowerCase()]: { summary: ep.desc, parameters: [], responses: { "200": { description: "OK" }, "401": { description: "Missing key" }, "403": { description: "Invalid/expired/insufficient scope" }, "429": { description: "Rate limit" } } }
+                }])),
+              };
+              const blob = new Blob([JSON.stringify(spec, null, 2)], { type: "application/json" });
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = "aicis-openapi.json";
+              a.click();
+              toast.success("OpenAPI spec downloaded");
+            }}>
+              <Download className="h-3.5 w-3.5 mr-1.5" /> OpenAPI
+            </Button>
           </div>
         </div>
 
