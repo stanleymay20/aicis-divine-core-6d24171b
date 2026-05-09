@@ -69,7 +69,10 @@ serve(async (req) => {
       (existingTerritories ?? []).map((e: any) => [e.metadata?.region_id, e.id]),
     );
 
-    // 3. Upsert territories for missing region_ids
+    // 3. Upsert territories for missing region_ids — dedupe by canonical_name to avoid
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time" (PG 21000) when two
+    // admin regions share the same name within a batch.
+    const territorySeen = new Set<string>();
     const toUpsertTerritories = regions
       .filter((r) => !regionToEntity.has(r.id))
       .map((r) => ({
@@ -78,7 +81,13 @@ serve(async (req) => {
         display_name: r.name,
         iso3: r.country_iso3,
         metadata: { region_id: r.id, admin_level: r.admin_level, parent_id: r.parent_id ?? null, country_iso3: r.country_iso3, source: "admin_regions" },
-      } as any));
+      } as any))
+      .filter((t) => {
+        const key = `${t.entity_type}|${t.canonical_name.toLowerCase()}`;
+        if (territorySeen.has(key)) return false;
+        territorySeen.add(key);
+        return true;
+      });
 
     let createdEntities = 0;
     if (toUpsertTerritories.length > 0) {
@@ -124,11 +133,20 @@ serve(async (req) => {
       }
     }
 
+    // Dedupe links within the batch on the conflict key to avoid PG 21000.
+    const linkSeen = new Set<string>();
+    const dedupedLinks = links.filter((l) => {
+      const key = `${l.source_entity_id}|${l.target_entity_id}|${l.link_type}`;
+      if (linkSeen.has(key)) return false;
+      linkSeen.add(key);
+      return true;
+    });
+
     let insertedLinks = 0;
-    if (links.length > 0) {
+    if (dedupedLinks.length > 0) {
       const { data: linkIns, error: linkErr } = await supabase
         .from("entity_links")
-        .upsert(links, { onConflict: "source_entity_id,target_entity_id,link_type", ignoreDuplicates: true })
+        .upsert(dedupedLinks, { onConflict: "source_entity_id,target_entity_id,link_type", ignoreDuplicates: true })
         .select("id");
       if (linkErr) throw linkErr;
       insertedLinks = linkIns?.length ?? 0;

@@ -36,7 +36,8 @@ const PROVIDERS: {
   { provider: "nasa_power",    max_age_hours: 26,  fn: "pull-nasa-power",    table: "normalized_metrics", filter_col: "provider_name", filter_val: "nasa_power" },
   { provider: "entsoe",        max_age_hours: 8,   fn: "pull-entsoe",        table: "normalized_metrics", filter_col: "provider_name", filter_val: "entsoe" },
   { provider: "worldbank",     max_age_hours: 26,  fn: "pull-worldbank",     table: "economic_indicators", filter_col: "source",       filter_val: "WorldBank" },
-  { provider: "satellite",     max_age_hours: 26,  fn: "fetch-satellite-global", table: "normalized_metrics", filter_col: "provider_name", filter_val: "satellite_inference" },
+  // satellite writes to satellite_observations, not normalized_metrics
+  { provider: "satellite",     max_age_hours: 26,  fn: "fetch-satellite-global", table: "satellite_observations" as any },
   { provider: "community",     max_age_hours: 14,  fn: "seed-community-metrics", table: "community_metrics" },
 ];
 
