@@ -472,9 +472,23 @@ export function RiskAtlas() {
                 <div className="p-2.5">
                   <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Overlays</div>
                   <div className="space-y-1">
-                    <ToggleRow label="Region pins" checked={showRegions} onChange={setShowRegions} hint={selectedCountry ? "Drill-down active" : "Select a country first"} />
-                    <ToggleRow label="Trend arrows" checked={showTrendArrows} onChange={setShowTrendArrows} />
-                    <ToggleRow label="Comparison line" checked={showComparison} onChange={setShowComparison} hint={currentQuery.comparison ? "Active" : "No comparison"} />
+                    {[
+                      { label: "Region pins", checked: showRegions, onChange: setShowRegions, hint: selectedCountry ? "Drill-down active" : "Select a country first" },
+                      { label: "Trend arrows", checked: showTrendArrows, onChange: setShowTrendArrows, hint: undefined as string | undefined },
+                      { label: "Comparison line", checked: showComparison, onChange: setShowComparison, hint: currentQuery.comparison ? "Active" : "No comparison" },
+                    ].map((row) => (
+                      <button
+                        key={row.label}
+                        onClick={() => row.onChange(!row.checked)}
+                        className="w-full flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-muted/50 transition-colors text-[11px]"
+                      >
+                        <span className="flex items-center gap-1.5 text-foreground">
+                          {row.label}
+                          {row.hint && <span className="text-[9px] text-muted-foreground">({row.hint})</span>}
+                        </span>
+                        {row.checked ? <Eye className="w-3 h-3 text-primary" /> : <EyeOff className="w-3 h-3 text-muted-foreground" />}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
