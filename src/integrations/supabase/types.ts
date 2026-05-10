@@ -1688,16 +1688,19 @@ export type Database = {
           key: string
           updated_at: string | null
           value_int: number | null
+          value_text: string | null
         }
         Insert: {
           key: string
           updated_at?: string | null
           value_int?: number | null
+          value_text?: string | null
         }
         Update: {
           key?: string
           updated_at?: string | null
           value_int?: number | null
+          value_text?: string | null
         }
         Relationships: []
       }

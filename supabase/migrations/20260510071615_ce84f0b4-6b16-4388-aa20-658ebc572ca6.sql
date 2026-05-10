@@ -1,0 +1,1 @@
+ALTER TABLE public.backfill_state ADD COLUMN IF NOT EXISTS value_text text;

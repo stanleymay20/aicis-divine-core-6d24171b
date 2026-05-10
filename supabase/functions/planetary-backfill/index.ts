@@ -641,16 +641,34 @@ async function generateLinks(supabase: any, params: any) {
   }
 
   if (linkType === "all" || linkType === "metric_entity") {
-    const batchLimit = params.limit || 5000;
-    const { data: unlinked } = await supabase
-      .from("normalized_metrics").select("id, entity_id")
-      .not("entity_id", "is", null).order("id").limit(batchLimit);
+    // Cursor-based: walk newest metrics first, advance via backfill_state.
+    // This guarantees forward progress instead of always re-scanning the same head.
+    const batchLimit = Math.min(params.limit || 2000, 5000);
+    const { data: cursorRow } = await supabase
+      .from("backfill_state").select("value_text").eq("key", "metric_entity_cursor").maybeSingle();
+    const cursorTs = cursorRow?.value_text || new Date().toISOString();
 
-    if (unlinked) {
+    const { data: unlinked } = await supabase
+      .from("normalized_metrics")
+      .select("id, entity_id, created_at")
+      .not("entity_id", "is", null)
+      .lte("created_at", cursorTs)
+      .order("created_at", { ascending: false })
+      .limit(batchLimit);
+
+    if (unlinked && unlinked.length > 0) {
       const metricIds = unlinked.map((m: any) => m.id);
-      const { data: existing } = await supabase
-        .from("entity_metric_links").select("metric_id").in("metric_id", metricIds.slice(0, 1000));
-      const existingSet = new Set((existing || []).map((r: any) => r.metric_id));
+      // FULL dedup: chunk the existence check across ALL ids in the batch.
+      const existingSet = new Set<string>();
+      for (let i = 0; i < metricIds.length; i += 500) {
+        const slice = metricIds.slice(i, i + 500);
+        const { data: existing } = await supabase
+          .from("entity_metric_links")
+          .select("metric_id")
+          .in("metric_id", slice)
+          .eq("link_role", "primary_entity");
+        for (const r of existing || []) existingSet.add(r.metric_id);
+      }
 
       const newLinks = unlinked
         .filter((m: any) => !existingSet.has(m.id))
@@ -665,6 +683,20 @@ async function generateLinks(supabase: any, params: any) {
           else errors.push(error.message);
         }
       }
+
+      // Advance cursor to oldest created_at in this batch (1ms back to avoid reprocessing same row).
+      const oldest = unlinked[unlinked.length - 1].created_at;
+      const nextCursor = new Date(new Date(oldest).getTime() - 1).toISOString();
+      await supabase.from("backfill_state").upsert(
+        { key: "metric_entity_cursor", value_text: nextCursor, updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+    } else {
+      // Reached the tail — reset cursor to now so the next run picks up new arrivals.
+      await supabase.from("backfill_state").upsert(
+        { key: "metric_entity_cursor", value_text: new Date().toISOString(), updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
     }
   }
 
