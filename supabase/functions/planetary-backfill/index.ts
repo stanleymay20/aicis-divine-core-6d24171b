@@ -700,6 +700,70 @@ async function generateLinks(supabase: any, params: any) {
     }
   }
 
+  // ─── metric_entity_iso3 ───────────────────────────────────────────
+  // Resolve the BIG backlog: 3.3M+ metrics that have iso3 but NULL entity_id.
+  // Walk via separate cursor and link to canonical country entities by iso3.
+  if (linkType === "all" || linkType === "metric_entity" || linkType === "metric_entity_iso3") {
+    const batchLimit = Math.min(params.limit || 2000, 5000);
+    const isoMap = await getCanonicalEntityMap(supabase);
+
+    const { data: cursorRow2 } = await supabase
+      .from("backfill_state").select("value_text").eq("key", "metric_entity_iso3_cursor").maybeSingle();
+    const cursorTs2 = cursorRow2?.value_text || new Date().toISOString();
+
+    const { data: nullEntity } = await supabase
+      .from("normalized_metrics")
+      .select("id, iso3, created_at")
+      .is("entity_id", null)
+      .not("iso3", "is", null)
+      .lte("created_at", cursorTs2)
+      .order("created_at", { ascending: false })
+      .limit(batchLimit);
+
+    if (nullEntity && nullEntity.length > 0) {
+      const candidates = nullEntity
+        .map((m: any) => ({ metric_id: m.id, entity_id: isoMap.get(m.iso3), iso3: m.iso3 }))
+        .filter((x: any) => x.entity_id);
+
+      if (candidates.length > 0) {
+        const ids = candidates.map((c: any) => c.metric_id);
+        const existingSet = new Set<string>();
+        for (let i = 0; i < ids.length; i += 500) {
+          const { data: existing } = await supabase
+            .from("entity_metric_links")
+            .select("metric_id")
+            .in("metric_id", ids.slice(i, i + 500))
+            .eq("link_role", "country");
+          for (const r of existing || []) existingSet.add(r.metric_id);
+        }
+
+        const newLinks = candidates
+          .filter((c: any) => !existingSet.has(c.metric_id))
+          .map((c: any) => ({ metric_id: c.metric_id, entity_id: c.entity_id, link_role: "country", confidence: 0.85 }));
+
+        for (let i = 0; i < newLinks.length; i += 500) {
+          const { error } = await supabase
+            .from("entity_metric_links")
+            .upsert(newLinks.slice(i, i + 500), { onConflict: "metric_id,entity_id,link_role", ignoreDuplicates: true });
+          if (!error) linksCreated += Math.min(500, newLinks.length - i);
+          else errors.push(`iso3: ${error.message}`);
+        }
+      }
+
+      const oldest = nullEntity[nullEntity.length - 1].created_at;
+      const nextCursor = new Date(new Date(oldest).getTime() - 1).toISOString();
+      await supabase.from("backfill_state").upsert(
+        { key: "metric_entity_iso3_cursor", value_text: nextCursor, updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+    } else {
+      await supabase.from("backfill_state").upsert(
+        { key: "metric_entity_iso3_cursor", value_text: new Date().toISOString(), updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+    }
+  }
+
   return jsonRes({ ok: true, phase: "4", links_created: linksCreated, errors: errors.slice(0, 10), error_count: errors.length });
 }
 
