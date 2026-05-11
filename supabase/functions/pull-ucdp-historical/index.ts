@@ -78,27 +78,44 @@ serve(async (req) => {
 
       for (const e of results) {
         if (!e.country_id || !e.date_start) continue;
+        const occurredAt = new Date(e.date_start).toISOString();
+        const endedAt = e.date_end ? new Date(e.date_end).toISOString() : occurredAt;
+        const fatalities = e.best ?? null;
+        const eventType = e.type_of_violence === 1 ? "state_based_conflict"
+          : e.type_of_violence === 2 ? "non_state_conflict"
+          : "one_sided_violence";
         rows.push({
           dedup_key: `ucdp:ged:${UCDP_VERSION}:${e.id}`,
-          source: "ucdp_ged",
           provider_name: "ucdp",
-          event_type: e.type_of_violence === 1 ? "state_based_conflict"
-            : e.type_of_violence === 2 ? "non_state_conflict"
-            : "one_sided_violence",
-          iso3: e.country?.length === 3 ? e.country : null,
-          country_name: e.country,
-          period: e.date_start.split("T")[0],
-          severity: e.best != null ? Math.min(100, Math.log10(Math.max(1, e.best)) * 25) : null,
-          fatalities: e.best ?? null,
-          latitude: e.latitude ? parseFloat(e.latitude) : null,
-          longitude: e.longitude ? parseFloat(e.longitude) : null,
-          summary: `${e.side_a} vs ${e.side_b} in ${e.adm_1 || e.country}`,
+          event_type: eventType,
+          category: "conflict",
+          title: `${e.side_a || "Unknown"} vs ${e.side_b || "Unknown"} — ${e.country}`,
+          description: `${fatalities ?? 0} fatalities in ${e.adm_1 || e.country} (${e.where_coordinates || ""}). Source: ${e.source_article || e.source_original || "UCDP"}`,
+          iso3: null,
+          country_iso3: null,
+          source_name: "UCDP GED",
+          source_url: `https://ucdp.uu.se/encyclopedia`,
+          occurred_at: occurredAt,
+          started_at: occurredAt,
+          ended_at: endedAt,
+          severity: fatalities != null ? Math.min(100, Math.log10(Math.max(1, fatalities)) * 25) : null,
           confidence: 0.95,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
           provenance_source: "UCDP GED v" + UCDP_VERSION,
-          provenance_observed_at: new Date().toISOString(),
-          metadata: { conflict_id: e.conflict_new_id, dyad_id: e.dyad_new_id, year: nextYear },
+          last_verified_at: new Date().toISOString(),
+          metadata: {
+            conflict_id: e.conflict_new_id,
+            dyad_id: e.dyad_new_id,
+            country_name: e.country,
+            country_id: e.country_id,
+            region: e.region,
+            adm_1: e.adm_1,
+            adm_2: e.adm_2,
+            latitude: e.latitude,
+            longitude: e.longitude,
+            fatalities,
+            deaths_civilians: e.deaths_civilians,
+            year: nextYear,
+          },
         });
       }
       if (results.length < pageSize) break;
