@@ -436,3 +436,6 @@ verify_jwt = false
 
 [functions.score-signal-relevance]
 verify_jwt = false
+
+[functions.learn-relevance-profile]
+verify_jwt = false
