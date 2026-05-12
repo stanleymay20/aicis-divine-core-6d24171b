@@ -1,23 +1,37 @@
 /**
- * LiveSignalStream — real-time event stream of newly recovered global_signals.
+ * LiveSignalStream — relevance-aware real-time event stream.
  *
- * - Initial fetch: last 30 minutes of global_signals.
- * - Live tail: Supabase Realtime postgres_changes on public.global_signals.
- * - Auto-prunes rows older than the 30-minute window.
- * - Highlights detection_audit_recovery rows (the "we caught what wires missed" feed).
+ * Phase 1 upgrade:
+ * - Default visibility becomes Critical + Important relevance tiers.
+ * - Monitor / Discovery / Raw Stream remain available for analysts.
+ * - Scored relevance from signal_relevance_scores is preferred.
+ * - If a signal has not been scored yet, the UI computes a safe fallback tier from urgency/impact/confidence/novelty.
+ * - Feedback buttons write user_signal_feedback for the learning loop.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Activity, Radio, ShieldAlert, Globe2, Pause, Play, Filter } from "lucide-react";
+import { Activity, Radio, ShieldAlert, Globe2, Pause, Play, Filter, Sparkles, Eye, EyeOff, ThumbsUp, ThumbsDown, Bookmark, Siren } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { BreakingNowLane } from "@/components/live/BreakingNowLane";
 import { StreamingHealthPanel } from "@/components/live/StreamingHealthPanel";
 import { PipelineStageLatencyPanel } from "@/components/live/PipelineStageLatencyPanel";
 import { FirehoseHealthGrid } from "@/components/live/FirehoseHealthGrid";
+
+type RelevanceTier = "critical" | "important" | "monitor" | "discovery" | "hidden";
+type VisibilityTab = RelevanceTier | "raw";
+type OperationalFilter = "all" | "recovery" | "high_impact";
+
+type RelevanceScore = {
+  signal_id: string;
+  relevance_score: number;
+  relevance_tier: RelevanceTier;
+  relevance_reason: any;
+  computed_at: string;
+};
 
 type Signal = {
   id: string;
@@ -48,6 +62,12 @@ type Signal = {
   country_extraction_confidence: number | null;
   detection_latency_seconds: number | null;
   last_pipeline_stage: string | null;
+  novelty_score?: number | null;
+  relevance_score?: number | null;
+  relevance_tier?: RelevanceTier | null;
+  relevance_reason?: any;
+  relevance_computed_at?: string | null;
+  relevance_is_fallback?: boolean;
 };
 
 const WINDOW_MS = 30 * 60 * 1000;
@@ -57,6 +77,17 @@ function tierColor(tier: string | null) {
     case "tier_1": return "bg-emerald-500/15 text-emerald-300 border-emerald-700/50";
     case "tier_2": return "bg-sky-500/15 text-sky-300 border-sky-700/50";
     default:       return "bg-zinc-500/15 text-zinc-300 border-zinc-700/50";
+  }
+}
+
+function relevanceBadgeColor(tier: RelevanceTier | null | undefined) {
+  switch (tier) {
+    case "critical": return "bg-red-500/15 text-red-300 border-red-700/50";
+    case "important": return "bg-orange-500/15 text-orange-300 border-orange-700/50";
+    case "monitor": return "bg-sky-500/15 text-sky-300 border-sky-700/50";
+    case "discovery": return "bg-violet-500/15 text-violet-300 border-violet-700/50";
+    case "hidden": return "bg-zinc-500/15 text-zinc-300 border-zinc-700/50";
+    default: return "bg-muted text-muted-foreground border-border";
   }
 }
 
@@ -70,14 +101,79 @@ function sourceBadge(s: Signal) {
   return { label: (s.ingestion_source || "wire").slice(0, 18), className: "bg-zinc-500/15 text-zinc-300 border-zinc-700/50" };
 }
 
+function tierFromScore(score: number): RelevanceTier {
+  if (score >= 85) return "critical";
+  if (score >= 70) return "important";
+  if (score >= 55) return "monitor";
+  if (score >= 40) return "discovery";
+  return "hidden";
+}
+
+function fallbackRelevance(s: Signal): Pick<Signal, "relevance_score" | "relevance_tier" | "relevance_reason" | "relevance_is_fallback"> {
+  const urgency = s.urgency_score ?? 0;
+  const impact = s.impact_score ?? 0;
+  const confidence = s.confidence_score ?? 0;
+  const novelty = s.novelty_score ?? 50;
+  const corrob = Math.min(100, Math.max(0, ((s.corroboration_count ?? 1) - 1) * 18));
+  const sourceBoost = s.source_trust_tier === "tier_1" ? 8 : s.source_trust_tier === "tier_2" ? 4 : 0;
+  const score = Math.max(
+    0,
+    Math.min(100, Math.round(impact * 0.28 + urgency * 0.28 + confidence * 0.18 + novelty * 0.12 + corrob * 0.08 + sourceBoost)),
+  );
+  const weakSignalProtected = novelty >= 85 || corrob >= 45 || (urgency >= 75 && impact >= 60);
+  const finalScore = weakSignalProtected ? Math.max(score, 40) : score;
+  return {
+    relevance_score: finalScore,
+    relevance_tier: tierFromScore(finalScore),
+    relevance_is_fallback: true,
+    relevance_reason: {
+      formula_version: "ui_fallback_v1",
+      explanation: weakSignalProtected
+        ? "Discovery preserved because this is unusual, corroborated, or urgent even before user-specific scoring completes."
+        : "Temporary operational relevance estimate until personalized scoring completes.",
+      components: { urgency, impact, confidence, novelty, corroboration: corrob, source_boost: sourceBoost },
+      weak_signal_protected: weakSignalProtected,
+    },
+  };
+}
+
+function applyRelevance(signals: Signal[], scores: RelevanceScore[] | undefined): Signal[] {
+  const scoreMap = new Map((scores ?? []).map((s) => [s.signal_id, s]));
+  return signals.map((signal) => {
+    const scored = scoreMap.get(signal.id);
+    if (scored) {
+      return {
+        ...signal,
+        relevance_score: scored.relevance_score,
+        relevance_tier: scored.relevance_tier,
+        relevance_reason: scored.relevance_reason,
+        relevance_computed_at: scored.computed_at,
+        relevance_is_fallback: false,
+      };
+    }
+    return { ...signal, ...fallbackRelevance(signal) };
+  });
+}
+
 export default function LiveSignalStream() {
+  const queryClient = useQueryClient();
   const [paused, setPaused] = useState(false);
-  const [filter, setFilter] = useState<"all" | "recovery" | "high_impact">("all");
+  const [filter, setFilter] = useState<OperationalFilter>("all");
+  const [visibility, setVisibility] = useState<VisibilityTab>("important");
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [tickCount, setTickCount] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
   const seen = useRef<Set<string>>(new Set());
+
+  const auth = useQuery({
+    queryKey: ["current-user"],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getUser();
+      return data.user;
+    },
+    staleTime: 60_000,
+  });
 
   const initial = useQuery({
     queryKey: ["live-stream-initial"],
@@ -85,7 +181,7 @@ export default function LiveSignalStream() {
       const since = new Date(Date.now() - WINDOW_MS).toISOString();
       const { data, error } = await supabase
         .from("global_signals")
-        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status,language_tier,script_detected,country_extraction_method,country_extraction_confidence,detection_latency_seconds,last_pipeline_stage")
+        .select("id,title,summary,category,primary_source,canonical_source_name,ingestion_source,source_trust_tier,confidence_score,impact_score,urgency_score,affected_countries,first_detected_at,ingested_at,canonical_event_status,corroboration_count,propaganda_risk_score,source_credibility_score,confidence_explanation,source_language,translated_title,translation_status,language_tier,script_detected,country_extraction_method,country_extraction_confidence,detection_latency_seconds,last_pipeline_stage,novelty_score")
         .gte("first_detected_at", since)
         .order("first_detected_at", { ascending: false })
         .limit(200);
@@ -94,6 +190,29 @@ export default function LiveSignalStream() {
     },
     staleTime: 15_000,
   });
+
+  const signalIds = useMemo(() => signals.map((s) => s.id), [signals]);
+
+  const relevanceScores = useQuery({
+    queryKey: ["live-signal-relevance", auth.data?.id, signalIds.join(",")],
+    enabled: !!auth.data?.id && signalIds.length > 0,
+    queryFn: async (): Promise<RelevanceScore[]> => {
+      const { data, error } = await (supabase as any)
+        .from("signal_relevance_scores")
+        .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
+        .eq("user_id", auth.data!.id)
+        .in("signal_id", signalIds);
+      if (error) throw error;
+      return (data ?? []) as RelevanceScore[];
+    },
+    refetchInterval: 20_000,
+    staleTime: 10_000,
+  });
+
+  const enrichedSignals = useMemo(
+    () => applyRelevance(signals, relevanceScores.data),
+    [signals, relevanceScores.data],
+  );
 
   // Seed state from initial fetch
   useEffect(() => {
@@ -131,19 +250,47 @@ export default function LiveSignalStream() {
   }, []);
 
   const filtered = useMemo(() => {
-    return signals.filter(s => {
+    return enrichedSignals.filter(s => {
       if (!showDuplicates && s.canonical_event_status === "duplicate") return false;
-      if (filter === "recovery") return s.ingestion_source === "detection_audit_recovery";
-      if (filter === "high_impact") return (s.impact_score ?? 0) >= 65;
+      if (filter === "recovery" && s.ingestion_source !== "detection_audit_recovery") return false;
+      if (filter === "high_impact" && (s.impact_score ?? 0) < 65) return false;
+
+      if (visibility === "raw") return true;
+      if (visibility === "critical") return s.relevance_tier === "critical";
+      if (visibility === "important") return s.relevance_tier === "critical" || s.relevance_tier === "important";
+      if (visibility === "monitor") return s.relevance_tier === "monitor";
+      if (visibility === "discovery") return s.relevance_tier === "discovery";
+      if (visibility === "hidden") return s.relevance_tier === "hidden";
       return true;
     });
-  }, [signals, filter, showDuplicates]);
+  }, [enrichedSignals, filter, showDuplicates, visibility]);
 
-  const dupeCount = signals.filter(s => s.canonical_event_status === "duplicate").length;
+  const tierCounts = useMemo(() => {
+    return enrichedSignals.reduce((acc: Record<string, number>, s) => {
+      const t = s.relevance_tier ?? "hidden";
+      acc[t] = (acc[t] ?? 0) + 1;
+      return acc;
+    }, {});
+  }, [enrichedSignals]);
 
-  const recoveryCount = signals.filter(s => s.ingestion_source === "detection_audit_recovery").length;
-  const sourceSet = new Set(signals.map(s => s.canonical_source_name || s.primary_source).filter(Boolean));
-  const countrySet = new Set(signals.flatMap(s => s.affected_countries ?? []));
+  const feedback = useMutation({
+    mutationFn: async ({ signalId, type, context }: { signalId: string; type: string; context?: any }) => {
+      if (!auth.data?.id) throw new Error("Sign in required to save feedback.");
+      const { error } = await (supabase as any).from("user_signal_feedback").insert({
+        user_id: auth.data.id,
+        signal_id: signalId,
+        feedback_type: type,
+        feedback_context: context ?? {},
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["live-signal-relevance"] }),
+  });
+
+  const dupeCount = enrichedSignals.filter(s => s.canonical_event_status === "duplicate").length;
+  const recoveryCount = enrichedSignals.filter(s => s.ingestion_source === "detection_audit_recovery").length;
+  const sourceSet = new Set(enrichedSignals.map(s => s.canonical_source_name || s.primary_source).filter(Boolean));
+  const countrySet = new Set(enrichedSignals.flatMap(s => s.affected_countries ?? []));
 
   return (
     <div className="container mx-auto py-6 max-w-6xl space-y-5">
@@ -153,7 +300,7 @@ export default function LiveSignalStream() {
             <Radio className="h-7 w-7 text-emerald-400 animate-pulse" /> Live Signal Stream
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Real-time tail of the planetary nervous system — every signal ingested in the last 30 minutes.
+            Relevance-aware real-time tail of the planetary nervous system. Raw firehose remains available for analysts.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -169,8 +316,8 @@ export default function LiveSignalStream() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatTile icon={<Activity className="h-4 w-4" />} label="Signals (30m)" value={signals.length.toString()} accent="text-emerald-300" />
-        <StatTile icon={<ShieldAlert className="h-4 w-4" />} label="Recovered" value={recoveryCount.toString()} accent="text-amber-300" />
+        <StatTile icon={<Activity className="h-4 w-4" />} label="Signals (30m)" value={enrichedSignals.length.toString()} accent="text-emerald-300" />
+        <StatTile icon={<ShieldAlert className="h-4 w-4" />} label="Critical/Important" value={((tierCounts.critical ?? 0) + (tierCounts.important ?? 0)).toString()} accent="text-orange-300" />
         <StatTile icon={<Globe2 className="h-4 w-4" />} label="Countries touched" value={countrySet.size.toString()} accent="text-sky-300" />
         <StatTile icon={<Radio className="h-4 w-4" />} label="Distinct sources" value={sourceSet.size.toString()} accent="text-violet-300" />
       </div>
@@ -185,31 +332,45 @@ export default function LiveSignalStream() {
         <FirehoseHealthGrid />
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <Filter className="h-4 w-4 text-muted-foreground" />
-        <FilterPill active={filter === "all"} onClick={() => setFilter("all")}>All</FilterPill>
-        <FilterPill active={filter === "recovery"} onClick={() => setFilter("recovery")}>Recovered only</FilterPill>
-        <FilterPill active={filter === "high_impact"} onClick={() => setFilter("high_impact")}>High impact (≥65)</FilterPill>
-        <FilterPill active={showDuplicates} onClick={() => setShowDuplicates(v => !v)}>
-          {showDuplicates ? "Hiding none" : `Show duplicate reports (${dupeCount})`}
-        </FilterPill>
-        {tickCount > 0 && (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {tickCount} live insert{tickCount === 1 ? "" : "s"} since page load
-          </span>
-        )}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <FilterPill active={visibility === "critical"} onClick={() => setVisibility("critical")}>Critical ({tierCounts.critical ?? 0})</FilterPill>
+          <FilterPill active={visibility === "important"} onClick={() => setVisibility("important")}>Important+ ({(tierCounts.critical ?? 0) + (tierCounts.important ?? 0)})</FilterPill>
+          <FilterPill active={visibility === "monitor"} onClick={() => setVisibility("monitor")}>Monitor ({tierCounts.monitor ?? 0})</FilterPill>
+          <FilterPill active={visibility === "discovery"} onClick={() => setVisibility("discovery")}>Discovery ({tierCounts.discovery ?? 0})</FilterPill>
+          <FilterPill active={visibility === "hidden"} onClick={() => setVisibility("hidden")}><EyeOff className="h-3 w-3 inline mr-1" />Hidden ({tierCounts.hidden ?? 0})</FilterPill>
+          <FilterPill active={visibility === "raw"} onClick={() => setVisibility("raw")}><Eye className="h-3 w-3 inline mr-1" />Raw Stream</FilterPill>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <FilterPill active={filter === "all"} onClick={() => setFilter("all")}>All sources</FilterPill>
+          <FilterPill active={filter === "recovery"} onClick={() => setFilter("recovery")}>Recovered only ({recoveryCount})</FilterPill>
+          <FilterPill active={filter === "high_impact"} onClick={() => setFilter("high_impact")}>High impact (≥65)</FilterPill>
+          <FilterPill active={showDuplicates} onClick={() => setShowDuplicates(v => !v)}>
+            {showDuplicates ? "Hiding none" : `Show duplicate reports (${dupeCount})`}
+          </FilterPill>
+          {tickCount > 0 && (
+            <span className="ml-auto text-xs text-muted-foreground">
+              {tickCount} live insert{tickCount === 1 ? "" : "s"} since page load
+            </span>
+          )}
+        </div>
       </div>
 
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <span className={`h-2 w-2 rounded-full ${paused ? "bg-zinc-500" : "bg-emerald-400 animate-pulse"}`} />
-            {paused ? "Stream paused" : "Streaming live"}
+            {paused ? "Stream paused" : visibility === "raw" ? "Raw analyst stream" : "Relevance-ranked stream"}
           </CardTitle>
           <CardDescription>
             {filtered.length === 0
-              ? initial.isLoading ? "Loading…" : "No signals in window. The system is quiet right now."
-              : `Showing ${filtered.length} of ${signals.length} rows in the rolling 30-minute window.`}
+              ? initial.isLoading ? "Loading…" : "No signals in this relevance tier. Try Discovery or Raw Stream."
+              : `Showing ${filtered.length} of ${enrichedSignals.length} rows in the rolling 30-minute window.`}
+            {relevanceScores.data && relevanceScores.data.length < signalIds.length && auth.data?.id && (
+              <span className="ml-1 text-amber-400">Some rows are using fallback relevance until the scorer catches up.</span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 max-h-[70vh] overflow-y-auto pr-2">
@@ -244,6 +405,9 @@ export default function LiveSignalStream() {
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                    <Badge variant="outline" className={relevanceBadgeColor(s.relevance_tier) + " text-[10px] font-mono"} title={s.relevance_is_fallback ? "Fallback relevance estimate" : "Personalized relevance score"}>
+                      {s.relevance_tier}{typeof s.relevance_score === "number" ? ` ${s.relevance_score}` : ""}{s.relevance_is_fallback ? "*" : ""}
+                    </Badge>
                     {s.source_language && s.source_language !== "en" && s.source_language !== "und" && (
                       <Badge variant="outline" className="bg-violet-500/15 text-violet-200 border-violet-700/50 text-[10px] uppercase font-mono">{s.source_language}</Badge>
                     )}
@@ -295,8 +459,25 @@ export default function LiveSignalStream() {
                     </button>
                   </div>
                 </div>
-                {isOpen && s.confidence_explanation && (
-                  <WhyTrustPanel signal={s} />
+                {isOpen && (
+                  <div className="space-y-2">
+                    <WhyRelevantPanel signal={s} />
+                    {s.confidence_explanation && <WhyTrustPanel signal={s} />}
+                    <FeedbackRow
+                      signal={s}
+                      disabled={!auth.data?.id || feedback.isPending}
+                      onFeedback={(type) => feedback.mutate({
+                        signalId: s.id,
+                        type,
+                        context: {
+                          relevance_tier: s.relevance_tier,
+                          relevance_score: s.relevance_score,
+                          visibility,
+                          fallback: s.relevance_is_fallback,
+                        },
+                      })}
+                    />
+                  </div>
                 )}
               </div>
             );
@@ -321,7 +502,7 @@ function mergeAndPrune(rows: Signal[]): Signal[] {
   return kept.slice(0, 300);
 }
 
-function StatTile({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent: string }) {
+function StatTile({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <Card>
       <CardContent className="p-3">
@@ -356,6 +537,32 @@ const TIER_LABELS: Record<string, string> = {
   tier_3: "Tier 3 — Regional outlet",
   tier_4: "Tier 4 — General web / social",
 };
+
+function WhyRelevantPanel({ signal }: { signal: Signal }) {
+  const exp = (signal.relevance_reason || {}) as Record<string, any>;
+  const components = exp.components || {};
+  const matches = exp.matches || {};
+  return (
+    <div className="mt-2 pt-2 border-t border-border/50 text-[11px] space-y-1.5">
+      <div className="font-semibold text-foreground/80">Why relevant</div>
+      <Row label="Visibility tier" value={`${signal.relevance_tier ?? "unknown"}${typeof signal.relevance_score === "number" ? ` · ${signal.relevance_score}/100` : ""}`} />
+      {exp.explanation && <Row label="Reason" value={String(exp.explanation)} />}
+      {signal.relevance_is_fallback && <Row label="Scoring mode" value="Fallback until personalized scorer catches up" />}
+      {Object.keys(matches).some((k) => Array.isArray(matches[k]) && matches[k].length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
+          {Object.entries(matches).map(([k, v]) => Array.isArray(v) && v.length > 0 ? (
+            <Row key={k} label={k.replaceAll("_", " ")} value={v.slice(0, 4).join(", ")} />
+          ) : null)}
+        </div>
+      )}
+      <div className="mt-1 p-2 bg-muted/20 rounded font-mono text-[10px] text-muted-foreground grid grid-cols-2 sm:grid-cols-4 gap-1">
+        {Object.entries(components).slice(0, 8).map(([k, v]) => (
+          <span key={k}>{k}: {String(v)}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function WhyTrustPanel({ signal }: { signal: Signal }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -397,6 +604,27 @@ function WhyTrustPanel({ signal }: { signal: Signal }) {
           {exp.propaganda_penalty != null && <div>propaganda_penalty: −{exp.propaganda_penalty}</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+function FeedbackRow({ signal, disabled, onFeedback }: { signal: Signal; disabled: boolean; onFeedback: (type: string) => void }) {
+  return (
+    <div className="mt-2 pt-2 border-t border-border/50 flex items-center gap-2 flex-wrap text-[11px]">
+      <span className="text-muted-foreground mr-1">Teach relevance:</span>
+      <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={disabled} onClick={() => onFeedback("important") }>
+        <ThumbsUp className="h-3 w-3 mr-1" /> Important
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={disabled} onClick={() => onFeedback("not_relevant") }>
+        <ThumbsDown className="h-3 w-3 mr-1" /> Not relevant
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={disabled} onClick={() => onFeedback("save") }>
+        <Bookmark className="h-3 w-3 mr-1" /> Save
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={disabled} onClick={() => onFeedback("escalate") }>
+        <Siren className="h-3 w-3 mr-1" /> Escalate
+      </Button>
+      {!disabled && signal.relevance_is_fallback && <span className="text-amber-400">fallback score</span>}
     </div>
   );
 }
