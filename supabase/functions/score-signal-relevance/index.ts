@@ -60,6 +60,33 @@ const DEFAULT_WEIGHTS = {
   novelty_anomaly: 0.05,
 };
 
+const DEFAULT_TOPICS = [
+  "geopolitical",
+  "defense",
+  "conflict",
+  "supply chain",
+  "energy",
+  "cybersecurity",
+  "public health",
+  "climate",
+  "food",
+  "finance",
+  "infrastructure",
+  "migration",
+];
+
+const DEFAULT_SECTORS = [
+  "energy",
+  "finance",
+  "health",
+  "food",
+  "security",
+  "logistics",
+  "technology",
+  "infrastructure",
+  "humanitarian",
+];
+
 function arr(v: string[] | null | undefined): string[] {
   return Array.isArray(v) ? v.filter(Boolean).map((x) => String(x).toLowerCase()) : [];
 }
@@ -136,12 +163,10 @@ function relevance(signal: Signal, profile: Profile) {
     confidence * weights.confidence +
     anomalyWeakSignalBoost * weights.novelty_anomaly;
 
-  // Trust should not dominate user relevance, but it should prevent noisy alerts.
   const sourceTrust = trustScore(signal.source_trust_tier);
   if (sourceTrust < 45 && score >= 70) score -= 8;
   if (excluded.hit) score -= 35;
 
-  // Preserve weak-signal discovery: unusual/urgent signals can never fall below discovery.
   const weakSignalProtected = novelty >= 85 || corrob >= 45 || (urgency >= 75 && impact >= 60);
   if (weakSignalProtected) score = Math.max(score, profile.discovery_threshold ?? 40);
 
@@ -186,6 +211,37 @@ function explain(score: number, ctx: any): string {
   return "Hidden from default alerts because it has low user-context relevance.";
 }
 
+async function ensureProfile(sb: any, userId: string): Promise<Profile> {
+  const { data: existing, error: readErr } = await sb
+    .from("user_relevance_profiles")
+    .select("id,user_id,workspace_id,watched_countries,watched_regions,watched_sectors,watched_topics,watched_entities,excluded_topics,alert_threshold,discovery_threshold,weights")
+    .eq("user_id", userId)
+    .is("workspace_id", null)
+    .maybeSingle();
+  if (readErr) throw readErr;
+  if (existing) return existing as Profile;
+
+  const { data: created, error: insertErr } = await sb
+    .from("user_relevance_profiles")
+    .insert({
+      user_id: userId,
+      workspace_id: null,
+      watched_topics: DEFAULT_TOPICS,
+      watched_sectors: DEFAULT_SECTORS,
+      watched_countries: [],
+      watched_regions: [],
+      watched_entities: [],
+      excluded_topics: ["sports", "celebrity", "game review", "shopping deal"],
+      alert_threshold: 70,
+      discovery_threshold: 40,
+      weights: DEFAULT_WEIGHTS,
+    })
+    .select("id,user_id,workspace_id,watched_countries,watched_regions,watched_sectors,watched_topics,watched_entities,excluded_topics,alert_threshold,discovery_threshold,weights")
+    .single();
+  if (insertErr) throw insertErr;
+  return created as Profile;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const started = Date.now();
@@ -195,17 +251,23 @@ Deno.serve(async (req) => {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const limit = Math.min(Number(body.limit ?? BATCH), 2000);
     const userId = body.user_id ? String(body.user_id) : null;
+    const bootstrap = body.bootstrap !== false;
 
-    let profileQuery = sb
-      .from("user_relevance_profiles")
-      .select("id,user_id,workspace_id,watched_countries,watched_regions,watched_sectors,watched_topics,watched_entities,excluded_topics,alert_threshold,discovery_threshold,weights")
-      .limit(200);
-    if (userId) profileQuery = profileQuery.eq("user_id", userId);
+    let profiles: Profile[] = [];
+    if (userId && bootstrap) {
+      profiles = [await ensureProfile(sb, userId)];
+    } else {
+      let profileQuery = sb
+        .from("user_relevance_profiles")
+        .select("id,user_id,workspace_id,watched_countries,watched_regions,watched_sectors,watched_topics,watched_entities,excluded_topics,alert_threshold,discovery_threshold,weights")
+        .limit(200);
+      if (userId) profileQuery = profileQuery.eq("user_id", userId);
+      const { data, error: pErr } = await profileQuery;
+      if (pErr) throw pErr;
+      profiles = (data ?? []) as Profile[];
+    }
 
-    const { data: profiles, error: pErr } = await profileQuery;
-    if (pErr) throw pErr;
-
-    if (!profiles || profiles.length === 0) {
+    if (profiles.length === 0) {
       await sb.from("automation_logs").insert({
         job_name: "score-signal-relevance",
         status: "success",
@@ -225,7 +287,7 @@ Deno.serve(async (req) => {
     if (sErr) throw sErr;
 
     const rows: any[] = [];
-    for (const profile of profiles as Profile[]) {
+    for (const profile of profiles) {
       for (const signal of (signals ?? []) as Signal[]) {
         const r = relevance(signal, profile);
         rows.push({
