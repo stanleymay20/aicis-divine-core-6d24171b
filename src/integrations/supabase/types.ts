@@ -15225,6 +15225,7 @@ export type Database = {
       }
       audit_prospective_match_quality: { Args: never; Returns: Json }
       auto_review_decisions: { Args: { _batch_size?: number }; Returns: Json }
+      backfill_event_entity_iso3: { Args: { _batch?: number }; Returns: number }
       backfill_metric_entity_iso3: {
         Args: { _batch?: number }
         Returns: number
