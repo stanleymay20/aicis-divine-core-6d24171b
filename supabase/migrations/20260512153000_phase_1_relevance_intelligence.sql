@@ -31,8 +31,10 @@ create table if not exists public.user_relevance_profiles (
   updated_at timestamptz not null default now()
 );
 
+-- NULLS NOT DISTINCT lets one null workspace behave like one real tenant scope.
+-- This is required for Supabase upsert/onConflict to work cleanly.
 create unique index if not exists user_relevance_profiles_user_workspace_uidx
-  on public.user_relevance_profiles (user_id, coalesce(workspace_id, '00000000-0000-0000-0000-000000000000'::uuid));
+  on public.user_relevance_profiles (user_id, workspace_id) nulls not distinct;
 
 create index if not exists user_relevance_profiles_user_idx
   on public.user_relevance_profiles (user_id);
@@ -51,7 +53,7 @@ create table if not exists public.signal_relevance_scores (
 );
 
 create unique index if not exists signal_relevance_scores_signal_user_workspace_uidx
-  on public.signal_relevance_scores (signal_id, user_id, coalesce(workspace_id, '00000000-0000-0000-0000-000000000000'::uuid));
+  on public.signal_relevance_scores (signal_id, user_id, workspace_id) nulls not distinct;
 
 create index if not exists signal_relevance_scores_user_tier_idx
   on public.signal_relevance_scores (user_id, relevance_tier, computed_at desc);
@@ -130,7 +132,6 @@ select
 from public.signal_relevance_scores srs
 join public.user_relevance_profiles urp
   on urp.user_id = srs.user_id
- and coalesce(urp.workspace_id, '00000000-0000-0000-0000-000000000000'::uuid)
-   = coalesce(srs.workspace_id, '00000000-0000-0000-0000-000000000000'::uuid)
+ and urp.workspace_id is not distinct from srs.workspace_id
 where srs.relevance_tier = 'critical'
    or srs.relevance_score >= urp.alert_threshold;
