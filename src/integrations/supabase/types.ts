@@ -2546,6 +2546,24 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_job_state: {
+        Row: {
+          state_key: string
+          state_value: Json
+          updated_at: string
+        }
+        Insert: {
+          state_key: string
+          state_value?: Json
+          updated_at?: string
+        }
+        Update: {
+          state_key?: string
+          state_value?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cross_border_signals: {
         Row: {
           affected_iso3: string[]
