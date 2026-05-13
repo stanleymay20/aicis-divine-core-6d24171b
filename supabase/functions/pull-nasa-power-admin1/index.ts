@@ -1,5 +1,4 @@
-// NASA POWER per admin1 (territory entity) — writes to community_metrics.
-// Cycles through canonical_entities entity_type='territory' that have lat/lon.
+// NASA POWER per admin1 — iterates public.admin_regions (admin_level=1) with cursor.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = {
@@ -8,7 +7,7 @@ const cors = {
 };
 
 const PARAMS = "T2M,PRECTOTCORR,RH2M,WS10M";
-const BATCH = 50; // territories per invocation
+const BATCH = 60;
 const STATE_KEY = "nasa_power_admin1_cursor";
 
 Deno.serve(async (req) => {
@@ -21,29 +20,20 @@ Deno.serve(async (req) => {
   let inserted = 0, errors = 0, fetched = 0;
 
   try {
-    // cursor stored in cron_job_state (uses created_at as last id processed)
     const { data: state } = await supabase
-      .from("cron_job_state")
-      .select("state_value")
-      .eq("state_key", STATE_KEY)
-      .maybeSingle();
+      .from("cron_job_state").select("state_value").eq("state_key", STATE_KEY).maybeSingle();
     const cursor = state?.state_value?.cursor ?? null;
 
-    let q = supabase
-      .from("canonical_entities")
-      .select("id, iso3, lat, lon, canonical_name")
-      .eq("entity_type", "territory")
-      .not("lat", "is", null)
-      .not("lon", "is", null)
-      .not("iso3", "is", null)
-      .order("id", { ascending: true })
-      .limit(BATCH);
+    let q = supabase.from("admin_regions")
+      .select("id, country_iso3, lat, lon, name")
+      .eq("admin_level", 1)
+      .not("lat", "is", null).not("lon", "is", null).not("country_iso3", "is", null)
+      .order("id", { ascending: true }).limit(BATCH);
     if (cursor) q = q.gt("id", cursor);
-    const { data: territories, error } = await q;
+    const { data: regions, error } = await q;
     if (error) throw error;
-    if (!territories?.length) {
-      // reset cursor
-      await supabase.from("cron_job_state").upsert({ state_key: STATE_KEY, state_value: { cursor: null } });
+    if (!regions?.length) {
+      await supabase.from("cron_job_state").upsert({ state_key: STATE_KEY, state_value: { cursor: null }, updated_at: new Date().toISOString() });
       return json({ ok: true, msg: "cycle complete; cursor reset", inserted, fetched });
     }
 
@@ -51,9 +41,9 @@ Deno.serve(async (req) => {
     const startD = new Date(end); startD.setUTCDate(startD.getUTCDate() - 7);
     const fmt = (d: Date) => `${d.getUTCFullYear()}${String(d.getUTCMonth()+1).padStart(2,"0")}${String(d.getUTCDate()).padStart(2,"0")}`;
 
-    for (const t of territories) {
+    for (const r of regions) {
       try {
-        const url = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=${PARAMS}&community=AG&longitude=${t.lon}&latitude=${t.lat}&start=${fmt(startD)}&end=${fmt(end)}&format=JSON`;
+        const url = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=${PARAMS}&community=AG&longitude=${r.lon}&latitude=${r.lat}&start=${fmt(startD)}&end=${fmt(end)}&format=JSON`;
         const res = await fetch(url);
         if (!res.ok) { errors++; continue; }
         const j = await res.json();
@@ -63,28 +53,28 @@ Deno.serve(async (req) => {
           for (const [day, val] of Object.entries(byDay)) {
             if (!isFinite(val) || val === -999) continue;
             rows.push({
-              region_id: t.id,
-              country_iso3: t.iso3,
+              region_id: r.id,
+              country_iso3: r.country_iso3,
               domain: "environment",
-              indicator_key: pname,
+              indicator_key: pname.toLowerCase(),
               value: val,
               unit: pname === "T2M" ? "celsius" : pname === "PRECTOTCORR" ? "mm/day" : pname === "RH2M" ? "percent" : "m/s",
               source: "NASA POWER",
               captured_at: new Date(`${day.slice(0,4)}-${day.slice(4,6)}-${day.slice(6,8)}T00:00:00Z`).toISOString(),
-              metadata: { admin1: t.canonical_name, lat: t.lat, lon: t.lon },
+              metadata: { admin1: r.name, lat: r.lat, lon: r.lon },
             });
           }
         }
         fetched++;
         if (rows.length) {
           const { error: upErr } = await supabase.from("community_metrics").insert(rows);
-          if (upErr) { errors++; console.error(upErr.message); } else inserted += rows.length;
+          if (upErr) { errors++; console.error("insert", upErr.message); } else inserted += rows.length;
         }
-      } catch (e) { errors++; console.error("territory err", e); }
+      } catch (e) { errors++; console.error("region err", e); }
     }
 
-    const lastId = territories[territories.length - 1].id;
-    await supabase.from("cron_job_state").upsert({ state_key: STATE_KEY, state_value: { cursor: lastId } });
+    const lastId = regions[regions.length - 1].id;
+    await supabase.from("cron_job_state").upsert({ state_key: STATE_KEY, state_value: { cursor: lastId }, updated_at: new Date().toISOString() });
 
     await supabase.from("system_logs").insert({
       action: "pull_nasa_power_admin1",
