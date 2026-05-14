@@ -3,12 +3,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Shield, Database, Eye, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { SEO } from "@/components/SEO";
 
 const Privacy = () => {
   const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-background p-4">
+      <SEO
+        title="Privacy Policy — AICIS"
+        description="AICIS privacy policy: non-surveillance guarantee, public/aggregate data only, no PII processing, and full data sovereignty controls."
+        path="/privacy"
+      />
       <div className="container mx-auto max-w-4xl">
         <Button
           variant="outline"

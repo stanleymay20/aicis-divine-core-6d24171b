@@ -1,0 +1,16 @@
+# AICIS — AI-Assisted Civilization Intelligence System
+
+> Sovereign-grade decision intelligence: planetary-scale risk monitoring, auditable forecasts, and decision tracking across 211 countries and 9 critical domains, with a strict non-surveillance guarantee (public/aggregate data only, no PII).
+
+AICIS ingests open signals (GDELT, GDACS, USGS, EONET, IMF, World Bank, NASA POWER, ReliefWeb, tier-A institutional sources) and turns them into ranked risks, recommended actions, and prospective forecasts. The platform is built for governments, NGOs, and enterprise operators who need defensible intelligence with full audit trails (SHA-256 hash chains, Wilson confidence intervals, locked prospective evaluation).
+
+## Pages
+
+- [Home](/): Product overview, capabilities, and live planetary pulse.
+- [System Status](/status): Live component health, uptime, and incidents.
+- [Terms of Service](/terms): Usage rights and operational obligations.
+- [Privacy Policy](/privacy): Non-surveillance guarantee and data sovereignty controls.
+
+## Optional
+
+- [Sign in](/auth): Operator authentication.

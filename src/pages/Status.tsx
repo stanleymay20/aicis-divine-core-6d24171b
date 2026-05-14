@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, AlertTriangle, XCircle, Activity, Shield } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { SEO } from "@/components/SEO";
 
 interface StatusData {
   overall_status: string;
@@ -74,6 +75,11 @@ export default function Status() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="System Status — AICIS"
+        description="Live operational status, component health, uptime, and incident reports for the AICIS intelligence platform."
+        path="/status"
+      />
       {/* Header */}
       <header className="border-b border-border">
         <div className="max-w-5xl mx-auto px-6 py-8">
