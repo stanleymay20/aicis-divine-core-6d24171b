@@ -18,6 +18,7 @@ import {
   Eye,
   Shield,
   Server,
+  Command,
 } from "lucide-react";
 import { useUserRoles } from "@/hooks/useUserRoles";
 
@@ -37,6 +38,7 @@ type NavItem = {
 };
 
 const primaryItems: NavItem[] = [
+  { id: "command", label: "Command Center", icon: Command, path: "/command-center", group: "primary" },
   { id: "brief", label: "Brief", icon: Sunrise, path: "/morning-brief", group: "primary" },
   { id: "signals", label: "Signals", icon: Radio, path: "/live", group: "primary" },
   { id: "decisions", label: "Decisions", icon: Activity, path: "/decision-ops", group: "primary" },
@@ -58,12 +60,6 @@ export const AICISSidebar = ({ collapsed, onToggle, activeSection, onSectionChan
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, isOperator } = useUserRoles();
-
-  const navItems = [
-    ...primaryItems,
-    ...(isOperator ? operatorItems : []),
-    ...(isAdmin ? adminItems : []),
-  ];
 
   const handleNavClick = (item: NavItem) => {
     onSectionChange(item.id);
