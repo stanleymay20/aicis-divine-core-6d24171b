@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { PlanetaryOperationsMap } from "@/components/aicis/PlanetaryOperationsMap";
 import { RealtimeOperationsStream } from "@/components/aicis/RealtimeOperationsStream";
+import { OperationalDecisionWorkflow } from "@/components/aicis/OperationalDecisionWorkflow";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,120 +58,11 @@ export default function PlanetaryCommandCenter() {
   const ready = readiness.data?.[0];
   const topInsight = insights.data?.[0];
   const topAction = topInsight?.recommended_action ?? "Monitor live operations and review the highest severity signal.";
-  const summary = useMemo(() => ({
-    risk: formatScore(kpi?.global_risk_index),
-    readinessScore: formatScore(ready?.overall_enterprise_score),
-    coverage: formatScore(kpi?.telemetry_coverage_score ?? ready?.telemetry_coverage_score),
-    critical: formatScore(kpi?.active_critical_events),
-  }), [kpi, ready]);
+  const summary = useMemo(() => ({ risk: formatScore(kpi?.global_risk_index), readinessScore: formatScore(ready?.overall_enterprise_score), coverage: formatScore(kpi?.telemetry_coverage_score ?? ready?.telemetry_coverage_score), critical: formatScore(kpi?.active_critical_events) }), [kpi, ready]);
 
-  return (
-    <AICISLayout>
-      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto h-full overflow-y-auto space-y-5 animate-fade-in">
-        <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Globe2 className="h-6 w-6 text-primary" />
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">AICIS Command</h1>
-              <Badge variant="outline" className="uppercase tracking-wider text-[10px]">Concise Mode</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2 max-w-2xl">What is happening, why it matters, and what to do next.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate("/morning-brief")}>Brief</Button>
-            <Button variant="outline" size="sm" onClick={() => navigate("/data-pipeline")}>Pipeline</Button>
-            <Button size="sm" onClick={() => navigate("/intelligence-engine")}>Ask</Button>
-          </div>
-        </div>
-
-        <Card className="border-border bg-card/80">
-          <CardContent className="p-4 md:p-5">
-            <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_1.5fr] gap-4 items-stretch">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground"><Sparkles className="h-4 w-4 text-primary" /> Current judgment</div>
-                {insights.isLoading ? <Skeleton className="h-28 w-full" /> : (
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-xl font-semibold leading-tight">{topInsight?.insight_title ?? "No executive judgment generated yet"}</h2>
-                      <Badge variant="outline" className={severityTone(topInsight?.severity_band)}>{topInsight?.severity_band ?? "monitor"}</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{topInsight?.insight_summary ?? "Run the executive dashboard cycle to generate the current operational judgment."}</p>
-                  </div>
-                )}
-                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-                  <div className="text-xs uppercase tracking-wider text-primary mb-1">Next best action</div>
-                  <p className="text-sm font-medium">{topAction}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <MetricCard icon={<Activity className="h-4 w-4" />} label="Risk" value={summary.risk} suffix="/100" tone={toneForScore(100 - summary.risk)} loading={kpis.isLoading} />
-                <MetricCard icon={<AlertTriangle className="h-4 w-4" />} label="Critical" value={summary.critical} suffix="" tone={severityTone(summary.critical > 0 ? "critical" : "cleared")} loading={kpis.isLoading} />
-                <MetricCard icon={<DatabaseZap className="h-4 w-4" />} label="Coverage" value={summary.coverage} suffix="%" tone={toneForScore(summary.coverage)} loading={kpis.isLoading || readiness.isLoading} />
-                <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Ready" value={summary.readinessScore} suffix="/100" tone={toneForScore(summary.readinessScore)} loading={readiness.isLoading} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <PlanetaryOperationsMap />
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="xl:col-span-2"><RealtimeOperationsStream /></div>
-          <Card className="border-border bg-card/70">
-            <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Readiness</CardTitle><CardDescription>Only the essential health posture.</CardDescription></CardHeader>
-            <CardContent className="space-y-3">
-              {readiness.isLoading ? <Skeleton className="h-44 w-full" /> : ready ? <>
-                <div className="flex items-center justify-between rounded-lg border border-border p-3 bg-background/40"><span className="text-sm text-muted-foreground">Grade</span><Badge variant="outline" className={toneForScore(ready.overall_enterprise_score)}>{ready.readiness_grade ?? "unknown"}</Badge></div>
-                <ScoreLine label="Reliability" value={ready.reliability_score} />
-                <ScoreLine label="Security" value={ready.security_score} />
-                <ScoreLine label="Observability" value={ready.observability_score} />
-                <ScoreLine label="Data Quality" value={ready.data_quality_score} />
-              </> : <EmptyState text="No scorecard yet. Run run_enterprise_hardening_cycle()." />}
-            </CardContent>
-          </Card>
-        </div>
-
-        <Tabs defaultValue="decisions" className="space-y-3">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:w-[720px]">
-            <TabsTrigger value="decisions">Decisions</TabsTrigger>
-            <TabsTrigger value="systems">Systems</TabsTrigger>
-            <TabsTrigger value="memory">Memory</TabsTrigger>
-            <TabsTrigger value="briefings">Briefings</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="decisions" className="mt-0">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <SurfaceCard icon={<Network className="h-4 w-4 text-primary" />} title="Top Propagation" loading={causal.isLoading} empty="No causal propagation events yet." rows={(causal.data ?? []).slice(0, 4).map((r) => ({ title: r.source_event ?? "Propagation event", meta: r.projected_time_window ?? "window", summary: `${r.source_domain ?? "domain"} → ${r.impacted_system ?? "system"} · probability ${r.impact_probability ?? 0}`, badgeTone: severityTone((r.impact_severity ?? 0) >= 75 ? "critical" : "strategic") }))} />
-              <SurfaceCard icon={<ShieldCheck className="h-4 w-4 text-primary" />} title="Intervention Review" loading={interventions.isLoading} empty="No intervention governance workflows yet." rows={(interventions.data ?? []).slice(0, 4).map((r) => ({ title: r.simulation_name ?? "Simulation", meta: r.approval_status ?? "pending", summary: `Safety: ${r.safety_rating ?? "unknown"} · confidence ${r.confidence_score ?? 0}`, badgeTone: severityTone(r.safety_rating) }))} />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="systems" className="mt-0">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <SurfaceCard icon={<DatabaseZap className="h-4 w-4 text-primary" />} title="Telemetry Backbone" loading={telemetry.isLoading} empty="No telemetry backbone events yet." rows={(telemetry.data ?? []).slice(0, 4).map((r) => ({ title: `${r.event_status ?? "unknown"} · ${r.source_domain ?? "domain"}`, meta: `shard ${r.shard_key ?? 0}`, summary: `${r.event_count ?? 0} events · avg priority ${r.avg_priority ?? 0}`, badgeTone: severityTone(r.event_status === "failed" ? "critical" : r.event_status === "queued" ? "strategic" : "healthy") }))} />
-              <SurfaceCard icon={<Workflow className="h-4 w-4 text-primary" />} title="Agent Coordination" loading={agents.isLoading} empty="No agent tasks delegated yet." rows={(agents.data ?? []).slice(0, 4).map((r) => ({ title: r.assigned_agent_key ?? "Agent task", meta: r.operational_priority ?? "medium", summary: `${r.task_type ?? "task"} · ${r.source_domain ?? "domain"}`, badgeTone: severityTone(r.operational_priority === "critical" ? "critical" : r.operational_priority === "high" ? "strategic" : "monitor") }))} />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="memory" className="mt-0">
-            <SurfaceCard icon={<BrainCircuit className="h-4 w-4 text-primary" />} title="Memory-Informed Forecasts" loading={memory.isLoading} empty="No memory-informed forecasts yet." rows={(memory.data ?? []).slice(0, 6).map((r) => ({ title: r.source_event ?? "Memory forecast", meta: r.projected_risk_trend ?? "trend", summary: `${r.historical_analog_count ?? 0} analogs · confidence ${r.forecast_confidence ?? 0}`, badgeTone: toneForScore(r.forecast_confidence) }))} />
-          </TabsContent>
-
-          <TabsContent value="briefings" className="mt-0">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <SurfaceCard icon={<FileText className="h-4 w-4 text-primary" />} title="Executive Briefings" loading={briefings.isLoading} empty="No executive briefings generated yet." rows={(briefings.data ?? []).map((r) => ({ title: r.report_title ?? "Briefing", meta: r.report_status ?? "draft", summary: `${r.report_type ?? "report"} · risk ${r.global_risk_index ?? 0} · evidence ${r.evidence_quality_score ?? 0}`, badgeTone: severityTone(r.report_status === "published" ? "success" : "strategic") }))} />
-              <SurfaceCard icon={<Languages className="h-4 w-4 text-primary" />} title="Translation Operations" loading={translations.isLoading} empty="No translation queue activity yet." rows={(translations.data ?? []).map((r) => ({ title: `${r.target_language_code ?? "language"} · ${r.queue_status ?? "status"}`, meta: `${r.item_count ?? 0} items`, summary: `Average priority ${r.avg_priority ?? 0}`, badgeTone: severityTone(r.queue_status === "queued" ? "strategic" : r.queue_status === "completed" ? "healthy" : "monitor") }))} />
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </AICISLayout>
-  );
+  return <AICISLayout><div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto h-full overflow-y-auto space-y-5 animate-fade-in"><div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4"><div><div className="flex items-center gap-2 flex-wrap"><Globe2 className="h-6 w-6 text-primary" /><h1 className="text-2xl md:text-3xl font-semibold tracking-tight">AICIS Command</h1><Badge variant="outline" className="uppercase tracking-wider text-[10px]">Operational</Badge></div><p className="text-sm text-muted-foreground mt-2 max-w-2xl">What is happening, why it matters, and what to do next.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => navigate("/morning-brief")}>Brief</Button><Button variant="outline" size="sm" onClick={() => navigate("/data-pipeline")}>Pipeline</Button><Button size="sm" onClick={() => navigate("/intelligence-engine")}>Ask</Button></div></div><Card className="border-border bg-card/80"><CardContent className="p-4 md:p-5"><div className="grid grid-cols-1 xl:grid-cols-[1.1fr_1.5fr] gap-4 items-stretch"><div className="space-y-3"><div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground"><Sparkles className="h-4 w-4 text-primary" /> Current judgment</div>{insights.isLoading ? <Skeleton className="h-28 w-full" /> : <div><div className="flex items-center gap-2 flex-wrap"><h2 className="text-xl font-semibold leading-tight">{topInsight?.insight_title ?? "No executive judgment generated yet"}</h2><Badge variant="outline" className={severityTone(topInsight?.severity_band)}>{topInsight?.severity_band ?? "monitor"}</Badge></div><p className="text-sm text-muted-foreground mt-2 line-clamp-3">{topInsight?.insight_summary ?? "Run the executive dashboard cycle to generate the current operational judgment."}</p></div>}<div className="rounded-lg border border-primary/20 bg-primary/5 p-3"><div className="text-xs uppercase tracking-wider text-primary mb-1">Next best action</div><p className="text-sm font-medium">{topAction}</p></div></div><div className="grid grid-cols-2 md:grid-cols-4 gap-3"><MetricCard icon={<Activity className="h-4 w-4" />} label="Risk" value={summary.risk} suffix="/100" tone={toneForScore(100 - summary.risk)} loading={kpis.isLoading} /><MetricCard icon={<AlertTriangle className="h-4 w-4" />} label="Critical" value={summary.critical} suffix="" tone={severityTone(summary.critical > 0 ? "critical" : "cleared")} loading={kpis.isLoading} /><MetricCard icon={<DatabaseZap className="h-4 w-4" />} label="Coverage" value={summary.coverage} suffix="%" tone={toneForScore(summary.coverage)} loading={kpis.isLoading || readiness.isLoading} /><MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Ready" value={summary.readinessScore} suffix="/100" tone={toneForScore(summary.readinessScore)} loading={readiness.isLoading} /></div></div></CardContent></Card><OperationalDecisionWorkflow /><PlanetaryOperationsMap /><div className="grid grid-cols-1 xl:grid-cols-3 gap-4"><div className="xl:col-span-2"><RealtimeOperationsStream /></div><Card className="border-border bg-card/70"><CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Readiness</CardTitle><CardDescription>Only the essential health posture.</CardDescription></CardHeader><CardContent className="space-y-3">{readiness.isLoading ? <Skeleton className="h-44 w-full" /> : ready ? <><div className="flex items-center justify-between rounded-lg border border-border p-3 bg-background/40"><span className="text-sm text-muted-foreground">Grade</span><Badge variant="outline" className={toneForScore(ready.overall_enterprise_score)}>{ready.readiness_grade ?? "unknown"}</Badge></div><ScoreLine label="Reliability" value={ready.reliability_score} /><ScoreLine label="Security" value={ready.security_score} /><ScoreLine label="Observability" value={ready.observability_score} /><ScoreLine label="Data Quality" value={ready.data_quality_score} /></> : <EmptyState text="No scorecard yet. Run run_enterprise_hardening_cycle()." />}</CardContent></Card></div></div></AICISLayout>;
 }
 
 function MetricCard({ icon, label, value, suffix, tone, loading }: { icon: React.ReactNode; label: string; value: number; suffix: string; tone: string; loading?: boolean }) { return <Card className="border-border bg-card/70"><CardContent className="p-4"><div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">{icon}{label}</div><Badge variant="outline" className={tone}>Live</Badge></div>{loading ? <Skeleton className="h-8 w-20 mt-3" /> : <div className="text-2xl font-semibold mt-3">{value}<span className="text-sm text-muted-foreground">{suffix}</span></div>}</CardContent></Card>; }
 function ScoreLine({ label, value }: { label: string; value?: number | null }) { const v = formatScore(value); return <div className="space-y-1"><div className="flex justify-between text-xs"><span className="text-muted-foreground">{label}</span><span>{v}/100</span></div><div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, v))}%` }} /></div></div>; }
-function SurfaceCard({ icon, title, loading, empty, rows }: { icon: React.ReactNode; title: string; loading: boolean; empty: string; rows: Array<{ title: string; meta?: string; summary?: string; badgeTone?: string }> }) { return <Card className="border-border bg-card/70 min-h-[280px]"><CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2">{icon}{title}</CardTitle></CardHeader><CardContent><CommandList loading={loading} empty={empty} rows={rows} /></CardContent></Card>; }
-function CommandList({ loading, empty, rows }: { loading: boolean; empty: string; rows: Array<{ title: string; meta?: string; summary?: string; badgeTone?: string; footer?: string | null }> }) { if (loading) return <div className="space-y-2"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></div>; if (!rows.length) return <EmptyState text={empty} />; return <ScrollArea className="h-[220px] pr-2"><div className="space-y-2">{rows.map((row, idx) => <div key={`${row.title}-${idx}`} className="rounded-lg border border-border bg-background/40 p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm font-medium truncate">{row.title}</p>{row.summary && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{row.summary}</p>}{row.footer && <p className="text-xs text-primary mt-2 line-clamp-1">{row.footer}</p>}</div>{row.meta && <Badge variant="outline" className={`shrink-0 text-[10px] ${row.badgeTone ?? ""}`}>{row.meta}</Badge>}</div></div>)}</div></ScrollArea>; }
 function EmptyState({ text }: { text: string }) { return <div className="rounded-lg border border-dashed border-border bg-background/30 p-4 text-sm text-muted-foreground flex items-start gap-2"><ClipboardList className="h-4 w-4 mt-0.5 shrink-0" /><span>{text}</span></div>; }
