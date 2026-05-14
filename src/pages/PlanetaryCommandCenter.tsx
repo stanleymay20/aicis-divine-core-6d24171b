@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
+import { PlanetaryOperationsMap } from "@/components/aicis/PlanetaryOperationsMap";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,6 @@ import {
   BrainCircuit,
   CheckCircle2,
   ClipboardList,
-  Cpu,
   DatabaseZap,
   FileText,
   Globe2,
@@ -187,6 +187,8 @@ export default function PlanetaryCommandCenter() {
           <MetricCard icon={<DatabaseZap className="h-4 w-4" />} label="Telemetry Coverage" value={summary.coverage} suffix="%" tone={toneForScore(summary.coverage)} loading={kpis.isLoading || readiness.isLoading} />
           <MetricCard icon={<AlertTriangle className="h-4 w-4" />} label="Critical Events" value={formatScore(kpi?.active_critical_events)} suffix="" tone={severityTone((kpi?.active_critical_events ?? 0) > 0 ? "critical" : "cleared")} loading={kpis.isLoading} />
         </div>
+
+        <PlanetaryOperationsMap />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <Card className="xl:col-span-2 border-border bg-card/70">
