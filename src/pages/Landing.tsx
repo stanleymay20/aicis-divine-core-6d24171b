@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { PublicIntelligenceShowcase } from "@/components/landing/PublicIntelligenceShowcase";
 import { PlanetaryPulseMap } from "@/components/planetary/PlanetaryPulseMap";
 import { PlanetaryHeartbeat } from "@/components/planetary/PlanetaryHeartbeat";
+import { SEO } from "@/components/SEO";
 import {
   Shield,
   Activity,
