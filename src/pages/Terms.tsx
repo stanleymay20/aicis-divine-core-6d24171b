@@ -3,12 +3,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Scale, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { SEO } from "@/components/SEO";
 
 const Terms = () => {
   const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-background p-4">
+      <SEO
+        title="Terms of Service — AICIS"
+        description="AICIS Terms of Service: usage rights, data sovereignty commitments, and operational obligations for sovereign-grade intelligence."
+        path="/terms"
+      />
       <div className="container mx-auto max-w-4xl">
         <Button
           variant="outline"

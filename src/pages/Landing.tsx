@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { PublicIntelligenceShowcase } from "@/components/landing/PublicIntelligenceShowcase";
 import { PlanetaryPulseMap } from "@/components/planetary/PlanetaryPulseMap";
 import { PlanetaryHeartbeat } from "@/components/planetary/PlanetaryHeartbeat";
+import { SEO } from "@/components/SEO";
 import {
   Shield,
   Activity,
@@ -33,15 +34,11 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* SEO */}
-      <head>
-        <title>AICIS — Decision Intelligence for Sovereign Operators</title>
-        <meta
-          name="description"
-          content="Planetary-scale risk intelligence with auditable forecasts, decision tracking, and zero-surveillance guarantees."
-        />
-        <link rel="canonical" href="/" />
-      </head>
+      <SEO
+        title="AICIS — Decision Intelligence for Sovereign Operators"
+        description="Planetary-scale risk intelligence with auditable forecasts, decision tracking, and zero-surveillance guarantees across 211 countries."
+        path="/"
+      />
 
       {/* Nav */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
