@@ -1,114 +1,282 @@
 # AICIS — AI Civilization Intelligence System
 
-AICIS is a global-to-local intelligence platform for collecting, enriching, scoring, and routing planetary signals into decision-ready intelligence. The current implementation is a Vite + React frontend backed by Supabase Auth, Postgres, and Edge Functions.
+AICIS is an enterprise operational intelligence platform designed to help institutions detect, understand, coordinate, and respond to complex global risks in realtime.
 
-## Architecture
+The platform combines:
+- realtime telemetry,
+- planetary signal ingestion,
+- causal propagation analysis,
+- decision workflows,
+- intervention governance,
+- operational forecasting,
+- multilingual intelligence translation,
+- executive command interfaces.
+
+AICIS is designed for:
+- governments,
+- enterprise operations centers,
+- resilience teams,
+- intelligence organizations,
+- humanitarian coordination,
+- strategic risk management,
+- infrastructure monitoring.
+
+---
+
+# Core Operational Philosophy
+
+AICIS is not merely an analytics dashboard.
+
+It is designed as:
 
 ```text
-Open data / APIs / feeds
-        ↓
-Supabase Edge Functions
-        ↓
-Postgres canonical tables
-        ↓
-Enrichment, relevance scoring, prediction, and governance functions
-        ↓
-React command surfaces
-        ↓
-Human review, decision operations, alerts, and exports
+planetary operational intelligence infrastructure
 ```
 
-### Frontend
+The system focuses on three core questions:
 
-- Vite
+```text
+1. What is happening?
+2. Why does it matter?
+3. What should we do next?
+```
+
+---
+
+# Platform Capabilities
+
+## Operational Intelligence
+
+- Realtime operational telemetry
+- Global-to-local intelligence routing
+- Planetary command center
+- Executive operational summaries
+- Live operational streams
+- Risk escalation monitoring
+- Cross-domain intelligence coordination
+
+## Predictive Intelligence
+
+- Causal propagation modeling
+- Escalation forecasting
+- Memory-informed prediction
+- Operational trend detection
+- Multi-domain consequence analysis
+
+## Decision Coordination
+
+- Incident-to-decision workflows
+- Intervention review surfaces
+- Governance coordination
+- Operator escalation pathways
+- Executive recommendation systems
+
+## Enterprise Architecture
+
+- Multi-tenant architecture
+- Supabase-backed operational infrastructure
+- Row-level security (RLS)
+- Edge-function orchestration
+- Typed operational pipelines
+- Realtime query infrastructure
+- Operational observability direction
+
+## Global Intelligence Accessibility
+
+- Multilingual intelligence translation
+- Region-aware operational routing
+- Cross-border signal relevance
+- Human-review workflows
+
+---
+
+# System Architecture
+
+```text
+Open APIs / Signals / Feeds
+                ↓
+Telemetry Intake Pipelines
+                ↓
+Canonicalization + Deduplication
+                ↓
+Enrichment + Relevance Scoring
+                ↓
+Causal + Predictive Intelligence
+                ↓
+Decision + Governance Workflows
+                ↓
+Executive Command Interfaces
+                ↓
+Operational Coordination
+```
+
+---
+
+# Frontend Stack
+
 - React 18
 - TypeScript
-- React Router
-- TanStack Query
+- Vite
 - Tailwind CSS
-- shadcn-ui components
-- Supabase browser client
+- shadcn-ui
+- TanStack Query
+- React Router
+- Lucide Icons
+- Supabase Browser Client
 
-Core surfaces include live signals, morning brief, decision operations, governance, watchlist, risk atlas, relevance preferences, training dataset, data pipeline, predictions, local events, and outcome cockpit.
+## Primary Interfaces
 
-### Backend
+- Planetary Command Center
+- Realtime Operations Stream
+- Operational Decision Workflow
+- Planetary Operations Map
+- Executive Briefing Surfaces
+- Governance Interfaces
+- Telemetry Monitoring
+- Memory Forecasting
+- Translation Operations
 
-- Supabase Auth
+---
+
+# Backend Infrastructure
+
 - Supabase Postgres
+- Supabase Auth
+- Supabase Realtime
 - Supabase Edge Functions
-- Row Level Security should be enabled for all user-facing tables
-- Service role access must remain server-side only
+- Typed operational views
+- Governance command views
+- Realtime telemetry surfaces
+- Operational pipeline orchestration
 
-## Local setup
+---
 
-### 1. Install dependencies
+# Enterprise Security Model
+
+## Security Principles
+
+- No service-role exposure in frontend code
+- All privileged workflows must remain server-side
+- RLS enforced for user-facing operational data
+- Operational mutations require authenticated workflows
+- Cron workflows require secret validation
+- Governance workflows should be auditable
+
+## Authentication Classes
+
+### Public
+
+Read-only operational intelligence surfaces intentionally exposed for public access.
+
+### Cron-Restricted
+
+Operational ingestion and scheduled workflows requiring `CRON_SECRET` validation.
+
+### Admin-Restricted
+
+Privileged governance, ingestion, intervention, and operational coordination workflows.
+
+---
+
+# Operational Pipeline
+
+```text
+intake
+→ canonicalization
+→ enrichment
+→ relevance scoring
+→ propagation analysis
+→ governance review
+→ operational coordination
+→ feedback learning
+```
+
+## Pipeline Goals
+
+- Reduce signal overload
+- Increase operational clarity
+- Improve escalation visibility
+- Coordinate interventions
+- Support executive decisions
+- Provide auditability and traceability
+
+---
+
+# Local Development
+
+## Install
 
 ```bash
 npm ci
 ```
 
-### 2. Configure environment
-
-Copy the example file:
+## Configure Environment
 
 ```bash
 cp .env.example .env.local
 ```
 
-Set the required frontend variables:
-
-```bash
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_or_publishable_key
-```
-
-### 3. Run the app
-
-```bash
-npm run dev
-```
-
-### 4. Build
-
-```bash
-npm run build
-```
-
-### 5. Typecheck and lint
-
-```bash
-npm run typecheck
-npm run lint
-```
-
-## Deployment
-
-The app can be deployed through Lovable, Vercel, Netlify, or any static host that supports Vite builds.
-
-Recommended production build command:
-
-```bash
-npm ci && npm run lint && npm run typecheck && npm run build
-```
-
-Recommended output directory:
-
-```text
-dist
-```
-
-## Required environment variables
-
-### Frontend
+Required frontend variables:
 
 ```bash
 VITE_SUPABASE_URL=
 VITE_SUPABASE_PUBLISHABLE_KEY=
 ```
 
-### Supabase Edge Functions
+## Run Development Server
 
-Set these as Supabase function secrets, not frontend variables:
+```bash
+npm run dev
+```
+
+## Production Build
+
+```bash
+npm run build
+```
+
+## Lint + Typecheck
+
+```bash
+npm run lint
+npm run typecheck
+```
+
+---
+
+# Deployment
+
+Supported deployment environments:
+
+- Vercel
+- Netlify
+- Supabase
+- Self-hosted Vite-compatible infrastructure
+
+Recommended production command:
+
+```bash
+npm ci && npm run lint && npm run typecheck && npm run build
+```
+
+Output directory:
+
+```text
+dist
+```
+
+---
+
+# Required Environment Variables
+
+## Frontend
+
+```bash
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+```
+
+## Edge Functions / Server Infrastructure
 
 ```bash
 SUPABASE_URL=
@@ -124,117 +292,112 @@ ALPHA_VANTAGE_API_KEY=
 EIA_API_KEY=
 ```
 
-Only expose `VITE_*` values to the browser. Never expose `SUPABASE_SERVICE_ROLE_KEY`, model provider keys, Stripe secrets, or cron secrets in frontend code.
+Never expose:
+- `SUPABASE_SERVICE_ROLE_KEY`
+- model provider secrets,
+- Stripe secrets,
+- cron secrets,
+- privileged operational credentials.
 
-## Supabase function security model
+---
 
-Functions must be classified before production deployment.
+# Enterprise Hardening Status
 
-### Public functions
+## Strong Areas
 
-Public functions can be called without a user JWT only when the returned data is intentionally public, rate-limited, and does not mutate privileged tables. Examples may include public read-only intelligence endpoints.
+- Enterprise operational UX
+- Realtime operational architecture direction
+- Operational workflow design
+- Multi-domain intelligence structure
+- Spatial intelligence interfaces
+- Operational simplification and hierarchy
+- Governance workflow direction
 
-### Cron-only functions
+## Active Hardening Areas
 
-Cron-only functions may keep `verify_jwt = false` only if the function validates `CRON_SECRET` using an `x-cron-secret` or `authorization: Bearer <secret>` header before doing work.
+- Operational observability
+- Alert routing
+- Incident lifecycle management
+- Reliability engineering
+- Production telemetry resilience
+- Institutional onboarding
+- Role-specific operational experiences
+- Audit and evidence provenance
 
-### Admin-only functions
+---
 
-Admin-only functions must require a verified user JWT and must check the user's role before mutating ingestion, enrichment, billing, governance, or operational tables.
+# Operational Design Principles
 
-Acceptable admin role sources:
+AICIS prioritizes:
 
-- `app_metadata.role = "admin"`
-- `app_metadata.roles` includes `"admin"`
-- `user_metadata.role = "admin"`
+- operational clarity over visual clutter,
+- decision coordination over dashboard overload,
+- realtime awareness over static analytics,
+- systemic causality over isolated metrics,
+- executive usability over feature sprawl.
 
-For stricter production use, move role checks into a database-backed organization membership table and enforce them through RLS and RPCs.
-
-## Data pipeline
-
-The intended AICIS data flow is:
+The command center is intentionally evolving toward:
 
 ```text
-intake → canonicalization → deduplication → enrichment → relevance scoring → routing → review feedback → learning loop
+calm, concise, enterprise operational coordination
 ```
 
-Pipeline responsibilities:
+instead of:
 
-1. Intake functions collect raw events from approved sources.
-2. Canonicalization normalizes country, sector, source, event type, confidence, and evidence fields.
-3. Deduplication prevents repeated alerts from the same underlying event.
-4. Enrichment adds strategic implications, likely consequences, audience framing, and recommended actions.
-5. Relevance scoring maps global signals to organization-specific risk context.
-6. Routing pushes only relevant items into user-facing command surfaces.
-7. Feedback records false positives, missed signals, and human review outcomes.
-
-## Cron jobs
-
-Recommended production policy:
-
-- Run cron jobs from Supabase Scheduled Functions, GitHub Actions, or an external scheduler.
-- Every cron request must include `CRON_SECRET`.
-- Cron functions should log start time, end time, inserted count, skipped count, error count, and duration.
-- Cron jobs should be idempotent.
-- Mutating jobs should write to `automation_logs` or a dedicated pipeline health table.
-
-Example header:
-
-```bash
-x-cron-secret: $CRON_SECRET
+```text
+high-noise dashboard complexity
 ```
 
-## Enterprise hardening checklist
+---
 
-- [x] Replace generic scaffold README
-- [x] Add `.env.example`
-- [x] Add CI for lint, typecheck, and build
-- [x] Add `score-relevance` config entry
-- [x] Add shared Supabase function auth guard
-- [ ] Apply shared auth guard to every cron/admin function
-- [ ] Add database-backed organization roles
-- [ ] Add RLS verification tests
-- [ ] Add rate limits for public functions
-- [ ] Add observability dashboard for pipeline health
-- [ ] Add incident/error budget policy
-- [ ] Add data retention and privacy policy enforcement
+# Troubleshooting
 
-## Troubleshooting
-
-### App loads but data is empty
+## Empty operational surfaces
 
 Check:
 
-1. `VITE_SUPABASE_URL`
-2. `VITE_SUPABASE_PUBLISHABLE_KEY`
-3. Supabase table RLS policies
-4. Whether ingestion/enrichment cron jobs are running
-5. Browser console and Supabase function logs
+1. Supabase environment variables
+2. RLS policies
+3. Operational views
+4. Edge function deployments
+5. Telemetry ingestion jobs
+6. Browser console and Supabase logs
 
-### Function returns 401
-
-Check:
-
-1. Is the function public, cron-only, or admin-only?
-2. If cron-only, did you send `x-cron-secret`?
-3. If admin-only, is the user authenticated?
-4. Does the user's metadata include an admin role?
-
-### Function returns 500
+## Unauthorized operational workflows
 
 Check:
 
-1. Required Supabase secrets
-2. Source API keys
-3. Database table existence
-4. RLS/service-role usage
-5. Function logs
+1. JWT authentication
+2. Admin role metadata
+3. Cron secret validation
+4. Operational RLS rules
 
-## Development principles
+## Realtime issues
 
-- No mock data in production paths
-- No service role key in frontend code
-- No privileged mutation without auth or cron secret
-- No unclassified public edge functions
-- No global alert firehose without user-specific relevance scoring
-- Prefer real source provenance over synthetic summaries
+Check:
+
+1. Supabase realtime configuration
+2. Websocket connectivity
+3. Query invalidation strategy
+4. Operational polling intervals
+5. Telemetry pipeline status
+
+---
+
+# Commercial Positioning
+
+AICIS is positioned at the intersection of:
+
+- operational intelligence,
+- resilience coordination,
+- realtime decision systems,
+- global risk monitoring,
+- enterprise command infrastructure.
+
+The long-term vision is to provide:
+
+```text
+a global-to-local operational intelligence coordination environment
+```
+
+for institutions operating in increasingly complex environments.
