@@ -502,7 +502,7 @@ function mergeAndPrune(rows: Signal[]): Signal[] {
   return kept.slice(0, 300);
 }
 
-function StatTile({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string }) {
+function StatTile({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent?: string }) {
   return (
     <Card>
       <CardContent className="p-3">
@@ -551,7 +551,7 @@ function WhyRelevantPanel({ signal }: { signal: Signal }) {
       {Object.keys(matches).some((k) => Array.isArray(matches[k]) && matches[k].length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
           {Object.entries(matches).map(([k, v]) => Array.isArray(v) && v.length > 0 ? (
-            <Row key={k} label={k.replaceAll("_", " ")} value={v.slice(0, 4).join(", ")} />
+            <Row key={k} label={k.replace(/_/g, " ")} value={v.slice(0, 4).join(", ")} />
           ) : null)}
         </div>
       )}
