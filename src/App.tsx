@@ -175,6 +175,8 @@ const App = () => (
                 <Route path="/data-pipeline" element={<Shell><DataPipeline /></Shell>} />
                 <Route path="/outcome-cockpit" element={<Shell><OutcomeCockpit /></Shell>} />
                 <Route path="/system-catalog" element={<Shell><SystemCatalog /></Shell>} />
+                <Route path="/analyst" element={<Shell><AnalystDashboard /></Shell>} />
+                <Route path="/analyst-dashboard" element={<Shell><AnalystDashboard /></Shell>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </IntelligenceMemoryProvider>
