@@ -8,19 +8,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  Sunrise,
-  Radio,
   Activity,
-  X,
-  Globe,
-  LayoutGrid,
-  Search,
-  Eye,
-  Shield,
-  Server,
+  BarChart3,
+  BrainCircuit,
   Command,
+  GraduationCap,
+  LayoutGrid,
+  Radio,
+  Scale,
+  Shield,
+  X,
 } from "lucide-react";
-import { useUserRoles } from "@/hooks/useUserRoles";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -34,32 +32,24 @@ type NavItem = {
   label: string;
   icon: any;
   path: string;
-  group?: "primary" | "operator" | "admin";
 };
 
 const primaryItems: NavItem[] = [
-  { id: "command", label: "Command Center", icon: Command, path: "/command-center", group: "primary" },
-  { id: "brief", label: "Brief", icon: Sunrise, path: "/morning-brief", group: "primary" },
-  { id: "signals", label: "Signals", icon: Radio, path: "/live", group: "primary" },
-  { id: "decisions", label: "Decisions", icon: Activity, path: "/decision-ops", group: "primary" },
-  { id: "atlas", label: "Atlas", icon: Globe, path: "/risk-atlas", group: "primary" },
-  { id: "ask", label: "Ask AICIS", icon: Search, path: "/intelligence-engine", group: "primary" },
-  { id: "watchlist", label: "Watchlist", icon: Eye, path: "/watchlist", group: "primary" },
+  { id: "command", label: "Command", icon: Command, path: "/command-center" },
+  { id: "analyst", label: "Analyst", icon: BarChart3, path: "/risk-atlas" },
+  { id: "live", label: "Live", icon: Radio, path: "/live" },
+  { id: "risk", label: "Risk", icon: Activity, path: "/risk-ranking" },
+  { id: "decisions", label: "Decisions", icon: Scale, path: "/decision-ops" },
+  { id: "learning", label: "Learning", icon: GraduationCap, path: "/learning" },
+  { id: "governance", label: "Governance", icon: Shield, path: "/governance" },
 ];
 
-const operatorItems: NavItem[] = [
-  { id: "ops", label: "Operator Console", icon: LayoutGrid, path: "/advanced", group: "operator" },
-];
-
-const adminItems: NavItem[] = [
-  { id: "admin", label: "System Admin", icon: Shield, path: "/admin", group: "admin" },
-  { id: "pipeline", label: "Pipeline Health", icon: Server, path: "/data-pipeline", group: "admin" },
-];
+const moreItem: NavItem = { id: "more", label: "More", icon: LayoutGrid, path: "/advanced" };
+const askItem: NavItem = { id: "ask", label: "Ask AICIS", icon: BrainCircuit, path: "/intelligence-engine" };
 
 export const AICISSidebar = ({ collapsed, onToggle, activeSection, onSectionChange }: SidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin, isOperator } = useUserRoles();
 
   const handleNavClick = (item: NavItem) => {
     onSectionChange(item.id);
@@ -68,9 +58,13 @@ export const AICISSidebar = ({ collapsed, onToggle, activeSection, onSectionChan
 
   const isActive = (item: NavItem) => {
     if (item.path !== "/" && location.pathname.startsWith(item.path)) return true;
+    if (item.id === "analyst" && ["/risk-atlas", "/risk-ranking", "/coverage-equity", "/forecast-validation", "/predictions"].some((p) => location.pathname.startsWith(p))) return true;
+    if (item.id === "live" && ["/live", "/live-signals", "/live-stream"].some((p) => location.pathname.startsWith(p))) return true;
+    if (item.id === "decisions" && ["/decision-ops", "/decisions", "/simulation", "/outcome-cockpit"].some((p) => location.pathname.startsWith(p))) return true;
+    if (item.id === "learning" && ["/learning", "/learning-loop", "/training-dataset"].some((p) => location.pathname.startsWith(p))) return true;
+    if (item.id === "governance" && ["/governance", "/evidence-command", "/operational-truth", "/signal-validation"].some((p) => location.pathname.startsWith(p))) return true;
+    if (item.id === "more" && ["/advanced", "/admin", "/data-pipeline", "/developers", "/data-export", "/api-audit", "/infra-ops", "/system-pulse", "/watchlist", "/morning-brief"].some((p) => location.pathname.startsWith(p))) return true;
     if (item.id === "ask" && location.pathname.startsWith("/intelligence-engine")) return true;
-    if (item.id === "ops" && ["/advanced", "/live-stream", "/signal-validation", "/simulation", "/predictions", "/local-events"].some((p) => location.pathname.startsWith(p))) return true;
-    if (item.id === "admin" && ["/admin", "/developers", "/data-export", "/api-audit", "/infra-ops", "/system-pulse"].some((p) => location.pathname.startsWith(p))) return true;
     return false;
   };
 
@@ -130,10 +124,9 @@ export const AICISSidebar = ({ collapsed, onToggle, activeSection, onSectionChan
       >
         <nav className="flex flex-col gap-1 w-full px-1.5">
           {primaryItems.map(renderDesktopItem)}
-          {isOperator && <div className="my-2 h-px bg-border/70 mx-2" />}
-          {isOperator && operatorItems.map(renderDesktopItem)}
-          {isAdmin && <div className="my-2 h-px bg-border/70 mx-2" />}
-          {isAdmin && adminItems.map(renderDesktopItem)}
+          <div className="my-2 h-px bg-border/70 mx-2" />
+          {renderDesktopItem(askItem)}
+          {renderDesktopItem(moreItem)}
         </nav>
       </aside>
 
@@ -156,20 +149,11 @@ export const AICISSidebar = ({ collapsed, onToggle, activeSection, onSectionChan
               </Button>
             </div>
             <nav className="flex-1 overflow-y-auto py-2">
-              <div className="px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Command</div>
+              <div className="px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Primary</div>
               {primaryItems.map(renderMobileItem)}
-              {isOperator && (
-                <>
-                  <div className="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Operator</div>
-                  {operatorItems.map(renderMobileItem)}
-                </>
-              )}
-              {isAdmin && (
-                <>
-                  <div className="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Admin</div>
-                  {adminItems.map(renderMobileItem)}
-                </>
-              )}
+              <div className="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Workspace</div>
+              {renderMobileItem(askItem)}
+              {renderMobileItem(moreItem)}
             </nav>
           </aside>
         </div>
