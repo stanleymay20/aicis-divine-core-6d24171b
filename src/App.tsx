@@ -66,6 +66,7 @@ const PilotTruthFeed = lazy(() => import("./pages/PilotTruthFeed"));
 const DataPipeline = lazy(() => import("./pages/DataPipeline"));
 const OutcomeCockpit = lazy(() => import("./pages/OutcomeCockpit"));
 const SystemCatalog = lazy(() => import("./pages/SystemCatalog"));
+const AnalystDashboard = lazy(() => import("./pages/AnalystDashboard"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
