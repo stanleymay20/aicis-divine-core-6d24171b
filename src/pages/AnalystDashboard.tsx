@@ -126,10 +126,16 @@ const useTopThreats = () =>
     queryFn: async () => {
       const { data } = await supabase
         .from("risk_ranking_predictions")
-        .select("country_iso3,domain,risk_score,confidence_score")
-        .order("risk_score", { ascending: false })
+        .select("country_iso3,domain,risk_probability,factors,evidence_count,generated_at")
+        .order("risk_probability", { ascending: false })
         .limit(5);
-      return data ?? [];
+      return (data ?? []).map((r: any) => ({
+        country_iso3: r.country_iso3,
+        domain: r.domain,
+        risk_score: Math.round((r.risk_probability ?? 0) * 100),
+        confidence_score: Number(r.factors?.confidence_score ?? 0) / 100,
+        evidence_count: r.evidence_count ?? 0,
+      }));
     },
   });
 
