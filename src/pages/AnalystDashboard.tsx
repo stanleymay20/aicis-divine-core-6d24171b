@@ -41,22 +41,23 @@ const useAnalystKpis = () =>
         supabase.from("normalized_events").select("severity", { count: "exact", head: true }).gte("occurred_at", since6h),
         supabase.from("normalized_events").select("severity", { count: "exact", head: true }).gte("occurred_at", sincePrev).lt("occurred_at", since6h),
         supabase.from("critical_alerts").select("level,severity").eq("acknowledged", false).order("triggered_at", { ascending: false }).limit(200),
-        supabase.from("risk_ranking_predictions").select("risk_score,country_iso3").order("risk_score", { ascending: false }).limit(50),
-        supabase.from("data_sources" as any).select("status").limit(500),
+        supabase.from("risk_ranking_predictions").select("risk_probability,country_iso3").order("risk_probability", { ascending: false }).limit(50),
+        supabase.from("data_source_log" as any).select("status").limit(500),
       ]);
       const cur = evCur.count ?? 0;
       const prev = evPrev.count ?? 0;
       const delta = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : 0;
       const ackRows = alerts.data ?? [];
       const critCount = ackRows.filter(a => (a.level ?? "").toLowerCase() === "critical").length;
-      const avgRisk = ranks.data?.length ? Math.round(ranks.data.reduce((s, r: any) => s + (r.risk_score ?? 0), 0) / ranks.data.length) : 0;
+      const scores = (ranks.data ?? []).map((r: any) => Math.round((r.risk_probability ?? 0) * 100));
+      const avgRisk = scores.length ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length) : 0;
       const sourceRows = (sources.data as any[]) ?? [];
       const total = sourceRows.length;
-      const online = sourceRows.filter(s => (s.status ?? "").toLowerCase() === "active" || (s.status ?? "").toLowerCase() === "online").length;
+      const online = sourceRows.filter(s => (s.status ?? "").toLowerCase() === "active" || (s.status ?? "").toLowerCase() === "online" || (s.status ?? "").toLowerCase() === "success").length;
       return {
         events6h: cur, eventsDelta: delta,
         activeAlerts: ackRows.length, criticalAlerts: critCount,
-        systemicThreats: ranks.data?.filter((r: any) => (r.risk_score ?? 0) >= 75).length ?? 0,
+        systemicThreats: scores.filter(v => v >= 75).length,
         globalRisk: Math.min(100, avgRisk),
         confidence: 76,
         sourcesTotal: total, sourcesOnline: online,
