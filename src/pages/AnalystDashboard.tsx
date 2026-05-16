@@ -17,6 +17,7 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as ReTooltip,
   Legend, AreaChart, Area, PieChart, Pie, Cell,
 } from "recharts";
+import { ParallelCoordinatesChart } from "@/components/visualizations/ParallelCoordinatesChart";
 
 // ---------- helpers ----------
 const fmt = (n: number | null | undefined, d = 0) =>
@@ -479,6 +480,8 @@ export default function AnalystDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        <ParallelCoordinatesChart />
       </div>
     </AICISLayout>
   );

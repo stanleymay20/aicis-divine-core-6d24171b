@@ -4827,6 +4827,48 @@ export type Database = {
           },
         ]
       }
+      entity_identity_history: {
+        Row: {
+          actor: string | null
+          entity_id: string
+          id: string
+          new_state: Json | null
+          operation: string
+          performed_at: string
+          prev_hash: string | null
+          prior_state: Json | null
+          reason: string | null
+          related_entity_ids: string[] | null
+          this_hash: string
+        }
+        Insert: {
+          actor?: string | null
+          entity_id: string
+          id?: string
+          new_state?: Json | null
+          operation: string
+          performed_at?: string
+          prev_hash?: string | null
+          prior_state?: Json | null
+          reason?: string | null
+          related_entity_ids?: string[] | null
+          this_hash: string
+        }
+        Update: {
+          actor?: string | null
+          entity_id?: string
+          id?: string
+          new_state?: Json | null
+          operation?: string
+          performed_at?: string
+          prev_hash?: string | null
+          prior_state?: Json | null
+          reason?: string | null
+          related_entity_ids?: string[] | null
+          this_hash?: string
+        }
+        Relationships: []
+      }
       entity_links: {
         Row: {
           created_at: string
@@ -4942,6 +4984,36 @@ export type Database = {
             referencedColumns: ["entity_id"]
           },
         ]
+      }
+      entity_match_blocks: {
+        Row: {
+          block_key: string
+          block_type: string
+          created_at: string
+          entity_class: string
+          entity_id: string
+          id: string
+          source_value: string | null
+        }
+        Insert: {
+          block_key: string
+          block_type: string
+          created_at?: string
+          entity_class: string
+          entity_id: string
+          id?: string
+          source_value?: string | null
+        }
+        Update: {
+          block_key?: string
+          block_type?: string
+          created_at?: string
+          entity_class?: string
+          entity_id?: string
+          id?: string
+          source_value?: string | null
+        }
+        Relationships: []
       }
       entity_merge_log: {
         Row: {
@@ -5088,6 +5160,42 @@ export type Database = {
             referencedColumns: ["signal_id"]
           },
         ]
+      }
+      er_rule_definitions: {
+        Row: {
+          created_at: string
+          entity_class: string
+          fields: Json
+          id: string
+          is_active: boolean
+          match_strategy: string
+          priority: number
+          rule_name: string
+          threshold: number
+        }
+        Insert: {
+          created_at?: string
+          entity_class: string
+          fields?: Json
+          id?: string
+          is_active?: boolean
+          match_strategy: string
+          priority?: number
+          rule_name: string
+          threshold?: number
+        }
+        Update: {
+          created_at?: string
+          entity_class?: string
+          fields?: Json
+          id?: string
+          is_active?: boolean
+          match_strategy?: string
+          priority?: number
+          rule_name?: string
+          threshold?: number
+        }
+        Relationships: []
       }
       ethics_audit_log: {
         Row: {
@@ -11898,6 +12006,51 @@ export type Database = {
         }
         Relationships: []
       }
+      source_iq_scorecards: {
+        Row: {
+          accuracy: number
+          completeness: number
+          composite_score: number | null
+          consistency: number
+          id: string
+          measured_at: string
+          notes: string | null
+          rows_assessed: number
+          source_name: string
+          timeliness: number
+          uniqueness: number
+          validity: number
+        }
+        Insert: {
+          accuracy: number
+          completeness: number
+          composite_score?: number | null
+          consistency: number
+          id?: string
+          measured_at?: string
+          notes?: string | null
+          rows_assessed?: number
+          source_name: string
+          timeliness: number
+          uniqueness: number
+          validity: number
+        }
+        Update: {
+          accuracy?: number
+          completeness?: number
+          composite_score?: number | null
+          consistency?: number
+          id?: string
+          measured_at?: string
+          notes?: string | null
+          rows_assessed?: number
+          source_name?: string
+          timeliness?: number
+          uniqueness?: number
+          validity?: number
+        }
+        Relationships: []
+      }
       source_trust_scores: {
         Row: {
           country_jurisdiction: string | null
@@ -12348,6 +12501,39 @@ export type Database = {
           owner?: string | null
           schedule?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      task_tokens: {
+        Row: {
+          claimed_at: string
+          completed_at: string | null
+          expires_at: string
+          job_name: string
+          payload: Json | null
+          result: Json | null
+          status: string
+          token: string
+        }
+        Insert: {
+          claimed_at?: string
+          completed_at?: string | null
+          expires_at?: string
+          job_name: string
+          payload?: Json | null
+          result?: Json | null
+          status: string
+          token: string
+        }
+        Update: {
+          claimed_at?: string
+          completed_at?: string | null
+          expires_at?: string
+          job_name?: string
+          payload?: Json | null
+          result?: Json | null
+          status?: string
+          token?: string
         }
         Relationships: []
       }
@@ -15311,9 +15497,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      claim_task_token: {
+        Args: { p_job: string; p_payload?: Json; p_token: string }
+        Returns: boolean
+      }
       cleanup_expired_exports: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
       cleanup_zombie_jobs: { Args: never; Returns: undefined }
+      complete_task_token: {
+        Args: { p_result?: Json; p_status: string; p_token: string }
+        Returns: undefined
+      }
       compute_cross_domain_influence: { Args: never; Returns: Json }
       compute_early_warnings: {
         Args: never
@@ -15346,6 +15540,10 @@ export type Database = {
         }[]
       }
       compute_risk_scores: { Args: never; Returns: Json }
+      compute_source_iq_scorecard: {
+        Args: { p_source: string }
+        Returns: string
+      }
       compute_uptime_snapshot: { Args: never; Returns: Json }
       count_api_requests_window: {
         Args: { _key_id: string; _window_seconds?: number }
@@ -15695,6 +15893,7 @@ export type Database = {
         }[]
       }
       reconcile_canonical_clusters: { Args: never; Returns: Json }
+      refresh_all_source_iq: { Args: never; Returns: number }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
       refresh_recommendation_quality_scores: {
         Args: never

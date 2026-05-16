@@ -19,6 +19,7 @@ import { NarrativeSynthesis } from "@/components/visualizations/NarrativeSynthes
 import { ExecutiveBrief, ModeAwareSection } from "@/components/intelligence/ModeAwareSection";
 import { SignalBadge } from "@/components/intelligence/SignalBadge";
 import { ScenarioEngine } from "@/components/governance/ScenarioEngine";
+import { SourceIQScorecardPanel } from "@/components/governance/SourceIQScorecardPanel";
 
 const GovernanceHub = () => {
   const { user, loading: authLoading } = useAuth();
@@ -187,6 +188,7 @@ const GovernanceHub = () => {
           <TabsContent value="scenarios" className="space-y-4"><ScenarioEngine /></TabsContent>
 
           <TabsContent value="indicators" className="space-y-4">
+            <SourceIQScorecardPanel />
             <Card><CardHeader><CardTitle>Global Governance Indicators</CardTitle><CardDescription>World Bank Governance Indicators (WGI)</CardDescription></CardHeader>
             <CardContent><ScrollArea className="h-[500px]"><div className="space-y-3">
               {governanceData?.length === 0 && <p className="text-center py-8 text-muted-foreground">No governance data available</p>}
