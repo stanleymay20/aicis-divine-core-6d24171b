@@ -19,6 +19,7 @@ import { NarrativeSynthesis } from "@/components/visualizations/NarrativeSynthes
 import { ExecutiveBrief, ModeAwareSection } from "@/components/intelligence/ModeAwareSection";
 import { SignalBadge } from "@/components/intelligence/SignalBadge";
 import { ScenarioEngine } from "@/components/governance/ScenarioEngine";
+import { SourceIQScorecardPanel } from "@/components/governance/SourceIQScorecardPanel";
 
 const GovernanceHub = () => {
   const { user, loading: authLoading } = useAuth();
