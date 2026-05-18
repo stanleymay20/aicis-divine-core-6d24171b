@@ -15938,6 +15938,7 @@ export type Database = {
         }
         Returns: string
       }
+      safe_period_to_date: { Args: { p: string }; Returns: string }
       schedule_village_seed_retry: {
         Args: { _error?: string; _iso3: string; _success: boolean }
         Returns: undefined
