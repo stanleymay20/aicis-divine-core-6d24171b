@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { AICISTopBar } from "./AICISTopBar";
-import { AICISSidebar } from "./AICISSidebar";
+import { AICISSidebar, SIDEBAR_WIDTH_COLLAPSED, SIDEBAR_WIDTH_EXPANDED } from "./AICISSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+
+const SIDEBAR_STATE_KEY = "aicis:sidebar-collapsed";
 
 interface AICISLayoutProps {
   children: React.ReactNode;
