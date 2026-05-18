@@ -13,7 +13,12 @@ interface AICISLayoutProps {
 
 export const AICISLayout = ({ children }: AICISLayoutProps) => {
   const isMobile = useIsMobile();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const stored = window.localStorage.getItem(SIDEBAR_STATE_KEY);
+    if (stored !== null) return stored === "1";
+    return window.innerWidth < 1280;
+  });
   const [activeSection, setActiveSection] = useState("overview");
   const location = useLocation();
 
@@ -23,10 +28,17 @@ export const AICISLayout = ({ children }: AICISLayoutProps) => {
   }, [location]);
 
   useEffect(() => {
+    if (isMobile) return;
+    try { window.localStorage.setItem(SIDEBAR_STATE_KEY, sidebarCollapsed ? "1" : "0"); } catch {}
+  }, [sidebarCollapsed, isMobile]);
+
+  useEffect(() => {
     const handler = () => setSidebarCollapsed((c) => !c);
     document.addEventListener("toggle-sidebar", handler);
     return () => document.removeEventListener("toggle-sidebar", handler);
   }, []);
+
+  const desktopMargin = sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED;
 
   return (
     <div className="h-screen w-full overflow-hidden bg-background flex flex-col">
@@ -41,9 +53,9 @@ export const AICISLayout = ({ children }: AICISLayoutProps) => {
         <main
           id="main-content"
           role="main"
+          style={!isMobile ? { marginLeft: desktopMargin } : undefined}
           className={cn(
-            "flex-1 overflow-y-auto overflow-x-hidden flex flex-col transition-all duration-200",
-            isMobile ? "ml-0" : "ml-[52px]"
+            "flex-1 overflow-y-auto overflow-x-hidden flex flex-col transition-[margin] duration-200"
           )}
         >
           {children}
