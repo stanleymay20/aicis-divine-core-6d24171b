@@ -191,8 +191,8 @@ async function handleSignals(sb: any, url: URL, _orgId: string) {
 
   let query = sb
     .from("global_signals")
-    .select("id, title, category, impact_score, urgency, confidence_score, affected_sectors, source_type, region, published_at, recommendation")
-    .order("published_at", { ascending: false })
+    .select("id, title, category, impact_score, urgency_score, confidence_score, affected_sectors, source_trust_tier, affected_regions, latest_update_at, recommended_actions")
+    .order("latest_update_at", { ascending: false, nullsFirst: false })
     .limit(limit);
 
   if (category) query = query.eq("category", category);
@@ -201,7 +201,21 @@ async function handleSignals(sb: any, url: URL, _orgId: string) {
   const { data, error } = await query;
   if (error) throw error;
 
-  return json({ data, count: data?.length || 0 });
+  const normalized = (data || []).map((s: any) => ({
+    id: s.id,
+    title: s.title,
+    category: s.category,
+    impact_score: s.impact_score,
+    urgency: s.urgency_score,
+    confidence_score: s.confidence_score,
+    affected_sectors: s.affected_sectors,
+    source_type: s.source_trust_tier,
+    region: Array.isArray(s.affected_regions) ? s.affected_regions[0] : s.affected_regions,
+    published_at: s.latest_update_at,
+    recommendation: Array.isArray(s.recommended_actions) ? s.recommended_actions[0] : s.recommended_actions,
+  }));
+
+  return json({ data: normalized, count: normalized.length });
 }
 
 async function handleDecisions(sb: any, url: URL, req: Request, orgId: string) {
