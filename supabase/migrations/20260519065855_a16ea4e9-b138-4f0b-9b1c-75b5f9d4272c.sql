@@ -1,0 +1,1 @@
+ALTER TYPE public.signal_status ADD VALUE IF NOT EXISTS 'enriched';

@@ -16163,6 +16163,7 @@ export type Database = {
         | "resolved"
         | "watchlist"
         | "pending_enrichment"
+        | "enriched"
       sovereignty_status:
         | "sovereign_state"
         | "territory"
@@ -16410,6 +16411,7 @@ export const Constants = {
         "resolved",
         "watchlist",
         "pending_enrichment",
+        "enriched",
       ],
       sovereignty_status: [
         "sovereign_state",
