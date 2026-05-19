@@ -168,16 +168,17 @@ serve(async (req) => {
     }
 
     const responseBody = await res.clone().text();
-    await writeAudit({ keyId: keyRow.id, orgId, status: res.status, requestBody: rawBody, responseBody });
+    try { await writeAudit({ keyId: keyRow.id, orgId, status: res.status, requestBody: rawBody, responseBody }); } catch (auditErr) { console.error("writeAudit failed:", auditErr); }
 
     // Merge rate-limit headers into successful response
     const merged = new Headers(res.headers);
     Object.entries(rateHeaders).forEach(([k, v]) => merged.set(k, v));
     return new Response(responseBody, { status: res.status, headers: merged });
   } catch (e) {
-    console.error("Public API error:", e);
-    const body = JSON.stringify({ error: (e as Error).message, request_id: requestId });
-    await writeAudit({ keyId: keyRow.id, orgId, status: 500, requestBody: rawBody, responseBody: body });
+    console.error("Public API error:", e, (e as Error)?.stack);
+    const errMsg = (e as Error)?.message || String(e) || "Internal Server Error";
+    const body = JSON.stringify({ error: errMsg, resource, request_id: requestId });
+    try { await writeAudit({ keyId: keyRow.id, orgId, status: 500, requestBody: rawBody, responseBody: body }); } catch (auditErr) { console.error("writeAudit failed:", auditErr); }
     return new Response(body, { status: 500, headers: { ...corsHeaders, ...rateHeaders, "Content-Type": "application/json" } });
   }
 });
@@ -191,8 +192,8 @@ async function handleSignals(sb: any, url: URL, _orgId: string) {
 
   let query = sb
     .from("global_signals")
-    .select("id, title, category, impact_score, urgency, confidence_score, affected_sectors, source_type, region, published_at, recommendation")
-    .order("published_at", { ascending: false })
+    .select("id, title, category, impact_score, urgency_score, confidence_score, affected_sectors, source_trust_tier, affected_regions, latest_update_at, recommended_actions")
+    .order("latest_update_at", { ascending: false, nullsFirst: false })
     .limit(limit);
 
   if (category) query = query.eq("category", category);
@@ -201,7 +202,21 @@ async function handleSignals(sb: any, url: URL, _orgId: string) {
   const { data, error } = await query;
   if (error) throw error;
 
-  return json({ data, count: data?.length || 0 });
+  const normalized = (data || []).map((s: any) => ({
+    id: s.id,
+    title: s.title,
+    category: s.category,
+    impact_score: s.impact_score,
+    urgency: s.urgency_score,
+    confidence_score: s.confidence_score,
+    affected_sectors: s.affected_sectors,
+    source_type: s.source_trust_tier,
+    region: Array.isArray(s.affected_regions) ? s.affected_regions[0] : s.affected_regions,
+    published_at: s.latest_update_at,
+    recommendation: Array.isArray(s.recommended_actions) ? s.recommended_actions[0] : s.recommended_actions,
+  }));
+
+  return json({ data: normalized, count: normalized.length });
 }
 
 async function handleDecisions(sb: any, url: URL, req: Request, orgId: string) {
@@ -250,23 +265,28 @@ async function handleOutcomes(sb: any, url: URL, _orgId: string) {
 
   const { data, error } = await sb
     .from("decision_outcome_log")
-    .select("id, signal_title, action_taken, outcome_success, impact_score, roi_estimate, net_value, evidence_tier, created_at")
+    .select("id, signal_title, action_taken, outcome_success, impact_score, roi_estimate, net_value, evidence_type, evidence_quality_score, criticality_tier, created_at")
     .not("outcome_success", "is", null)
     .order("created_at", { ascending: false })
     .limit(limit);
 
   if (error) throw error;
 
-  return json({ data, count: data?.length || 0 });
+  const normalized = (data || []).map((o: any) => ({
+    ...o,
+    evidence_tier: o.criticality_tier || o.evidence_type || null,
+  }));
+
+  return json({ data: normalized, count: normalized.length });
 }
 
 async function handlePriorityDecisions(sb: any, _orgId: string) {
   // Get top signals by impact, enriched with cross-domain context
   const { data: signals, error } = await sb
     .from("global_signals")
-    .select("id, title, category, impact_score, urgency, confidence_score, affected_sectors, recommendation, region, published_at")
+    .select("id, title, category, impact_score, urgency_score, confidence_score, affected_sectors, recommended_actions, affected_regions, latest_update_at, status")
     .in("status", ["confirmed", "pending_enrichment", "enriched"])
-    .order("impact_score", { ascending: false })
+    .order("impact_score", { ascending: false, nullsFirst: false })
     .limit(5);
 
   if (error) throw error;
@@ -276,12 +296,12 @@ async function handlePriorityDecisions(sb: any, _orgId: string) {
     title: s.title,
     category: s.category,
     priority_score: s.impact_score || 50,
-    urgency_level: s.urgency === "critical" ? "critical" : s.impact_score >= 70 ? "high" : "medium",
+    urgency_level: (s.urgency_score ?? 0) >= 80 ? "critical" : (s.impact_score ?? 0) >= 70 ? "high" : "medium",
     affected_domains: s.affected_sectors || [s.category],
-    recommended_action: s.recommendation || "Review and assess impact",
-    estimated_impact: s.impact_score >= 80 ? "High" : s.impact_score >= 50 ? "Medium" : "Low",
-    region: s.region,
-    published_at: s.published_at,
+    recommended_action: Array.isArray(s.recommended_actions) ? s.recommended_actions[0] : (s.recommended_actions || "Review and assess impact"),
+    estimated_impact: (s.impact_score ?? 0) >= 80 ? "High" : (s.impact_score ?? 0) >= 50 ? "Medium" : "Low",
+    region: Array.isArray(s.affected_regions) ? s.affected_regions[0] : s.affected_regions,
+    published_at: s.latest_update_at,
   }));
 
   return json({ data: priorities, count: priorities.length });
@@ -372,11 +392,23 @@ async function handleRiskRanking(sb: any, url: URL) {
     .select("generation_batch_id").order("generated_at", { ascending: false }).limit(1).maybeSingle();
   if (!latest) return json({ data: [], count: 0 });
   let q = sb.from("risk_ranking_predictions")
-    .select("country_iso3, domain, risk_score, rank_position, momentum_score, volatility, generated_at")
+    .select("country_iso3, domain, risk_probability, rank_position, factors, confidence_lower, confidence_upper, evidence_count, generated_at")
     .eq("generation_batch_id", latest.generation_batch_id)
-    .order("rank_position", { ascending: true }).limit(limit);
+    .order("rank_position", { ascending: true, nullsFirst: false }).limit(limit);
   if (domain) q = q.eq("domain", domain);
   const { data, error } = await q;
   if (error) throw error;
-  return json({ data, count: data?.length || 0 });
+  const normalized = (data || []).map((r: any) => ({
+    country_iso3: r.country_iso3,
+    domain: r.domain,
+    risk_score: r.risk_probability,
+    rank_position: r.rank_position,
+    momentum_score: r.factors?.momentum ?? null,
+    volatility: r.factors?.volatility ?? null,
+    confidence_lower: r.confidence_lower,
+    confidence_upper: r.confidence_upper,
+    evidence_count: r.evidence_count,
+    generated_at: r.generated_at,
+  }));
+  return json({ data: normalized, count: normalized.length });
 }
