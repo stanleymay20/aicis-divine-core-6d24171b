@@ -168,16 +168,17 @@ serve(async (req) => {
     }
 
     const responseBody = await res.clone().text();
-    await writeAudit({ keyId: keyRow.id, orgId, status: res.status, requestBody: rawBody, responseBody });
+    try { await writeAudit({ keyId: keyRow.id, orgId, status: res.status, requestBody: rawBody, responseBody }); } catch (auditErr) { console.error("writeAudit failed:", auditErr); }
 
     // Merge rate-limit headers into successful response
     const merged = new Headers(res.headers);
     Object.entries(rateHeaders).forEach(([k, v]) => merged.set(k, v));
     return new Response(responseBody, { status: res.status, headers: merged });
   } catch (e) {
-    console.error("Public API error:", e);
-    const body = JSON.stringify({ error: (e as Error).message, request_id: requestId });
-    await writeAudit({ keyId: keyRow.id, orgId, status: 500, requestBody: rawBody, responseBody: body });
+    console.error("Public API error:", e, (e as Error)?.stack);
+    const errMsg = (e as Error)?.message || String(e) || "Internal Server Error";
+    const body = JSON.stringify({ error: errMsg, resource, request_id: requestId });
+    try { await writeAudit({ keyId: keyRow.id, orgId, status: 500, requestBody: rawBody, responseBody: body }); } catch (auditErr) { console.error("writeAudit failed:", auditErr); }
     return new Response(body, { status: 500, headers: { ...corsHeaders, ...rateHeaders, "Content-Type": "application/json" } });
   }
 });
