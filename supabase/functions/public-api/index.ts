@@ -391,11 +391,23 @@ async function handleRiskRanking(sb: any, url: URL) {
     .select("generation_batch_id").order("generated_at", { ascending: false }).limit(1).maybeSingle();
   if (!latest) return json({ data: [], count: 0 });
   let q = sb.from("risk_ranking_predictions")
-    .select("country_iso3, domain, risk_score, rank_position, momentum_score, volatility, generated_at")
+    .select("country_iso3, domain, risk_probability, rank_position, factors, confidence_lower, confidence_upper, evidence_count, generated_at")
     .eq("generation_batch_id", latest.generation_batch_id)
-    .order("rank_position", { ascending: true }).limit(limit);
+    .order("rank_position", { ascending: true, nullsFirst: false }).limit(limit);
   if (domain) q = q.eq("domain", domain);
   const { data, error } = await q;
   if (error) throw error;
-  return json({ data, count: data?.length || 0 });
+  const normalized = (data || []).map((r: any) => ({
+    country_iso3: r.country_iso3,
+    domain: r.domain,
+    risk_score: r.risk_probability,
+    rank_position: r.rank_position,
+    momentum_score: r.factors?.momentum ?? null,
+    volatility: r.factors?.volatility ?? null,
+    confidence_lower: r.confidence_lower,
+    confidence_upper: r.confidence_upper,
+    evidence_count: r.evidence_count,
+    generated_at: r.generated_at,
+  }));
+  return json({ data: normalized, count: normalized.length });
 }
