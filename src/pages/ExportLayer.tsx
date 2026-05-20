@@ -124,7 +124,7 @@ export default function ExportLayer() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-7xl">
-      <SEO title="Export Layer — AICIS" description="Decision-grade intelligence export to Quantivis and downstream platforms" />
+      <SEO title="Export Layer — AICIS" description="Decision-grade intelligence export to Quantivis and downstream platforms" path="/export-layer" />
       <header className="mb-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
