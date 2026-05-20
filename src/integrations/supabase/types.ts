@@ -5387,6 +5387,452 @@ export type Database = {
         }
         Relationships: []
       }
+      export_api_keys: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          organization_id: string | null
+          rate_limit_per_min: number
+          revoked_at: string | null
+          scopes: string[]
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          name: string
+          organization_id?: string | null
+          rate_limit_per_min?: number
+          revoked_at?: string | null
+          scopes?: string[]
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          organization_id?: string | null
+          rate_limit_per_min?: number
+          revoked_at?: string | null
+          scopes?: string[]
+        }
+        Relationships: []
+      }
+      export_audit_logs: {
+        Row: {
+          action: string
+          actor_api_key_id: string | null
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          ip: string | null
+          metadata: Json
+          organization_id: string | null
+          resource_id: string | null
+          resource_type: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          actor_api_key_id?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          ip?: string | null
+          metadata?: Json
+          organization_id?: string | null
+          resource_id?: string | null
+          resource_type?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          actor_api_key_id?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          ip?: string | null
+          metadata?: Json
+          organization_id?: string | null
+          resource_id?: string | null
+          resource_type?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "export_audit_logs_actor_api_key_id_fkey"
+            columns: ["actor_api_key_id"]
+            isOneToOne: false
+            referencedRelation: "export_api_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      export_cursor_state: {
+        Row: {
+          last_signal_id: string | null
+          last_signal_updated_at: string | null
+          profile_id: string
+          updated_at: string
+        }
+        Insert: {
+          last_signal_id?: string | null
+          last_signal_updated_at?: string | null
+          profile_id: string
+          updated_at?: string
+        }
+        Update: {
+          last_signal_id?: string | null
+          last_signal_updated_at?: string | null
+          profile_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "export_cursor_state_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "export_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      export_profile_presets: {
+        Row: {
+          config: Json
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          preset_key: string
+          schema_version: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          preset_key: string
+          schema_version?: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          preset_key?: string
+          schema_version?: string
+        }
+        Relationships: []
+      }
+      export_profiles: {
+        Row: {
+          countries: string[]
+          created_at: string
+          created_by: string | null
+          description: string | null
+          destination_type: Database["public"]["Enums"]["export_destination_type"]
+          domains: string[]
+          enabled: boolean
+          frequency: Database["public"]["Enums"]["export_frequency"]
+          id: string
+          include_explanations: boolean
+          include_raw_source: boolean
+          include_recommendations: boolean
+          last_run_at: string | null
+          max_records_per_run: number
+          min_confidence_score: number
+          min_relevance_score: number
+          min_urgency_score: number
+          name: string
+          next_run_at: string | null
+          organization_id: string | null
+          prefer_clusters: boolean
+          preset_key: string | null
+          regions: string[]
+          schema_version: string
+          severity_tiers: string[]
+          updated_at: string
+        }
+        Insert: {
+          countries?: string[]
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          destination_type?: Database["public"]["Enums"]["export_destination_type"]
+          domains?: string[]
+          enabled?: boolean
+          frequency?: Database["public"]["Enums"]["export_frequency"]
+          id?: string
+          include_explanations?: boolean
+          include_raw_source?: boolean
+          include_recommendations?: boolean
+          last_run_at?: string | null
+          max_records_per_run?: number
+          min_confidence_score?: number
+          min_relevance_score?: number
+          min_urgency_score?: number
+          name: string
+          next_run_at?: string | null
+          organization_id?: string | null
+          prefer_clusters?: boolean
+          preset_key?: string | null
+          regions?: string[]
+          schema_version?: string
+          severity_tiers?: string[]
+          updated_at?: string
+        }
+        Update: {
+          countries?: string[]
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          destination_type?: Database["public"]["Enums"]["export_destination_type"]
+          domains?: string[]
+          enabled?: boolean
+          frequency?: Database["public"]["Enums"]["export_frequency"]
+          id?: string
+          include_explanations?: boolean
+          include_raw_source?: boolean
+          include_recommendations?: boolean
+          last_run_at?: string | null
+          max_records_per_run?: number
+          min_confidence_score?: number
+          min_relevance_score?: number
+          min_urgency_score?: number
+          name?: string
+          next_run_at?: string | null
+          organization_id?: string | null
+          prefer_clusters?: boolean
+          preset_key?: string | null
+          regions?: string[]
+          schema_version?: string
+          severity_tiers?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      export_runs: {
+        Row: {
+          clusters_exported: number
+          created_at: string
+          cursor_end: Json | null
+          cursor_start: Json | null
+          duration_ms: number | null
+          error: string | null
+          export_batch_id: string
+          finished_at: string | null
+          format: string
+          id: string
+          organization_id: string | null
+          payload_size_bytes: number | null
+          profile_id: string | null
+          recommendations_exported: number
+          records_exported: number
+          records_selected: number
+          retry_count: number
+          signed_url_expires_at: string | null
+          started_at: string
+          status: Database["public"]["Enums"]["export_run_status"]
+          storage_path: string | null
+          trigger_source: string
+        }
+        Insert: {
+          clusters_exported?: number
+          created_at?: string
+          cursor_end?: Json | null
+          cursor_start?: Json | null
+          duration_ms?: number | null
+          error?: string | null
+          export_batch_id?: string
+          finished_at?: string | null
+          format?: string
+          id?: string
+          organization_id?: string | null
+          payload_size_bytes?: number | null
+          profile_id?: string | null
+          recommendations_exported?: number
+          records_exported?: number
+          records_selected?: number
+          retry_count?: number
+          signed_url_expires_at?: string | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["export_run_status"]
+          storage_path?: string | null
+          trigger_source?: string
+        }
+        Update: {
+          clusters_exported?: number
+          created_at?: string
+          cursor_end?: Json | null
+          cursor_start?: Json | null
+          duration_ms?: number | null
+          error?: string | null
+          export_batch_id?: string
+          finished_at?: string | null
+          format?: string
+          id?: string
+          organization_id?: string | null
+          payload_size_bytes?: number | null
+          profile_id?: string | null
+          recommendations_exported?: number
+          records_exported?: number
+          records_selected?: number
+          retry_count?: number
+          signed_url_expires_at?: string | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["export_run_status"]
+          storage_path?: string | null
+          trigger_source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "export_runs_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "export_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      export_webhook_deliveries: {
+        Row: {
+          attempt: number
+          created_at: string
+          delivered_at: string | null
+          event_type: string
+          http_status: number | null
+          id: string
+          idempotency_key: string
+          next_retry_at: string | null
+          payload_hash: string | null
+          response_excerpt: string | null
+          run_id: string | null
+          signature: string | null
+          webhook_id: string | null
+        }
+        Insert: {
+          attempt?: number
+          created_at?: string
+          delivered_at?: string | null
+          event_type: string
+          http_status?: number | null
+          id?: string
+          idempotency_key: string
+          next_retry_at?: string | null
+          payload_hash?: string | null
+          response_excerpt?: string | null
+          run_id?: string | null
+          signature?: string | null
+          webhook_id?: string | null
+        }
+        Update: {
+          attempt?: number
+          created_at?: string
+          delivered_at?: string | null
+          event_type?: string
+          http_status?: number | null
+          id?: string
+          idempotency_key?: string
+          next_retry_at?: string | null
+          payload_hash?: string | null
+          response_excerpt?: string | null
+          run_id?: string | null
+          signature?: string | null
+          webhook_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "export_webhook_deliveries_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "export_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "export_webhook_deliveries_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "export_webhooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      export_webhooks: {
+        Row: {
+          consecutive_failures: number
+          created_at: string
+          enabled: boolean
+          endpoint_url: string
+          event_types: string[]
+          id: string
+          last_error_at: string | null
+          last_success_at: string | null
+          min_relevance_score: number
+          organization_id: string | null
+          profile_id: string | null
+          retry_policy: Json
+          secret_hash: string
+          updated_at: string
+        }
+        Insert: {
+          consecutive_failures?: number
+          created_at?: string
+          enabled?: boolean
+          endpoint_url: string
+          event_types?: string[]
+          id?: string
+          last_error_at?: string | null
+          last_success_at?: string | null
+          min_relevance_score?: number
+          organization_id?: string | null
+          profile_id?: string | null
+          retry_policy?: Json
+          secret_hash: string
+          updated_at?: string
+        }
+        Update: {
+          consecutive_failures?: number
+          created_at?: string
+          enabled?: boolean
+          endpoint_url?: string
+          event_types?: string[]
+          id?: string
+          last_error_at?: string | null
+          last_success_at?: string | null
+          min_relevance_score?: number
+          organization_id?: string | null
+          profile_id?: string | null
+          retry_policy?: Json
+          secret_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "export_webhooks_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "export_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_lineage: {
         Row: {
           computation_ts: string | null
@@ -15504,6 +15950,10 @@ export type Database = {
       cleanup_expired_exports: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
       cleanup_zombie_jobs: { Args: never; Returns: undefined }
+      clone_export_preset: {
+        Args: { _name?: string; _preset_key: string }
+        Returns: string
+      }
       complete_task_token: {
         Args: { p_result?: Json; p_status: string; p_token: string }
         Returns: undefined
@@ -16126,6 +16576,29 @@ export type Database = {
         | "sector"
         | "commodity"
         | "territory"
+      export_destination_type:
+        | "api"
+        | "webhook"
+        | "csv"
+        | "json"
+        | "ndjson"
+        | "sdk"
+        | "batch"
+      export_frequency:
+        | "manual"
+        | "5m"
+        | "15m"
+        | "hourly"
+        | "6h"
+        | "daily"
+        | "weekly"
+      export_run_status:
+        | "queued"
+        | "running"
+        | "success"
+        | "partial"
+        | "error"
+        | "cancelled"
       health_risk_level: "minimal" | "low" | "moderate" | "high" | "critical"
       ledger_entry_type:
         | "ethics"
@@ -16371,6 +16844,32 @@ export const Constants = {
         "sector",
         "commodity",
         "territory",
+      ],
+      export_destination_type: [
+        "api",
+        "webhook",
+        "csv",
+        "json",
+        "ndjson",
+        "sdk",
+        "batch",
+      ],
+      export_frequency: [
+        "manual",
+        "5m",
+        "15m",
+        "hourly",
+        "6h",
+        "daily",
+        "weekly",
+      ],
+      export_run_status: [
+        "queued",
+        "running",
+        "success",
+        "partial",
+        "error",
+        "cancelled",
       ],
       health_risk_level: ["minimal", "low", "moderate", "high", "critical"],
       ledger_entry_type: [
