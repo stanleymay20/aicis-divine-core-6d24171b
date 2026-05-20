@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Plus, Play, Download, KeyRound, Webhook, Shield, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import SEO from "@/components/SEO";
+import { SEO } from "@/components/SEO";
 
 type Profile = {
   id: string; name: string; destination_type: string; domains: string[]; countries: string[];
