@@ -60,6 +60,7 @@ const Predictions = lazy(() => import("./pages/Predictions"));
 const ApiAudit = lazy(() => import("./pages/ApiAudit"));
 const LocalEvents = lazy(() => import("./pages/LocalEvents"));
 const ExportCenter = lazy(() => import("./pages/ExportCenter"));
+const ExportLayer = lazy(() => import("./pages/ExportLayer"));
 const LiveSignalStream = lazy(() => import("./pages/LiveSignalStream"));
 const CoverageEquity = lazy(() => import("./pages/CoverageEquity"));
 const PilotTruthFeed = lazy(() => import("./pages/PilotTruthFeed"));
@@ -171,6 +172,9 @@ const App = () => (
                 <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
                 <Route path="/export-center" element={<Protected><ExportCenter /></Protected>} />
                 <Route path="/data-export" element={<Protected><ExportCenter /></Protected>} />
+                <Route path="/export-layer" element={<Protected><ExportLayer /></Protected>} />
+                <Route path="/exports" element={<Protected><ExportLayer /></Protected>} />
+                <Route path="/quantivis-exports" element={<Protected><ExportLayer /></Protected>} />
                 <Route path="/pilot-truth" element={<Shell><PilotTruthFeed /></Shell>} />
                 <Route path="/data-pipeline" element={<Shell><DataPipeline /></Shell>} />
                 <Route path="/outcome-cockpit" element={<Shell><OutcomeCockpit /></Shell>} />
