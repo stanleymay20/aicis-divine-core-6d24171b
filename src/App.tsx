@@ -90,7 +90,9 @@ const queryClient = new QueryClient({
 });
 
 const Lazy = ({ children }: { children: React.ReactNode }) => (
-  <Suspense fallback={<LazyFallback />}>{children}</Suspense>
+  <Suspense fallback={<LazyFallback />}>
+    <PageBoundary>{children}</PageBoundary>
+  </Suspense>
 );
 
 const Protected = ({ children }: { children: React.ReactNode }) => (
