@@ -5,6 +5,7 @@ import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { PageBoundary } from "@/components/ui/page-boundary";
 import { IntelligenceMemoryProvider } from "@/contexts/IntelligenceMemoryContext";
 import { DemoModeProvider } from "@/contexts/DemoModeContext";
 import { DemoBanner } from "@/components/demo/DemoBanner";
@@ -89,7 +90,9 @@ const queryClient = new QueryClient({
 });
 
 const Lazy = ({ children }: { children: React.ReactNode }) => (
-  <Suspense fallback={<LazyFallback />}>{children}</Suspense>
+  <Suspense fallback={<LazyFallback />}>
+    <PageBoundary>{children}</PageBoundary>
+  </Suspense>
 );
 
 const Protected = ({ children }: { children: React.ReactNode }) => (
@@ -121,9 +124,9 @@ const App = () => (
               <DegradedModeBanner />
               <DemoBanner />
               <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/app" element={<Index />} />
-                <Route path="/auth" element={<Auth />} />
+                <Route path="/" element={<PageBoundary><Landing /></PageBoundary>} />
+                <Route path="/app" element={<PageBoundary><Index /></PageBoundary>} />
+                <Route path="/auth" element={<PageBoundary><Auth /></PageBoundary>} />
                 <Route path="/terms" element={<Lazy><Terms /></Lazy>} />
                 <Route path="/privacy" element={<Lazy><Privacy /></Lazy>} />
                 <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
