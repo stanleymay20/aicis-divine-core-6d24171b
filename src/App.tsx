@@ -124,9 +124,9 @@ const App = () => (
               <DegradedModeBanner />
               <DemoBanner />
               <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/app" element={<Index />} />
-                <Route path="/auth" element={<Auth />} />
+                <Route path="/" element={<PageBoundary><Landing /></PageBoundary>} />
+                <Route path="/app" element={<PageBoundary><Index /></PageBoundary>} />
+                <Route path="/auth" element={<PageBoundary><Auth /></PageBoundary>} />
                 <Route path="/terms" element={<Lazy><Terms /></Lazy>} />
                 <Route path="/privacy" element={<Lazy><Privacy /></Lazy>} />
                 <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
