@@ -5,6 +5,7 @@ import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { PageBoundary } from "@/components/ui/page-boundary";
 import { IntelligenceMemoryProvider } from "@/contexts/IntelligenceMemoryContext";
 import { DemoModeProvider } from "@/contexts/DemoModeContext";
 import { DemoBanner } from "@/components/demo/DemoBanner";
