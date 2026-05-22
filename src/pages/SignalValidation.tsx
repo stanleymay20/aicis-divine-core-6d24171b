@@ -11,6 +11,7 @@ import {
   Activity, AlertTriangle, CheckCircle2, XCircle, HelpCircle, Database,
   TrendingUp, Shield, Radio, Globe, Loader2, RefreshCw, BarChart3, Cpu
 } from "lucide-react";
+import { PanelEmpty } from "@/components/ui/panel-empty";
 
 type MetricStatus = "pass" | "warn" | "fail" | "no_data";
 
@@ -298,7 +299,7 @@ export default function SignalValidation() {
           </Card>
 
           {/* Forensic Findings */}
-          {findings.length > 0 && (
+          {findings.length > 0 ? (
             <Card className="p-3">
               <h3 className="text-xs font-semibold flex items-center gap-1.5 mb-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400" /> Forensic Findings ({findings.length})
@@ -317,6 +318,13 @@ export default function SignalValidation() {
                 ))}
               </div>
             </Card>
+          ) : (
+            <PanelEmpty
+              title="No forensic findings"
+              reason="Every scorecard metric is at or above its operator threshold — the validation audit has nothing to flag in the current window."
+              nextStep="No action required. Findings reappear automatically if any metric regresses."
+              compact
+            />
           )}
 
           {/* Scorecard Sections */}
