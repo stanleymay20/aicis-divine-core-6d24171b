@@ -7,6 +7,7 @@ import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Database, Activity, AlertTriangle, Server, Clock, BarChart3 } from "lucide-react";
+import { PanelEmpty } from "@/components/ui/panel-empty";
 
 const tierColors: Record<string, string> = {
   hot: "bg-destructive/10 text-destructive border-destructive/20",
@@ -152,6 +153,13 @@ const InfraOps = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {(!registry || registry.length === 0) ? (
+                  <PanelEmpty
+                    title="No datasets registered"
+                    reason="The data_lifecycle_registry table is empty. Every governed dataset must be enrolled before it appears here."
+                    nextStep="Run the lifecycle-registry seed migration or add entries via the admin migration toolkit."
+                  />
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
