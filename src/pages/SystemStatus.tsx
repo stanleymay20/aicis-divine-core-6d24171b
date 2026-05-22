@@ -7,6 +7,7 @@ import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Activity, CheckCircle, XCircle, Clock, Server, Database, Zap, AlertTriangle, Radio, Shield, TrendingUp, BarChart3, Layers } from "lucide-react";
+import { PanelEmpty } from "@/components/ui/panel-empty";
 import { format, formatDistanceToNow } from "date-fns";
 
 interface PipelineStatus {
@@ -286,6 +287,13 @@ const SystemStatus = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {data.pipelines.length === 0 ? (
+                  <PanelEmpty
+                    title="No pipeline runs recorded"
+                    reason="automation_logs has no completed runs in the lookback. Either pg_cron is paused, jobs are still queued, or no job has fired yet today."
+                    nextStep="Check pg_cron status from Operations Backplane, or trigger a manual job run."
+                  />
+                ) : (
                 <div className="space-y-1">
                   <div className="grid grid-cols-12 gap-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border">
                     <div className="col-span-4">Pipeline</div>
@@ -320,6 +328,7 @@ const SystemStatus = () => {
                     </div>
                   ))}
                 </div>
+                )}
               </CardContent>
             </Card>
 

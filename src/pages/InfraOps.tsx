@@ -7,6 +7,7 @@ import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Database, Activity, AlertTriangle, Server, Clock, BarChart3 } from "lucide-react";
+import { PanelEmpty } from "@/components/ui/panel-empty";
 
 const tierColors: Record<string, string> = {
   hot: "bg-destructive/10 text-destructive border-destructive/20",
@@ -152,6 +153,13 @@ const InfraOps = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {(!registry || registry.length === 0) ? (
+                  <PanelEmpty
+                    title="No datasets registered"
+                    reason="The data_lifecycle_registry table is empty. Every governed dataset must be enrolled before it appears here."
+                    nextStep="Run the lifecycle-registry seed migration or add entries via the admin migration toolkit."
+                  />
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
@@ -190,19 +198,27 @@ const InfraOps = () => {
                     </tbody>
                   </table>
                 </div>
+                )}
               </CardContent>
             </Card>
 
             {/* Pipeline Health */}
-            {pipelines && pipelines.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Activity className="h-4 w-4" />
-                    Pipeline Health
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Pipeline Health
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!pipelines || pipelines.length === 0 ? (
+                  <PanelEmpty
+                    title="No pipeline heartbeats recorded"
+                    reason="pipeline_health is populated by each provider's run logger. Nothing has reported in — providers may be disabled or the heartbeat writer has stalled."
+                    nextStep="Check Operations Backplane → Event Bus, or verify provider cron jobs are enabled."
+                    compact
+                  />
+                ) : (
                   <div className="space-y-2">
                     {pipelines.map((p: any) => (
                       <div key={p.id} className="flex items-center justify-between border-b border-border/20 py-2">
@@ -218,9 +234,9 @@ const InfraOps = () => {
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                )}
+              </CardContent>
+            </Card>
 
             {/* Ops principles */}
             <Card className="border-primary/20 bg-primary/5">

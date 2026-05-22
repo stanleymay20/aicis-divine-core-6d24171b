@@ -16,6 +16,7 @@ import {
   Repeat,
   ShieldAlert,
 } from "lucide-react";
+import { PanelEmpty } from "@/components/ui/panel-empty";
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -244,6 +245,13 @@ export default function DataPipeline() {
         <CardContent>
           {chain.isLoading ? (
             <Skeleton className="h-24 w-full" />
+          ) : Object.keys(chainSummary.by).length === 0 ? (
+            <PanelEmpty
+              title="No chain-integrity records"
+              reason="v_local_to_national_freshness has no rows. Either no country has seeded L0 yet, or the view is being rebuilt."
+              nextStep="Trigger village seeding via the Seed Retry Queue below, or wait for the 6h federation cycle."
+              compact
+            />
           ) : (
             <div className="flex flex-wrap gap-2">
               {Object.entries(chainSummary.by)
@@ -281,9 +289,12 @@ export default function DataPipeline() {
           {runHealth.isLoading ? (
             <Skeleton className="h-24 w-full" />
           ) : (runHealth.data ?? []).length === 0 ? (
-            <div className="text-sm text-muted-foreground p-4 border border-dashed border-border rounded text-center">
-              No inference runs recorded in the last 24h. Trigger a run or check pg_cron health.
-            </div>
+            <PanelEmpty
+              title="No inference runs in last 24h"
+              reason="dq_inference_run_health logs every model/forecast inference call. Either pg_cron is paused or no edge function fired in this window."
+              nextStep="Check pg_cron health in Operations Backplane, or invoke an inference manually from /intelligence-engine."
+              compact
+            />
           ) : (
             <div className="space-y-2">
               {(runHealth.data ?? []).map((r) => (
@@ -346,6 +357,13 @@ export default function DataPipeline() {
         <CardContent>
           {freshness.isLoading ? (
             <Skeleton className="h-64 w-full" />
+          ) : (freshness.data ?? []).length === 0 ? (
+            <PanelEmpty
+              title="No L0 country has been seeded yet"
+              reason="dq_village_layer_health lists every country with at least one village indicator. The table is empty — village seeding has not produced any rows."
+              nextStep="Run the seed-villages edge function or check the Seed Retry Queue for abandoned attempts."
+              compact
+            />
           ) : (
             <ScrollArea className="h-[420px] pr-2">
               <div className="space-y-1.5">
@@ -370,7 +388,7 @@ export default function DataPipeline() {
                   </div>
                 ))}
                 {filtered.length === 0 && (
-                  <div className="text-sm text-muted-foreground p-4 text-center">No countries match.</div>
+                  <div className="text-sm text-muted-foreground p-4 text-center">No countries match the current ISO3 filter.</div>
                 )}
               </div>
             </ScrollArea>
@@ -392,6 +410,13 @@ export default function DataPipeline() {
         <CardContent>
           {orphans.isLoading ? (
             <Skeleton className="h-32 w-full" />
+          ) : (orphans.data ?? []).length === 0 ? (
+            <PanelEmpty
+              title="No orphan regions detected"
+              reason="Every region currently has parent_id, centroid, ISO3, and population — hierarchy is intact. (Or the dq_orphan_regions view has not refreshed yet.)"
+              nextStep="No action required. Refreshes nightly via pg_cron."
+              compact
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">

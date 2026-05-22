@@ -18,6 +18,7 @@ import {
   Legend, AreaChart, Area, PieChart, Pie, Cell,
 } from "recharts";
 import { ParallelCoordinatesChart } from "@/components/visualizations/ParallelCoordinatesChart";
+import { PanelEmpty } from "@/components/ui/panel-empty";
 
 // ---------- helpers ----------
 const fmt = (n: number | null | undefined, d = 0) =>
@@ -208,6 +209,18 @@ function ThreatMatrix({ data }: { data: ReturnType<typeof useThreatMatrix>["data
     return map[intensity];
   };
   if (!data) return <Skeleton className="h-56 w-full" />;
+  let totalCells = 0;
+  for (const row of Object.values(data) as any[]) for (const v of Object.values(row)) totalCells += Number(v ?? 0);
+  if (totalCells === 0) {
+    return (
+      <PanelEmpty
+        title="No alerts to plot"
+        reason="The matrix cross-tabulates open critical alerts by severity × likelihood. No unacknowledged alerts exist in the recent window."
+        nextStep="Wait for the next ingestion cycle or check the Critical Alerts feed for routing failures."
+        compact
+      />
+    );
+  }
   return (
     <div className="space-y-1.5">
       <div className="grid grid-cols-[80px_repeat(4,1fr)_44px] gap-1 text-[10px] text-muted-foreground uppercase tracking-wider px-1">
@@ -336,7 +349,14 @@ export default function AnalystDashboard() {
               <CardTitle className="text-sm">Risk Trend (last 24h)</CardTitle>
             </CardHeader>
             <CardContent>
-              {trend.isLoading ? <Skeleton className="h-56 w-full" /> : (
+              {trend.isLoading ? <Skeleton className="h-56 w-full" /> : !trend.data?.length ? (
+                <PanelEmpty
+                  title="No events bucketed in the last 24h"
+                  reason="The 24-hour risk trend aggregates normalized events by hour and category. Nothing arrived in the window — likely a quiet period or an upstream ingestion gap."
+                  nextStep="Check signal intake health on Operations Backplane. If intake is healthy, this reflects real quiet."
+                  compact
+                />
+              ) : (
                 <div className="h-56">
                   <ResponsiveContainer>
                     <LineChart data={trend.data ?? []}>
@@ -361,7 +381,14 @@ export default function AnalystDashboard() {
               <CardTitle className="text-sm">Top Emerging Threats</CardTitle>
             </CardHeader>
             <CardContent>
-              {top.isLoading ? <Skeleton className="h-56 w-full" /> : (
+              {top.isLoading ? <Skeleton className="h-56 w-full" /> : !top.data?.length ? (
+                <PanelEmpty
+                  title="No ranked risks available"
+                  reason="This panel lists the highest-probability country-domain risks from the ranking engine. The engine has not produced predictions yet, or none crossed the visibility threshold."
+                  nextStep="Trigger a run on /risk-ranking, or wait for the next scheduled ranking cycle."
+                  compact
+                />
+              ) : (
                 <ol className="space-y-2">
                   {(top.data ?? []).map((t: any, i) => (
                     <li key={i} className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background/40 p-2">
@@ -377,7 +404,6 @@ export default function AnalystDashboard() {
                       </Badge>
                     </li>
                   ))}
-                  {!top.data?.length && <div className="text-xs text-muted-foreground">No ranked risks yet.</div>}
                 </ol>
               )}
             </CardContent>

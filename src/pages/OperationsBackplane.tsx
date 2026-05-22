@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, GitBranch, ListChecks, Network, Radio, Workflow } from "lucide-react";
+import { PanelEmpty } from "@/components/ui/panel-empty";
 
 type EventBusRow = {
   event_type: string;
@@ -129,7 +130,14 @@ export default function OperationsBackplane() {
               <CardTitle className="text-base flex items-center gap-2"><Radio className="h-4 w-4 text-primary" /> Event Bus</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {eventBus.isLoading ? <Skeleton className="h-32 w-full" /> : (eventBus.data ?? []).slice(0, 12).map((r) => (
+              {eventBus.isLoading ? <Skeleton className="h-32 w-full" /> : (eventBus.data ?? []).length === 0 ? (
+                <PanelEmpty
+                  title="Event bus is idle"
+                  reason="No queued, in-flight, or dead-lettered events. Either all queues are drained, or producers are not publishing."
+                  nextStep="If you expected traffic, verify provider workers and pg_cron jobs are running."
+                  compact
+                />
+              ) : (eventBus.data ?? []).slice(0, 12).map((r) => (
                 <div key={`${r.event_type}-${r.priority}-${r.status}`} className="flex items-center justify-between gap-3 border border-border rounded-lg p-3 text-sm">
                   <div className="min-w-0">
                     <p className="font-medium truncate">{r.event_type}</p>
@@ -146,7 +154,14 @@ export default function OperationsBackplane() {
               <CardTitle className="text-base flex items-center gap-2"><GitBranch className="h-4 w-4 text-primary" /> Pipeline Traces</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {traces.isLoading ? <Skeleton className="h-32 w-full" /> : (traces.data ?? []).slice(0, 12).map((r) => (
+              {traces.isLoading ? <Skeleton className="h-32 w-full" /> : (traces.data ?? []).length === 0 ? (
+                <PanelEmpty
+                  title="No pipeline traces in window"
+                  reason="Distributed traces from provider adapters and edge functions are absent. Tracing may be disabled or no spans were emitted in the lookback."
+                  nextStep="Confirm tracing is enabled in the affected provider, then re-run a sample fetch."
+                  compact
+                />
+              ) : (traces.data ?? []).slice(0, 12).map((r) => (
                 <div key={`${r.operation_name}-${r.provider}-${r.layer}`} className="flex items-center justify-between gap-3 border border-border rounded-lg p-3 text-sm">
                   <div className="min-w-0">
                     <p className="font-medium truncate">{r.operation_name}</p>
@@ -163,7 +178,14 @@ export default function OperationsBackplane() {
               <CardTitle className="text-base flex items-center gap-2"><Activity className="h-4 w-4 text-primary" /> Open Anomalies</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {anomalies.isLoading ? <Skeleton className="h-32 w-full" /> : (anomalies.data ?? []).slice(0, 10).map((a) => (
+              {anomalies.isLoading ? <Skeleton className="h-32 w-full" /> : (anomalies.data ?? []).length === 0 ? (
+                <PanelEmpty
+                  title="No open anomalies"
+                  reason="The observability layer has not flagged any unresolved anomalies. This is the healthy state."
+                  nextStep="No action required. Anomaly detectors run continuously and will surface issues here."
+                  compact
+                />
+              ) : (anomalies.data ?? []).slice(0, 10).map((a) => (
                 <div key={a.id} className="border border-border rounded-lg p-3 text-sm">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium">{a.metric_name ?? a.anomaly_type}</p>
@@ -180,7 +202,14 @@ export default function OperationsBackplane() {
               <CardTitle className="text-base flex items-center gap-2"><Network className="h-4 w-4 text-primary" /> Analyst Review Queue</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {tasks.isLoading ? <Skeleton className="h-32 w-full" /> : (tasks.data ?? []).slice(0, 10).map((t) => (
+              {tasks.isLoading ? <Skeleton className="h-32 w-full" /> : (tasks.data ?? []).length === 0 ? (
+                <PanelEmpty
+                  title="Analyst review queue is empty"
+                  reason="No tasks are waiting for human review. Either the auto-triage layer cleared them, or no signal crossed the human-in-the-loop threshold."
+                  nextStep="No action required. New review items will appear automatically when triggered."
+                  compact
+                />
+              ) : (tasks.data ?? []).slice(0, 10).map((t) => (
                 <div key={t.id} className="border border-border rounded-lg p-3 text-sm">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium line-clamp-1">{t.title}</p>
