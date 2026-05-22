@@ -209,7 +209,8 @@ function ThreatMatrix({ data }: { data: ReturnType<typeof useThreatMatrix>["data
     return map[intensity];
   };
   if (!data) return <Skeleton className="h-56 w-full" />;
-  const totalCells = Object.values(data).reduce((s: number, row: any) => s + Object.values(row).reduce((a: number, v: any) => a + Number(v ?? 0), 0 as number), 0 as number) as number;
+  let totalCells = 0;
+  for (const row of Object.values(data) as any[]) for (const v of Object.values(row)) totalCells += Number(v ?? 0);
   if (totalCells === 0) {
     return (
       <PanelEmpty
