@@ -13,6 +13,7 @@ import { DegradedModeBanner } from "@/components/live/DegradedModeBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import ScrollToTop from "@/components/ScrollToTop";
+import { RouteSEO } from "@/components/RouteSEO";
 import { Loader2 } from "lucide-react";
 
 import Landing from "./pages/Landing";
@@ -119,6 +120,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <ScrollToTop />
+          <RouteSEO />
           <DemoModeProvider>
             <IntelligenceMemoryProvider>
               <DegradedModeBanner />
