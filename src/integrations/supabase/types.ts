@@ -16375,6 +16375,14 @@ export type Database = {
       }
       rollup_community_to_urban: { Args: never; Returns: number }
       rollup_country_to_regional: { Args: never; Returns: number }
+      rollup_provider_runs: {
+        Args: { p_hours?: number }
+        Returns: {
+          out_bucket: string
+          out_provider: string
+          out_written: number
+        }[]
+      }
       run_accumulation_health_audit: { Args: never; Returns: Json }
       run_canary_probe: { Args: never; Returns: Json }
       run_milestone_audit: { Args: { _milestone?: string }; Returns: Json }
