@@ -39,7 +39,7 @@ async function execRun(runId: string) {
   const { data: cur } = await admin.from("export_cursor_state").select("*").eq("profile_id", prof.id).maybeSingle();
 
   let q = admin.from("global_signals").select(
-    "id,title,summary,category,confidence_score,impact_score,urgency_score,trend_direction,affected_countries,affected_regions,affected_sectors,affected_entities,primary_source,canonical_source_name,source_trust_tier,ingestion_source,merged_source_count,source_rank_score,official_source_present,evidence_hash,first_detected_at,latest_update_at,why_it_matters,source_urls,recommended_actions",
+    "id,title,summary,category,subcategory,confidence_score,impact_score,urgency_score,affected_countries,affected_regions,affected_sectors,primary_source,canonical_source_name,source_trust_tier,ingestion_source,merged_source_count,source_rank_score,official_source_present,evidence_hash,first_detected_at,latest_update_at,impact_reasoning,source_references,recommended_actions",
   );
   q = applyProfileFilters(q, prof);
   if (cur?.last_signal_updated_at) q = q.gte("latest_update_at", cur.last_signal_updated_at);
