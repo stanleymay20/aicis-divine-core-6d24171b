@@ -4,9 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, Copy, Key, Loader2, Terminal, Trash2, Zap } from "lucide-react";
+import { CheckCircle2, Copy, Key, Loader2, Terminal, Trash2, Webhook, Zap } from "lucide-react";
 import { toast } from "sonner";
-import { API_BASE } from "./constants";
+import { API_BASE, EVENTS } from "./constants";
 
 interface RevealedKey { key: string; name: string }
 interface TestResult { ok: boolean; status: number; ms: number; body: string }
@@ -202,7 +202,6 @@ interface WebhookProps {
 }
 
 export function WebhooksTab(p: WebhookProps) {
-  const { Webhook } = require("lucide-react");
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -231,7 +230,6 @@ export function WebhooksTab(p: WebhookProps) {
 }
 
 function WebhooksContent({ webhooks, newWebhookUrl, setNewWebhookUrl, createWebhook, deleteWebhook }: WebhookProps) {
-  const { EVENTS } = require("./constants");
   return (
     <>
       <div className="flex gap-2">

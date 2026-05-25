@@ -1,110 +1,29 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BarChart3, Book, Key, Terminal, Webhook } from "lucide-react";
 import { toast } from "sonner";
-import { Copy, Key, Webhook, Book, Zap, Shield, Terminal, Code2, ExternalLink, Trash2, Download, Activity, BarChart3, CheckCircle2, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-
-const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public-api`;
-
-const ENDPOINTS = [
-  { method: "GET", path: "/signals", desc: "List enriched global signals", params: "limit, category, min_impact" },
-  { method: "GET", path: "/decisions", desc: "List decisions with status", params: "limit, status" },
-  { method: "POST", path: "/decisions", desc: "Create a new decision from signal", params: "signal_summary, domain, severity_score" },
-  { method: "GET", path: "/outcomes", desc: "List measured outcomes with ROI", params: "limit" },
-  { method: "GET", path: "/priority-decisions", desc: "Top 5 priority decisions ranked by urgency", params: "none" },
-  { method: "GET", path: "/domains", desc: "List all tracked domains", params: "none" },
-  { method: "GET", path: "/health", desc: "System health status", params: "none" },
-];
-
-const EVENTS = [
-  { type: "signal.new", desc: "New signal ingested and enriched" },
-  { type: "signal.critical", desc: "Critical-urgency signal detected" },
-  { type: "decision.created", desc: "New decision created" },
-  { type: "decision.executed", desc: "Decision marked as executed" },
-  { type: "outcome.recorded", desc: "Outcome with ROI recorded" },
-];
-
-const errorMessage = (error: any, fallback: string) =>
-  error?.context?.error || error?.message || fallback;
-
-const functionErrorMessage = async (error: any, fallback: string) => {
-  try {
-    const body = await error?.context?.clone?.().json?.();
-    return body?.error || error?.message || fallback;
-  } catch {
-    return error?.message || fallback;
-  }
-};
-
-const SDK_EXAMPLE = `import { AICIS } from "aicis-sdk"
-
-const aicis = new AICIS({ apiKey: "sk_your_key_here" })
-
-// Get today's priority decisions
-const priorities = await aicis.getPriorityDecisions()
-console.log(priorities)
-// → [{ title: "Energy supply risk in EUR region", urgency: "critical", ... }]
-
-// Get latest signals filtered by category
-const signals = await aicis.getSignals({ 
-  category: "geopolitical", 
-  minImpact: 70, 
-  limit: 10 
-})
-
-// Create a decision from a signal
-const decision = await aicis.createDecision({
-  signalSummary: "Oil supply disruption in Middle East",
-  domain: "energy",
-  severityScore: 85,
-})
-
-// Get measured outcomes with ROI
-const outcomes = await aicis.getOutcomes({ limit: 20 })`;
-
-const CURL_EXAMPLE = `# List priority decisions
-curl -H "x-api-key: sk_your_key" \\
-  ${API_BASE}/priority-decisions
-
-# Get signals with filters
-curl -H "x-api-key: sk_your_key" \\
-  "${API_BASE}/signals?category=geopolitical&min_impact=70&limit=10"
-
-# Create a decision
-curl -X POST -H "x-api-key: sk_your_key" \\
-  -H "Content-Type: application/json" \\
-  -d '{"signal_summary":"Oil disruption","domain":"energy","severity_score":85}' \\
-  ${API_BASE}/decisions
-
-# Check system health
-curl -H "x-api-key: sk_your_key" \\
-  ${API_BASE}/health`;
+import { errorMessage, functionErrorMessage, EVENTS } from "@/components/developer-portal/constants";
+import { PortalHeader } from "@/components/developer-portal/PortalHeader";
+import { ApiDocsTab, SdkTab, UsageTab } from "@/components/developer-portal/DocsUsageSdkTabs";
+import { KeysTab, WebhooksTab } from "@/components/developer-portal/KeysWebhooksTabs";
 
 export default function DeveloperPortal() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyScopes, setNewKeyScopes] = useState<string[]>(["read"]);
-  const [newKeyExpiry, setNewKeyExpiry] = useState<string>("365"); // days, "" = never
+  const [newKeyExpiry, setNewKeyExpiry] = useState<string>("365");
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
   const [workspaceName, setWorkspaceName] = useState("AICIS Developer Workspace");
   const [revealedKey, setRevealedKey] = useState<{ key: string; name: string } | null>(null);
-  const [testResult, setTestResult] = useState<{ ok: boolean; status: number; ms: number; body: string } | null>(null);
-  const [testing, setTesting] = useState(false);
 
   const copyToClipboard = async (text: string, label = "Copied") => {
     try {
       await navigator.clipboard.writeText(text);
       toast.success(label);
     } catch {
-      // Fallback for non-secure contexts
       const ta = document.createElement("textarea");
       ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
       document.body.appendChild(ta); ta.select();
@@ -114,29 +33,10 @@ export default function DeveloperPortal() {
     }
   };
 
-  const testApiKey = async (key: string) => {
-    setTesting(true);
-    setTestResult(null);
-    const t0 = performance.now();
-    try {
-      const res = await fetch(`${API_BASE}/health`, { headers: { "x-api-key": key } });
-      const text = await res.text();
-      setTestResult({ ok: res.ok, status: res.status, ms: Math.round(performance.now() - t0), body: text.slice(0, 240) });
-      if (res.ok) toast.success(`Key works · ${res.status} · ${Math.round(performance.now() - t0)}ms`);
-      else toast.error(`Key failed · ${res.status}`);
-    } catch (e: any) {
-      setTestResult({ ok: false, status: 0, ms: Math.round(performance.now() - t0), body: e?.message || "Network error" });
-      toast.error("Network error reaching API");
-    } finally {
-      setTesting(false);
-    }
-  };
-
   const toggleScope = (s: string) => {
     setNewKeyScopes((prev) => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   };
 
-  // Fetch user's org
   const { data: org, isLoading: orgLoading } = useQuery({
     queryKey: ["user-org-dev"],
     queryFn: async () => {
@@ -150,7 +50,6 @@ export default function DeveloperPortal() {
     },
   });
 
-  // Fetch API keys
   const { data: apiKeys } = useQuery({
     queryKey: ["api-keys-dev", org?.id],
     enabled: !!org?.id,
@@ -164,7 +63,6 @@ export default function DeveloperPortal() {
     },
   });
 
-  // Fetch webhooks
   const { data: webhooks } = useQuery({
     queryKey: ["webhooks-dev", org?.id],
     enabled: !!org?.id,
@@ -178,7 +76,6 @@ export default function DeveloperPortal() {
     },
   });
 
-  // Fetch usage analytics from api_request_audit (last 7d)
   const { data: usage } = useQuery({
     queryKey: ["api-usage", org?.id],
     enabled: !!org?.id,
@@ -232,12 +129,8 @@ export default function DeveloperPortal() {
     onSuccess: (data) => {
       const fullKey = data.api_key as string;
       setRevealedKey({ key: fullKey, name: newKeyName.trim() });
-      setTestResult(null);
       copyToClipboard(fullKey, "API key copied to clipboard");
-      toast.success("API Key Created", {
-        description: "Copy and store it now — it will not be shown again.",
-        duration: 12000,
-      });
+      toast.success("API Key Created", { description: "Copy and store it now — it will not be shown again.", duration: 12000 });
       setNewKeyName("");
       queryClient.invalidateQueries({ queryKey: ["api-keys-dev"] });
     },
@@ -260,7 +153,6 @@ export default function DeveloperPortal() {
     onError: (e: any) => toast.error(errorMessage(e, "Unable to enable developer access")),
   });
 
-  // Revoke key mutation
   const revokeKey = useMutation({
     mutationFn: async (keyId: string) => {
       const { data, error } = await supabase.functions.invoke("revoke-api-key", {
@@ -276,12 +168,6 @@ export default function DeveloperPortal() {
     onError: (e: any) => toast.error(errorMessage(e, "Unable to revoke key")),
   });
 
-  const handleRevoke = (keyId: string, keyName: string) => {
-    if (!window.confirm(`Revoke API key "${keyName}"?\n\nThis is immediate and irreversible. Any service using this key will start receiving 403 errors.`)) return;
-    revokeKey.mutate(keyId);
-  };
-
-  // Create webhook mutation
   const createWebhook = useMutation({
     mutationFn: async (url: string) => {
       const { data, error } = await supabase.functions.invoke("create-webhook-subscription", {
@@ -291,10 +177,7 @@ export default function DeveloperPortal() {
       return data.signing_secret as string;
     },
     onSuccess: (secret) => {
-      toast.success("Webhook created", {
-        description: `Signing secret: ${secret} — save it now.`,
-        duration: 15000,
-      });
+      toast.success("Webhook created", { description: `Signing secret: ${secret} — save it now.`, duration: 15000 });
       navigator.clipboard.writeText(secret);
       setNewWebhookUrl("");
       queryClient.invalidateQueries({ queryKey: ["webhooks-dev"] });
@@ -313,82 +196,17 @@ export default function DeveloperPortal() {
     },
   });
 
-  const activeKeys = apiKeys?.filter((k) => !k.revoked) || [];
+  const activeKeysCount = (apiKeys?.filter((k) => !k.revoked) || []).length;
 
   return (
     <AICISLayout>
       <div className="max-w-5xl mx-auto space-y-6 p-4 md:p-6">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Code2 className="h-6 w-6 text-primary" />
-              <h1 className="text-2xl font-bold tracking-tight">Developer Platform</h1>
-              <Badge variant="outline" className="text-xs">v1.0</Badge>
-              <Badge variant="outline" className="text-[10px] gap-1 border-emerald-700/50 text-emerald-300 bg-emerald-500/10">
-                <CheckCircle2 className="h-2.5 w-2.5" /> SLA 99.9%
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Build on AICIS — signals, decisions, outcomes. HMAC webhooks · SHA-256 audit chain · per-key rate limits.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button size="sm" variant="outline" onClick={() => navigate("/data-export")}>
-              <Download className="h-3.5 w-3.5 mr-1.5" /> Data Export
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => navigate("/api-audit")}>
-              <Shield className="h-3.5 w-3.5 mr-1.5" /> Audit Chain
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => navigate("/system-status")}>
-              <Activity className="h-3.5 w-3.5 mr-1.5" /> Status
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => {
-              const spec = {
-                openapi: "3.0.3",
-                info: { title: "AICIS Public API", version: "1.2", description: "Signals, decisions, outcomes, ML predictions." },
-                servers: [{ url: API_BASE }],
-                components: { securitySchemes: { ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key" } } },
-                security: [{ ApiKeyAuth: [] }],
-                paths: Object.fromEntries(ENDPOINTS.map(ep => [ep.path, {
-                  [ep.method.toLowerCase()]: { summary: ep.desc, parameters: [], responses: { "200": { description: "OK" }, "401": { description: "Missing key" }, "403": { description: "Invalid/expired/insufficient scope" }, "429": { description: "Rate limit" } } }
-                }])),
-              };
-              const blob = new Blob([JSON.stringify(spec, null, 2)], { type: "application/json" });
-              const a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = "aicis-openapi.json";
-              a.click();
-              toast.success("OpenAPI spec downloaded");
-            }}>
-              <Download className="h-3.5 w-3.5 mr-1.5" /> OpenAPI
-            </Button>
-          </div>
-        </div>
-
-        {/* Quick stats */}
-        {org && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="rounded-lg border border-border bg-card p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Requests · 24h</p>
-              <p className="text-xl font-semibold mt-0.5">{(usage?.total24h ?? 0).toLocaleString()}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Error rate · 24h</p>
-              <p className={`text-xl font-semibold mt-0.5 ${((usage?.errorRate ?? 0) > 5) ? "text-destructive" : ""}`}>
-                {(usage?.errorRate ?? 0).toFixed(1)}%
-              </p>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency p50 / p95</p>
-              <p className="text-xl font-semibold mt-0.5">{usage?.p50 ?? 0} / {usage?.p95 ?? 0} <span className="text-xs text-muted-foreground font-normal">ms</span></p>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Active keys · Webhooks</p>
-              <p className="text-xl font-semibold mt-0.5">{activeKeys.length} <span className="text-muted-foreground">·</span> {(webhooks || []).length}</p>
-            </div>
-          </div>
-        )}
+        <PortalHeader
+          activeKeysCount={activeKeysCount}
+          webhooksCount={(webhooks || []).length}
+          usage={usage}
+          showStats={!!org}
+        />
 
         <Tabs defaultValue="api-docs" className="space-y-4">
           <TabsList className="grid w-full grid-cols-5 h-9">
@@ -399,450 +217,42 @@ export default function DeveloperPortal() {
             <TabsTrigger value="sdk" className="text-xs"><Terminal className="h-3 w-3 mr-1" />SDK</TabsTrigger>
           </TabsList>
 
-          {/* ── API Docs ─────────────────────────────── */}
-          <TabsContent value="api-docs" className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-primary" /> REST API Reference
-                </CardTitle>
-                <CardDescription>
-                  Base URL: <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{API_BASE}</code>
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  <div className="grid grid-cols-[70px_180px_1fr_1fr] gap-2 text-xs font-medium text-muted-foreground border-b border-border pb-2 mb-2">
-                    <span>Method</span><span>Endpoint</span><span>Description</span><span>Parameters</span>
-                  </div>
-                  {ENDPOINTS.map((ep) => (
-                    <div key={ep.path + ep.method} className="grid grid-cols-[70px_180px_1fr_1fr] gap-2 text-xs py-1.5 border-b border-border/50 last:border-0">
-                      <Badge variant={ep.method === "POST" ? "default" : "secondary"} className="text-[10px] h-5 w-fit">
-                        {ep.method}
-                      </Badge>
-                      <code className="font-mono text-foreground">{ep.path}</code>
-                      <span className="text-muted-foreground">{ep.desc}</span>
-                      <span className="text-muted-foreground font-mono">{ep.params}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Authentication</CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs space-y-2">
-                <p>All requests require an <code className="bg-muted px-1 py-0.5 rounded">x-api-key</code> header:</p>
-                <pre className="bg-muted p-3 rounded-lg overflow-x-auto font-mono text-[11px]">
-{`curl -H "x-api-key: sk_your_key_here" \\
-  ${API_BASE}/signals`}
-                </pre>
-                <div className="flex items-start gap-2 bg-primary/5 border border-primary/10 rounded-lg p-3 mt-3">
-                  <Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                  <div>
-                    <p className="font-medium text-foreground">Rate Limiting</p>
-                    <p className="text-muted-foreground mt-0.5">
-                      Requests are rate-limited per API key. Starter: 60/min, Pro: 300/min, Enterprise: 1000/min.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">cURL Examples</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-[11px] font-mono leading-relaxed">
-                  {CURL_EXAMPLE}
-                </pre>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── API Keys ─────────────────────────────── */}
+          <TabsContent value="api-docs" className="space-y-4"><ApiDocsTab /></TabsContent>
           <TabsContent value="keys" className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Key className="h-4 w-4 text-primary" /> API Keys
-                </CardTitle>
-                <CardDescription>Manage API keys for programmatic access. Keys are shown once at creation.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {orgLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading developer access...</p>
-                ) : !org ? (
-                  <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
-                    <div>
-                      <p className="text-sm font-medium">Enable developer access</p>
-                      <p className="text-xs text-muted-foreground mt-1">Create a workspace here, then generate API keys immediately.</p>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Input
-                        value={workspaceName}
-                        onChange={(e) => setWorkspaceName(e.target.value)}
-                        className="max-w-sm text-sm h-8"
-                        placeholder="Workspace name"
-                      />
-                      <Button size="sm" onClick={() => createWorkspace.mutate()} disabled={createWorkspace.isPending}>
-                        {createWorkspace.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-                        Enable Access
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {revealedKey && (
-                      <div className="rounded-lg border-2 border-primary/40 bg-primary/5 p-4 space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                              Your new API key — “{revealedKey.name}”
-                            </p>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                              Save it now. For security, this is the only time it will be shown in full.
-                            </p>
-                          </div>
-                          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setRevealedKey(null); setTestResult(null); }}>
-                            Dismiss
-                          </Button>
-                        </div>
-                        <div className="flex items-stretch gap-2">
-                          <code className="flex-1 min-w-0 bg-background border border-border rounded px-3 py-2 text-xs font-mono break-all select-all">
-                            {revealedKey.key}
-                          </code>
-                          <Button size="sm" onClick={() => copyToClipboard(revealedKey.key, "API key copied")} className="shrink-0">
-                            <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy
-                          </Button>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Button size="sm" variant="outline" disabled={testing} onClick={() => testApiKey(revealedKey.key)}>
-                            {testing ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1.5" />}
-                            Test this key live
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => copyToClipboard(`curl -H "x-api-key: ${revealedKey.key}" ${API_BASE}/health`, "cURL copied")}>
-                            <Terminal className="h-3.5 w-3.5 mr-1.5" /> Copy cURL
-                          </Button>
-                          {testResult && (
-                            <Badge variant={testResult.ok ? "default" : "destructive"} className="text-[10px]">
-                              {testResult.ok ? "✓" : "✗"} {testResult.status} · {testResult.ms}ms
-                            </Badge>
-                          )}
-                        </div>
-                        {testResult && (
-                          <pre className="bg-muted/60 rounded p-2 text-[10px] font-mono overflow-x-auto max-h-32">
-                            {testResult.body}
-                          </pre>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="space-y-3 border border-border/60 rounded-lg p-3 bg-muted/20">
-                      <div className="flex flex-wrap gap-2 items-end">
-                        <div className="flex-1 min-w-[200px]">
-                          <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Key name</label>
-                          <Input
-                            placeholder="production-backend"
-                            value={newKeyName}
-                            onChange={(e) => setNewKeyName(e.target.value)}
-                            className="text-sm h-8"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Expiry (days)</label>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={3650}
-                            placeholder="never"
-                            value={newKeyExpiry}
-                            onChange={(e) => setNewKeyExpiry(e.target.value)}
-                            className="text-sm h-8 w-24"
-                          />
-                        </div>
-                        <Button
-                          size="sm"
-                          disabled={!newKeyName.trim() || newKeyScopes.length === 0 || issueKey.isPending}
-                          onClick={() => issueKey.mutate(newKeyName.trim())}
-                          className="h-8"
-                        >
-                          {issueKey.isPending ? "Creating..." : "Create Key"}
-                        </Button>
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Scopes:</span>
-                        {(["read", "write", "admin"] as const).map((s) => (
-                          <label key={s} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="h-3.5 w-3.5 accent-primary"
-                              checked={newKeyScopes.includes(s)}
-                              onChange={() => toggleScope(s)}
-                            />
-                            <code className="font-mono">{s}</code>
-                          </label>
-                        ))}
-                        <span className="text-[10px] text-muted-foreground ml-auto">
-                          Least-privilege: prefer <code className="font-mono">read</code> only.
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      {activeKeys.length === 0 ? (
-                        <p className="text-xs text-muted-foreground py-4 text-center">No active API keys. Create one to get started.</p>
-                      ) : (
-                        activeKeys.map((key: any) => {
-                          const expired = key.expires_at && new Date(key.expires_at).getTime() < Date.now();
-                          const expiringSoon = key.expires_at && !expired
-                            && new Date(key.expires_at).getTime() - Date.now() < 7 * 86_400_000;
-                          return (
-                            <div key={key.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2 gap-3">
-                              <div className="space-y-0.5 min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-medium truncate">{key.name}</span>
-                                  <code className="text-[10px] text-muted-foreground font-mono">{key.key_prefix}•••</code>
-                                  {(key.scopes || ["read"]).map((s: string) => (
-                                    <Badge key={s} variant="outline" className="text-[9px] h-4 px-1 font-mono">{s}</Badge>
-                                  ))}
-                                  {expired && <Badge variant="destructive" className="text-[9px] h-4 px-1">expired</Badge>}
-                                  {expiringSoon && <Badge variant="outline" className="text-[9px] h-4 px-1 border-amber-500/50 text-amber-400">expires soon</Badge>}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground">
-                                  Created {new Date(key.created_at!).toLocaleDateString()}
-                                  {key.last_used_at && ` · Last used ${new Date(key.last_used_at).toLocaleDateString()}`}
-                                  {` · ${key.rate_limit_per_minute}/min`}
-                                  {key.expires_at && ` · Expires ${new Date(key.expires_at).toLocaleDateString()}`}
-                                </div>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive text-xs h-8"
-                                disabled={revokeKey.isPending && revokeKey.variables === key.id}
-                                onClick={() => handleRevoke(key.id, key.name)}
-                              >
-                                {revokeKey.isPending && revokeKey.variables === key.id
-                                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Revoking…</>
-                                  : <><Trash2 className="h-3 w-3 mr-1" /> Revoke</>}
-                              </Button>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+            <KeysTab
+              org={org}
+              orgLoading={orgLoading}
+              apiKeys={apiKeys}
+              workspaceName={workspaceName}
+              setWorkspaceName={setWorkspaceName}
+              createWorkspace={createWorkspace}
+              issueKey={issueKey}
+              revokeKey={revokeKey}
+              revealedKey={revealedKey}
+              setRevealedKey={setRevealedKey}
+              newKeyName={newKeyName}
+              setNewKeyName={setNewKeyName}
+              newKeyScopes={newKeyScopes}
+              toggleScope={toggleScope}
+              newKeyExpiry={newKeyExpiry}
+              setNewKeyExpiry={setNewKeyExpiry}
+              copyToClipboard={copyToClipboard}
+            />
           </TabsContent>
-
-          {/* ── Webhooks ─────────────────────────────── */}
           <TabsContent value="webhooks" className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Webhook className="h-4 w-4 text-primary" /> Webhook Subscriptions
-                </CardTitle>
-                <CardDescription>Receive real-time event notifications when signals, decisions, or outcomes change.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {orgLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading developer access...</p>
-                ) : !org ? (
-                  <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-3">
-                    <div>
-                      <p className="text-sm font-medium">Enable developer access</p>
-                      <p className="text-xs text-muted-foreground mt-1">Create a workspace here, then add secure webhook endpoints.</p>
-                    </div>
-                    <Button size="sm" onClick={() => createWorkspace.mutate()} disabled={createWorkspace.isPending}>
-                      {createWorkspace.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-                      Enable Access
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="https://your-app.com/webhooks/aicis"
-                        value={newWebhookUrl}
-                        onChange={(e) => setNewWebhookUrl(e.target.value)}
-                        className="max-w-md text-sm"
-                      />
-                      <Button
-                        size="sm"
-                        disabled={!newWebhookUrl.trim() || createWebhook.isPending}
-                        onClick={() => createWebhook.mutate(newWebhookUrl.trim())}
-                      >
-                        {createWebhook.isPending ? "Creating..." : "Add Webhook"}
-                      </Button>
-                    </div>
-
-                    <div className="space-y-2">
-                      {(webhooks || []).length === 0 ? (
-                        <p className="text-xs text-muted-foreground py-4 text-center">No webhooks configured.</p>
-                      ) : (
-                        (webhooks || []).map((wh: any) => (
-                          <div key={wh.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
-                            <div className="space-y-0.5">
-                              <code className="text-xs font-mono">{wh.url}</code>
-                              <div className="flex items-center gap-1.5 mt-1">
-                                <Badge variant={wh.active ? "default" : "secondary"} className="text-[10px] h-4">
-                                  {wh.active ? "Active" : "Paused"}
-                                </Badge>
-                                <span className="text-[10px] text-muted-foreground">
-                                  {(wh.events || []).length} events
-                                  {wh.failure_count > 0 && ` · ${wh.failure_count} failures`}
-                                </span>
-                              </div>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive"
-                              onClick={() => deleteWebhook.mutate(wh.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="border border-border rounded-lg p-3 mt-2">
-                      <p className="text-xs font-medium mb-2">Available Events</p>
-                      <div className="grid grid-cols-1 gap-1.5">
-                        {EVENTS.map((ev) => (
-                          <div key={ev.type} className="flex items-center gap-2 text-xs">
-                            <code className="font-mono text-primary bg-primary/5 px-1.5 py-0.5 rounded">{ev.type}</code>
-                            <span className="text-muted-foreground">{ev.desc}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+            <WebhooksTab
+              org={org}
+              orgLoading={orgLoading}
+              webhooks={webhooks}
+              newWebhookUrl={newWebhookUrl}
+              setNewWebhookUrl={setNewWebhookUrl}
+              createWorkspace={createWorkspace}
+              createWebhook={createWebhook}
+              deleteWebhook={deleteWebhook}
+            />
           </TabsContent>
-
-          {/* ── SDK ─────────────────────────────── */}
-          {/* ── Usage ─────────────────────────────── */}
-          <TabsContent value="usage" className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-primary" /> API Usage · last 7 days
-                </CardTitle>
-                <CardDescription>
-                  Per-organization request volume, error rate, and latency. Each request is hash-chained in the audit log.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="rounded-lg bg-muted/40 p-3">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Requests · 7d</p>
-                    <p className="text-lg font-semibold mt-0.5">{(usage?.total7d ?? 0).toLocaleString()}</p>
-                  </div>
-                  <div className="rounded-lg bg-muted/40 p-3">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Errors · 24h</p>
-                    <p className="text-lg font-semibold mt-0.5">{usage?.errors24h ?? 0}</p>
-                  </div>
-                  <div className="rounded-lg bg-muted/40 p-3">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency p95</p>
-                    <p className="text-lg font-semibold mt-0.5">{usage?.p95 ?? 0} ms</p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-medium mb-2">Top endpoints · 24h</p>
-                  {(usage?.topEndpoints || []).length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-3 text-center">No requests in the last 24 hours.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {usage!.topEndpoints.map(([k, n]) => (
-                        <div key={k} className="flex items-center justify-between bg-muted/40 rounded-md px-3 py-1.5">
-                          <code className="text-xs font-mono">{k}</code>
-                          <span className="text-xs text-muted-foreground tabular-nums">{n.toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-start gap-2 bg-primary/5 border border-primary/10 rounded-lg p-3">
-                  <Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                  <div className="text-xs">
-                    <p className="font-medium text-foreground">Tamper-evident audit chain</p>
-                    <p className="text-muted-foreground mt-0.5">
-                      Every request is recorded with SHA-256 chaining. Verify in the{" "}
-                      <button onClick={() => navigate("/api-audit")} className="text-primary underline underline-offset-2">Audit Chain explorer</button>.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── SDK ─────────────────────────────── */}
-          <TabsContent value="sdk" className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Terminal className="h-4 w-4 text-primary" /> JavaScript SDK
-                </CardTitle>
-                <CardDescription>
-                  Drop-in SDK for Node.js and browser applications. Coming soon to npm.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-[11px] font-mono leading-relaxed">
-                  {SDK_EXAMPLE}
-                </pre>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Quick Start</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">1</div>
-                  <div>
-                    <p className="font-medium">Create an API key</p>
-                    <p className="text-muted-foreground">Go to the API Keys tab and generate a key for your application.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">2</div>
-                  <div>
-                    <p className="font-medium">Make your first request</p>
-                    <p className="text-muted-foreground">Use curl or your language of choice with the <code className="bg-muted px-1 rounded">x-api-key</code> header.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">3</div>
-                  <div>
-                    <p className="font-medium">Set up webhooks (optional)</p>
-                    <p className="text-muted-foreground">Subscribe to real-time events to react to new signals and decisions.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">4</div>
-                  <div>
-                    <p className="font-medium">Build intelligence into your app</p>
-                    <p className="text-muted-foreground">Use priority decisions and outcomes to drive automated workflows.</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+          <TabsContent value="usage" className="space-y-4"><UsageTab usage={usage} /></TabsContent>
+          <TabsContent value="sdk" className="space-y-4"><SdkTab /></TabsContent>
         </Tabs>
       </div>
     </AICISLayout>
