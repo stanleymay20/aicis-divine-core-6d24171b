@@ -10,6 +10,7 @@ import MeasuredEvidenceTodayPanel from "@/components/daily-evidence-ops/Measured
 import OperatorClosureScoreboard from "@/components/daily-evidence-ops/OperatorClosureScoreboard";
 import ReviewerClosureScoreboard from "@/components/daily-evidence-ops/ReviewerClosureScoreboard";
 import EvidenceMomentumPanel from "@/components/daily-evidence-ops/EvidenceMomentumPanel";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 export default function DailyEvidenceOps() {
   return (
@@ -24,10 +25,10 @@ export default function DailyEvidenceOps() {
           {/* Supply + KPIs */}
           <InferenceControl />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-            <DailyThroughputPanel />
-            <CompletionVelocityPanel />
+            <PanelBoundary><DailyThroughputPanel /></PanelBoundary>
+            <PanelBoundary><CompletionVelocityPanel /></PanelBoundary>
           </div>
-          <MeasuredEvidenceTodayPanel />
+          <PanelBoundary><MeasuredEvidenceTodayPanel /></PanelBoundary>
 
           {/* Execution pipeline */}
           <ExecutionStageBoard />
@@ -36,11 +37,11 @@ export default function DailyEvidenceOps() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-3 sm:space-y-4">
               <NewDecisionsInbox />
-              <DailyMeasuredQueue />
+              <PanelBoundary><DailyMeasuredQueue /></PanelBoundary>
             </div>
             <div className="space-y-3 sm:space-y-4">
               <RapidOutcomeMode />
-              <EvidenceMomentumPanel />
+              <PanelBoundary><EvidenceMomentumPanel /></PanelBoundary>
               <OperatorClosureScoreboard />
               <ReviewerClosureScoreboard />
             </div>

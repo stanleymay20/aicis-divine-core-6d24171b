@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 type AudienceMode = "government" | "media" | "business" | "public";
 
@@ -276,7 +277,7 @@ export default function LiveCommandFeed() {
 
                 {/* Routing Precision Panel */}
                 {!reviewMode && categoryFilter === "all" && !searchQuery && (
-                  <RoutingPrecisionPanel />
+                  <PanelBoundary><RoutingPrecisionPanel /></PanelBoundary>
                 )}
 
                 {/* Full Feed */}

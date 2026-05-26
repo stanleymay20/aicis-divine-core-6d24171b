@@ -14,6 +14,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 /** ──────────────────────────────────────────────────────────────
  *  Types
@@ -140,7 +141,7 @@ export default function Accumulation() {
           {/* DOMAINS */}
           <TabsContent value="domains" className="space-y-3">
             {loading ? (
-              <SkeletonGrid />
+              <PanelBoundary><SkeletonGrid /></PanelBoundary>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {domains
