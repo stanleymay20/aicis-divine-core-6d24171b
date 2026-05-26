@@ -19,6 +19,7 @@ import {
 } from "recharts";
 import { ParallelCoordinatesChart } from "@/components/visualizations/ParallelCoordinatesChart";
 import { PanelEmpty } from "@/components/ui/panel-empty";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 // ---------- helpers ----------
 const fmt = (n: number | null | undefined, d = 0) =>
@@ -312,12 +313,12 @@ export default function AnalystDashboard() {
 
         {/* KPI row */}
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          <KpiTile icon={Gauge} label="Global Risk" value={fmt(k?.globalRisk)} suffix="/100" delta={k?.eventsDelta ?? 0} deltaLabel="6h" sparkColor="#ef4444" sparkData={sparkA} loading={kpis.isLoading} />
-          <KpiTile icon={AlertTriangle} label="Active Incidents" value={fmt(k?.activeAlerts)} delta={k?.eventsDelta ?? 0} deltaLabel="vs 6h" sparkColor="#f97316" sparkData={sparkB} loading={kpis.isLoading} />
-          <KpiTile icon={ShieldAlert} label="Systemic Threats" value={fmt(k?.systemicThreats)} delta={2} deltaLabel="" sparkColor="#a78bfa" sparkData={sparkC} loading={kpis.isLoading} />
-          <KpiTile icon={Users} label="At-Risk Pop." value={"128.7M"} delta={4} deltaLabel="↑ 18.4M" sparkColor="#fbbf24" sparkData={sparkB} loading={false} />
-          <KpiTile icon={Activity} label="Confidence" value={`${fmt(k?.confidence)}%`} delta={4} deltaLabel="" sparkColor="#10b981" sparkData={sparkA} loading={kpis.isLoading} />
-          <KpiTile icon={Database} label="Data Sources" value={fmt(k?.sourcesTotal)} delta={null} deltaLabel="online" sparkColor="#22d3ee" sparkData={sparkB} loading={kpis.isLoading} />
+          <PanelBoundary><KpiTile icon={Gauge} label="Global Risk" value={fmt(k?.globalRisk)} suffix="/100" delta={k?.eventsDelta ?? 0} deltaLabel="6h" sparkColor="#ef4444" sparkData={sparkA} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={AlertTriangle} label="Active Incidents" value={fmt(k?.activeAlerts)} delta={k?.eventsDelta ?? 0} deltaLabel="vs 6h" sparkColor="#f97316" sparkData={sparkB} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={ShieldAlert} label="Systemic Threats" value={fmt(k?.systemicThreats)} delta={2} deltaLabel="" sparkColor="#a78bfa" sparkData={sparkC} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Users} label="At-Risk Pop." value={"128.7M"} delta={4} deltaLabel="↑ 18.4M" sparkColor="#fbbf24" sparkData={sparkB} loading={false} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Activity} label="Confidence" value={`${fmt(k?.confidence)}%`} delta={4} deltaLabel="" sparkColor="#10b981" sparkData={sparkA} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Database} label="Data Sources" value={fmt(k?.sourcesTotal)} delta={null} deltaLabel="online" sparkColor="#22d3ee" sparkData={sparkB} loading={kpis.isLoading} /></PanelBoundary>
         </div>
 
         {/* Map + Live Stream */}
@@ -327,10 +328,10 @@ export default function AnalystDashboard() {
               <CardTitle className="text-sm flex items-center gap-2"><Globe2 className="h-4 w-4 text-cyan-400" /> Global Situational Map</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <PlanetaryOperationsMap />
+              <PanelBoundary><PlanetaryOperationsMap /></PanelBoundary>
             </CardContent>
           </Card>
-          <RealtimeOperationsStream />
+          <PanelBoundary><RealtimeOperationsStream /></PanelBoundary>
         </div>
 
         {/* Threat matrix + Risk trend */}
@@ -507,7 +508,7 @@ export default function AnalystDashboard() {
           </Card>
         </div>
 
-        <ParallelCoordinatesChart />
+        <PanelBoundary><ParallelCoordinatesChart /></PanelBoundary>
       </div>
     </AICISLayout>
   );

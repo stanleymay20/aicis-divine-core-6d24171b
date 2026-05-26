@@ -11,6 +11,7 @@ import { LearningSection } from "@/components/pilot-truth/LearningSection";
 import { PilotQueueSection } from "@/components/pilot-truth/PilotQueueSection";
 import { ControlledPilotRunPanel } from "@/components/pilot-truth/ControlledPilotRunPanel";
 import { EvidenceTimelineSection } from "@/components/pilot-truth/EvidenceTimelineSection";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 type TruthRow = {
   outcome_id: string | null;
@@ -189,7 +190,7 @@ export default function PilotTruthFeed() {
       </div>
 
       {/* Phase 1 — Controlled Pilot Run audit panel */}
-      <ControlledPilotRunPanel isPrivileged={isPrivileged} />
+      <PanelBoundary><ControlledPilotRunPanel isPrivileged={isPrivileged} /></PanelBoundary>
 
       {/* Pilot Execution Wave: curated execution surface */}
       <PilotQueueSection isPrivileged={isPrivileged} />

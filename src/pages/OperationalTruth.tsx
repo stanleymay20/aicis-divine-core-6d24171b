@@ -16,6 +16,7 @@ import PromotionReadinessGate from "@/components/decision-engine/PromotionReadin
 import EvidenceBacklogQueue from "@/components/decision-engine/EvidenceBacklogQueue";
 import BillingHealthPanel from "@/components/decision-engine/BillingHealthPanel";
 import AuditActivityPanel from "@/components/decision-engine/AuditActivityPanel";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 export default function OperationalTruth() {
   return (
@@ -33,47 +34,47 @@ export default function OperationalTruth() {
 
         {/* Row 1: Model Safety + Trust */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ModelSafetyPanel />
-          <TrustScorePanel />
+          <PanelBoundary><ModelSafetyPanel /></PanelBoundary>
+          <PanelBoundary><TrustScorePanel /></PanelBoundary>
         </div>
 
         {/* Row 2: Promotion Gate + Silent Failures */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <PromotionReadinessGate />
-          <SilentFailurePanel />
+          <PanelBoundary><PromotionReadinessGate /></PanelBoundary>
+          <PanelBoundary><SilentFailurePanel /></PanelBoundary>
         </div>
 
         {/* Row 3: Inference Activity */}
-        <InferenceActivityPanel />
+        <PanelBoundary><InferenceActivityPanel /></PanelBoundary>
 
         {/* Row 4: Evidence Funnel + Execution Pipeline */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <MeasuredEvidenceProgressPanel />
-          <ExecutionPipelinePanel />
+          <PanelBoundary><MeasuredEvidenceProgressPanel /></PanelBoundary>
+          <PanelBoundary><ExecutionPipelinePanel /></PanelBoundary>
         </div>
 
         {/* Row 5: KPIs + Baseline */}
-        <DecisionKPIPanel />
+        <PanelBoundary><DecisionKPIPanel /></PanelBoundary>
         <BaselineComparison />
 
         {/* Row 6: Evidence Backlog */}
-        <EvidenceBacklogQueue />
+        <PanelBoundary><EvidenceBacklogQueue /></PanelBoundary>
 
         {/* Row 7: Reviewer + Leaderboard */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ReviewerAccountabilityPanel />
+          <PanelBoundary><ReviewerAccountabilityPanel /></PanelBoundary>
           <ActionLeaderboard />
         </div>
 
         {/* Row 8: Billing + Audit */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <BillingHealthPanel />
-          <AuditActivityPanel />
+          <PanelBoundary><BillingHealthPanel /></PanelBoundary>
+          <PanelBoundary><AuditActivityPanel /></PanelBoundary>
         </div>
 
         {/* Row 9: Model History + Learning */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ModelPromotionLog />
+          <PanelBoundary><ModelPromotionLog /></PanelBoundary>
           <LearningCycleHealth />
         </div>
       </div>

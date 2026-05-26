@@ -10,6 +10,7 @@ import MeasuredOutcomeKPI from "@/components/decision-engine/MeasuredOutcomeKPI"
 import DecisionReviewQueue from "@/components/decision-engine/DecisionReviewQueue";
 import { RecommendedActionsPanel } from "@/components/risk-ranking/RecommendedActionsPanel";
 import { DecisionOpsKPIStrip } from "@/components/decision-engine/DecisionOpsKPIStrip";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 export default function DecisionOperations() {
   return (
@@ -58,26 +59,26 @@ export default function DecisionOperations() {
           </TabsList>
 
           <TabsContent value="today" className="mt-4 space-y-5">
-            <DailyTaskPanel />
-            <MeasuredOutcomeKPI />
+            <PanelBoundary><DailyTaskPanel /></PanelBoundary>
+            <PanelBoundary><MeasuredOutcomeKPI /></PanelBoundary>
           </TabsContent>
           <TabsContent value="recommended" className="mt-4">
-            <RecommendedActionsPanel topN={20} />
+            <PanelBoundary><RecommendedActionsPanel topN={20} /></PanelBoundary>
           </TabsContent>
           <TabsContent value="review" className="mt-4">
-            <DecisionReviewQueue />
+            <PanelBoundary><DecisionReviewQueue /></PanelBoundary>
           </TabsContent>
           <TabsContent value="execution" className="mt-4">
-            <ExecutionCommandCenter />
+            <PanelBoundary><ExecutionCommandCenter /></PanelBoundary>
           </TabsContent>
           <TabsContent value="backlog" className="mt-4">
             <OutcomeBacklogBurner />
           </TabsContent>
           <TabsContent value="outcomes" className="mt-4">
-            <OutcomeInputPanel />
+            <PanelBoundary><OutcomeInputPanel /></PanelBoundary>
           </TabsContent>
           <TabsContent value="pilot" className="mt-4">
-            <PilotModePanel />
+            <PanelBoundary><PilotModePanel /></PanelBoundary>
           </TabsContent>
         </Tabs>
       </div>

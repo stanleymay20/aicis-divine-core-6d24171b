@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Flame, RefreshCw, Loader2, Search, TrendingDown, Activity, Zap, Target } from "lucide-react";
 import { RecommendedActionsPanel } from "@/components/risk-ranking/RecommendedActionsPanel";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 interface Row {
   id: string;
@@ -164,7 +165,7 @@ export default function RiskRankingPage() {
           </TabsList>
 
           <TabsContent value="actions" className="space-y-3 mt-4">
-            <RecommendedActionsPanel topN={50} />
+            <PanelBoundary><RecommendedActionsPanel topN={50} /></PanelBoundary>
           </TabsContent>
 
           {/* ── Leaderboard tab ── */}

@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, AlertTriangle, CheckCircle2, PauseCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 type SloRow = {
   pipeline_name: string;
@@ -88,10 +89,10 @@ export default function SystemCatalog() {
         </header>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryTile label="Healthy" value={healthy.length} tone="ok" Icon={CheckCircle2} />
-          <SummaryTile label="Failing/Degraded" value={failing.length} tone="down" Icon={AlertTriangle} />
-          <SummaryTile label="Idle 24h" value={idle.length} tone="warn" Icon={AlertTriangle} />
-          <SummaryTile label="Disabled" value={disabled.length} tone="idle" Icon={PauseCircle} />
+          <PanelBoundary><SummaryTile label="Healthy" value={healthy.length} tone="ok" Icon={CheckCircle2} /></PanelBoundary>
+          <PanelBoundary><SummaryTile label="Failing/Degraded" value={failing.length} tone="down" Icon={AlertTriangle} /></PanelBoundary>
+          <PanelBoundary><SummaryTile label="Idle 24h" value={idle.length} tone="warn" Icon={AlertTriangle} /></PanelBoundary>
+          <PanelBoundary><SummaryTile label="Disabled" value={disabled.length} tone="idle" Icon={PauseCircle} /></PanelBoundary>
         </div>
 
         <Card className="p-4 sm:p-6">

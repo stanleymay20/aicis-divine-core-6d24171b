@@ -7,6 +7,7 @@ import { SignalRecommendationsLane } from "@/components/live/SignalRecommendatio
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, Radio } from "lucide-react";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 
 export default function MorningBrief() {
   const [showLive, setShowLive] = useState(false);
@@ -15,7 +16,7 @@ export default function MorningBrief() {
     <AICISLayout>
       <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-4">
         {/* Primary brief — what the operator must act on today */}
-        <MorningBriefDashboard />
+        <PanelBoundary><MorningBriefDashboard /></PanelBoundary>
 
         {/* Live operations — collapsed by default to keep the brief calm */}
         <Collapsible open={showLive} onOpenChange={setShowLive}>
@@ -34,10 +35,10 @@ export default function MorningBrief() {
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-4 pt-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <BreakingNowLane />
-              <StreamingHealthPanel />
+              <PanelBoundary><BreakingNowLane /></PanelBoundary>
+              <PanelBoundary><StreamingHealthPanel /></PanelBoundary>
             </div>
-            <SignalRecommendationsLane topN={20} />
+            <PanelBoundary><SignalRecommendationsLane topN={20} /></PanelBoundary>
           </CollapsibleContent>
         </Collapsible>
       </div>
