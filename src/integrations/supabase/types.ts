@@ -15687,6 +15687,17 @@ export type Database = {
         }
         Relationships: []
       }
+      v_data_integrity_snapshot: {
+        Row: {
+          check_name: string | null
+          measured_at: string | null
+          pct: number | null
+          severity: string | null
+          total: number | null
+          value: number | null
+        }
+        Relationships: []
+      }
       v_forecast_truth_split: {
         Row: {
           days_since_harness_freeze: number | null
@@ -16031,6 +16042,20 @@ export type Database = {
           expired_count: number
         }[]
       }
+      f_backfill_entity_links: { Args: { batch_size?: number }; Returns: Json }
+      f_data_integrity_snapshot: {
+        Args: never
+        Returns: {
+          check_name: string
+          measured_at: string
+          pct: number
+          severity: string
+          total: number
+          value: number
+        }[]
+      }
+      f_force_missing_snapshots: { Args: never; Returns: Json }
+      f_normalize_iso3: { Args: { input: string }; Returns: string }
       find_stalled_pipelines: {
         Args: never
         Returns: {
