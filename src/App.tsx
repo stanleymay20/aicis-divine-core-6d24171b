@@ -70,6 +70,7 @@ const DataPipeline = lazy(() => import("./pages/DataPipeline"));
 const OutcomeCockpit = lazy(() => import("./pages/OutcomeCockpit"));
 const SystemCatalog = lazy(() => import("./pages/SystemCatalog"));
 const AnalystDashboard = lazy(() => import("./pages/AnalystDashboard"));
+const DataIntegrity = lazy(() => import("./pages/DataIntegrity"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -186,6 +187,7 @@ const App = () => (
                 <Route path="/system-catalog" element={<Shell><SystemCatalog /></Shell>} />
                 <Route path="/analyst" element={<Shell><AnalystDashboard /></Shell>} />
                 <Route path="/analyst-dashboard" element={<Shell><AnalystDashboard /></Shell>} />
+                <Route path="/data-integrity" element={<Protected><DataIntegrity /></Protected>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </IntelligenceMemoryProvider>
