@@ -107,6 +107,7 @@ export default function DataIntegrity() {
       <SEO
         title="Data Integrity | AICIS Planetary Nervous System"
         description="Live G7-grade data integrity surface: entity-graph link completeness, country coverage, ingestion heartbeat, and freshness."
+        path="/data-integrity"
       />
 
       <header className="space-y-2">
