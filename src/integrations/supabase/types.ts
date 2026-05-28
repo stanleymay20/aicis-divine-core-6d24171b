@@ -16043,6 +16043,18 @@ export type Database = {
         }[]
       }
       f_backfill_entity_links: { Args: { batch_size?: number }; Returns: Json }
+      f_backfill_event_links_by_entity: {
+        Args: { batch_size?: number }
+        Returns: number
+      }
+      f_backfill_event_links_by_iso3: {
+        Args: { batch_size?: number }
+        Returns: number
+      }
+      f_backfill_metric_links_by_iso3: {
+        Args: { batch_size?: number }
+        Returns: number
+      }
       f_data_integrity_snapshot: {
         Args: never
         Returns: {
