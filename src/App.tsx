@@ -187,6 +187,7 @@ const App = () => (
                 <Route path="/system-catalog" element={<Shell><SystemCatalog /></Shell>} />
                 <Route path="/analyst" element={<Shell><AnalystDashboard /></Shell>} />
                 <Route path="/analyst-dashboard" element={<Shell><AnalystDashboard /></Shell>} />
+                <Route path="/data-integrity" element={<Protected><DataIntegrity /></Protected>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </IntelligenceMemoryProvider>
