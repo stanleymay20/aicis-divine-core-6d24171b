@@ -120,6 +120,11 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  const __run = await startProviderRun(supabase, {
+    provider_name: "gdelt_firehose",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
 
   // Phase 4.1: shard themes per invocation to avoid edge timeouts.
   // Default 3 shards, rotated by ?shard=1|2|3 or by minute window.
