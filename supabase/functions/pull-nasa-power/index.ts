@@ -2,6 +2,11 @@
 // Pulls a 7-day window for ~30 representative country centroids.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { svcClient, writeNormalized, logRun, NormalizedRow } from "../_shared/normalized-write.ts";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
