@@ -37,6 +37,11 @@ const POINTS: { iso3: string; lat: number; lon: number }[] = [
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const supabase = svcClient();
+  const run = await startProviderRun(supabase, {
+    provider_name: "nasa_power",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   const start = Date.now();
   const rows: NormalizedRow[] = [];
   const errors: string[] = [];
