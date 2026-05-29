@@ -1,5 +1,10 @@
 // IMF Datamapper API — annual indicators per country. Reliable, no key needed.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -20,6 +25,11 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  const run = await startProviderRun(supabase, {
+    provider_name: "imf-datamapper",
+    endpoint: "pull-imf-sdmx",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   const start = Date.now();
   let inserted = 0, errors = 0;
 
