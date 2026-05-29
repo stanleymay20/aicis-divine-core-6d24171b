@@ -5,6 +5,11 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { recordFirehoseHealth } from "../_shared/firehose-health.ts";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
