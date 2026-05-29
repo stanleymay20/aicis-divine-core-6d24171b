@@ -71,6 +71,13 @@ serve(async (req) => {
       status,
       `Inserted ${inserted}/${rows.length} V-Dem rows in ${Date.now() - start}ms${errors.length ? " — " + errors[0] : ""}`
     );
+    await finishProviderRun(supabase, run, {
+      records_fetched: rows.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+      error_count: errors.length,
+      error_summary: errors[0] ?? null,
+    });
 
     return new Response(JSON.stringify({ ok: true, inserted, total: rows.length, errors }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -78,6 +85,7 @@ serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await logRun(supabase, FN, "error", msg);
+    await failProviderRun(supabase, run, e);
     return new Response(JSON.stringify({ ok: false, error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
