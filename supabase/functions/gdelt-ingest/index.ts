@@ -171,7 +171,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('GDELT ingest error:', error);
-    try { await failProviderRun(supabase as any, __run as any, error); } catch { /* fail-soft */ }
+    await failProviderRun(supabase, __run, error);
     return new Response(JSON.stringify({
       ok: false, error: error instanceof Error ? error.message : 'Unknown error'
     }), {
