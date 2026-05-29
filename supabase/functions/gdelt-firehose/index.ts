@@ -245,6 +245,14 @@ serve(async (req) => {
     errorMessage: failure ?? undefined,
   });
 
+  await finishProviderRun(supabase, __run, {
+    records_fetched: totalRaw,
+    records_inserted: inserted,
+    records_normalized: candidates.length,
+    error_count: failure ? 1 : 0,
+    error_summary: failure ?? null,
+  });
+
   return new Response(JSON.stringify({
     ok: success,
     shard: shardIdx + 1,
