@@ -153,6 +153,12 @@ serve(async (req) => {
       message: `Ingested ${ingested} events from ${articles.length} GDELT articles`,
     });
 
+    await finishProviderRun(supabase, __run, {
+      records_fetched: articles.length,
+      records_inserted: ingested,
+      records_normalized: ingested,
+    });
+
     return new Response(JSON.stringify({
       ok: true,
       ingested,
@@ -164,6 +170,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('GDELT ingest error:', error);
+    try { await failProviderRun(supabase as any, __run as any, error); } catch { /* fail-soft */ }
     return new Response(JSON.stringify({
       ok: false, error: error instanceof Error ? error.message : 'Unknown error'
     }), {
