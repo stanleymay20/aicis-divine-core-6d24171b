@@ -114,18 +114,25 @@ serve(async (req) => {
       metadata: { records_count: records.length }
     });
 
+    await finishProviderRun(supabase, run, {
+      records_fetched: records.length,
+      records_inserted: records.length,
+      records_normalized: records.length,
+    });
+
     return new Response(
-      JSON.stringify({ 
-        ok: true, 
+      JSON.stringify({
+        ok: true,
         message: `Fetched ${records.length} World Bank indicators`,
         records_count: records.length
-      }), 
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
     console.error("pull-worldbank error:", e);
+    await failProviderRun(supabase, run, e);
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : 'Unknown error' }), 
+      JSON.stringify({ error: e instanceof Error ? e.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
