@@ -263,6 +263,14 @@ Deno.serve(async (req) => {
       await supabase.rpc("generate_strategic_digital_twins");
     } catch (_) {}
 
+    await finishProviderRun(supabase, __telemetryRun, {
+      records_fetched: meshCells.length,
+      records_inserted: inserted,
+      records_normalized: rows.length,
+      error_count: errors.length,
+      error_summary: errors[0] ?? null,
+    });
+
     return new Response(JSON.stringify({
       status: errors.length ? "partial_success" : "success",
       connector_key: CONNECTOR_KEY,
