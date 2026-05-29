@@ -2,6 +2,11 @@
 // Pulls a curated subset of liberal-democracy indicators per country-year.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { svcClient, writeNormalized, logRun, NormalizedRow } from "../_shared/normalized-write.ts";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,13 +15,16 @@ const corsHeaders = {
 
 const FN = "pull-vdem";
 
-// Maintained mirror of V-Dem core indicators (country-year, free).
-// Falls back to OWID democracy indices, which are V-Dem-derived and CSV-stable.
 const SOURCE = "https://ourworldindata.org/grapher/electoral-democracy-index.csv?v=1&csvType=full";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const supabase = svcClient();
+  const run = await startProviderRun(supabase, {
+    provider_name: "vdem",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   const start = Date.now();
 
   try {
