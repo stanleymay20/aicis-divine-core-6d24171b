@@ -136,6 +136,11 @@ Deno.serve(async (req) => {
 
   const started = Date.now();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const run = await startProviderRun(supabase, {
+    provider_name: "usgs",
+    endpoint: "ingest-usgs-earthquake-telemetry",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
 
   try {
     const res = await fetch(USGS_FEED, {
