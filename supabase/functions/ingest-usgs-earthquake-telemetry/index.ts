@@ -247,6 +247,12 @@ Deno.serve(async (req) => {
       console.warn("telemetry health refresh skipped", e);
     }
 
+    await finishProviderRun(supabase, run, {
+      records_fetched: features.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+    });
+
     return new Response(JSON.stringify({
       status: "success",
       connector_key: CONNECTOR_KEY,
@@ -264,6 +270,7 @@ Deno.serve(async (req) => {
       status: "error",
       message: msg.slice(0, 500),
     });
+    await failProviderRun(supabase, run, e);
 
     return new Response(JSON.stringify({ status: "error", error: msg }), {
       status: 500,
