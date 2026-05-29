@@ -148,6 +148,13 @@ serve(async (req) => {
     name: FN, trustTier: "tier_1", success: !insertErr,
     insertedCount: inserted, durationMs: dur, errorMessage: insertErr ?? undefined,
   });
+  await finishProviderRun(supabase, __run, {
+    records_fetched: features.length,
+    records_inserted: inserted,
+    records_normalized: candidates.length,
+    error_count: insertErr ? 1 : 0,
+    error_summary: insertErr ?? null,
+  });
   return new Response(JSON.stringify({ ok: !insertErr, quakes: features.length, inserted, duration_ms: dur }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
