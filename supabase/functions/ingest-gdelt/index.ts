@@ -51,6 +51,13 @@ serve(async (req) => {
   let inserted = 0;
   const errors: string[] = [];
 
+  const run = await startProviderRun(sb, {
+    provider_name: "gdelt",
+    endpoint: "ingest-gdelt",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+    params: { batch, batch_size: BATCH_SIZE },
+  });
+
   try {
     for (let i = 0; i < countries.length; i++) {
       const [iso3, name] = countries[i];
