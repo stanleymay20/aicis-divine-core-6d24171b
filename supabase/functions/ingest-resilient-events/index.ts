@@ -156,6 +156,14 @@ serve(async (req) => {
     message: `Ingested ${inserted}/${allEvents.length} events. ${JSON.stringify(summary)} (${Date.now() - start}ms)`,
   });
 
+  await finishProviderRun(supabase, __run, {
+    records_fetched: allEvents.length,
+    records_inserted: inserted,
+    records_normalized: allEvents.length,
+    error_count: summary.insert_error ? 1 : 0,
+    error_summary: (summary.insert_error as string) ?? null,
+  });
+
   return new Response(JSON.stringify({ ok: true, inserted, sourced: allEvents.length, summary }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
