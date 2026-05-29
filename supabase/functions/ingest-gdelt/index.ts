@@ -123,11 +123,20 @@ serve(async (req) => {
       message: `Batch ${batch}/${TOTAL_BATCHES - 1}: ${inserted}/${countries.length} inserted`,
     });
 
+    await finishProviderRun(sb, run, {
+      records_fetched: countries.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+      error_count: errors.length,
+      error_summary: errors[0] ?? null,
+    });
+
     return new Response(JSON.stringify({ ok: true, batch, inserted, errors: errors.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("ingest-gdelt fatal:", e);
+    await failProviderRun(sb, run, e, { records_inserted: inserted, error_count: errors.length });
     return new Response(JSON.stringify({ error: String(e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
