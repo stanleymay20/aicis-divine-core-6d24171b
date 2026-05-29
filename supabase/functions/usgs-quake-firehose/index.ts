@@ -49,12 +49,14 @@ serve(async (req) => {
     const msg = (e as Error).message;
     await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: msg });
     await recordFirehoseHealth(supabase, { name: FN, trustTier: "tier_1", success: false, errorMessage: msg, durationMs: Date.now() - start });
+    await failProviderRun(supabase, __run, e);
     return new Response(JSON.stringify({ error: msg }), { status: 502, headers: corsHeaders });
   }
   if (!res.ok) {
     const msg = `HTTP ${res.status}`;
     await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: msg });
     await recordFirehoseHealth(supabase, { name: FN, trustTier: "tier_1", success: false, errorMessage: msg, durationMs: Date.now() - start });
+    await failProviderRun(supabase, __run, new Error(msg));
     return new Response(JSON.stringify({ error: "usgs " + msg }), { status: 500, headers: corsHeaders });
   }
   const j = await res.json();
