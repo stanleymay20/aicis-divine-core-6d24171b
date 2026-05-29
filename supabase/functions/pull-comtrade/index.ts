@@ -79,8 +79,15 @@ Deno.serve(async (req) => {
       log_level: errors ? "warning" : "info", division: "ingestion",
     });
 
+    await finishProviderRun(supabase, run, {
+      records_fetched: inserted + errors,
+      records_inserted: inserted,
+      records_normalized: inserted,
+      error_count: errors,
+    });
     return json({ ok: true, inserted, errors, year, ms: Date.now() - start });
   } catch (e) {
+    await failProviderRun(supabase, run, e, { records_inserted: inserted, error_count: errors });
     return json({ error: (e as Error).message, inserted }, 500);
   }
 });
