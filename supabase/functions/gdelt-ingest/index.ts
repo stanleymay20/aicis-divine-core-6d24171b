@@ -16,16 +16,17 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+  const __run = await startProviderRun(supabase, {
+    provider_name: "gdelt_ingest",
+    endpoint: "gdelt-ingest",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
+
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    const __run = await startProviderRun(supabase, {
-      provider_name: "gdelt_ingest",
-      endpoint: "gdelt-ingest",
-      scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
-    });
 
     const body = await req.json().catch(() => ({}));
     const batchSize = body.batch_size || 250;
