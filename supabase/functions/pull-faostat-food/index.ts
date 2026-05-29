@@ -105,18 +105,21 @@ serve(async (req) => {
 
     console.log("FAOSTAT data pull complete:", inserted, "records");
 
+    await finishProviderRun(supabase, run, {
+      records_fetched: pulls.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+    });
+
     return new Response(
-      JSON.stringify({ ok: true, inserted, message: `Inserted ${inserted} food security records` }), 
+      JSON.stringify({ ok: true, inserted, message: `Inserted ${inserted} food security records` }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
     console.error("pull-faostat-food error:", e);
-    
-    // Log failure
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
-    );
+    await failProviderRun(supabase, run, e);
+
+    // Log failure (legacy)
     await supabase.from('data_source_log').insert({
       division: 'food',
       source: 'faostat',
@@ -126,7 +129,7 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : 'Unknown error' }), 
+      JSON.stringify({ error: e instanceof Error ? e.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
