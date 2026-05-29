@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,11 +16,17 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+  const __run = await startProviderRun(supabase, {
+    provider_name: "gdelt_ingest",
+    endpoint: "gdelt-ingest",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
+
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const body = await req.json().catch(() => ({}));
     const batchSize = body.batch_size || 250;
@@ -143,6 +154,12 @@ serve(async (req) => {
       message: `Ingested ${ingested} events from ${articles.length} GDELT articles`,
     });
 
+    await finishProviderRun(supabase, __run, {
+      records_fetched: articles.length,
+      records_inserted: ingested,
+      records_normalized: ingested,
+    });
+
     return new Response(JSON.stringify({
       ok: true,
       ingested,
@@ -154,6 +171,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('GDELT ingest error:', error);
+    await failProviderRun(supabase, __run, error);
     return new Response(JSON.stringify({
       ok: false, error: error instanceof Error ? error.message : 'Unknown error'
     }), {

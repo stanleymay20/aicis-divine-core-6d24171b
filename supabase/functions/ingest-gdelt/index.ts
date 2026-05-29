@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +50,13 @@ serve(async (req) => {
   const countries = ALL_COUNTRIES.slice(batch * BATCH_SIZE, (batch + 1) * BATCH_SIZE);
   let inserted = 0;
   const errors: string[] = [];
+
+  const run = await startProviderRun(sb, {
+    provider_name: "gdelt",
+    endpoint: "ingest-gdelt",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+    params: { batch, batch_size: BATCH_SIZE },
+  });
 
   try {
     for (let i = 0; i < countries.length; i++) {
@@ -111,11 +123,20 @@ serve(async (req) => {
       message: `Batch ${batch}/${TOTAL_BATCHES - 1}: ${inserted}/${countries.length} inserted`,
     });
 
+    await finishProviderRun(sb, run, {
+      records_fetched: countries.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+      error_count: errors.length,
+      error_summary: errors[0] ?? null,
+    });
+
     return new Response(JSON.stringify({ ok: true, batch, inserted, errors: errors.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("ingest-gdelt fatal:", e);
+    await failProviderRun(sb, run, e, { records_inserted: inserted, error_count: errors.length });
     return new Response(JSON.stringify({ error: String(e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -8,6 +8,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { recordFirehoseHealth } from "../_shared/firehose-health.ts";
+import {
+  startProviderRun,
+  finishProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -116,6 +120,11 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  const __run = await startProviderRun(supabase, {
+    provider_name: "gdelt_firehose",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
 
   // Phase 4.1: shard themes per invocation to avoid edge timeouts.
   // Default 3 shards, rotated by ?shard=1|2|3 or by minute window.
@@ -234,6 +243,14 @@ serve(async (req) => {
     name: FN, trustTier: "tier_3",
     success, insertedCount: inserted, durationMs: dur,
     errorMessage: failure ?? undefined,
+  });
+
+  await finishProviderRun(supabase, __run, {
+    records_fetched: totalRaw,
+    records_inserted: inserted,
+    records_normalized: candidates.length,
+    error_count: failure ? 1 : 0,
+    error_summary: failure ?? null,
   });
 
   return new Response(JSON.stringify({

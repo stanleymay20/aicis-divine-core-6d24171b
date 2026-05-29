@@ -1,6 +1,11 @@
 // Freedom House civil + political liberties (free, public via OWID stable CSV).
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { svcClient, writeNormalized, logRun, NormalizedRow } from "../_shared/normalized-write.ts";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,6 +28,11 @@ const SOURCES: { url: string; metric: string }[] = [
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const supabase = svcClient();
+  const run = await startProviderRun(supabase, {
+    provider_name: "freedom_house",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   const start = Date.now();
   const rows: NormalizedRow[] = [];
   const errors: string[] = [];
@@ -77,6 +87,13 @@ serve(async (req) => {
       status,
       `Inserted ${inserted}/${rows.length} Freedom House rows in ${Date.now() - start}ms${allErrs.length ? " — " + allErrs[0] : ""}`
     );
+    await finishProviderRun(supabase, run, {
+      records_fetched: rows.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+      error_count: allErrs.length,
+      error_summary: allErrs[0] ?? null,
+    });
 
     return new Response(JSON.stringify({ ok: true, inserted, total: rows.length, errors: allErrs }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -84,6 +101,7 @@ serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await logRun(supabase, FN, "error", msg);
+    await failProviderRun(supabase, run, e);
     return new Response(JSON.stringify({ ok: false, error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -5,6 +5,11 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { recordFirehoseHealth } from "../_shared/firehose-health.ts";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,6 +34,11 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  const __run = await startProviderRun(supabase, {
+    provider_name: "usgs_quake_firehose",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
 
   // Past day, M4.5+ — runs every 30min, dedup handles overlap
   const url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson";
@@ -39,12 +49,14 @@ serve(async (req) => {
     const msg = (e as Error).message;
     await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: msg });
     await recordFirehoseHealth(supabase, { name: FN, trustTier: "tier_1", success: false, errorMessage: msg, durationMs: Date.now() - start });
+    await failProviderRun(supabase, __run, e);
     return new Response(JSON.stringify({ error: msg }), { status: 502, headers: corsHeaders });
   }
   if (!res.ok) {
     const msg = `HTTP ${res.status}`;
     await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: msg });
     await recordFirehoseHealth(supabase, { name: FN, trustTier: "tier_1", success: false, errorMessage: msg, durationMs: Date.now() - start });
+    await failProviderRun(supabase, __run, new Error(msg));
     return new Response(JSON.stringify({ error: "usgs " + msg }), { status: 500, headers: corsHeaders });
   }
   const j = await res.json();
@@ -135,6 +147,13 @@ serve(async (req) => {
   await recordFirehoseHealth(supabase, {
     name: FN, trustTier: "tier_1", success: !insertErr,
     insertedCount: inserted, durationMs: dur, errorMessage: insertErr ?? undefined,
+  });
+  await finishProviderRun(supabase, __run, {
+    records_fetched: features.length,
+    records_inserted: inserted,
+    records_normalized: candidates.length,
+    error_count: insertErr ? 1 : 0,
+    error_summary: insertErr ?? null,
   });
   return new Response(JSON.stringify({ ok: !insertErr, quakes: features.length, inserted, duration_ms: dur }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } });

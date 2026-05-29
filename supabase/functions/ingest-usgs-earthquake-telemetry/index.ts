@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -131,6 +136,11 @@ Deno.serve(async (req) => {
 
   const started = Date.now();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const run = await startProviderRun(supabase, {
+    provider_name: "usgs",
+    endpoint: "ingest-usgs-earthquake-telemetry",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
 
   try {
     const res = await fetch(USGS_FEED, {
@@ -237,6 +247,12 @@ Deno.serve(async (req) => {
       console.warn("telemetry health refresh skipped", e);
     }
 
+    await finishProviderRun(supabase, run, {
+      records_fetched: features.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+    });
+
     return new Response(JSON.stringify({
       status: "success",
       connector_key: CONNECTOR_KEY,
@@ -254,6 +270,7 @@ Deno.serve(async (req) => {
       status: "error",
       message: msg.slice(0, 500),
     });
+    await failProviderRun(supabase, run, e);
 
     return new Response(JSON.stringify({ status: "error", error: msg }), {
       status: 500,

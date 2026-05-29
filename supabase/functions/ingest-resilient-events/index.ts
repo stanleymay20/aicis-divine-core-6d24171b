@@ -13,6 +13,10 @@
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  startProviderRun,
+  finishProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -108,6 +112,11 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  const __run = await startProviderRun(supabase, {
+    provider_name: "resilient_events",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   const start = Date.now();
   const summary: Record<string, number | string> = {};
 
@@ -145,6 +154,14 @@ serve(async (req) => {
     job_name: FN,
     status: summary.insert_error ? "error" : (summary.usgs_error && summary.gdacs_error ? "partial" : "success"),
     message: `Ingested ${inserted}/${allEvents.length} events. ${JSON.stringify(summary)} (${Date.now() - start}ms)`,
+  });
+
+  await finishProviderRun(supabase, __run, {
+    records_fetched: allEvents.length,
+    records_inserted: inserted,
+    records_normalized: allEvents.length,
+    error_count: summary.insert_error ? 1 : 0,
+    error_summary: (summary.insert_error as string) ?? null,
   });
 
   return new Response(JSON.stringify({ ok: true, inserted, sourced: allEvents.length, summary }), {

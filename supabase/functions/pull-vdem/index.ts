@@ -2,6 +2,11 @@
 // Pulls a curated subset of liberal-democracy indicators per country-year.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { svcClient, writeNormalized, logRun, NormalizedRow } from "../_shared/normalized-write.ts";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,13 +15,16 @@ const corsHeaders = {
 
 const FN = "pull-vdem";
 
-// Maintained mirror of V-Dem core indicators (country-year, free).
-// Falls back to OWID democracy indices, which are V-Dem-derived and CSV-stable.
 const SOURCE = "https://ourworldindata.org/grapher/electoral-democracy-index.csv?v=1&csvType=full";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const supabase = svcClient();
+  const run = await startProviderRun(supabase, {
+    provider_name: "vdem",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   const start = Date.now();
 
   try {
@@ -63,6 +71,13 @@ serve(async (req) => {
       status,
       `Inserted ${inserted}/${rows.length} V-Dem rows in ${Date.now() - start}ms${errors.length ? " — " + errors[0] : ""}`
     );
+    await finishProviderRun(supabase, run, {
+      records_fetched: rows.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+      error_count: errors.length,
+      error_summary: errors[0] ?? null,
+    });
 
     return new Response(JSON.stringify({ ok: true, inserted, total: rows.length, errors }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -70,6 +85,7 @@ serve(async (req) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await logRun(supabase, FN, "error", msg);
+    await failProviderRun(supabase, run, e);
     return new Response(JSON.stringify({ ok: false, error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

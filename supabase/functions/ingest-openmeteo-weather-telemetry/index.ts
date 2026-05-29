@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -173,6 +178,11 @@ Deno.serve(async (req) => {
 
   const started = Date.now();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const __telemetryRun = await startProviderRun(supabase, {
+    provider_name: "openmeteo",
+    endpoint: "ingest-openmeteo-weather-telemetry",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
 
   try {
     const url = new URL(req.url);
@@ -241,6 +251,8 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.warn("post weather telemetry refresh skipped", e);
     }
+    await finishProviderRun(supabase, __telemetryRun);
+
 
     return new Response(JSON.stringify({
       status: "success",
@@ -258,6 +270,7 @@ Deno.serve(async (req) => {
       status: "error",
       message: msg.slice(0, 500),
     });
+    await failProviderRun(supabase, __telemetryRun, e);
 
     return new Response(JSON.stringify({ status: "error", error: msg }), {
       status: 500,

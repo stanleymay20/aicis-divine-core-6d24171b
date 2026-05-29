@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -172,6 +177,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const started = Date.now();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const __telemetryRun = await startProviderRun(supabase, {
+    provider_name: "openmeteo_global",
+    endpoint: "ingest-openmeteo-global-mesh",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   let runId: string | null = null;
 
   try {
@@ -253,6 +263,14 @@ Deno.serve(async (req) => {
       await supabase.rpc("generate_strategic_digital_twins");
     } catch (_) {}
 
+    await finishProviderRun(supabase, __telemetryRun, {
+      records_fetched: meshCells.length,
+      records_inserted: inserted,
+      records_normalized: rows.length,
+      error_count: errors.length,
+      error_summary: errors[0] ?? null,
+    });
+
     return new Response(JSON.stringify({
       status: errors.length ? "partial_success" : "success",
       connector_key: CONNECTOR_KEY,
@@ -271,6 +289,7 @@ Deno.serve(async (req) => {
       await supabase.rpc("finish_global_coverage_run", { p_run_id: runId, p_cells_attempted: 0, p_cells_successful: 0, p_observations_inserted: 0, p_status: "error", p_error: msg });
     }
     await supabase.from("automation_logs").insert({ job_name: "ingest-openmeteo-global-mesh", status: "error", message: msg.slice(0, 500) });
+    await failProviderRun(supabase, __telemetryRun, e);
     return new Response(JSON.stringify({ status: "error", error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

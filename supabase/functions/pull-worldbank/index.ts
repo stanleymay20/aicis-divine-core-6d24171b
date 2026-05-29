@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,14 +13,19 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-  
-  try {
-    // Use service role for system operations (cron jobs)
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
 
+  // Use service role for system operations (cron jobs)
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+  const run = await startProviderRun(supabase, {
+    provider_name: "worldbank",
+    endpoint: "pull-worldbank",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
+
+  try {
     console.log("Fetching World Bank data...");
     
     // Expanded indicator coverage — all free, no key required
@@ -104,18 +114,25 @@ serve(async (req) => {
       metadata: { records_count: records.length }
     });
 
+    await finishProviderRun(supabase, run, {
+      records_fetched: records.length,
+      records_inserted: records.length,
+      records_normalized: records.length,
+    });
+
     return new Response(
-      JSON.stringify({ 
-        ok: true, 
+      JSON.stringify({
+        ok: true,
         message: `Fetched ${records.length} World Bank indicators`,
         records_count: records.length
-      }), 
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
     console.error("pull-worldbank error:", e);
+    await failProviderRun(supabase, run, e);
     return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : 'Unknown error' }), 
+      JSON.stringify({ error: e instanceof Error ? e.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
