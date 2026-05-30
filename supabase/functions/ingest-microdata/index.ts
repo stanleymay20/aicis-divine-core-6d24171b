@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,37 +30,42 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, serviceKey);
 
+  const run = await startProviderRun(supabase, {
+    provider_name: "ingest-microdata",
+    endpoint: "ingest-microdata",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
+
   try {
     const body: MicrodataRequest = await req.json();
+    let response: Response;
 
     if (body.action === "catalog") {
-      return await handleCatalog(supabase, body.provider);
-    }
-
-    if (body.action === "register") {
-      return await handleRegister(supabase, body);
-    }
-
-    if (body.action === "ingest") {
-      return await handleIngest(supabase, body.source_id!);
-    }
-
-    if (body.action === "status") {
+      response = await handleCatalog(supabase, body.provider);
+    } else if (body.action === "register") {
+      response = await handleRegister(supabase, body);
+    } else if (body.action === "ingest") {
+      response = await handleIngest(supabase, body.source_id!);
+    } else if (body.action === "status") {
       const { data } = await supabase
         .from("microdata_sources")
         .select("id, source_name, provider, title, license_type, status, record_count, indicator_count, countries, years, domains, deidentification_status")
         .order("created_at", { ascending: false });
-      return new Response(JSON.stringify({ sources: data }), {
+      response = new Response(JSON.stringify({ sources: data }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } else {
+      response = new Response(JSON.stringify({ error: "Unknown action" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ error: "Unknown action" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    await finishProviderRun(supabase, run, { params: { action: body.action } as any });
+    return response;
   } catch (err: any) {
     console.error("Microdata ingestion error:", err);
+    await failProviderRun(supabase, run, err);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

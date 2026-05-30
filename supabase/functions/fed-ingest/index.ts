@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,6 +68,11 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
+  const run = await startProviderRun(supabase, {
+    provider_name: "fed-ingest",
+    endpoint: "fed-ingest",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "federation-peer",
+  });
 
   try {
     const peerName = req.headers.get("X-AICIS-Node");
@@ -184,24 +190,29 @@ serve(async (req) => {
 
     console.log(`Ingested bundle from ${peerName}`);
 
+    await finishProviderRun(supabase, run, {
+      records_fetched: validatedPayload.signals.length,
+      records_inserted: validatedPayload.signals.length,
+    });
+
     return new Response(
       JSON.stringify({ ok: true }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("Error ingesting bundle:", error);
-    
-    // Handle validation errors
+    await failProviderRun(supabase, run, error);
+
     if (error instanceof z.ZodError) {
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: "Invalid federation payload",
           details: error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ error: errorMessage }),
