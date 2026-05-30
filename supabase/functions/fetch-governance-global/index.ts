@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const FN = "fetch-governance-global";
 const TIMEOUT_MS = 30000;
@@ -27,13 +28,17 @@ serve(async (req) => {
   if (cors) return cors;
 
   const start = Date.now();
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+  const run = await startProviderRun(supabase, {
+    provider_name: FN,
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
-
     structuredLog("info", FN, "Starting governance data collection");
     const results: { governance: number; errors: string[]; indicators: Record<string, number> } = {
       governance: 0,
@@ -105,19 +110,22 @@ serve(async (req) => {
     });
 
     structuredLog("info", FN, `Complete: ${results.governance} records, ${results.errors.length} errors`, undefined, start);
+    await finishProviderRun(supabase, run, {
+      records_inserted: results.governance,
+      records_normalized: results.governance,
+      error_count: results.errors.length,
+      error_summary: results.errors[0] ?? null,
+    });
     return jsonResponse({ ok: results.governance > 0, message: `Fetched ${results.governance} governance records`, data: results });
   } catch (e) {
     structuredLog("error", FN, (e as Error).message, undefined, start);
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
     await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: (e as Error).message });
     await supabase.rpc("register_pipeline_heartbeat", {
       _pipeline_name: FN,
       _success: false,
       _error: e instanceof Error ? e.message : String(e),
     });
+    await failProviderRun(supabase, run, e);
     return errorResponse(e);
   }
 });
