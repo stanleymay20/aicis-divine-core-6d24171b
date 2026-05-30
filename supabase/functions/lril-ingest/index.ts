@@ -739,7 +739,22 @@ serve(async (req) => {
     message: `Ingested ${inserted}/${all.length} signals. ${JSON.stringify(summary)} (${Date.now() - start}ms)`,
   });
 
+  await finishProviderRun(supabase, run, {
+    records_fetched: all.length,
+    records_inserted: inserted,
+    records_normalized: inserted,
+    error_count: summary.insert_error ? 1 : 0,
+    error_summary: (summary.insert_error as string) ?? null,
+  });
+
   return new Response(JSON.stringify({ ok: true, inserted, sourced: all.length, summary }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+  } catch (e) {
+    await failProviderRun(supabase, run, e);
+    return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 });
