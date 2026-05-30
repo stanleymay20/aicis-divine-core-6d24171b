@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,6 +26,11 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
+  const run = await startProviderRun(supabase, {
+    provider_name: "bridge-events-to-normalized",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
 
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const result = { crisis: 0, signals: 0, security: 0, errors: [] as string[] };
@@ -148,6 +154,11 @@ serve(async (req) => {
       message: `Bridged ${total} events (crisis=${result.crisis}, signals=${result.signals}, security=${result.security})`,
     });
 
+    await finishProviderRun(supabase, run, {
+      records_inserted: total,
+      records_normalized: total,
+    });
+
     return new Response(JSON.stringify({ success: true, ...result, total }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -155,6 +166,7 @@ serve(async (req) => {
     await supabase.from("automation_logs").insert({
       job_name: FN, status: "error", message: (e as Error).message,
     });
+    await failProviderRun(supabase, run, e);
     return new Response(JSON.stringify({ error: (e as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

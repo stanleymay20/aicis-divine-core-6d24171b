@@ -14,6 +14,7 @@
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -648,9 +649,16 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  const run = await startProviderRun(supabase, {
+    provider_name: FN,
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   const start = Date.now();
   const summary: Record<string, number | string> = {};
   const all: RawSignal[] = [];
+
+  try {
 
   // Optional caller-supplied items
   if (req.method === "POST") {
@@ -731,7 +739,22 @@ serve(async (req) => {
     message: `Ingested ${inserted}/${all.length} signals. ${JSON.stringify(summary)} (${Date.now() - start}ms)`,
   });
 
+  await finishProviderRun(supabase, run, {
+    records_fetched: all.length,
+    records_inserted: inserted,
+    records_normalized: inserted,
+    error_count: summary.insert_error ? 1 : 0,
+    error_summary: (summary.insert_error as string) ?? null,
+  });
+
   return new Response(JSON.stringify({ ok: true, inserted, sourced: all.length, summary }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+  } catch (e) {
+    await failProviderRun(supabase, run, e);
+    return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 });

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,11 +12,17 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+  const run = await startProviderRun(supabase, {
+    provider_name: "fetch-satellite-global",
+    endpoint: "fetch-satellite-global",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
+
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const observations: any[] = [];
     
@@ -80,20 +87,27 @@ serve(async (req) => {
 
     console.log(`Fetched ${observations.length} satellite observations, inserted ${inserted}`);
 
-    return new Response(JSON.stringify({ 
+    await finishProviderRun(supabase, run, {
+      records_fetched: observations.length,
+      records_inserted: inserted,
+      records_normalized: inserted,
+    });
+
+    return new Response(JSON.stringify({
       ok: true,
       fetched: observations.length,
-      inserted 
+      inserted
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
     console.error('Error in fetch-satellite-global:', error);
-    
-    return new Response(JSON.stringify({ 
+    await failProviderRun(supabase, run, error);
+
+    return new Response(JSON.stringify({
       ok: false,
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

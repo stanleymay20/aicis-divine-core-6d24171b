@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -428,6 +429,13 @@ async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; sha
 
   const supabase = createClient(supabaseUrl, supabaseKey);
   const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
+  const run = await startProviderRun(supabase, {
+    provider_name: "ingest-global-signals",
+    endpoint: "ingest-global-signals",
+    scheduler_source: "cron",
+    params: { shardIndex: opts.shardIndex, shardSize: opts.shardSize },
+  });
+  try {
 
   const [trustDataRes, allRegistrySources, newsArticles, gdeltArticles] = await Promise.all([
     supabase.from("source_trust_scores").select("source_name, credibility_weight, source_type, verification_level, official_source"),
@@ -693,6 +701,12 @@ async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; sha
       },
     });
 
+    await finishProviderRun(supabase, run, {
+      records_inserted: inserted?.length || 0,
+      records_updated: updatedSignals.length,
+      records_normalized: inserted?.length || 0,
+    });
+
     return {
       ok: true,
       new_signals: inserted?.length || 0,
@@ -707,6 +721,10 @@ async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; sha
         registry_total: registrySources.length,
       },
     };
+  } catch (e) {
+    await failProviderRun(supabase, run, e);
+    throw e;
+  }
 }
 
 declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void } | undefined;

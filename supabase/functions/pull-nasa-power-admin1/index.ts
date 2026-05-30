@@ -1,5 +1,6 @@
 // NASA POWER per admin1 — iterates public.admin_regions (admin_level=1) with cursor.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +17,11 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  const run = await startProviderRun(supabase, {
+    provider_name: "nasa_power_admin1",
+    endpoint: "pull-nasa-power-admin1",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
   const start = Date.now();
   let inserted = 0, errors = 0, fetched = 0;
 
@@ -34,6 +40,7 @@ Deno.serve(async (req) => {
     if (error) throw error;
     if (!regions?.length) {
       await supabase.from("cron_job_state").upsert({ state_key: STATE_KEY, state_value: { cursor: null }, updated_at: new Date().toISOString() });
+      await finishProviderRun(supabase, run, { records_fetched: 0, records_inserted: 0 });
       return json({ ok: true, msg: "cycle complete; cursor reset", inserted, fetched });
     }
 
@@ -81,8 +88,15 @@ Deno.serve(async (req) => {
       result: `fetched=${fetched} inserted=${inserted} errors=${errors}`,
       log_level: errors ? "warning" : "info", division: "ingestion",
     });
+    await finishProviderRun(supabase, run, {
+      records_fetched: fetched,
+      records_inserted: inserted,
+      records_normalized: inserted,
+      error_count: errors,
+    });
     return json({ ok: true, fetched, inserted, errors, ms: Date.now() - start });
   } catch (e) {
+    await failProviderRun(supabase, run, e, { records_inserted: inserted, records_fetched: fetched, error_count: errors });
     return json({ error: (e as Error).message, inserted }, 500);
   }
 });
