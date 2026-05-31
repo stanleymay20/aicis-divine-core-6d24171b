@@ -308,6 +308,7 @@ export default function LearningLoop() {
             </Card>
           </TabsContent>
         </Tabs>
+        </PanelBoundary>
       </div>
     </AICISLayout>
   );
