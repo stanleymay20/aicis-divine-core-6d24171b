@@ -229,6 +229,7 @@ export default function SimulationPage() {
             </CardContent>
           </Card>
         </div>
+        </PanelBoundary>
       </div>
     </AICISLayout>
   );
