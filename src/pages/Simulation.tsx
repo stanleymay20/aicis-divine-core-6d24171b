@@ -88,6 +88,7 @@ export default function SimulationPage() {
   return (
     <AICISLayout>
       <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
+        <PanelBoundary>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-xl sm:text-2xl font-semibold flex items-center gap-2">
