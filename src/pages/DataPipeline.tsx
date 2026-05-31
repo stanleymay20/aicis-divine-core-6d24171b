@@ -12,6 +12,7 @@ import { RunHealthCard } from "@/components/data-pipeline/RunHealthCard";
 import { FreshnessCard } from "@/components/data-pipeline/FreshnessCard";
 import { OrphanRegionsCard } from "@/components/data-pipeline/OrphanRegionsCard";
 import { SeedRetryCard } from "@/components/data-pipeline/SeedRetryCard";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { useFreshness, useOrphans, useRunHealth, useSeedStatus, useChain } from "@/components/data-pipeline/queries";
 
 export default function DataPipeline() {
