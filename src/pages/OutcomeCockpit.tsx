@@ -218,6 +218,7 @@ export default function OutcomeCockpit() {
           )}
         </CardContent>
       </Card>
+      </PanelBoundary>
     </div>
   );
 }
