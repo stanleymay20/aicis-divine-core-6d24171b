@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycleControls";
 import { ClipboardCheck, AlertTriangle, Clock, FlaskConical } from "lucide-react";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { formatDistanceToNow } from "date-fns";
 
 type Row = {
