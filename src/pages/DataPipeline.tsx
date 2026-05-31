@@ -101,17 +101,19 @@ export default function DataPipeline() {
         <SummaryTile icon={<GitBranch className="h-4 w-4" />} label="Rows written 24h" value={summary.rows_24h.toLocaleString()} />
       </div>
 
-      <ChainIntegrityCard loading={chain.isLoading} summary={chainSummary} />
-      <RunHealthCard loading={runHealth.isLoading} rows={runHealth.data} />
-      <FreshnessCard
-        loading={freshness.isLoading}
-        rows={freshness.data}
-        filtered={filtered}
-        filter={filter}
-        onFilterChange={setFilter}
-      />
-      <OrphanRegionsCard loading={orphans.isLoading} rows={orphans.data} />
-      <SeedRetryCard loading={seedStatus.isLoading} rows={seedStatus.data} />
+      <PanelBoundary><ChainIntegrityCard loading={chain.isLoading} summary={chainSummary} /></PanelBoundary>
+      <PanelBoundary><RunHealthCard loading={runHealth.isLoading} rows={runHealth.data} /></PanelBoundary>
+      <PanelBoundary>
+        <FreshnessCard
+          loading={freshness.isLoading}
+          rows={freshness.data}
+          filtered={filtered}
+          filter={filter}
+          onFilterChange={setFilter}
+        />
+      </PanelBoundary>
+      <PanelBoundary><OrphanRegionsCard loading={orphans.isLoading} rows={orphans.data} /></PanelBoundary>
+      <PanelBoundary><SeedRetryCard loading={seedStatus.isLoading} rows={seedStatus.data} /></PanelBoundary>
     </div>
   );
 }
