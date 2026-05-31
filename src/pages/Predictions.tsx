@@ -272,6 +272,7 @@ export default function PredictionsPage() {
             </TabsContent>
           ))}
         </Tabs>
+        </PanelBoundary>
       </div>
     </AICISLayout>
   );
