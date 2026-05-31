@@ -27,7 +27,10 @@ serve(async (req) => {
         profile_id: p.id, status: "queued", trigger_source: "cron", format: "json",
       }).select().single();
       if (run) {
-        admin.functions.invoke("exports-runner", { body: { run_id: run.id } }).catch(() => {});
+        // Keep invocation alive past this request via waitUntil so the runner actually starts.
+        const p = admin.functions.invoke("exports-runner", { body: { run_id: run.id } }).catch(() => {});
+        // @ts-ignore - EdgeRuntime is available in Supabase Edge runtime
+        if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(p);
         enqueued++;
       }
     }
