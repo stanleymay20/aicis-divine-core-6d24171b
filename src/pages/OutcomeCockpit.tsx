@@ -99,6 +99,7 @@ export default function OutcomeCockpit() {
 
   return (
     <div className="container max-w-7xl py-8 space-y-6">
+      <PanelBoundary>
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Outcome Capture Cockpit</h1>
         <p className="text-sm text-muted-foreground">
