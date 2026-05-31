@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
+import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +95,7 @@ export default function PredictionsPage() {
   return (
     <AICISLayout>
       <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
+        <PanelBoundary>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
@@ -270,6 +272,7 @@ export default function PredictionsPage() {
             </TabsContent>
           ))}
         </Tabs>
+        </PanelBoundary>
       </div>
     </AICISLayout>
   );
