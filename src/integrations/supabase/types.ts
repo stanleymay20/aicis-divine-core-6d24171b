@@ -208,6 +208,39 @@ export type Database = {
           },
         ]
       }
+      adjacency_v3: {
+        Row: {
+          computed_at: string
+          distance_km: number
+          id: string
+          origin_iso3: string
+          shared_metrics: number | null
+          strength: number
+          target_iso3: string
+          trade_link: boolean | null
+        }
+        Insert: {
+          computed_at?: string
+          distance_km: number
+          id?: string
+          origin_iso3: string
+          shared_metrics?: number | null
+          strength: number
+          target_iso3: string
+          trade_link?: boolean | null
+        }
+        Update: {
+          computed_at?: string
+          distance_km?: number
+          id?: string
+          origin_iso3?: string
+          shared_metrics?: number | null
+          strength?: number
+          target_iso3?: string
+          trade_link?: boolean | null
+        }
+        Relationships: []
+      }
       admin_regions: {
         Row: {
           admin_level: number
@@ -2600,6 +2633,39 @@ export type Database = {
           metadata?: Json | null
           origin_iso3?: string
           signal_type?: string
+        }
+        Relationships: []
+      }
+      cross_domain_correlations: {
+        Row: {
+          computed_at: string
+          correlation: number
+          domain_a: string
+          domain_b: string
+          id: string
+          iso3: string
+          sample_size: number
+          window_days: number
+        }
+        Insert: {
+          computed_at?: string
+          correlation: number
+          domain_a: string
+          domain_b: string
+          id?: string
+          iso3: string
+          sample_size: number
+          window_days?: number
+        }
+        Update: {
+          computed_at?: string
+          correlation?: number
+          domain_a?: string
+          domain_b?: string
+          id?: string
+          iso3?: string
+          sample_size?: number
+          window_days?: number
         }
         Relationships: []
       }
@@ -15880,6 +15946,13 @@ export type Database = {
           total_breaks: number
         }[]
       }
+      append_ledger_entry: {
+        Args: {
+          p_payload: Json
+          p_type: Database["public"]["Enums"]["ledger_entry_type"]
+        }
+        Returns: string
+      }
       archive_normalized_metrics_older_than: {
         Args: { _days?: number }
         Returns: Json
@@ -16379,6 +16452,11 @@ export type Database = {
           trust_rows: number
         }[]
       }
+      rebuild_adjacency_v3: { Args: never; Returns: Json }
+      rebuild_cross_domain_correlations: {
+        Args: { p_window_days?: number }
+        Returns: Json
+      }
       reconcile_canonical_clusters: { Args: never; Returns: Json }
       refresh_all_source_iq: { Args: never; Returns: number }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
@@ -16652,6 +16730,10 @@ export type Database = {
         | "policy"
         | "crisis"
         | "compliance"
+        | "prediction"
+        | "export"
+        | "recommendation"
+        | "simulation"
       log_level: "info" | "warning" | "error" | "critical" | "success"
       org_type: "government" | "ngo" | "agency" | "academic" | "private"
       signal_category:
@@ -16924,6 +17006,10 @@ export const Constants = {
         "policy",
         "crisis",
         "compliance",
+        "prediction",
+        "export",
+        "recommendation",
+        "simulation",
       ],
       log_level: ["info", "warning", "error", "critical", "success"],
       org_type: ["government", "ngo", "agency", "academic", "private"],
