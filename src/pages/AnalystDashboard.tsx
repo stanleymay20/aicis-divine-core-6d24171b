@@ -73,7 +73,12 @@ export default function AnalystDashboard() {
           </div>
           <div className="flex gap-2">
             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-300 border-emerald-500/30 h-8 px-3">Auto refresh ON</Badge>
-            <Button size="sm" variant="outline" onClick={() => setRefreshKey(k => k + 1)} className="h-8">
+            <Button size="sm" variant="outline" onClick={() => {
+              qc.invalidateQueries({ queryKey: ["analyst-kpis"] });
+              qc.invalidateQueries({ queryKey: ["analyst-trend-24h"] });
+              qc.invalidateQueries({ queryKey: ["analyst-threat-matrix"] });
+              qc.invalidateQueries({ queryKey: ["analyst-top-threats"] });
+            }} className="h-8">
               <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Refresh
             </Button>
           </div>
@@ -89,13 +94,14 @@ export default function AnalystDashboard() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          <PanelBoundary><KpiTile icon={Gauge} label="Global Risk" value={fmt(k?.globalRisk)} suffix="/100" delta={k?.eventsDelta ?? 0} deltaLabel="6h" sparkColor="#ef4444" sparkData={sparkA} loading={kpis.isLoading} /></PanelBoundary>
-          <PanelBoundary><KpiTile icon={AlertTriangle} label="Active Incidents" value={fmt(k?.activeAlerts)} delta={k?.eventsDelta ?? 0} deltaLabel="vs 6h" sparkColor="#f97316" sparkData={sparkB} loading={kpis.isLoading} /></PanelBoundary>
-          <PanelBoundary><KpiTile icon={ShieldAlert} label="Systemic Threats" value={fmt(k?.systemicThreats)} delta={2} deltaLabel="" sparkColor="#a78bfa" sparkData={sparkC} loading={kpis.isLoading} /></PanelBoundary>
-          <PanelBoundary><KpiTile icon={Users} label="At-Risk Pop." value={"128.7M"} delta={4} deltaLabel="↑ 18.4M" sparkColor="#fbbf24" sparkData={sparkB} loading={false} /></PanelBoundary>
-          <PanelBoundary><KpiTile icon={Activity} label="Confidence" value={`${fmt(k?.confidence)}%`} delta={4} deltaLabel="" sparkColor="#10b981" sparkData={sparkA} loading={kpis.isLoading} /></PanelBoundary>
-          <PanelBoundary><KpiTile icon={Database} label="Data Sources" value={fmt(k?.sourcesTotal)} delta={null} deltaLabel="online" sparkColor="#22d3ee" sparkData={sparkB} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Gauge} label="Global Risk" value={fmt(k?.globalRisk)} suffix="/100" delta={k?.eventsDelta ?? 0} deltaLabel="6h" sparkColor="#ef4444" sparkData={sparkSeries.global} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={AlertTriangle} label="Active Incidents" value={fmt(k?.activeAlerts)} delta={k?.eventsDelta ?? 0} deltaLabel="vs 6h" sparkColor="#f97316" sparkData={sparkSeries.global} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={ShieldAlert} label="Systemic Threats" value={fmt(k?.systemicThreats)} delta={null} deltaLabel="≥75 score" sparkColor="#a78bfa" sparkData={sparkSeries.geopolitical} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Users} label="Countries at Risk" value={fmt(k?.countriesAtRisk)} delta={null} deltaLabel="≥75 score" sparkColor="#fbbf24" sparkData={sparkSeries.economic} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Activity} label="Confidence" value={`${fmt(k?.confidence)}%`} delta={null} deltaLabel="rolling" sparkColor="#10b981" sparkData={sparkSeries.environmental} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Database} label="Data Sources" value={fmt(k?.sourcesTotal)} delta={null} deltaLabel={`${k?.sourcesOnline ?? 0} online`} sparkColor="#22d3ee" sparkData={sparkSeries.cyber} loading={kpis.isLoading} /></PanelBoundary>
         </div>
+
 
         <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-4">
           <Card className="border-border bg-card/70">
