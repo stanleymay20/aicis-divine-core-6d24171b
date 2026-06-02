@@ -15946,6 +15946,13 @@ export type Database = {
           total_breaks: number
         }[]
       }
+      append_ledger_entry: {
+        Args: {
+          p_payload: Json
+          p_type: Database["public"]["Enums"]["ledger_entry_type"]
+        }
+        Returns: string
+      }
       archive_normalized_metrics_older_than: {
         Args: { _days?: number }
         Returns: Json
