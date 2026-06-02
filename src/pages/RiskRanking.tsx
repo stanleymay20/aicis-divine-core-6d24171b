@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Flame, RefreshCw, Loader2, Search, TrendingDown, Activity, Zap, Target } from "lucide-react";
 import { RecommendedActionsPanel } from "@/components/risk-ranking/RecommendedActionsPanel";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
+import { PanelSkeleton } from "@/components/ui/panel-skeleton";
 
 interface Row {
   id: string;
@@ -189,9 +190,7 @@ export default function RiskRankingPage() {
             <Card className="border-border">
               <CardContent className="p-0">
                 {leaderboard.isLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
+                  <div className="p-3"><PanelSkeleton variant="list" rows={8} header={false} /></div>
                 ) : filteredRows.length === 0 ? (
                   <div className="text-center py-12 text-sm text-muted-foreground">
                     No predictions match your filters. Try recomputing.
@@ -265,9 +264,7 @@ export default function RiskRankingPage() {
 
                 {queryIso3.length === 3 && (
                   score.isLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
+                    <div className="py-2"><PanelSkeleton variant="metrics" rows={3} header={false} /></div>
                   ) : !score.data || score.data?.factors?.error ? (
                     <p className="text-sm text-muted-foreground py-4">No snapshot available for {queryIso3} · {queryDomain}.</p>
                   ) : (
