@@ -9,6 +9,7 @@ import { SEO } from "@/components/SEO";
 import { Activity, AlertTriangle, Database, Globe2, ShieldAlert, Users, Gauge, RefreshCw } from "lucide-react";
 import { ParallelCoordinatesChart } from "@/components/visualizations/ParallelCoordinatesChart";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
+import { useQueryClient } from "@tanstack/react-query";
 import { fmt, FilterChip, KpiTile } from "@/components/analyst-dashboard/shared";
 import { useAnalystKpis, useTrendSeries, useThreatMatrix, useTopThreats } from "@/components/analyst-dashboard/queries";
 import { ThreatMatrix } from "@/components/analyst-dashboard/ThreatMatrix";
@@ -19,15 +20,25 @@ import { ScenarioProjectionsCard } from "@/components/analyst-dashboard/Scenario
 import { DataSourceHealthCard } from "@/components/analyst-dashboard/DataSourceHealthCard";
 
 export default function AnalystDashboard() {
-  const [refreshKey, setRefreshKey] = useState(0);
+  const qc = useQueryClient();
   const kpis = useAnalystKpis();
   const trend = useTrendSeries();
   const matrix = useThreatMatrix();
   const top = useTopThreats();
 
-  const sparkA = useMemo(() => Array.from({ length: 16 }, (_, i) => ({ v: 30 + Math.sin(i / 2 + refreshKey) * 14 + Math.random() * 8 })), [refreshKey]);
-  const sparkB = useMemo(() => Array.from({ length: 16 }, (_, i) => ({ v: 50 + Math.cos(i / 1.7) * 18 + Math.random() * 6 })), []);
-  const sparkC = useMemo(() => Array.from({ length: 16 }, (_, i) => ({ v: 20 + Math.sin(i / 1.3) * 8 + Math.random() * 4 })), []);
+  // Sparklines derived from live 24h event series — last 16 hourly buckets per category.
+  const sparkSeries = useMemo(() => {
+    const rows = (trend.data ?? []) as any[];
+    const tail = rows.slice(-16);
+    const build = (key: string) => tail.map(r => ({ v: Number(r[key] ?? 0) }));
+    return {
+      global: build("global"),
+      cyber: build("cyber"),
+      economic: build("economic"),
+      environmental: build("environmental"),
+      geopolitical: build("geopolitical"),
+    };
+  }, [trend.data]);
 
   const k = kpis.data;
   const sourceHealth = useMemo(() => {

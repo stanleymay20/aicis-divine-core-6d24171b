@@ -12,7 +12,7 @@ export const useAnalystKpis = () =>
         supabase.from("normalized_events").select("severity", { count: "exact", head: true }).gte("occurred_at", since6h),
         supabase.from("normalized_events").select("severity", { count: "exact", head: true }).gte("occurred_at", sincePrev).lt("occurred_at", since6h),
         supabase.from("critical_alerts").select("level,severity").eq("acknowledged", false).order("triggered_at", { ascending: false }).limit(200),
-        supabase.from("risk_ranking_predictions").select("risk_probability,country_iso3").order("risk_probability", { ascending: false }).limit(50),
+        supabase.from("risk_ranking_predictions").select("risk_probability,country_iso3").order("risk_probability", { ascending: false }).limit(200),
         supabase.from("data_source_log" as any).select("status").limit(500),
       ]);
       const cur = evCur.count ?? 0;
@@ -20,17 +20,25 @@ export const useAnalystKpis = () =>
       const delta = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : 0;
       const ackRows = alerts.data ?? [];
       const critCount = ackRows.filter(a => (a.level ?? "").toLowerCase() === "critical").length;
-      const scores = (ranks.data ?? []).map((r: any) => Math.round((r.risk_probability ?? 0) * 100));
+      const rankRows = (ranks.data ?? []) as any[];
+      const scores = rankRows.map((r: any) => Math.round((r.risk_probability ?? 0) * 100));
       const avgRisk = scores.length ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length) : 0;
+      const countriesAtRisk = new Set(
+        rankRows.filter((r: any) => (r.risk_probability ?? 0) >= 0.75).map((r: any) => r.country_iso3)
+      ).size;
       const sourceRows = (sources.data as any[]) ?? [];
       const total = sourceRows.length;
-      const online = sourceRows.filter(s => (s.status ?? "").toLowerCase() === "active" || (s.status ?? "").toLowerCase() === "online" || (s.status ?? "").toLowerCase() === "success").length;
+      const online = sourceRows.filter(s => {
+        const st = (s.status ?? "").toLowerCase();
+        return st === "active" || st === "online" || st === "success";
+      }).length;
       return {
         events6h: cur, eventsDelta: delta,
         activeAlerts: ackRows.length, criticalAlerts: critCount,
         systemicThreats: scores.filter(v => v >= 75).length,
         globalRisk: Math.min(100, avgRisk),
         confidence: 76,
+        countriesAtRisk,
         sourcesTotal: total, sourcesOnline: online,
       };
     },
