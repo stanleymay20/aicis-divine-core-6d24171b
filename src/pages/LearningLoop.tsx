@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
+import { PanelSkeleton } from "@/components/ui/panel-skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -180,7 +181,7 @@ export default function LearningLoop() {
               <CardHeader><CardTitle className="text-sm">Per-domain model trust</CardTitle></CardHeader>
               <CardContent className="p-0">
                 {trust.isLoading ? (
-                  <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                  <div className="p-3"><PanelSkeleton variant="list" rows={5} header={false} /></div>
                 ) : !trust.data?.rows?.length ? (
                   <div className="text-center py-12 text-sm text-muted-foreground">
                     No trust scores yet. Click <span className="font-mono">Realize predictions now</span> after some predictions have aged 7 days.
@@ -214,7 +215,7 @@ export default function LearningLoop() {
               <CardHeader><CardTitle className="text-sm">Performance log (last 100 evaluations)</CardTitle></CardHeader>
               <CardContent className="p-0">
                 {perf.isLoading ? (
-                  <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                  <div className="p-3"><PanelSkeleton variant="table" rows={6} header={false} /></div>
                 ) : !perf.data?.rows?.length ? (
                   <div className="text-center py-12 text-sm text-muted-foreground">No performance evaluations recorded yet.</div>
                 ) : (
@@ -265,7 +266,7 @@ export default function LearningLoop() {
               <CardHeader><CardTitle className="text-sm">Realized predictions (recent 100)</CardTitle></CardHeader>
               <CardContent className="p-0">
                 {reals.isLoading ? (
-                  <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                  <div className="p-3"><PanelSkeleton variant="table" rows={6} header={false} /></div>
                 ) : !reals.data?.rows?.length ? (
                   <div className="text-center py-12 text-sm text-muted-foreground">
                     No realized predictions yet. Predictions need to age 7 days before they can be evaluated.
