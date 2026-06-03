@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ShieldCheck, ShieldAlert, KeyRound, Copy, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import TrustCompletionScorePanel from "@/components/federation/TrustCompletionScorePanel";
 
 type StepStatus = "idle" | "running" | "pass" | "fail";
 
@@ -152,6 +153,9 @@ export default function FederationAdmin() {
           </div>
           <Badge variant="outline" className="font-mono text-xs">UNCLASSIFIED // FOUO</Badge>
         </div>
+
+        {/* Trust Completion Score — the operational gate */}
+        <TrustCompletionScorePanel />
 
         {/* Step 1: Active key state */}
         <Card>
