@@ -195,6 +195,7 @@ const App = () => (
                 <Route path="/analyst-dashboard" element={<Shell><AnalystDashboard /></Shell>} />
                 <Route path="/data-integrity" element={<Protected><DataIntegrity /></Protected>} />
                 <Route path="/brief/today" element={<Protected><MinisterBrief /></Protected>} />
+                <Route path="/federation-admin" element={<Protected><FederationAdmin /></Protected>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </IntelligenceMemoryProvider>
