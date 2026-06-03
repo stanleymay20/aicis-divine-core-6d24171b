@@ -44,6 +44,7 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 const Residency = lazy(() => import("./pages/Residency"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const MinisterBrief = lazy(() => import("./pages/MinisterBrief"));
+const FederationAdmin = lazy(() => import("./pages/FederationAdmin"));
 
 const SignalValidation = lazy(() => import("./pages/SignalValidation"));
 const OperationalTruth = lazy(() => import("./pages/OperationalTruth"));
