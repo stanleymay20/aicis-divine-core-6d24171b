@@ -16914,6 +16914,10 @@ export type Database = {
         Args: { p_batch?: number; p_subject_type: string }
         Returns: number
       }
+      phase_b_backfill_signal_citations: {
+        Args: { p_batch?: number; p_priority?: string }
+        Returns: number
+      }
       phase_b_build_kg_links: { Args: { p_batch?: number }; Returns: number }
       planetary_batch_tick: { Args: never; Returns: Json }
       prospective_accumulation_monitor: { Args: never; Returns: Json }
