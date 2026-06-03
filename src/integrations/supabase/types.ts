@@ -16286,6 +16286,10 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      ledger_append: {
+        Args: { p_entry_type: string; p_payload: Json }
+        Returns: string
+      }
       log_audit_event: {
         Args: {
           _action: string
