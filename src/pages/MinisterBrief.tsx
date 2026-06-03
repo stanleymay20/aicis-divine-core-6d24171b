@@ -11,6 +11,8 @@ import { t } from "@/lib/i18n";
 import { Printer, FileDown, Share2, Shield } from "lucide-react";
 import { useViewMode } from "@/contexts/ExecutiveModeContext";
 import { ViewModeToggle } from "@/components/sovereign/ViewModeToggle";
+import { TrustEvidence } from "@/components/sovereign/TrustEvidence";
+import { useSubjectCitations } from "@/hooks/useSubjectCitations";
 
 interface BriefData {
   topWarnings: any[];
