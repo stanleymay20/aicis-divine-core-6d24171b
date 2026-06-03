@@ -115,12 +115,12 @@ export default function MinisterBrief() {
                 {data?.topWarnings.map((w) => (
                   <li key={w.id} className="border-l-2 border-primary pl-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted">{w.country_iso3}</span>
-                      <span className="font-semibold">{humanize(w.domain, mode)}</span>
-                      <span className="text-xs text-muted-foreground">· {humanize(w.signal_type, mode)}</span>
+                      <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted">{w.iso3}</span>
+                      <span className="font-semibold">{humanize(w.event_type, mode)}</span>
+                      {w.subtype && <span className="text-xs text-muted-foreground">· {humanize(w.subtype, mode)}</span>}
                       <ConfidenceBadge value={Math.min(1, (w.severity ?? 0) / 100)} label="Severity" />
                     </div>
-                    {w.summary && <p className="text-muted-foreground mt-1">{w.summary}</p>}
+                    {w.recommended_next_action && <p className="text-muted-foreground mt-1">{w.recommended_next_action}</p>}
                   </li>
                 ))}
               </ul>
@@ -141,9 +141,9 @@ export default function MinisterBrief() {
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted">{r.country_iso3}</span>
                       <span className="font-medium">{humanize(r.domain, mode)}</span>
-                      <span className="text-xs text-muted-foreground">{r.direction} · {r.prediction_horizon_days}d horizon</span>
+                      <span className="text-xs text-muted-foreground">#{r.rank_position} · {r.horizon_days}d horizon</span>
                     </div>
-                    <ConfidenceBadge value={Math.min(1, Math.abs(r.score ?? 0))} label="Risk Score" />
+                    <ConfidenceBadge value={Math.min(1, r.risk_probability ?? 0)} label="Risk Probability" />
                   </li>
                 ))}
               </ul>
