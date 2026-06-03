@@ -16551,6 +16551,30 @@ export type Database = {
         Args: { p_source: string }
         Returns: string
       }
+      compute_trust_completion_score: {
+        Args: never
+        Returns: {
+          chain_integrity_pct: number
+          chain_present: number
+          chain_total: number
+          citations_official: number
+          citations_total: number
+          computed_at: string
+          gate_status: string
+          hard_fail_eligible: boolean
+          official_source_pct: number
+          recommendation_citations_pct: number
+          recs_cited: number
+          recs_total: number
+          signal_citations_pct: number
+          signals_cited: number
+          signals_total: number
+          warning_citations_pct: number
+          warnings_cited: number
+          warnings_total: number
+          weighted_score: number
+        }[]
+      }
       compute_uptime_snapshot: { Args: never; Returns: Json }
       count_api_requests_window: {
         Args: { _key_id: string; _window_seconds?: number }
