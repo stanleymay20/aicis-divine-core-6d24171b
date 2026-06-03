@@ -6245,6 +6245,99 @@ export type Database = {
         }
         Relationships: []
       }
+      federation_signed_bundles: {
+        Row: {
+          algorithm: string
+          bundle_hash: string
+          id: string
+          key_id: string
+          payload_size_bytes: number | null
+          signature: string
+          signed_at: string
+          verified: boolean
+          verified_at: string | null
+        }
+        Insert: {
+          algorithm?: string
+          bundle_hash: string
+          id?: string
+          key_id: string
+          payload_size_bytes?: number | null
+          signature: string
+          signed_at?: string
+          verified?: boolean
+          verified_at?: string | null
+        }
+        Update: {
+          algorithm?: string
+          bundle_hash?: string
+          id?: string
+          key_id?: string
+          payload_size_bytes?: number | null
+          signature?: string
+          signed_at?: string
+          verified?: boolean
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "federation_signed_bundles_key_id_fkey"
+            columns: ["key_id"]
+            isOneToOne: false
+            referencedRelation: "federation_active_key"
+            referencedColumns: ["key_id"]
+          },
+          {
+            foreignKeyName: "federation_signed_bundles_key_id_fkey"
+            columns: ["key_id"]
+            isOneToOne: false
+            referencedRelation: "federation_signing_keys"
+            referencedColumns: ["key_id"]
+          },
+        ]
+      }
+      federation_signing_keys: {
+        Row: {
+          algorithm: string
+          created_at: string
+          expires_at: string | null
+          is_active: boolean
+          key_id: string
+          key_status: string
+          notes: string | null
+          public_key: string
+          revoked_at: string | null
+          rotated_at: string | null
+          rotation_policy_days: number
+        }
+        Insert: {
+          algorithm?: string
+          created_at?: string
+          expires_at?: string | null
+          is_active?: boolean
+          key_id: string
+          key_status?: string
+          notes?: string | null
+          public_key: string
+          revoked_at?: string | null
+          rotated_at?: string | null
+          rotation_policy_days?: number
+        }
+        Update: {
+          algorithm?: string
+          created_at?: string
+          expires_at?: string | null
+          is_active?: boolean
+          key_id?: string
+          key_status?: string
+          notes?: string | null
+          public_key?: string
+          revoked_at?: string | null
+          rotated_at?: string | null
+          rotation_policy_days?: number
+        }
+        Relationships: []
+      }
       finance_data: {
         Row: {
           country: string
@@ -15025,6 +15118,33 @@ export type Database = {
         }
         Relationships: []
       }
+      federation_active_key: {
+        Row: {
+          algorithm: string | null
+          created_at: string | null
+          expires_at: string | null
+          key_id: string | null
+          public_key: string | null
+          rotation_policy_days: number | null
+        }
+        Insert: {
+          algorithm?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          key_id?: string | null
+          public_key?: string | null
+          rotation_policy_days?: number | null
+        }
+        Update: {
+          algorithm?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          key_id?: string | null
+          public_key?: string | null
+          rotation_policy_days?: number | null
+        }
+        Relationships: []
+      }
       intelligence_citation_strength: {
         Row: {
           avg_confidence: number | null
@@ -16742,6 +16862,14 @@ export type Database = {
           out_provider: string
           out_written: number
         }[]
+      }
+      rotate_federation_key: {
+        Args: {
+          p_new_key_id: string
+          p_new_public_key: string
+          p_rotation_days?: number
+        }
+        Returns: undefined
       }
       run_accumulation_health_audit: { Args: never; Returns: Json }
       run_canary_probe: { Args: never; Returns: Json }
