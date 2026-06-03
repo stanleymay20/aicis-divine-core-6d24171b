@@ -194,6 +194,20 @@ export default function TrustCompletionScorePanel() {
               </AlertDescription>
             </Alert>
 
+            {/* Live sample — proof the backfill is materialising real citations */}
+            <div className="rounded border border-border/60 bg-muted/20 p-3">
+              <div className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-2">
+                Latest Citations (live sample)
+              </div>
+              {sample.isLoading ? (
+                <div className="text-xs text-muted-foreground">Loading sample…</div>
+              ) : (
+                <CitationChipList citations={sample.data ?? []} max={12} />
+              )}
+            </div>
+
+
+
             <div className="text-xs text-muted-foreground text-right">
               Computed {new Date(data.computed_at).toLocaleTimeString()} · auto-refresh 60s
               {dataUpdatedAt ? ` · client refreshed ${new Date(dataUpdatedAt).toLocaleTimeString()}` : ""}
