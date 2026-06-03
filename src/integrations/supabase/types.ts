@@ -15410,6 +15410,14 @@ export type Database = {
           },
         ]
       }
+      phase_b_progress: {
+        Row: {
+          pct_complete: number | null
+          rows: number | null
+          track: string | null
+        }
+        Relationships: []
+      }
       pilot_execution_queue: {
         Row: {
           accepted_at: string | null
@@ -16898,6 +16906,15 @@ export type Database = {
         }
         Returns: Json
       }
+      phase_b_backchain_ledger: {
+        Args: { p_batch?: number; p_source_table: string }
+        Returns: number
+      }
+      phase_b_backfill_citations: {
+        Args: { p_batch?: number; p_subject_type: string }
+        Returns: number
+      }
+      phase_b_build_kg_links: { Args: { p_batch?: number }; Returns: number }
       planetary_batch_tick: { Args: never; Returns: Json }
       prospective_accumulation_monitor: { Args: never; Returns: Json }
       prospective_coverage_gaps: { Args: never; Returns: Json }
