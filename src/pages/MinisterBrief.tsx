@@ -181,6 +181,13 @@ export default function MinisterBrief() {
                     <span className="text-muted-foreground"> · {a.country_iso3} · {a.urgency_window}</span>
                     {a.estimated_roi_eur != null && <span className="ml-2 font-mono text-xs text-emerald-600">€{Math.round(a.estimated_roi_eur).toLocaleString()}</span>}
                     {a.rationale_md && <p className="text-muted-foreground text-xs mt-0.5 ml-5">{a.rationale_md}</p>}
+                    <div className="ml-5 mt-1">
+                      <TrustEvidence
+                        citations={recCitesQ.data?.get(a.id)}
+                        loading={recCitesQ.isLoading}
+                        compact
+                      />
+                    </div>
                   </li>
                 ))}
               </ol>
