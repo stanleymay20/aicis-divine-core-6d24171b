@@ -25,6 +25,9 @@ export function SignalRow({ signal: s, expanded, visibility, onToggleExpand, onF
     : conf >= 50 ? "bg-sky-500/15 text-sky-300 border-sky-700/50"
     : "bg-amber-500/15 text-amber-300 border-amber-700/50";
 
+  const citationsQ = useSubjectCitations("global_signals", [s.id], { enabled: expanded });
+  const citations = citationsQ.data?.get(s.id);
+
   return (
     <div
       className={`rounded-md border p-3 transition-colors ${
