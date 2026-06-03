@@ -107,6 +107,7 @@ export function SignalRow({ signal: s, expanded, visibility, onToggleExpand, onF
         <div className="space-y-2">
           <WhyRelevantPanel signal={s} />
           {s.confidence_explanation && <WhyTrustPanel signal={s} />}
+          <TrustEvidence citations={citations} loading={citationsQ.isLoading} />
           <FeedbackRow
             signal={s}
             disabled={feedbackDisabled}
