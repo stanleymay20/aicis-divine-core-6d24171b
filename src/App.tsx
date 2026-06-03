@@ -40,6 +40,7 @@ const Advanced = lazy(() => import("./pages/Advanced"));
 
 const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
+const Residency = lazy(() => import("./pages/Residency"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 
 const SignalValidation = lazy(() => import("./pages/SignalValidation"));
