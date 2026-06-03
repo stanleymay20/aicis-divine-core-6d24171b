@@ -197,6 +197,11 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
                     ><PlayCircle className="h-3 w-3" /> Execute</Button>
                   )}
                 </div>
+                <TrustEvidence
+                  citations={citationsQ.data?.get(r.id)}
+                  loading={citationsQ.isLoading}
+                  compact
+                />
               </div>
             ))}
           </div>
