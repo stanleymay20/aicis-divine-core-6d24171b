@@ -69,3 +69,33 @@ Before shipping anything, ask:
 - Does this move the user further down the value chain toward a *decision*?
 
 If no to all three — defer or cut.
+
+## What AICIS Is Not (critical guardrail)
+AICIS is a **decision-quality accelerator**, not a nation-building substitute.
+
+No software by itself can transform a small nation into a superpower. That requires:
+- Education and human capital
+- Scientific and technological innovation
+- Strong institutions
+- Economic productivity
+- Infrastructure
+- Security and stability
+- Trade and diplomacy
+- Effective governance
+
+**AICIS amplifies good decisions.** It cannot replace competent leadership, execution capacity, public trust, or institutional reform. The software is an accelerator of good decisions — not a substitute for the hard work of nation-building.
+
+## What AICIS Can Do (the value proposition)
+When adopted across ministries, central banks, and agencies, AICIS enables:
+
+- **Earlier warning of crises** — before they become unmanageable
+- **Better coordination** — shared intelligence reduces siloed decision-making
+- **More transparent policy analysis** — every claim traceable to evidence
+- **Stronger evidence-based planning** — resource allocation informed by live signals
+
+A small nation that combines AICIS with strong institutions and competent leadership can **compete above its size**. Examples of this pattern: Estonia (digital government), Singapore (strategic governance). Smaller nations can adopt new systems faster.
+
+## The One-Liner to Remember
+> "A nation's biggest resource is not oil, gold, or land. It is decision quality."
+
+AICIS exists to improve that resource.
