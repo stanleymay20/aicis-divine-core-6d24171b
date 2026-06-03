@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ShieldCheck, ShieldAlert, Loader2, Lock, Unlock } from "lucide-react";
+import { CitationChipList, type Citation } from "@/components/sovereign/CitationChip";
 
 interface TrustScore {
   signal_citations_pct: number;
