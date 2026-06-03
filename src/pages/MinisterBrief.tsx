@@ -63,7 +63,7 @@ export default function MinisterBrief() {
 
   return (
     <div className="min-h-screen bg-background">
-      <SEO title="Minister Brief — AICIS" description="Daily executive intelligence briefing — top developments, emerging risks, recommended actions." />
+      <SEO title="Minister Brief — AICIS" description="Daily executive intelligence briefing — top developments, emerging risks, recommended actions." path="/brief/today" />
 
       <div className="max-w-5xl mx-auto px-4 py-6 print:py-2 print:max-w-none">
         {/* Header */}

@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageBoundary } from "@/components/ui/page-boundary";
 import { IntelligenceMemoryProvider } from "@/contexts/IntelligenceMemoryContext";
 import { DemoModeProvider } from "@/contexts/DemoModeContext";
+import { ExecutiveModeProvider } from "@/contexts/ExecutiveModeContext";
 import { DemoBanner } from "@/components/demo/DemoBanner";
 import { DegradedModeBanner } from "@/components/live/DegradedModeBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
