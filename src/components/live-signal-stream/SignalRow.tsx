@@ -4,6 +4,8 @@ import { type Signal, type VisibilityTab } from "./types";
 import { relevanceBadgeColor, sourceBadge, tierColor } from "./helpers";
 import { FeedbackRow } from "./atoms";
 import { WhyRelevantPanel, WhyTrustPanel } from "./WhyPanels";
+import { TrustEvidence } from "@/components/sovereign/TrustEvidence";
+import { useSubjectCitations } from "@/hooks/useSubjectCitations";
 
 interface Props {
   signal: Signal;
