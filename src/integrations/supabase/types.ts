@@ -2093,6 +2093,30 @@ export type Database = {
         }
         Relationships: []
       }
+      citation_enforcement_policy: {
+        Row: {
+          min_citations: number
+          min_tier: number
+          mode: string
+          subject_type: string
+          updated_at: string
+        }
+        Insert: {
+          min_citations?: number
+          min_tier?: number
+          mode: string
+          subject_type: string
+          updated_at?: string
+        }
+        Update: {
+          min_citations?: number
+          min_tier?: number
+          mode?: string
+          subject_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       command_history: {
         Row: {
           command: string
@@ -7635,6 +7659,65 @@ export type Database = {
         }
         Relationships: []
       }
+      intelligence_citations: {
+        Row: {
+          citation_snapshot_hash: string | null
+          confidence_weight: number
+          created_at: string
+          id: string
+          published_at: string | null
+          publisher_key: string | null
+          quote: string | null
+          retrieved_at: string
+          source_hash: string | null
+          source_name: string
+          source_type: string | null
+          source_url: string | null
+          subject_id: string
+          subject_type: string
+        }
+        Insert: {
+          citation_snapshot_hash?: string | null
+          confidence_weight?: number
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          publisher_key?: string | null
+          quote?: string | null
+          retrieved_at?: string
+          source_hash?: string | null
+          source_name: string
+          source_type?: string | null
+          source_url?: string | null
+          subject_id: string
+          subject_type: string
+        }
+        Update: {
+          citation_snapshot_hash?: string | null
+          confidence_weight?: number
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          publisher_key?: string | null
+          quote?: string | null
+          retrieved_at?: string
+          source_hash?: string | null
+          source_name?: string
+          source_type?: string | null
+          source_url?: string | null
+          subject_id?: string
+          subject_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_citations_publisher_key_fkey"
+            columns: ["publisher_key"]
+            isOneToOne: false
+            referencedRelation: "source_authority_registry"
+            referencedColumns: ["publisher_key"]
+          },
+        ]
+      }
       intelligence_index: {
         Row: {
           affected_divisions: string[]
@@ -12479,6 +12562,42 @@ export type Database = {
         }
         Relationships: []
       }
+      source_authority_registry: {
+        Row: {
+          authority_tier: number
+          base_url: string | null
+          created_at: string
+          default_confidence_weight: number
+          id: string
+          jurisdiction: string | null
+          publisher_key: string
+          publisher_name: string
+          publisher_type: string
+        }
+        Insert: {
+          authority_tier: number
+          base_url?: string | null
+          created_at?: string
+          default_confidence_weight?: number
+          id?: string
+          jurisdiction?: string | null
+          publisher_key: string
+          publisher_name: string
+          publisher_type: string
+        }
+        Update: {
+          authority_tier?: number
+          base_url?: string | null
+          created_at?: string
+          default_confidence_weight?: number
+          id?: string
+          jurisdiction?: string | null
+          publisher_key?: string
+          publisher_name?: string
+          publisher_type?: string
+        }
+        Relationships: []
+      }
       source_connector_runs: {
         Row: {
           duration_ms: number | null
@@ -14804,6 +14923,17 @@ export type Database = {
         }
         Relationships: []
       }
+      intelligence_citation_strength: {
+        Row: {
+          avg_confidence: number | null
+          best_tier: number | null
+          citation_count: number | null
+          has_provenance_hash: boolean | null
+          subject_id: string | null
+          subject_type: string | null
+        }
+        Relationships: []
+      }
       organizations_member_safe: {
         Row: {
           created_at: string | null
@@ -15956,6 +16086,15 @@ export type Database = {
       archive_normalized_metrics_older_than: {
         Args: { _days?: number }
         Returns: Json
+      }
+      assert_citation: {
+        Args: { p_subject_id: string; p_subject_type: string }
+        Returns: {
+          message: string
+          mode: string
+          ok: boolean
+          severity: string
+        }[]
       }
       audit_prospective_match_quality: { Args: never; Returns: Json }
       auto_review_decisions: { Args: { _batch_size?: number }; Returns: Json }
