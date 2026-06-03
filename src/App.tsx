@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageBoundary } from "@/components/ui/page-boundary";
 import { IntelligenceMemoryProvider } from "@/contexts/IntelligenceMemoryContext";
 import { DemoModeProvider } from "@/contexts/DemoModeContext";
+import { ExecutiveModeProvider } from "@/contexts/ExecutiveModeContext";
 import { DemoBanner } from "@/components/demo/DemoBanner";
 import { DegradedModeBanner } from "@/components/live/DegradedModeBanner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -42,6 +43,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Residency = lazy(() => import("./pages/Residency"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const MinisterBrief = lazy(() => import("./pages/MinisterBrief"));
 
 const SignalValidation = lazy(() => import("./pages/SignalValidation"));
 const OperationalTruth = lazy(() => import("./pages/OperationalTruth"));
@@ -124,6 +126,7 @@ const App = () => (
           <ScrollToTop />
           <RouteSEO />
           <DemoModeProvider>
+            <ExecutiveModeProvider>
             <IntelligenceMemoryProvider>
               <DegradedModeBanner />
               <DemoBanner />
@@ -190,9 +193,11 @@ const App = () => (
                 <Route path="/analyst" element={<Shell><AnalystDashboard /></Shell>} />
                 <Route path="/analyst-dashboard" element={<Shell><AnalystDashboard /></Shell>} />
                 <Route path="/data-integrity" element={<Protected><DataIntegrity /></Protected>} />
+                <Route path="/brief/today" element={<Protected><MinisterBrief /></Protected>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </IntelligenceMemoryProvider>
+            </ExecutiveModeProvider>
           </DemoModeProvider>
         </BrowserRouter>
       </TooltipProvider>
