@@ -154,6 +154,9 @@ export default function FederationAdmin() {
           <Badge variant="outline" className="font-mono text-xs">UNCLASSIFIED // FOUO</Badge>
         </div>
 
+        {/* Trust Completion Score — the operational gate */}
+        <TrustCompletionScorePanel />
+
         {/* Step 1: Active key state */}
         <Card>
           <CardHeader>
