@@ -63,7 +63,7 @@ export default function Residency() {
       <SEO
         title="Data Residency Manifest — AICIS"
         description="Auditable data residency manifest mapping every resource to its sovereign region and visibility class."
-        canonical="/residency"
+        path="/residency"
       />
       <header className="border-b border-border bg-card/40">
         <div className="container max-w-6xl mx-auto px-4 py-8">
