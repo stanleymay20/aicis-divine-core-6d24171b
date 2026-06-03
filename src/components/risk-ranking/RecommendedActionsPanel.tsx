@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Target, RefreshCw, Check, X, PlayCircle, Clock, Coins } from "lucide-react";
 import { toast } from "sonner";
+import { TrustEvidence } from "@/components/sovereign/TrustEvidence";
+import { useSubjectCitations } from "@/hooks/useSubjectCitations";
 
 interface Rec {
   id: string;
@@ -95,6 +97,9 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
   const rows = list.data?.rows ?? [];
   const totalRoi = rows.filter(r => r.status === "proposed" || r.status === "accepted")
     .reduce((s, r) => s + Number(r.estimated_roi_eur || 0), 0);
+
+  const visibleIds = rows.slice(0, compact ? 5 : rows.length).map(r => r.id);
+  const citationsQ = useSubjectCitations("risk_action_recommendations", visibleIds);
 
   return (
     <Card className="border-border">
@@ -192,6 +197,11 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
                     ><PlayCircle className="h-3 w-3" /> Execute</Button>
                   )}
                 </div>
+                <TrustEvidence
+                  citations={citationsQ.data?.get(r.id)}
+                  loading={citationsQ.isLoading}
+                  compact
+                />
               </div>
             ))}
           </div>

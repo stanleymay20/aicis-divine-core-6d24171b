@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ShieldCheck, ShieldAlert, Loader2, Lock, Unlock } from "lucide-react";
+import { CitationChipList, type Citation } from "@/components/sovereign/CitationChip";
 
 interface TrustScore {
   signal_citations_pct: number;
@@ -52,6 +53,35 @@ export default function TrustCompletionScorePanel() {
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       return row as TrustScore;
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const sample = useQuery({
+    queryKey: ["trust-completion-sample-citations"],
+    queryFn: async (): Promise<Citation[]> => {
+      const { data: rows, error } = await supabase
+        .from("intelligence_citations")
+        .select("source_name, source_url, confidence_weight, publisher_key, source_type")
+        .order("created_at", { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      const pubKeys = Array.from(new Set((rows ?? []).map((r: any) => r.publisher_key).filter(Boolean)));
+      const tierMap = new Map<string, number>();
+      if (pubKeys.length) {
+        const { data: auth } = await supabase
+          .from("source_authority_registry")
+          .select("publisher_key, authority_tier")
+          .in("publisher_key", pubKeys);
+        (auth ?? []).forEach((a: any) => tierMap.set(a.publisher_key, a.authority_tier));
+      }
+      return (rows ?? []).map((r: any) => ({
+        source_name: r.source_name,
+        source_url: r.source_url,
+        confidence_weight: r.confidence_weight,
+        authority_tier: tierMap.get(r.publisher_key) ?? (r.source_type === "official" ? 2 : 3),
+      }));
     },
     refetchInterval: 60_000,
     staleTime: 30_000,
@@ -163,6 +193,20 @@ export default function TrustCompletionScorePanel() {
                 {" "}<strong>95</strong>. Current: <strong>{data.weighted_score.toFixed(2)}</strong>.
               </AlertDescription>
             </Alert>
+
+            {/* Live sample — proof the backfill is materialising real citations */}
+            <div className="rounded border border-border/60 bg-muted/20 p-3">
+              <div className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-2">
+                Latest Citations (live sample)
+              </div>
+              {sample.isLoading ? (
+                <div className="text-xs text-muted-foreground">Loading sample…</div>
+              ) : (
+                <CitationChipList citations={sample.data ?? []} max={12} />
+              )}
+            </div>
+
+
 
             <div className="text-xs text-muted-foreground text-right">
               Computed {new Date(data.computed_at).toLocaleTimeString()} · auto-refresh 60s

@@ -4,6 +4,8 @@ import { type Signal, type VisibilityTab } from "./types";
 import { relevanceBadgeColor, sourceBadge, tierColor } from "./helpers";
 import { FeedbackRow } from "./atoms";
 import { WhyRelevantPanel, WhyTrustPanel } from "./WhyPanels";
+import { TrustEvidence } from "@/components/sovereign/TrustEvidence";
+import { useSubjectCitations } from "@/hooks/useSubjectCitations";
 
 interface Props {
   signal: Signal;
@@ -22,6 +24,9 @@ export function SignalRow({ signal: s, expanded, visibility, onToggleExpand, onF
   const confColor = conf >= 75 ? "bg-emerald-500/15 text-emerald-300 border-emerald-700/50"
     : conf >= 50 ? "bg-sky-500/15 text-sky-300 border-sky-700/50"
     : "bg-amber-500/15 text-amber-300 border-amber-700/50";
+
+  const citationsQ = useSubjectCitations("global_signals", [s.id], { enabled: expanded });
+  const citations = citationsQ.data?.get(s.id);
 
   return (
     <div
@@ -102,6 +107,7 @@ export function SignalRow({ signal: s, expanded, visibility, onToggleExpand, onF
         <div className="space-y-2">
           <WhyRelevantPanel signal={s} />
           {s.confidence_explanation && <WhyTrustPanel signal={s} />}
+          <TrustEvidence citations={citations} loading={citationsQ.isLoading} />
           <FeedbackRow
             signal={s}
             disabled={feedbackDisabled}

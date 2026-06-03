@@ -11,6 +11,8 @@ import { t } from "@/lib/i18n";
 import { Printer, FileDown, Share2, Shield } from "lucide-react";
 import { useViewMode } from "@/contexts/ExecutiveModeContext";
 import { ViewModeToggle } from "@/components/sovereign/ViewModeToggle";
+import { TrustEvidence } from "@/components/sovereign/TrustEvidence";
+import { useSubjectCitations } from "@/hooks/useSubjectCitations";
 
 interface BriefData {
   topWarnings: any[];
@@ -59,6 +61,15 @@ export default function MinisterBrief() {
   const { mode } = useViewMode();
   const { data: stats } = useSovereignStats();
   const { data, isLoading } = useQuery({ queryKey: ["minister-brief"], queryFn: fetchBrief, staleTime: 60_000 });
+
+  const warningCitesQ = useSubjectCitations(
+    "aicis_early_warnings",
+    (data?.topWarnings ?? []).map((w: any) => w.id),
+  );
+  const recCitesQ = useSubjectCitations(
+    "risk_action_recommendations",
+    (data?.recommendedActions ?? []).map((a: any) => a.id),
+  );
 
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
@@ -121,6 +132,11 @@ export default function MinisterBrief() {
                       <ConfidenceBadge value={Math.min(1, (w.severity ?? 0) / 100)} label="Severity" />
                     </div>
                     {w.recommended_next_action && <p className="text-muted-foreground mt-1">{w.recommended_next_action}</p>}
+                    <TrustEvidence
+                      citations={warningCitesQ.data?.get(w.id)}
+                      loading={warningCitesQ.isLoading}
+                      compact
+                    />
                   </li>
                 ))}
               </ul>
@@ -165,6 +181,13 @@ export default function MinisterBrief() {
                     <span className="text-muted-foreground"> · {a.country_iso3} · {a.urgency_window}</span>
                     {a.estimated_roi_eur != null && <span className="ml-2 font-mono text-xs text-emerald-600">€{Math.round(a.estimated_roi_eur).toLocaleString()}</span>}
                     {a.rationale_md && <p className="text-muted-foreground text-xs mt-0.5 ml-5">{a.rationale_md}</p>}
+                    <div className="ml-5 mt-1">
+                      <TrustEvidence
+                        citations={recCitesQ.data?.get(a.id)}
+                        loading={recCitesQ.isLoading}
+                        compact
+                      />
+                    </div>
                   </li>
                 ))}
               </ol>
