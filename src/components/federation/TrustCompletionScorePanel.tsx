@@ -58,6 +58,35 @@ export default function TrustCompletionScorePanel() {
     staleTime: 30_000,
   });
 
+  const sample = useQuery({
+    queryKey: ["trust-completion-sample-citations"],
+    queryFn: async (): Promise<Citation[]> => {
+      const { data: rows, error } = await supabase
+        .from("intelligence_citations")
+        .select("source_name, source_url, confidence_weight, publisher_key, source_type")
+        .order("created_at", { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      const pubKeys = Array.from(new Set((rows ?? []).map((r: any) => r.publisher_key).filter(Boolean)));
+      const tierMap = new Map<string, number>();
+      if (pubKeys.length) {
+        const { data: auth } = await supabase
+          .from("source_authority_registry")
+          .select("publisher_key, authority_tier")
+          .in("publisher_key", pubKeys);
+        (auth ?? []).forEach((a: any) => tierMap.set(a.publisher_key, a.authority_tier));
+      }
+      return (rows ?? []).map((r: any) => ({
+        source_name: r.source_name,
+        source_url: r.source_url,
+        confidence_weight: r.confidence_weight,
+        authority_tier: tierMap.get(r.publisher_key) ?? (r.source_type === "official" ? 2 : 3),
+      }));
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   return (
     <Card className="border-primary/40">
       <CardHeader>
