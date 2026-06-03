@@ -3355,6 +3355,42 @@ export type Database = {
         }
         Relationships: []
       }
+      data_residency_manifest: {
+        Row: {
+          aggregation_level: string | null
+          contains_pii: boolean
+          id: string
+          notes: string | null
+          residency_region: string
+          resource_kind: string
+          resource_name: string
+          sovereign_mode_visibility: string
+          updated_at: string
+        }
+        Insert: {
+          aggregation_level?: string | null
+          contains_pii?: boolean
+          id?: string
+          notes?: string | null
+          residency_region: string
+          resource_kind: string
+          resource_name: string
+          sovereign_mode_visibility: string
+          updated_at?: string
+        }
+        Update: {
+          aggregation_level?: string | null
+          contains_pii?: boolean
+          id?: string
+          notes?: string | null
+          residency_region?: string
+          resource_kind?: string
+          resource_name?: string
+          sovereign_mode_visibility?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       data_retention_policies: {
         Row: {
           auto_delete: boolean | null
@@ -12631,6 +12667,7 @@ export type Database = {
           shock_input: Json | null
           shock_iso3: string | null
           shock_magnitude: number
+          template_id: string | null
         }
         Insert: {
           affected_countries?: Json | null
@@ -12655,6 +12692,7 @@ export type Database = {
           shock_input?: Json | null
           shock_iso3?: string | null
           shock_magnitude: number
+          template_id?: string | null
         }
         Update: {
           affected_countries?: Json | null
@@ -12679,6 +12717,72 @@ export type Database = {
           shock_input?: Json | null
           shock_iso3?: string | null
           shock_magnitude?: number
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulation_runs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "simulation_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      simulation_templates: {
+        Row: {
+          affected_domains: string[] | null
+          affected_iso3: string[] | null
+          category: string
+          citation_keys: string[] | null
+          created_at: string
+          created_by: string | null
+          default_horizon_days: number | null
+          default_shock_magnitude: number | null
+          description: string | null
+          expected_propagation_paths: Json | null
+          id: string
+          is_public: boolean
+          parameters: Json
+          scenario_name: string
+          template_key: string
+          updated_at: string
+        }
+        Insert: {
+          affected_domains?: string[] | null
+          affected_iso3?: string[] | null
+          category: string
+          citation_keys?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          default_horizon_days?: number | null
+          default_shock_magnitude?: number | null
+          description?: string | null
+          expected_propagation_paths?: Json | null
+          id?: string
+          is_public?: boolean
+          parameters?: Json
+          scenario_name: string
+          template_key: string
+          updated_at?: string
+        }
+        Update: {
+          affected_domains?: string[] | null
+          affected_iso3?: string[] | null
+          category?: string
+          citation_keys?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          default_horizon_days?: number | null
+          default_shock_magnitude?: number | null
+          description?: string | null
+          expected_propagation_paths?: Json | null
+          id?: string
+          is_public?: boolean
+          parameters?: Json
+          scenario_name?: string
+          template_key?: string
+          updated_at?: string
         }
         Relationships: []
       }
