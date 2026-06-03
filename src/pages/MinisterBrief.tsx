@@ -132,6 +132,11 @@ export default function MinisterBrief() {
                       <ConfidenceBadge value={Math.min(1, (w.severity ?? 0) / 100)} label="Severity" />
                     </div>
                     {w.recommended_next_action && <p className="text-muted-foreground mt-1">{w.recommended_next_action}</p>}
+                    <TrustEvidence
+                      citations={warningCitesQ.data?.get(w.id)}
+                      loading={warningCitesQ.isLoading}
+                      compact
+                    />
                   </li>
                 ))}
               </ul>
