@@ -161,10 +161,10 @@ export default function MinisterBrief() {
               <ol className="space-y-2 text-sm list-decimal list-inside">
                 {data?.recommendedActions.map((a) => (
                   <li key={a.id}>
-                    <span className="font-medium">{humanize(a.intervention_type ?? "Action", mode)}</span>
+                    <span className="font-medium">{humanize(a.intervention_title ?? a.intervention_type ?? "Action", mode)}</span>
                     <span className="text-muted-foreground"> · {a.country_iso3} · {a.urgency_window}</span>
-                    {a.roi_euro != null && <span className="ml-2 font-mono text-xs text-emerald-600">€{Math.round(a.roi_euro).toLocaleString()}</span>}
-                    {a.rationale && <p className="text-muted-foreground text-xs mt-0.5 ml-5">{a.rationale}</p>}
+                    {a.estimated_roi_eur != null && <span className="ml-2 font-mono text-xs text-emerald-600">€{Math.round(a.estimated_roi_eur).toLocaleString()}</span>}
+                    {a.rationale_md && <p className="text-muted-foreground text-xs mt-0.5 ml-5">{a.rationale_md}</p>}
                   </li>
                 ))}
               </ol>
