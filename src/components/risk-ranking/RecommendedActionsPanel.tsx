@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Target, RefreshCw, Check, X, PlayCircle, Clock, Coins } from "lucide-react";
 import { toast } from "sonner";
+import { TrustEvidence } from "@/components/sovereign/TrustEvidence";
+import { useSubjectCitations } from "@/hooks/useSubjectCitations";
 
 interface Rec {
   id: string;
