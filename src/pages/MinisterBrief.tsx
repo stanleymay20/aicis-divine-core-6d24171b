@@ -20,30 +20,38 @@ interface BriefData {
 }
 
 async function fetchBrief(): Promise<BriefData> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
   const since = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
 
-  const [warnings, risks, actions, cites] = await Promise.all([
+  const [warnings, risks, actions, cites, authorities] = await Promise.all([
     supabase.from("aicis_early_warnings")
-      .select("id, country_iso3, domain, signal_type, severity, summary, detected_at")
-      .gte("detected_at", since).order("severity", { ascending: false }).limit(5),
+      .select("id, iso3, event_type, subtype, severity, recommended_next_action, first_detected_at")
+      .gte("first_detected_at", since).order("severity", { ascending: false }).limit(5),
     supabase.from("risk_ranking_predictions")
-      .select("country_iso3, domain, score, direction, prediction_horizon_days, created_at")
-      .order("score", { ascending: false }).limit(5),
+      .select("country_iso3, domain, risk_probability, rank_position, horizon_days, generated_at")
+      .order("risk_probability", { ascending: false }).limit(5),
     supabase.from("risk_action_recommendations")
-      .select("id, country_iso3, domain, intervention_type, urgency_window, roi_euro, rationale, status, created_at")
+      .select("id, country_iso3, domain, intervention_type, intervention_title, urgency_window, estimated_roi_eur, rationale_md, status, created_at")
       .eq("status", "pending").order("created_at", { ascending: false }).limit(5),
     supabase.from("intelligence_citations")
-      .select("source_name, source_url, confidence_weight, authority_tier")
+      .select("source_name, source_url, confidence_weight, publisher_key")
       .order("created_at", { ascending: false }).limit(12),
+    supabase.from("source_authority_registry").select("publisher_key, authority_tier"),
   ]);
+
+  const tierMap = new Map<string, number>();
+  (authorities.data ?? []).forEach((a: any) => tierMap.set(a.publisher_key, a.authority_tier));
+  const citations = (cites.data ?? []).map((c: any) => ({
+    source_name: c.source_name,
+    source_url: c.source_url,
+    confidence_weight: c.confidence_weight,
+    authority_tier: tierMap.get(c.publisher_key) ?? 3,
+  }));
 
   return {
     topWarnings: warnings.data ?? [],
     emergingRisks: risks.data ?? [],
     recommendedActions: actions.data ?? [],
-    citations: cites.data ?? [],
+    citations,
   };
 }
 
