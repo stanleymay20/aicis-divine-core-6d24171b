@@ -40,6 +40,7 @@ const Advanced = lazy(() => import("./pages/Advanced"));
 
 const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
+const Residency = lazy(() => import("./pages/Residency"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 
 const SignalValidation = lazy(() => import("./pages/SignalValidation"));
@@ -132,6 +133,7 @@ const App = () => (
                 <Route path="/auth" element={<PageBoundary><Auth /></PageBoundary>} />
                 <Route path="/terms" element={<Lazy><Terms /></Lazy>} />
                 <Route path="/privacy" element={<Lazy><Privacy /></Lazy>} />
+                <Route path="/residency" element={<Lazy><Residency /></Lazy>} />
                 <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
                 <Route path="/status" element={<Lazy><Status /></Lazy>} />
 

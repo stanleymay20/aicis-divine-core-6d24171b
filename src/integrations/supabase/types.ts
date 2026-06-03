@@ -2093,6 +2093,30 @@ export type Database = {
         }
         Relationships: []
       }
+      citation_enforcement_policy: {
+        Row: {
+          min_citations: number
+          min_tier: number
+          mode: string
+          subject_type: string
+          updated_at: string
+        }
+        Insert: {
+          min_citations?: number
+          min_tier?: number
+          mode: string
+          subject_type: string
+          updated_at?: string
+        }
+        Update: {
+          min_citations?: number
+          min_tier?: number
+          mode?: string
+          subject_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       command_history: {
         Row: {
           command: string
@@ -3331,6 +3355,42 @@ export type Database = {
         }
         Relationships: []
       }
+      data_residency_manifest: {
+        Row: {
+          aggregation_level: string | null
+          contains_pii: boolean
+          id: string
+          notes: string | null
+          residency_region: string
+          resource_kind: string
+          resource_name: string
+          sovereign_mode_visibility: string
+          updated_at: string
+        }
+        Insert: {
+          aggregation_level?: string | null
+          contains_pii?: boolean
+          id?: string
+          notes?: string | null
+          residency_region: string
+          resource_kind: string
+          resource_name: string
+          sovereign_mode_visibility: string
+          updated_at?: string
+        }
+        Update: {
+          aggregation_level?: string | null
+          contains_pii?: boolean
+          id?: string
+          notes?: string | null
+          residency_region?: string
+          resource_kind?: string
+          resource_name?: string
+          sovereign_mode_visibility?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       data_retention_policies: {
         Row: {
           auto_delete: boolean | null
@@ -4134,6 +4194,30 @@ export type Database = {
         }
         Relationships: []
       }
+      deprecated_tables: {
+        Row: {
+          deprecated_at: string
+          reason: string | null
+          removal_target_date: string | null
+          replacement: string
+          table_name: string
+        }
+        Insert: {
+          deprecated_at?: string
+          reason?: string | null
+          removal_target_date?: string | null
+          replacement: string
+          table_name: string
+        }
+        Update: {
+          deprecated_at?: string
+          reason?: string | null
+          removal_target_date?: string | null
+          replacement?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
       detection_audit_runs: {
         Row: {
           avg_latency_minutes: number | null
@@ -4687,6 +4771,9 @@ export type Database = {
       entity_aliases: {
         Row: {
           alias: string
+          alias_authority: string | null
+          alias_language: string | null
+          alias_source: string | null
           alias_type: Database["public"]["Enums"]["entity_alias_type"]
           confidence: number | null
           created_at: string
@@ -4696,6 +4783,9 @@ export type Database = {
         }
         Insert: {
           alias: string
+          alias_authority?: string | null
+          alias_language?: string | null
+          alias_source?: string | null
           alias_type?: Database["public"]["Enums"]["entity_alias_type"]
           confidence?: number | null
           created_at?: string
@@ -4705,6 +4795,9 @@ export type Database = {
         }
         Update: {
           alias?: string
+          alias_authority?: string | null
+          alias_language?: string | null
+          alias_source?: string | null
           alias_type?: Database["public"]["Enums"]["entity_alias_type"]
           confidence?: number | null
           created_at?: string
@@ -4893,6 +4986,42 @@ export type Database = {
           },
         ]
       }
+      entity_identifiers: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          entity_id: string | null
+          evidence_url: string | null
+          id: string
+          identifier: string
+          retrieved_at: string
+          scheme: string
+          source: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          entity_id?: string | null
+          evidence_url?: string | null
+          id?: string
+          identifier: string
+          retrieved_at?: string
+          scheme: string
+          source?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          entity_id?: string | null
+          evidence_url?: string | null
+          id?: string
+          identifier?: string
+          retrieved_at?: string
+          scheme?: string
+          source?: string | null
+        }
+        Relationships: []
+      }
       entity_identity_history: {
         Row: {
           actor: string | null
@@ -4932,6 +5061,39 @@ export type Database = {
           reason?: string | null
           related_entity_ids?: string[] | null
           this_hash?: string
+        }
+        Relationships: []
+      }
+      entity_link_provenance: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          entity_link_id: string | null
+          evidence_quote: string | null
+          evidence_url: string | null
+          id: string
+          retrieved_at: string
+          source: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          entity_link_id?: string | null
+          evidence_quote?: string | null
+          evidence_url?: string | null
+          id?: string
+          retrieved_at?: string
+          source: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          entity_link_id?: string | null
+          evidence_quote?: string | null
+          evidence_url?: string | null
+          id?: string
+          retrieved_at?: string
+          source?: string
         }
         Relationships: []
       }
@@ -6116,6 +6278,99 @@ export type Database = {
           min_sample?: number | null
           share_divisions?: string[] | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      federation_signed_bundles: {
+        Row: {
+          algorithm: string
+          bundle_hash: string
+          id: string
+          key_id: string
+          payload_size_bytes: number | null
+          signature: string
+          signed_at: string
+          verified: boolean
+          verified_at: string | null
+        }
+        Insert: {
+          algorithm?: string
+          bundle_hash: string
+          id?: string
+          key_id: string
+          payload_size_bytes?: number | null
+          signature: string
+          signed_at?: string
+          verified?: boolean
+          verified_at?: string | null
+        }
+        Update: {
+          algorithm?: string
+          bundle_hash?: string
+          id?: string
+          key_id?: string
+          payload_size_bytes?: number | null
+          signature?: string
+          signed_at?: string
+          verified?: boolean
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "federation_signed_bundles_key_id_fkey"
+            columns: ["key_id"]
+            isOneToOne: false
+            referencedRelation: "federation_active_key"
+            referencedColumns: ["key_id"]
+          },
+          {
+            foreignKeyName: "federation_signed_bundles_key_id_fkey"
+            columns: ["key_id"]
+            isOneToOne: false
+            referencedRelation: "federation_signing_keys"
+            referencedColumns: ["key_id"]
+          },
+        ]
+      }
+      federation_signing_keys: {
+        Row: {
+          algorithm: string
+          created_at: string
+          expires_at: string | null
+          is_active: boolean
+          key_id: string
+          key_status: string
+          notes: string | null
+          public_key: string
+          revoked_at: string | null
+          rotated_at: string | null
+          rotation_policy_days: number
+        }
+        Insert: {
+          algorithm?: string
+          created_at?: string
+          expires_at?: string | null
+          is_active?: boolean
+          key_id: string
+          key_status?: string
+          notes?: string | null
+          public_key: string
+          revoked_at?: string | null
+          rotated_at?: string | null
+          rotation_policy_days?: number
+        }
+        Update: {
+          algorithm?: string
+          created_at?: string
+          expires_at?: string | null
+          is_active?: boolean
+          key_id?: string
+          key_status?: string
+          notes?: string | null
+          public_key?: string
+          revoked_at?: string | null
+          rotated_at?: string | null
+          rotation_policy_days?: number
         }
         Relationships: []
       }
@@ -7634,6 +7889,65 @@ export type Database = {
           title?: string
         }
         Relationships: []
+      }
+      intelligence_citations: {
+        Row: {
+          citation_snapshot_hash: string | null
+          confidence_weight: number
+          created_at: string
+          id: string
+          published_at: string | null
+          publisher_key: string | null
+          quote: string | null
+          retrieved_at: string
+          source_hash: string | null
+          source_name: string
+          source_type: string | null
+          source_url: string | null
+          subject_id: string
+          subject_type: string
+        }
+        Insert: {
+          citation_snapshot_hash?: string | null
+          confidence_weight?: number
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          publisher_key?: string | null
+          quote?: string | null
+          retrieved_at?: string
+          source_hash?: string | null
+          source_name: string
+          source_type?: string | null
+          source_url?: string | null
+          subject_id: string
+          subject_type: string
+        }
+        Update: {
+          citation_snapshot_hash?: string | null
+          confidence_weight?: number
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          publisher_key?: string | null
+          quote?: string | null
+          retrieved_at?: string
+          source_hash?: string | null
+          source_name?: string
+          source_type?: string | null
+          source_url?: string | null
+          subject_id?: string
+          subject_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_citations_publisher_key_fkey"
+            columns: ["publisher_key"]
+            isOneToOne: false
+            referencedRelation: "source_authority_registry"
+            referencedColumns: ["publisher_key"]
+          },
+        ]
       }
       intelligence_index: {
         Row: {
@@ -12353,6 +12667,7 @@ export type Database = {
           shock_input: Json | null
           shock_iso3: string | null
           shock_magnitude: number
+          template_id: string | null
         }
         Insert: {
           affected_countries?: Json | null
@@ -12377,6 +12692,7 @@ export type Database = {
           shock_input?: Json | null
           shock_iso3?: string | null
           shock_magnitude: number
+          template_id?: string | null
         }
         Update: {
           affected_countries?: Json | null
@@ -12401,6 +12717,72 @@ export type Database = {
           shock_input?: Json | null
           shock_iso3?: string | null
           shock_magnitude?: number
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulation_runs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "simulation_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      simulation_templates: {
+        Row: {
+          affected_domains: string[] | null
+          affected_iso3: string[] | null
+          category: string
+          citation_keys: string[] | null
+          created_at: string
+          created_by: string | null
+          default_horizon_days: number | null
+          default_shock_magnitude: number | null
+          description: string | null
+          expected_propagation_paths: Json | null
+          id: string
+          is_public: boolean
+          parameters: Json
+          scenario_name: string
+          template_key: string
+          updated_at: string
+        }
+        Insert: {
+          affected_domains?: string[] | null
+          affected_iso3?: string[] | null
+          category: string
+          citation_keys?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          default_horizon_days?: number | null
+          default_shock_magnitude?: number | null
+          description?: string | null
+          expected_propagation_paths?: Json | null
+          id?: string
+          is_public?: boolean
+          parameters?: Json
+          scenario_name: string
+          template_key: string
+          updated_at?: string
+        }
+        Update: {
+          affected_domains?: string[] | null
+          affected_iso3?: string[] | null
+          category?: string
+          citation_keys?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          default_horizon_days?: number | null
+          default_shock_magnitude?: number | null
+          description?: string | null
+          expected_propagation_paths?: Json | null
+          id?: string
+          is_public?: boolean
+          parameters?: Json
+          scenario_name?: string
+          template_key?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -12476,6 +12858,42 @@ export type Database = {
           resolved_at?: string | null
           severity?: string
           violation_type?: string
+        }
+        Relationships: []
+      }
+      source_authority_registry: {
+        Row: {
+          authority_tier: number
+          base_url: string | null
+          created_at: string
+          default_confidence_weight: number
+          id: string
+          jurisdiction: string | null
+          publisher_key: string
+          publisher_name: string
+          publisher_type: string
+        }
+        Insert: {
+          authority_tier: number
+          base_url?: string | null
+          created_at?: string
+          default_confidence_weight?: number
+          id?: string
+          jurisdiction?: string | null
+          publisher_key: string
+          publisher_name: string
+          publisher_type: string
+        }
+        Update: {
+          authority_tier?: number
+          base_url?: string | null
+          created_at?: string
+          default_confidence_weight?: number
+          id?: string
+          jurisdiction?: string | null
+          publisher_key?: string
+          publisher_name?: string
+          publisher_type?: string
         }
         Relationships: []
       }
@@ -14804,6 +15222,44 @@ export type Database = {
         }
         Relationships: []
       }
+      federation_active_key: {
+        Row: {
+          algorithm: string | null
+          created_at: string | null
+          expires_at: string | null
+          key_id: string | null
+          public_key: string | null
+          rotation_policy_days: number | null
+        }
+        Insert: {
+          algorithm?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          key_id?: string | null
+          public_key?: string | null
+          rotation_policy_days?: number | null
+        }
+        Update: {
+          algorithm?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          key_id?: string | null
+          public_key?: string | null
+          rotation_policy_days?: number | null
+        }
+        Relationships: []
+      }
+      intelligence_citation_strength: {
+        Row: {
+          avg_confidence: number | null
+          best_tier: number | null
+          citation_count: number | null
+          has_provenance_hash: boolean | null
+          subject_id: string | null
+          subject_type: string | null
+        }
+        Relationships: []
+      }
       organizations_member_safe: {
         Row: {
           created_at: string | null
@@ -15957,6 +16413,15 @@ export type Database = {
         Args: { _days?: number }
         Returns: Json
       }
+      assert_citation: {
+        Args: { p_subject_id: string; p_subject_type: string }
+        Returns: {
+          message: string
+          mode: string
+          ok: boolean
+          severity: string
+        }[]
+      }
       audit_prospective_match_quality: { Args: never; Returns: Json }
       auto_review_decisions: { Args: { _batch_size?: number }; Returns: Json }
       backfill_event_entity_iso3: { Args: { _batch?: number }; Returns: number }
@@ -16286,6 +16751,10 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      ledger_append: {
+        Args: { p_entry_type: string; p_payload: Json }
+        Returns: string
+      }
       log_audit_event: {
         Args: {
           _action: string
@@ -16497,6 +16966,14 @@ export type Database = {
           out_provider: string
           out_written: number
         }[]
+      }
+      rotate_federation_key: {
+        Args: {
+          p_new_key_id: string
+          p_new_public_key: string
+          p_rotation_days?: number
+        }
+        Returns: undefined
       }
       run_accumulation_health_audit: { Args: never; Returns: Json }
       run_canary_probe: { Args: never; Returns: Json }
