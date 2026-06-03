@@ -98,6 +98,9 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
   const totalRoi = rows.filter(r => r.status === "proposed" || r.status === "accepted")
     .reduce((s, r) => s + Number(r.estimated_roi_eur || 0), 0);
 
+  const visibleIds = rows.slice(0, compact ? 5 : rows.length).map(r => r.id);
+  const citationsQ = useSubjectCitations("risk_action_recommendations", visibleIds);
+
   return (
     <Card className="border-border">
       <CardContent className="p-4 space-y-3">
