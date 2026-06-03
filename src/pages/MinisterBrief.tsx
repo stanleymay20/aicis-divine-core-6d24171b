@@ -62,6 +62,15 @@ export default function MinisterBrief() {
   const { data: stats } = useSovereignStats();
   const { data, isLoading } = useQuery({ queryKey: ["minister-brief"], queryFn: fetchBrief, staleTime: 60_000 });
 
+  const warningCitesQ = useSubjectCitations(
+    "aicis_early_warnings",
+    (data?.topWarnings ?? []).map((w: any) => w.id),
+  );
+  const recCitesQ = useSubjectCitations(
+    "risk_action_recommendations",
+    (data?.recommendedActions ?? []).map((a: any) => a.id),
+  );
+
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   const handlePrint = () => window.print();
