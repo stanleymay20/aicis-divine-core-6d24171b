@@ -4158,6 +4158,30 @@ export type Database = {
         }
         Relationships: []
       }
+      deprecated_tables: {
+        Row: {
+          deprecated_at: string
+          reason: string | null
+          removal_target_date: string | null
+          replacement: string
+          table_name: string
+        }
+        Insert: {
+          deprecated_at?: string
+          reason?: string | null
+          removal_target_date?: string | null
+          replacement: string
+          table_name: string
+        }
+        Update: {
+          deprecated_at?: string
+          reason?: string | null
+          removal_target_date?: string | null
+          replacement?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
       detection_audit_runs: {
         Row: {
           avg_latency_minutes: number | null
@@ -4711,6 +4735,9 @@ export type Database = {
       entity_aliases: {
         Row: {
           alias: string
+          alias_authority: string | null
+          alias_language: string | null
+          alias_source: string | null
           alias_type: Database["public"]["Enums"]["entity_alias_type"]
           confidence: number | null
           created_at: string
@@ -4720,6 +4747,9 @@ export type Database = {
         }
         Insert: {
           alias: string
+          alias_authority?: string | null
+          alias_language?: string | null
+          alias_source?: string | null
           alias_type?: Database["public"]["Enums"]["entity_alias_type"]
           confidence?: number | null
           created_at?: string
@@ -4729,6 +4759,9 @@ export type Database = {
         }
         Update: {
           alias?: string
+          alias_authority?: string | null
+          alias_language?: string | null
+          alias_source?: string | null
           alias_type?: Database["public"]["Enums"]["entity_alias_type"]
           confidence?: number | null
           created_at?: string
@@ -4917,6 +4950,42 @@ export type Database = {
           },
         ]
       }
+      entity_identifiers: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          entity_id: string | null
+          evidence_url: string | null
+          id: string
+          identifier: string
+          retrieved_at: string
+          scheme: string
+          source: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          entity_id?: string | null
+          evidence_url?: string | null
+          id?: string
+          identifier: string
+          retrieved_at?: string
+          scheme: string
+          source?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          entity_id?: string | null
+          evidence_url?: string | null
+          id?: string
+          identifier?: string
+          retrieved_at?: string
+          scheme?: string
+          source?: string | null
+        }
+        Relationships: []
+      }
       entity_identity_history: {
         Row: {
           actor: string | null
@@ -4956,6 +5025,39 @@ export type Database = {
           reason?: string | null
           related_entity_ids?: string[] | null
           this_hash?: string
+        }
+        Relationships: []
+      }
+      entity_link_provenance: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          entity_link_id: string | null
+          evidence_quote: string | null
+          evidence_url: string | null
+          id: string
+          retrieved_at: string
+          source: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          entity_link_id?: string | null
+          evidence_quote?: string | null
+          evidence_url?: string | null
+          id?: string
+          retrieved_at?: string
+          source: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          entity_link_id?: string | null
+          evidence_quote?: string | null
+          evidence_url?: string | null
+          id?: string
+          retrieved_at?: string
+          source?: string
         }
         Relationships: []
       }
