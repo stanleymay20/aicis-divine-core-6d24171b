@@ -16943,6 +16943,10 @@ export type Database = {
         Returns: number
       }
       phase_b_build_kg_links: { Args: { p_batch?: number }; Returns: number }
+      phase_b_classify_official_sources: {
+        Args: { p_batch?: number }
+        Returns: number
+      }
       planetary_batch_tick: { Args: never; Returns: Json }
       prospective_accumulation_monitor: { Args: never; Returns: Json }
       prospective_coverage_gaps: { Args: never; Returns: Json }
