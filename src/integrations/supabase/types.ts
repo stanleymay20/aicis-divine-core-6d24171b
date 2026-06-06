@@ -16938,6 +16938,10 @@ export type Database = {
         Args: { p_batch?: number; p_subject_type: string }
         Returns: number
       }
+      phase_b_backfill_recs_fast: {
+        Args: { p_batch?: number }
+        Returns: number
+      }
       phase_b_backfill_signal_citations: {
         Args: { p_batch?: number; p_priority?: string }
         Returns: number
