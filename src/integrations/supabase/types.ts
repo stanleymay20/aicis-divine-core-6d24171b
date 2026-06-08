@@ -16554,6 +16554,10 @@ export type Database = {
       compute_trust_completion_score: {
         Args: never
         Returns: {
+          authority_other_count: number
+          authority_t1_count: number
+          authority_t2_count: number
+          authority_t3_count: number
           chain_integrity_pct: number
           chain_present: number
           chain_total: number
