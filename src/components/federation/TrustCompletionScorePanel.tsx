@@ -11,7 +11,7 @@ interface TrustScore {
   signal_citations_pct: number;
   warning_citations_pct: number;
   recommendation_citations_pct: number;
-  official_source_pct: number;
+  official_source_pct: number; // now: tier-weighted Authority Coverage
   chain_integrity_pct: number;
   weighted_score: number;
   gate_status: "BLOCKED" | "NEAR_READY" | "PASSED";
@@ -24,17 +24,21 @@ interface TrustScore {
   recs_cited: number;
   citations_total: number;
   citations_official: number;
+  authority_t1_count?: number;
+  authority_t2_count?: number;
+  authority_t3_count?: number;
+  authority_other_count?: number;
   chain_total: number;
   chain_present: number;
   computed_at: string;
 }
 
 const WEIGHTS = [
-  { key: "signal_citations_pct",         label: "Signal Citations",         weight: 40, num: "signals_cited",    den: "signals_total"   },
-  { key: "warning_citations_pct",        label: "Warning Citations",        weight: 20, num: "warnings_cited",   den: "warnings_total"  },
-  { key: "recommendation_citations_pct", label: "Recommendation Citations", weight: 20, num: "recs_cited",       den: "recs_total"      },
-  { key: "official_source_pct",          label: "Official Source Match",    weight: 10, num: "citations_official", den: "citations_total" },
-  { key: "chain_integrity_pct",          label: "Citation Chain Integrity", weight: 10, num: "chain_present",    den: "chain_total"     },
+  { key: "signal_citations_pct",         label: "Signal Citations",         weight: 40, num: "signals_cited",      den: "signals_total"   },
+  { key: "warning_citations_pct",        label: "Warning Citations",        weight: 20, num: "warnings_cited",     den: "warnings_total"  },
+  { key: "recommendation_citations_pct", label: "Recommendation Citations", weight: 20, num: "recs_cited",         den: "recs_total"      },
+  { key: "official_source_pct",          label: "Authority Coverage",       weight: 10, num: "citations_official", den: "citations_total" },
+  { key: "chain_integrity_pct",          label: "Citation Chain Integrity", weight: 10, num: "chain_present",      den: "chain_total"     },
 ] as const;
 
 function gateBadge(status: TrustScore["gate_status"]) {
