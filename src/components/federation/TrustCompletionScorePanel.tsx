@@ -173,6 +173,17 @@ export default function TrustCompletionScorePanel() {
                       </div>
                     </div>
                     <Progress value={pct} className="h-1.5" />
+                    {w.key === "official_source_pct" && (
+                      <div className="mt-1 rounded border border-border/60 bg-muted/20 px-2 py-1.5 text-[10px] font-mono text-muted-foreground">
+                        <div className="mb-1 uppercase tracking-wide">Tier-weighted blend · T1=1.00 · T2=0.70 · T3=0.40 · other=0.05</div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
+                          <span><span className="text-emerald-500">T1</span> {(data.authority_t1_count ?? 0).toLocaleString()}</span>
+                          <span><span className="text-blue-500">T2</span> {(data.authority_t2_count ?? 0).toLocaleString()}</span>
+                          <span><span className="text-amber-500">T3</span> {(data.authority_t3_count ?? 0).toLocaleString()}</span>
+                          <span><span className="opacity-70">other</span> {(data.authority_other_count ?? 0).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
