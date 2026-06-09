@@ -10584,6 +10584,45 @@ export type Database = {
           },
         ]
       }
+      publisher_intake_queue: {
+        Row: {
+          curated_at: string | null
+          curated_into_tier: number | null
+          first_seen_at: string
+          last_seen_at: string
+          notes: string | null
+          observation_count: number
+          publisher_key: string
+          publisher_name: string | null
+          sample_source_url: string | null
+          status: string
+        }
+        Insert: {
+          curated_at?: string | null
+          curated_into_tier?: number | null
+          first_seen_at?: string
+          last_seen_at?: string
+          notes?: string | null
+          observation_count?: number
+          publisher_key: string
+          publisher_name?: string | null
+          sample_source_url?: string | null
+          status?: string
+        }
+        Update: {
+          curated_at?: string | null
+          curated_into_tier?: number | null
+          first_seen_at?: string
+          last_seen_at?: string
+          notes?: string | null
+          observation_count?: number
+          publisher_key?: string
+          publisher_name?: string | null
+          sample_source_url?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       quantivis_sync_cursors: {
         Row: {
           created_at: string
