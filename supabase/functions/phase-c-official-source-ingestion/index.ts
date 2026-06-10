@@ -116,8 +116,13 @@ async function ingestFeed(
 
   try {
     const res = await fetch(feed.url, {
-      headers: { "User-Agent": "AICIS-OfficialIngest/1.0 (+phase-c)" },
+      headers: {
+        "User-Agent": BROWSER_UA,
+        "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
       signal: AbortSignal.timeout(15_000),
+      redirect: "follow",
     });
     if (!res.ok) {
       result.error = `HTTP ${res.status}`;
