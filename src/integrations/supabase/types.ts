@@ -7896,6 +7896,7 @@ export type Database = {
           confidence_weight: number
           created_at: string
           id: string
+          ingest_lane: string | null
           published_at: string | null
           publisher_key: string | null
           quote: string | null
@@ -7912,6 +7913,7 @@ export type Database = {
           confidence_weight?: number
           created_at?: string
           id?: string
+          ingest_lane?: string | null
           published_at?: string | null
           publisher_key?: string | null
           quote?: string | null
@@ -7928,6 +7930,7 @@ export type Database = {
           confidence_weight?: number
           created_at?: string
           id?: string
+          ingest_lane?: string | null
           published_at?: string | null
           publisher_key?: string | null
           quote?: string | null
@@ -9653,6 +9656,50 @@ export type Database = {
           status?: string | null
         }
         Relationships: []
+      }
+      official_publications: {
+        Row: {
+          content_hash: string
+          created_at: string
+          fetched_at: string
+          id: string
+          link: string
+          published_at: string | null
+          publisher_key: string
+          summary: string | null
+          title: string
+        }
+        Insert: {
+          content_hash: string
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          link: string
+          published_at?: string | null
+          publisher_key: string
+          summary?: string | null
+          title: string
+        }
+        Update: {
+          content_hash?: string
+          created_at?: string
+          fetched_at?: string
+          id?: string
+          link?: string
+          published_at?: string | null
+          publisher_key?: string
+          summary?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "official_publications_publisher_key_fkey"
+            columns: ["publisher_key"]
+            isOneToOne: false
+            referencedRelation: "source_authority_registry"
+            referencedColumns: ["publisher_key"]
+          },
+        ]
       }
       operational_telemetry: {
         Row: {
