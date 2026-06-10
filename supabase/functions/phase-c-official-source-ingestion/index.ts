@@ -24,21 +24,17 @@ interface Feed {
 // Curated, stable RSS endpoints. All publishers already seeded as Tier 1
 // in source_authority_registry by the accompanying migration.
 const FEEDS: Feed[] = [
-  // WHO — Disease Outbreak News (authoritative health alerts)
-  { publisher_key: "who.int",       publisher_name: "World Health Organization", url: "https://www.who.int/feeds/entity/csr/don/en/rss.xml" },
-  // IMF — News
-  { publisher_key: "imf.org",       publisher_name: "International Monetary Fund", url: "https://www.imf.org/en/News/RSS?Language=en" },
-  // World Bank — News
-  { publisher_key: "worldbank.org", publisher_name: "World Bank", url: "https://www.worldbank.org/en/news/all/rss" },
-  // ECB — Press releases
-  { publisher_key: "ecb.europa.eu", publisher_name: "European Central Bank", url: "https://www.ecb.europa.eu/rss/press.html" },
-  // OECD — Newsroom
-  { publisher_key: "oecd.org",      publisher_name: "OECD", url: "https://www.oecd.org/newsroom/index.xml" },
-  // BIS — Central bank speeches & press
-  { publisher_key: "bis.org",       publisher_name: "Bank for International Settlements", url: "https://www.bis.org/list/press_rel/index.rss" },
-  // ReliefWeb — UN OCHA humanitarian updates
-  { publisher_key: "reliefweb.int", publisher_name: "ReliefWeb (UN OCHA)", url: "https://reliefweb.int/updates/rss.xml" },
+  { publisher_key: "who.int",       publisher_name: "World Health Organization",        url: "https://www.who.int/rss-feeds/news-english.xml" },
+  { publisher_key: "imf.org",       publisher_name: "International Monetary Fund",      url: "https://www.imf.org/en/News/RSS?Language=en" },
+  { publisher_key: "worldbank.org", publisher_name: "World Bank",                       url: "https://www.worldbank.org/en/news/all/rss" },
+  { publisher_key: "ecb.europa.eu", publisher_name: "European Central Bank",            url: "https://www.ecb.europa.eu/rss/press.html" },
+  { publisher_key: "oecd.org",      publisher_name: "OECD",                             url: "https://www.oecd.org/newsroom/index.xml" },
+  { publisher_key: "bis.org",       publisher_name: "Bank for International Settlements", url: "https://www.bis.org/doclist/press.rss" },
+  { publisher_key: "reliefweb.int", publisher_name: "ReliefWeb (UN OCHA)",              url: "https://reliefweb.int/updates/rss.xml" },
 ];
+
+const BROWSER_UA =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 interface FeedItem {
   title: string;
