@@ -23,14 +23,13 @@ interface Feed {
 
 // Curated, stable RSS endpoints. All publishers already seeded as Tier 1
 // in source_authority_registry by the accompanying migration.
+// Working RSS endpoints (verified). IMF/OECD/World Bank are behind Cloudflare
+// bot protection and require a Firecrawl-style fetcher — deferred to Lane 1b.
 const FEEDS: Feed[] = [
-  { publisher_key: "who.int",       publisher_name: "World Health Organization",        url: "https://www.who.int/rss-feeds/news-english.xml" },
-  { publisher_key: "imf.org",       publisher_name: "International Monetary Fund",      url: "https://www.imf.org/en/News/RSS?Language=en" },
-  { publisher_key: "worldbank.org", publisher_name: "World Bank",                       url: "https://www.worldbank.org/en/news/all/rss" },
-  { publisher_key: "ecb.europa.eu", publisher_name: "European Central Bank",            url: "https://www.ecb.europa.eu/rss/press.html" },
-  { publisher_key: "oecd.org",      publisher_name: "OECD",                             url: "https://www.oecd.org/newsroom/index.xml" },
-  { publisher_key: "bis.org",       publisher_name: "Bank for International Settlements", url: "https://www.bis.org/doclist/press.rss" },
-  { publisher_key: "reliefweb.int", publisher_name: "ReliefWeb (UN OCHA)",              url: "https://reliefweb.int/updates/rss.xml" },
+  { publisher_key: "who.int",       publisher_name: "World Health Organization",         url: "https://www.who.int/rss-feeds/news-english.xml" },
+  { publisher_key: "ecb.europa.eu", publisher_name: "European Central Bank",             url: "https://www.ecb.europa.eu/rss/press.html" },
+  { publisher_key: "bis.org",       publisher_name: "Bank for International Settlements", url: "https://www.bis.org/doclist/cbspeeches.rss" },
+  { publisher_key: "reliefweb.int", publisher_name: "ReliefWeb (UN OCHA)",               url: "https://reliefweb.int/updates/rss.xml" },
 ];
 
 const BROWSER_UA =
