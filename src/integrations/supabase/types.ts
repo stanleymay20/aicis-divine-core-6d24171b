@@ -17041,6 +17041,13 @@ export type Database = {
         Args: { p_batch?: number }
         Returns: number
       }
+      phase_c_backfill_citation_publisher_keys: {
+        Args: { p_batch?: number }
+        Returns: {
+          remaining: number
+          updated: number
+        }[]
+      }
       planetary_batch_tick: { Args: never; Returns: Json }
       prospective_accumulation_monitor: { Args: never; Returns: Json }
       prospective_coverage_gaps: { Args: never; Returns: Json }
