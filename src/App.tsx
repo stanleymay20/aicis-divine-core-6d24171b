@@ -188,12 +188,12 @@ const App = () => (
                 <Route path="/register-node" element={<Shell><RegisterNode /></Shell>} />
                 <Route path="/accumulation" element={<Shell><Accumulation /></Shell>} />
                 <Route path="/training-dataset" element={<Shell><TrainingDataset /></Shell>} />
-                <Route path="/risk-ranking" element={<Protected><RiskRanking /></Protected>} />
-                <Route path="/learning-loop" element={<Protected><LearningLoop /></Protected>} />
-                <Route path="/intelligence-engine" element={<Shell><IntelligenceEngine /></Shell>} />
-                <Route path="/simulation" element={<Protected><Simulation /></Protected>} />
-                <Route path="/predictions" element={<Protected><Predictions /></Protected>} />
-                <Route path="/api-audit" element={<Protected><ApiAudit /></Protected>} />
+                <Route path="/risk-ranking" element={<Protected tier="sovereign"><RiskRanking /></Protected>} />
+                <Route path="/learning-loop" element={<Protected tier="sovereign"><LearningLoop /></Protected>} />
+                <Route path="/intelligence-engine" element={<Shell tier="sovereign"><IntelligenceEngine /></Shell>} />
+                <Route path="/simulation" element={<Protected tier="sovereign"><Simulation /></Protected>} />
+                <Route path="/predictions" element={<Protected tier="sovereign"><Predictions /></Protected>} />
+                <Route path="/api-audit" element={<Protected tier="enterprise"><ApiAudit /></Protected>} />
                 <Route path="/local-events" element={<Shell><LocalEvents /></Shell>} />
                 <Route path="/local-events/:iso3" element={<Shell><LocalEvents /></Shell>} />
                 <Route path="/local-events/:iso3/:locality" element={<Shell><LocalEvents /></Shell>} />
