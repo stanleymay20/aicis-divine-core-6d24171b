@@ -155,6 +155,7 @@ const App = () => (
                 <Route path="/residency" element={<Lazy><Residency /></Lazy>} />
                 <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
                 <Route path="/status" element={<Lazy><Status /></Lazy>} />
+                <Route path="/upgrade" element={<Lazy><Upgrade /></Lazy>} />
 
                 <Route path="/command-center" element={<Shell><PlanetaryCommandCenter /></Shell>} />
                 <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
