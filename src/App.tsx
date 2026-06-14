@@ -200,9 +200,9 @@ const App = () => (
                 <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
                 <Route path="/export-center" element={<Protected><ExportCenter /></Protected>} />
                 <Route path="/data-export" element={<Protected><ExportCenter /></Protected>} />
-                <Route path="/export-layer" element={<Protected><ExportLayer /></Protected>} />
-                <Route path="/exports" element={<Protected><ExportLayer /></Protected>} />
-                <Route path="/quantivis-exports" element={<Protected><ExportLayer /></Protected>} />
+                <Route path="/export-layer" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
+                <Route path="/exports" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
+                <Route path="/quantivis-exports" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
                 <Route path="/pilot-truth" element={<Shell><PilotTruthFeed /></Shell>} />
                 <Route path="/data-pipeline" element={<Shell><DataPipeline /></Shell>} />
                 <Route path="/outcome-cockpit" element={<Shell><OutcomeCockpit /></Shell>} />
