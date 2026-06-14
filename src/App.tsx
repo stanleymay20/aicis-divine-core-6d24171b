@@ -75,6 +75,7 @@ const OutcomeCockpit = lazy(() => import("./pages/OutcomeCockpit"));
 const SystemCatalog = lazy(() => import("./pages/SystemCatalog"));
 const AnalystDashboard = lazy(() => import("./pages/AnalystDashboard"));
 const DataIntegrity = lazy(() => import("./pages/DataIntegrity"));
+const Upgrade = lazy(() => import("./pages/Upgrade"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -101,14 +102,28 @@ const Lazy = ({ children }: { children: React.ReactNode }) => (
   </Suspense>
 );
 
-const Protected = ({ children }: { children: React.ReactNode }) => (
-  <ProtectedRoute>
+import type { AccessTier } from "@/hooks/useUserTier";
+
+const Protected = ({
+  children,
+  tier,
+}: {
+  children: React.ReactNode;
+  tier?: AccessTier;
+}) => (
+  <ProtectedRoute requiredTier={tier}>
     <Lazy>{children}</Lazy>
   </ProtectedRoute>
 );
 
-const Shell = ({ children }: { children: React.ReactNode }) => (
-  <ProtectedRoute>
+const Shell = ({
+  children,
+  tier,
+}: {
+  children: React.ReactNode;
+  tier?: AccessTier;
+}) => (
+  <ProtectedRoute requiredTier={tier}>
     <AICISLayout>
       <div className="overflow-y-auto h-full flex flex-col">
         <Lazy>{children}</Lazy>
@@ -140,6 +155,7 @@ const App = () => (
                 <Route path="/residency" element={<Lazy><Residency /></Lazy>} />
                 <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
                 <Route path="/status" element={<Lazy><Status /></Lazy>} />
+                <Route path="/upgrade" element={<Lazy><Upgrade /></Lazy>} />
 
                 <Route path="/command-center" element={<Shell><PlanetaryCommandCenter /></Shell>} />
                 <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
@@ -172,21 +188,21 @@ const App = () => (
                 <Route path="/register-node" element={<Shell><RegisterNode /></Shell>} />
                 <Route path="/accumulation" element={<Shell><Accumulation /></Shell>} />
                 <Route path="/training-dataset" element={<Shell><TrainingDataset /></Shell>} />
-                <Route path="/risk-ranking" element={<Protected><RiskRanking /></Protected>} />
-                <Route path="/learning-loop" element={<Protected><LearningLoop /></Protected>} />
-                <Route path="/intelligence-engine" element={<Shell><IntelligenceEngine /></Shell>} />
-                <Route path="/simulation" element={<Protected><Simulation /></Protected>} />
-                <Route path="/predictions" element={<Protected><Predictions /></Protected>} />
-                <Route path="/api-audit" element={<Protected><ApiAudit /></Protected>} />
+                <Route path="/risk-ranking" element={<Protected tier="sovereign"><RiskRanking /></Protected>} />
+                <Route path="/learning-loop" element={<Protected tier="sovereign"><LearningLoop /></Protected>} />
+                <Route path="/intelligence-engine" element={<Shell tier="sovereign"><IntelligenceEngine /></Shell>} />
+                <Route path="/simulation" element={<Protected tier="sovereign"><Simulation /></Protected>} />
+                <Route path="/predictions" element={<Protected tier="sovereign"><Predictions /></Protected>} />
+                <Route path="/api-audit" element={<Protected tier="enterprise"><ApiAudit /></Protected>} />
                 <Route path="/local-events" element={<Shell><LocalEvents /></Shell>} />
                 <Route path="/local-events/:iso3" element={<Shell><LocalEvents /></Shell>} />
                 <Route path="/local-events/:iso3/:locality" element={<Shell><LocalEvents /></Shell>} />
                 <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
                 <Route path="/export-center" element={<Protected><ExportCenter /></Protected>} />
                 <Route path="/data-export" element={<Protected><ExportCenter /></Protected>} />
-                <Route path="/export-layer" element={<Protected><ExportLayer /></Protected>} />
-                <Route path="/exports" element={<Protected><ExportLayer /></Protected>} />
-                <Route path="/quantivis-exports" element={<Protected><ExportLayer /></Protected>} />
+                <Route path="/export-layer" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
+                <Route path="/exports" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
+                <Route path="/quantivis-exports" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
                 <Route path="/pilot-truth" element={<Shell><PilotTruthFeed /></Shell>} />
                 <Route path="/data-pipeline" element={<Shell><DataPipeline /></Shell>} />
                 <Route path="/outcome-cockpit" element={<Shell><OutcomeCockpit /></Shell>} />

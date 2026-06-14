@@ -16836,6 +16836,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_user_tier: { Args: { _user_id?: string }; Returns: string }
       get_village_dashboard: {
         Args: { _region_id: string }
         Returns: {
@@ -17020,6 +17021,7 @@ export type Database = {
         }
         Returns: Json
       }
+      normalize_tier: { Args: { _raw: string }; Returns: string }
       phase_b_backchain_ledger: {
         Args: { p_batch?: number; p_source_table: string }
         Returns: number
