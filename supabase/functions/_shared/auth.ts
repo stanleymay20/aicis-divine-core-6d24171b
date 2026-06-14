@@ -53,6 +53,122 @@ export async function requireAdminUser(req: Request) {
   return { user: data.user, response: null };
 }
 
+// ──────────────────────────────────────────────────────────────────
+// User auth + tier gating (for intelligence endpoints)
+// ──────────────────────────────────────────────────────────────────
+
+export type AccessTier = "free" | "sovereign" | "enterprise";
+
+const TIER_RANK: Record<AccessTier, number> = {
+  free: 0,
+  sovereign: 1,
+  enterprise: 2,
+};
+
+export interface UserAuthContext {
+  user: any;
+  tier: AccessTier;
+}
+
+/**
+ * Validates the Authorization header (Bearer JWT) and returns either
+ *   { ctx: { user, tier }, response: null }  on success, or
+ *   { ctx: null, response: Response }        with status 401 on failure.
+ *
+ * Use `extraCorsHeaders` to merge in your function's CORS headers so
+ * the error response is not blocked by the browser.
+ */
+export async function requireUser(
+  req: Request,
+  extraCorsHeaders: Record<string, string> = {},
+): Promise<{ ctx: UserAuthContext | null; response: Response | null }> {
+  const headers = { ...extraCorsHeaders, ...jsonHeaders };
+  const authHeader = req.headers.get("authorization");
+
+  if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+    return {
+      ctx: null,
+      response: new Response(
+        JSON.stringify({ error: "Unauthorized", reason: "missing_or_malformed_authorization_header" }),
+        { status: 401, headers },
+      ),
+    };
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    { global: { headers: { Authorization: authHeader } } },
+  );
+
+  const token = authHeader.replace(/^[Bb]earer\s+/, "");
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (error || !data?.user) {
+    return {
+      ctx: null,
+      response: new Response(
+        JSON.stringify({ error: "Unauthorized", reason: "invalid_or_expired_token" }),
+        { status: 401, headers },
+      ),
+    };
+  }
+
+  // Tier lookup uses the service role to bypass RLS on organizations,
+  // but only ever returns the tier for THIS user_id.
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+
+  let tier: AccessTier = "free";
+  try {
+    const { data: tierData } = await admin.rpc("get_user_tier", {
+      _user_id: data.user.id,
+    });
+    const t = (tierData as string) ?? "free";
+    if (t === "enterprise" || t === "sovereign" || t === "free") {
+      tier = t;
+    }
+  } catch {
+    tier = "free";
+  }
+
+  return { ctx: { user: data.user, tier }, response: null };
+}
+
+/**
+ * Like requireUser, but additionally enforces a minimum access tier.
+ * Returns 403 with the user's current tier when the requirement is not met.
+ */
+export async function requireTier(
+  req: Request,
+  minTier: AccessTier,
+  extraCorsHeaders: Record<string, string> = {},
+): Promise<{ ctx: UserAuthContext | null; response: Response | null }> {
+  const { ctx, response } = await requireUser(req, extraCorsHeaders);
+  if (response || !ctx) return { ctx: null, response };
+
+  if (TIER_RANK[ctx.tier] < TIER_RANK[minTier]) {
+    const headers = { ...extraCorsHeaders, ...jsonHeaders };
+    return {
+      ctx: null,
+      response: new Response(
+        JSON.stringify({
+          error: "Forbidden",
+          reason: "tier_insufficient",
+          required_tier: minTier,
+          current_tier: ctx.tier,
+          message: `This endpoint requires ${minTier} access.`,
+        }),
+        { status: 403, headers },
+      ),
+    };
+  }
+
+  return { ctx, response: null };
+}
+
 export async function enforceRateLimit(options: {
   supabase: ReturnType<typeof createClient>;
   req: Request;
