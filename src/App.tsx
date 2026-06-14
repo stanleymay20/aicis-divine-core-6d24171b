@@ -102,14 +102,28 @@ const Lazy = ({ children }: { children: React.ReactNode }) => (
   </Suspense>
 );
 
-const Protected = ({ children }: { children: React.ReactNode }) => (
-  <ProtectedRoute>
+import type { AccessTier } from "@/hooks/useUserTier";
+
+const Protected = ({
+  children,
+  tier,
+}: {
+  children: React.ReactNode;
+  tier?: AccessTier;
+}) => (
+  <ProtectedRoute requiredTier={tier}>
     <Lazy>{children}</Lazy>
   </ProtectedRoute>
 );
 
-const Shell = ({ children }: { children: React.ReactNode }) => (
-  <ProtectedRoute>
+const Shell = ({
+  children,
+  tier,
+}: {
+  children: React.ReactNode;
+  tier?: AccessTier;
+}) => (
+  <ProtectedRoute requiredTier={tier}>
     <AICISLayout>
       <div className="overflow-y-auto h-full flex flex-col">
         <Lazy>{children}</Lazy>
