@@ -36,35 +36,23 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Require authenticated user with operator/analyst/admin role
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  const userClient = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-    { global: { headers: { Authorization: authHeader } } }
-  );
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
+  // Require authenticated user + Sovereign tier (server-side gate)
+  const { requireTier } = await import("../_shared/auth.ts");
+  const { ctx, response: gate } = await requireTier(req, "sovereign", corsHeaders);
+  if (gate || !ctx) return gate!;
+  const user = ctx.user;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
+  // Operator/analyst/admin role is still required on top of tier
   const { data: roles } = await supabase
     .from('user_roles').select('role').eq('user_id', user.id);
   const allowed = roles?.some((r: any) => ['admin', 'operator', 'analyst'].includes(r.role));
   if (!allowed) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), {
+    return new Response(JSON.stringify({ error: 'Forbidden', reason: 'role_required' }), {
       status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
