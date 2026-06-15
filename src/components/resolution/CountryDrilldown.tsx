@@ -9,6 +9,7 @@ import { CountryRecommendations } from "./ResolutionRecommendations";
 import { CountryRiskMap } from "./InteractiveRiskMap";
 import { WatchButton } from "@/components/watchlist/WatchButton";
 import { cn } from "@/lib/utils";
+import { EvidenceSection } from "@/components/evidence/EvidenceSection";
 
 interface Props {
   iso3: string;
@@ -191,6 +192,8 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
           )}
         </CardContent>
       </Card>
+
+      <EvidenceSection mode="country" iso3={iso3} />
 
       <CountryRecommendations domains={domains as any} />
 
