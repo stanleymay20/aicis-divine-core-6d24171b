@@ -15,6 +15,7 @@ import type { GlobalSignal } from "@/hooks/useGlobalSignals";
 import { trustTierLabel, trustTierColor, enrichmentStatusLabel, enrichmentStatusColor } from "@/hooks/useGlobalSignals";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { EvidenceSection } from "@/components/evidence/EvidenceSection";
 
 type AudienceMode = "government" | "media" | "business" | "public";
 
@@ -280,6 +281,13 @@ export function SignalDetailPanel({
               </a>
             ))}
           </div>
+
+          <EvidenceSection
+            mode="signal"
+            signalId={signal.id}
+            evidenceHash={signal.evidence_hash}
+            defaultOpen
+          />
 
           <Separator />
 
