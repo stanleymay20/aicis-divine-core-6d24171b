@@ -15346,6 +15346,16 @@ export type Database = {
         }
         Relationships: []
       }
+      map_pipeline_health: {
+        Row: {
+          feed: string | null
+          hours_since: number | null
+          last_at: string | null
+          rows_fresh: number | null
+          status: string | null
+        }
+        Relationships: []
+      }
       organizations_member_safe: {
         Row: {
           created_at: string | null
@@ -17050,6 +17060,15 @@ export type Database = {
           updated: number
         }[]
       }
+      pipeline_pulse: {
+        Args: {
+          p_duration_ms?: number
+          p_message?: string
+          p_name: string
+          p_ok?: boolean
+        }
+        Returns: undefined
+      }
       planetary_batch_tick: { Args: never; Returns: Json }
       prospective_accumulation_monitor: { Args: never; Returns: Json }
       prospective_coverage_gaps: { Args: never; Returns: Json }
@@ -17078,6 +17097,7 @@ export type Database = {
         Args: { p_window_days?: number }
         Returns: Json
       }
+      recompute_pipeline_health_statuses: { Args: never; Returns: number }
       reconcile_canonical_clusters: { Args: never; Returns: Json }
       refresh_all_source_iq: { Args: never; Returns: number }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
