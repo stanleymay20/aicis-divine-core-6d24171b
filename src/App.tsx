@@ -76,6 +76,7 @@ const SystemCatalog = lazy(() => import("./pages/SystemCatalog"));
 const AnalystDashboard = lazy(() => import("./pages/AnalystDashboard"));
 const DataIntegrity = lazy(() => import("./pages/DataIntegrity"));
 const Upgrade = lazy(() => import("./pages/Upgrade"));
+const SpatialCockpit = lazy(() => import("./pages/SpatialCockpit"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
@@ -158,6 +159,8 @@ const App = () => (
                 <Route path="/upgrade" element={<Lazy><Upgrade /></Lazy>} />
 
                 <Route path="/command-center" element={<Shell><PlanetaryCommandCenter /></Shell>} />
+                <Route path="/spatial-cockpit" element={<Protected><SpatialCockpit /></Protected>} />
+                <Route path="/cockpit" element={<Protected><SpatialCockpit /></Protected>} />
                 <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
                 <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
                 <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
