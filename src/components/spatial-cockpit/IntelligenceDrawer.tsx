@@ -28,7 +28,7 @@ export function IntelligenceDrawer({
           .select("domain,risk_pressure_score,confidence_score,forecast_direction,momentum_score")
           .eq("iso3", iso3!)
           .eq("snapshot_date", today),
-        supabase.from("country_profiles").select("country_name").eq("iso3_code", iso3!).maybeSingle(),
+        supabase.from("country_profiles").select("country_name").eq("iso3", iso3!).maybeSingle(),
       ]);
       return {
         domains: snap.data ?? [],
