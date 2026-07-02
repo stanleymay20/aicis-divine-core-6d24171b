@@ -17383,6 +17383,11 @@ export type Database = {
         | "export"
         | "recommendation"
         | "simulation"
+        | "ranking_prediction"
+        | "ml_prediction"
+        | "action_recommendation"
+        | "signal"
+        | "early_warning"
       log_level: "info" | "warning" | "error" | "critical" | "success"
       org_type: "government" | "ngo" | "agency" | "academic" | "private"
       signal_category:
@@ -17659,6 +17664,11 @@ export const Constants = {
         "export",
         "recommendation",
         "simulation",
+        "ranking_prediction",
+        "ml_prediction",
+        "action_recommendation",
+        "signal",
+        "early_warning",
       ],
       log_level: ["info", "warning", "error", "critical", "success"],
       org_type: ["government", "ngo", "agency", "academic", "private"],
