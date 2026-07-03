@@ -6,11 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function isoDaysAgo(days: number) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
+// isoDaysAgo retained for future use — no longer needed after Sweep #16
+// switched training to fire-and-forget incremental mode.
 
 /**
  * Run a single async step with isolation, timing, and error capture.
