@@ -131,15 +131,6 @@ serve(async (req) => {
   );
 
   const overallStart = Date.now();
-  // Daily incremental: build only the newest 2 days each run.
-  // Stays well under the 140s step budget; long horizons are covered by the
-  // dedicated weekly backfill (build-training-dataset full window).
-  const trainingWindow = {
-    start_date: isoDaysAgo(9),
-    end_date: isoDaysAgo(7),
-    horizon_days: 7,
-    chunk_days: 1,
-  };
 
   // Sequential, isolated steps. One failure cannot kill the chain.
   const steps: Array<{ name: string; ok: boolean; duration_ms: number; result?: any; error?: string }> = [];
@@ -151,12 +142,18 @@ serve(async (req) => {
     }),
   ));
 
+  // Training: fire-and-forget incremental scheduler (Sweep #16).
+  // The builder returns immediately with an execution_id, then self-continues
+  // in the background across chunks/countries. This keeps the daily cron under
+  // the runtime budget while training freshness catches up asynchronously.
   steps.push(await runStep("training", () =>
-    supabase.functions.invoke("build-training-dataset", { body: trainingWindow }).then((r) => {
+    supabase.functions.invoke("build-training-dataset", {
+      body: { mode: "incremental", lookback_days: 14, horizon_days: 7 },
+    }).then((r) => {
       if (r.error) throw r.error;
       return r.data;
     }),
-    140_000, // training builds 15-25k rows, needs more headroom
+    30_000, // scheduler-only call; must return within seconds
   ));
 
   steps.push(await runStep("ranking", () =>
