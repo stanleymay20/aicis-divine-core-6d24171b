@@ -7,6 +7,7 @@ import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { CheckCircle2, AlertTriangle, AlertOctagon, Activity, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SEO } from "@/components/SEO";
+import { TrainingFreshnessPanel } from "@/components/data-pipeline/TrainingFreshnessPanel";
 
 interface IntegrityRow {
   check_name: string;
@@ -146,6 +147,11 @@ export default function DataIntegrity() {
           <Progress value={trustScore} className="h-3 mt-4" />
         </Card>
       </PanelBoundary>
+
+      <PanelBoundary>
+        <TrainingFreshnessPanel />
+      </PanelBoundary>
+
 
       {isLoading && <Card className="p-6 text-sm text-muted-foreground">Measuring database…</Card>}
       {error && (

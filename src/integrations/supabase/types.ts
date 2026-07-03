@@ -13978,6 +13978,138 @@ export type Database = {
           },
         ]
       }
+      training_dataset_versions: {
+        Row: {
+          checksum: string | null
+          created_at: string
+          dataset_version: string
+          execution_id: string | null
+          feature_count: number
+          horizon_days: number
+          id: string
+          is_current: boolean
+          notes: string | null
+          positive_rate: number | null
+          row_count: number
+          source_snapshot: Json
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          checksum?: string | null
+          created_at?: string
+          dataset_version: string
+          execution_id?: string | null
+          feature_count?: number
+          horizon_days?: number
+          id?: string
+          is_current?: boolean
+          notes?: string | null
+          positive_rate?: number | null
+          row_count?: number
+          source_snapshot?: Json
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          checksum?: string | null
+          created_at?: string
+          dataset_version?: string
+          execution_id?: string | null
+          feature_count?: number
+          horizon_days?: number
+          id?: string
+          is_current?: boolean
+          notes?: string | null
+          positive_rate?: number | null
+          row_count?: number
+          source_snapshot?: Json
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_dataset_versions_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "training_executions"
+            referencedColumns: ["execution_id"]
+          },
+          {
+            foreignKeyName: "training_dataset_versions_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "training_freshness"
+            referencedColumns: ["last_execution_id"]
+          },
+        ]
+      }
+      training_executions: {
+        Row: {
+          chunk_size_days: number
+          chunks_completed: number
+          completed_at: string | null
+          duration_ms: number | null
+          execution_id: string
+          failure_reason: string | null
+          horizon_days: number
+          id: string
+          last_country_iso3: string | null
+          last_watermark: string | null
+          metadata: Json
+          mode: string
+          records_processed: number
+          started_at: string
+          status: string
+          total_chunks: number | null
+          updated_at: string
+          window_end: string | null
+          window_start: string | null
+        }
+        Insert: {
+          chunk_size_days?: number
+          chunks_completed?: number
+          completed_at?: string | null
+          duration_ms?: number | null
+          execution_id: string
+          failure_reason?: string | null
+          horizon_days?: number
+          id?: string
+          last_country_iso3?: string | null
+          last_watermark?: string | null
+          metadata?: Json
+          mode?: string
+          records_processed?: number
+          started_at?: string
+          status?: string
+          total_chunks?: number | null
+          updated_at?: string
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Update: {
+          chunk_size_days?: number
+          chunks_completed?: number
+          completed_at?: string | null
+          duration_ms?: number | null
+          execution_id?: string
+          failure_reason?: string | null
+          horizon_days?: number
+          id?: string
+          last_country_iso3?: string | null
+          last_watermark?: string | null
+          metadata?: Json
+          mode?: string
+          records_processed?: number
+          started_at?: string
+          status?: string
+          total_chunks?: number | null
+          updated_at?: string
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Relationships: []
+      }
       transparency_reports: {
         Row: {
           avg_trust_score: number | null
@@ -16313,6 +16445,34 @@ export type Database = {
         }
         Relationships: []
       }
+      training_freshness: {
+        Row: {
+          days_snapshot_lag: number | null
+          freshness_status: string | null
+          hours_since_last_build: number | null
+          last_execution_chunks_completed: number | null
+          last_execution_completed_at: string | null
+          last_execution_failure_reason: string | null
+          last_execution_id: string | null
+          last_execution_mode: string | null
+          last_execution_records: number | null
+          last_execution_started_at: string | null
+          last_execution_status: string | null
+          last_execution_total_chunks: number | null
+          last_successful_completion: string | null
+          latest_built_at: string | null
+          latest_snapshot: string | null
+          latest_version: string | null
+          latest_version_at: string | null
+          latest_version_rows: number | null
+          latest_version_window_end: string | null
+          latest_version_window_start: string | null
+          rows_last_24h: number | null
+          rows_last_7d: number | null
+          total_rows: number | null
+        }
+        Relationships: []
+      }
       v_data_integrity_snapshot: {
         Row: {
           check_name: string | null
@@ -17206,6 +17366,20 @@ export type Database = {
         Returns: string
       }
       timeout_zombie_jobs: { Args: never; Returns: Json }
+      training_dataset_missing_days: {
+        Args: { p_horizon?: number; p_lookback_days?: number }
+        Returns: {
+          snapshot_date: string
+        }[]
+      }
+      training_dataset_watermark: {
+        Args: { p_horizon?: number }
+        Returns: {
+          latest_built_at: string
+          latest_snapshot: string
+          row_count: number
+        }[]
+      }
       transition_risk_action: {
         Args: {
           p_action_id: string
