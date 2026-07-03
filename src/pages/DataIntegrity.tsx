@@ -148,6 +148,11 @@ export default function DataIntegrity() {
         </Card>
       </PanelBoundary>
 
+      <PanelBoundary>
+        <TrainingFreshnessPanel />
+      </PanelBoundary>
+
+
       {isLoading && <Card className="p-6 text-sm text-muted-foreground">Measuring database…</Card>}
       {error && (
         <Card className="p-6 border-destructive/30">
