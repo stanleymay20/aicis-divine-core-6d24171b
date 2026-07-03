@@ -186,7 +186,7 @@ serve(async (req) => {
 
   const summary = {
     predictions: forecast?.predictions_generated ?? 0,
-    training: training?.stats?.rows_inserted ?? 0,
+    training: training?.execution_id ? `scheduled:${training.execution_id}` : 0,
     ranking: ranking?.rows_inserted ?? 0,
     influence: influence?.rows_inserted ?? 0,
     cross_border: crossBorder?.created ?? 0,
