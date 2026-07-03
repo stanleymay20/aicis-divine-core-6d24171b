@@ -7,6 +7,7 @@ import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { CheckCircle2, AlertTriangle, AlertOctagon, Activity, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SEO } from "@/components/SEO";
+import { TrainingFreshnessPanel } from "@/components/data-pipeline/TrainingFreshnessPanel";
 
 interface IntegrityRow {
   check_name: string;
