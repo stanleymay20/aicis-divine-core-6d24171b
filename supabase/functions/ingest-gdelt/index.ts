@@ -11,8 +11,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Use simple search terms — GDELT DOC API free tier has limited OR support
-const INSTABILITY_TERMS = ["protest", "conflict", "unrest"];
+// GDELT DOC API is rate-limited to ~1 req / 5s. Use a single combined query per country.
+const COMBINED_QUERY = "(protest OR conflict OR unrest)";
 
 const ALL_COUNTRIES: [string, string][] = [
   ["AFG","Afghanistan"],["AGO","Angola"],["BDI","Burundi"],["BFA","Burkina Faso"],
@@ -29,8 +29,10 @@ const ALL_COUNTRIES: [string, string][] = [
   ["COL","Colombia"],["PHL","Philippines"],["KEN","Kenya"],["TZA","Tanzania"],
 ];
 
-const BATCH_SIZE = 1;
-const TOTAL_BATCHES = ALL_COUNTRIES.length;
+// 3 batches of ~16 countries, rotated by hour-of-day so all countries covered every 3h
+const BATCH_SIZE = 16;
+const TOTAL_BATCHES = Math.ceil(ALL_COUNTRIES.length / BATCH_SIZE);
+const THROTTLE_MS = 5200; // GDELT free tier: 1 req per 5s
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
