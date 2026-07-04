@@ -37,13 +37,12 @@ const THROTTLE_MS = 5200; // GDELT free tier: 1 req per 5s
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  let batch = 0;
-  let processAll = true;
+  let batch = new Date().getUTCHours() % TOTAL_BATCHES; // rotate by hour by default
+  let processAll = false;
   try {
     const body = await req.json().catch(() => ({}));
     if (body && typeof body.batch === "number") {
       batch = Math.min(Math.max(0, Number(body.batch) || 0), TOTAL_BATCHES - 1);
-      processAll = false;
     }
     if (body && body.all === true) processAll = true;
   } catch { /* default */ }
