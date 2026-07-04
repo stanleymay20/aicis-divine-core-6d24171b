@@ -21,7 +21,7 @@ serve(async (req) => {
     const isServiceRole = bearer && bearer === serviceRoleKey;
     const isCron = req.headers.get('x-scheduler-source') === 'pg_cron';
 
-    if (!isServiceRole) {
+    if (!isServiceRole && !isCron) {
       if (!authHeader) {
         return new Response(JSON.stringify({ status: 'unauthorized' }), {
           status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
