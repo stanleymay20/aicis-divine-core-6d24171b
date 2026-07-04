@@ -36,10 +36,15 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   let batch = 0;
+  let processAll = true;
   try {
     const body = await req.json().catch(() => ({}));
-    batch = Math.min(Math.max(0, Number(body.batch) || 0), TOTAL_BATCHES - 1);
-  } catch { /* default batch 0 */ }
+    if (body && typeof body.batch === "number") {
+      batch = Math.min(Math.max(0, Number(body.batch) || 0), TOTAL_BATCHES - 1);
+      processAll = false;
+    }
+    if (body && body.all === true) processAll = true;
+  } catch { /* default */ }
 
   const sb = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -47,7 +52,9 @@ serve(async (req) => {
   );
 
   const today = new Date().toISOString().split("T")[0];
-  const countries = ALL_COUNTRIES.slice(batch * BATCH_SIZE, (batch + 1) * BATCH_SIZE);
+  const countries = processAll
+    ? ALL_COUNTRIES
+    : ALL_COUNTRIES.slice(batch * BATCH_SIZE, (batch + 1) * BATCH_SIZE);
   let inserted = 0;
   const errors: string[] = [];
 
