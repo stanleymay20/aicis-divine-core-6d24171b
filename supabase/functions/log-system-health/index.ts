@@ -14,35 +14,47 @@ serve(async (req) => {
   const start = performance.now();
 
   try {
-    // Require authenticated admin
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ status: 'unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Allow: (a) service-role bearer (direct backend), (b) pg_cron scheduler, or (c) authenticated admin user
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const bearer = authHeader.replace(/^Bearer\s+/i, '');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const isServiceRole = bearer && bearer === serviceRoleKey;
+    const isCron = req.headers.get('x-scheduler-source') === 'pg_cron';
+
+    if (!isServiceRole && !isCron) {
+      if (!authHeader) {
+        return new Response(JSON.stringify({ status: 'unauthorized' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const userClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: { user } } = await userClient.auth.getUser();
+      if (!user) {
+        return new Response(JSON.stringify({ status: 'unauthorized' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const adminCheck = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        serviceRoleKey
+      );
+      const { data: roles } = await adminCheck.from('user_roles').select('role').eq('user_id', user.id);
+      const isAdmin = roles?.some((r: any) => r.role === 'admin');
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ status: 'forbidden' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
-    const userClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-    const { data: { user } } = await userClient.auth.getUser();
-    if (!user) {
-      return new Response(JSON.stringify({ status: 'unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? '',
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ''
+      serviceRoleKey
     );
-    const { data: roles } = await supabase.from('user_roles').select('role').eq('user_id', user.id);
-    const isAdmin = roles?.some((r: any) => r.role === 'admin');
-    if (!isAdmin) {
-      return new Response(JSON.stringify({ status: 'forbidden' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
 
     const envVars = [
       "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY",
