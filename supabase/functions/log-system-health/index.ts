@@ -14,11 +14,12 @@ serve(async (req) => {
   const start = performance.now();
 
   try {
-    // Allow: (a) service-role bearer (cron), or (b) authenticated admin user
+    // Allow: (a) service-role bearer (direct backend), (b) pg_cron scheduler, or (c) authenticated admin user
     const authHeader = req.headers.get('Authorization') ?? '';
     const bearer = authHeader.replace(/^Bearer\s+/i, '');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const isServiceRole = bearer && bearer === serviceRoleKey;
+    const isCron = req.headers.get('x-scheduler-source') === 'pg_cron';
 
     if (!isServiceRole) {
       if (!authHeader) {
