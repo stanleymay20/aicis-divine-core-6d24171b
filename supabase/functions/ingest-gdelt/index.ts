@@ -11,8 +11,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Use simple search terms — GDELT DOC API free tier has limited OR support
-const INSTABILITY_TERMS = ["protest", "conflict", "unrest"];
+// GDELT DOC API is rate-limited to ~1 req / 5s. Use a single combined query per country.
+const COMBINED_QUERY = "(protest OR conflict OR unrest)";
 
 const ALL_COUNTRIES: [string, string][] = [
   ["AFG","Afghanistan"],["AGO","Angola"],["BDI","Burundi"],["BFA","Burkina Faso"],
@@ -29,21 +29,22 @@ const ALL_COUNTRIES: [string, string][] = [
   ["COL","Colombia"],["PHL","Philippines"],["KEN","Kenya"],["TZA","Tanzania"],
 ];
 
-const BATCH_SIZE = 1;
-const TOTAL_BATCHES = ALL_COUNTRIES.length;
+// 3 batches of ~16 countries, rotated by hour-of-day so all countries covered every 3h
+const BATCH_SIZE = 16;
+const TOTAL_BATCHES = Math.ceil(ALL_COUNTRIES.length / BATCH_SIZE);
+const THROTTLE_MS = 5200; // GDELT free tier: 1 req per 5s
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  let batch = 0;
-  let processAll = true; // default: iterate all countries in one invocation
+  let batch = new Date().getUTCHours() % TOTAL_BATCHES; // rotate by hour by default
+  let processAll = false;
   try {
     const body = await req.json().catch(() => ({}));
     if (body && typeof body.batch === "number") {
       batch = Math.min(Math.max(0, Number(body.batch) || 0), TOTAL_BATCHES - 1);
-      processAll = false;
     }
-    if (body && body.all === false) processAll = false;
+    if (body && body.all === true) processAll = true;
   } catch { /* default */ }
 
   const sb = createClient(
@@ -69,54 +70,44 @@ serve(async (req) => {
     for (let i = 0; i < countries.length; i++) {
       const [iso3, name] = countries[i];
       try {
-        // Query each instability term separately, aggregate
         let totalArticles = 0;
         let toneSum = 0, toneN = 0, gsSum = 0, gsN = 0;
         const sampleTitles: string[] = [];
 
-        for (const term of INSTABILITY_TERMS) {
-          const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(term)}%20${encodeURIComponent(`"${name}"`)}&mode=artlist&format=json&maxrecords=20`;
-          const res = await fetch(url);
+        const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(COMBINED_QUERY)}%20${encodeURIComponent(`"${name}"`)}&mode=artlist&format=json&maxrecords=50`;
+        const res = await fetch(url);
 
-          if (!res.ok) continue;
-
+        if (res.ok) {
           const text = await res.text();
-          // GDELT returns plain text errors, not JSON
-          if (!text.startsWith("{") && !text.startsWith("[")) continue;
-
-          try {
-            const data = JSON.parse(text);
-            const articles = data?.articles || [];
-            totalArticles += articles.length;
-
-            for (const a of articles) {
-              if (a?.tone !== undefined) { toneSum += parseFloat(a.tone) || 0; toneN++; }
-              if (a?.goldstein !== undefined) { gsSum += parseFloat(a.goldstein) || 0; gsN++; }
-            }
-            if (sampleTitles.length < 3 && articles.length > 0) {
-              sampleTitles.push(articles[0]?.title || "");
-            }
-          } catch { continue; }
-
-          // Throttle between terms
-          await new Promise(r => setTimeout(r, 300));
+          if (text.startsWith("{") || text.startsWith("[")) {
+            try {
+              const data = JSON.parse(text);
+              const articles = data?.articles || [];
+              totalArticles = articles.length;
+              for (const a of articles) {
+                if (a?.tone !== undefined) { toneSum += parseFloat(a.tone) || 0; toneN++; }
+                if (a?.goldstein !== undefined) { gsSum += parseFloat(a.goldstein) || 0; gsN++; }
+                if (sampleTitles.length < 3 && a?.title) sampleTitles.push(a.title);
+              }
+            } catch { /* skip */ }
+          }
         }
 
-        if (totalArticles === 0) continue;
+        if (totalArticles > 0) {
+          const { error } = await sb.from("political_events").upsert({
+            iso3, event_date: today, source: "gdelt", event_type: "instability",
+            event_count: totalArticles,
+            avg_tone: toneN > 0 ? toneSum / toneN : null,
+            goldstein_scale: gsN > 0 ? gsSum / gsN : null,
+            raw_payload: { n: totalArticles, titles: sampleTitles },
+          }, { onConflict: "iso3,event_date,source,event_type" });
 
-        const { error } = await sb.from("political_events").upsert({
-          iso3, event_date: today, source: "gdelt", event_type: "instability",
-          event_count: totalArticles,
-          avg_tone: toneN > 0 ? toneSum / toneN : null,
-          goldstein_scale: gsN > 0 ? gsSum / gsN : null,
-          raw_payload: { n: totalArticles, titles: sampleTitles },
-        }, { onConflict: "iso3,event_date,source,event_type" });
+          if (error) errors.push(`${iso3}: ${error.message}`);
+          else inserted++;
+        }
 
-        if (error) errors.push(`${iso3}: ${error.message}`);
-        else inserted++;
-
-        // 500ms throttle
-        if (i < countries.length - 1) await new Promise(r => setTimeout(r, 500));
+        // GDELT rate limit: pace to ~1 req / 5s
+        if (i < countries.length - 1) await new Promise(r => setTimeout(r, THROTTLE_MS));
       } catch (e) {
         const msg = `${iso3}: ${e instanceof Error ? e.message : "?"}`;
         console.error(msg);
