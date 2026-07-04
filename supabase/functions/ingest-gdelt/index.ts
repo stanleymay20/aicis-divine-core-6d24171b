@@ -70,54 +70,44 @@ serve(async (req) => {
     for (let i = 0; i < countries.length; i++) {
       const [iso3, name] = countries[i];
       try {
-        // Query each instability term separately, aggregate
         let totalArticles = 0;
         let toneSum = 0, toneN = 0, gsSum = 0, gsN = 0;
         const sampleTitles: string[] = [];
 
-        for (const term of INSTABILITY_TERMS) {
-          const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(term)}%20${encodeURIComponent(`"${name}"`)}&mode=artlist&format=json&maxrecords=20`;
-          const res = await fetch(url);
+        const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(COMBINED_QUERY)}%20${encodeURIComponent(`"${name}"`)}&mode=artlist&format=json&maxrecords=50`;
+        const res = await fetch(url);
 
-          if (!res.ok) continue;
-
+        if (res.ok) {
           const text = await res.text();
-          // GDELT returns plain text errors, not JSON
-          if (!text.startsWith("{") && !text.startsWith("[")) continue;
-
-          try {
-            const data = JSON.parse(text);
-            const articles = data?.articles || [];
-            totalArticles += articles.length;
-
-            for (const a of articles) {
-              if (a?.tone !== undefined) { toneSum += parseFloat(a.tone) || 0; toneN++; }
-              if (a?.goldstein !== undefined) { gsSum += parseFloat(a.goldstein) || 0; gsN++; }
-            }
-            if (sampleTitles.length < 3 && articles.length > 0) {
-              sampleTitles.push(articles[0]?.title || "");
-            }
-          } catch { continue; }
-
-          // Throttle between terms
-          await new Promise(r => setTimeout(r, 300));
+          if (text.startsWith("{") || text.startsWith("[")) {
+            try {
+              const data = JSON.parse(text);
+              const articles = data?.articles || [];
+              totalArticles = articles.length;
+              for (const a of articles) {
+                if (a?.tone !== undefined) { toneSum += parseFloat(a.tone) || 0; toneN++; }
+                if (a?.goldstein !== undefined) { gsSum += parseFloat(a.goldstein) || 0; gsN++; }
+                if (sampleTitles.length < 3 && a?.title) sampleTitles.push(a.title);
+              }
+            } catch { /* skip */ }
+          }
         }
 
-        if (totalArticles === 0) continue;
+        if (totalArticles > 0) {
+          const { error } = await sb.from("political_events").upsert({
+            iso3, event_date: today, source: "gdelt", event_type: "instability",
+            event_count: totalArticles,
+            avg_tone: toneN > 0 ? toneSum / toneN : null,
+            goldstein_scale: gsN > 0 ? gsSum / gsN : null,
+            raw_payload: { n: totalArticles, titles: sampleTitles },
+          }, { onConflict: "iso3,event_date,source,event_type" });
 
-        const { error } = await sb.from("political_events").upsert({
-          iso3, event_date: today, source: "gdelt", event_type: "instability",
-          event_count: totalArticles,
-          avg_tone: toneN > 0 ? toneSum / toneN : null,
-          goldstein_scale: gsN > 0 ? gsSum / gsN : null,
-          raw_payload: { n: totalArticles, titles: sampleTitles },
-        }, { onConflict: "iso3,event_date,source,event_type" });
+          if (error) errors.push(`${iso3}: ${error.message}`);
+          else inserted++;
+        }
 
-        if (error) errors.push(`${iso3}: ${error.message}`);
-        else inserted++;
-
-        // 500ms throttle
-        if (i < countries.length - 1) await new Promise(r => setTimeout(r, 500));
+        // GDELT rate limit: pace to ~1 req / 5s
+        if (i < countries.length - 1) await new Promise(r => setTimeout(r, THROTTLE_MS));
       } catch (e) {
         const msg = `${iso3}: ${e instanceof Error ? e.message : "?"}`;
         console.error(msg);
