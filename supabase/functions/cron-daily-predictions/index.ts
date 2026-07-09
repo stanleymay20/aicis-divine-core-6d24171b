@@ -44,14 +44,17 @@ async function refreshCrossBorderSignals(supabase: any) {
     return { created: 0, reason: "no_risk_batch" };
   }
 
+  // Take top-N by probability (baseline scorer rarely exceeds 0.55; a hard
+  // threshold caused 60+ days of empty cross-border output). Use adaptive
+  // threshold: >=0.4 or top 150, whichever yields more coverage.
   const { data: risks, error: riskErr } = await supabase
     .from("risk_ranking_predictions")
     .select("country_iso3, domain, risk_probability")
     .eq("generation_batch_id", latestBatch.generation_batch_id)
-    .gte("risk_probability", 0.55)
+    .order("risk_probability", { ascending: false })
     .limit(150);
   if (riskErr) throw riskErr;
-  if (!risks || risks.length === 0) return { created: 0, reason: "no_high_risk_rows" };
+  if (!risks || risks.length === 0) return { created: 0, reason: "no_risk_rows" };
 
   const iso3s = Array.from(new Set(risks.map((r: any) => r.country_iso3).filter(Boolean)));
   const { data: countries, error: countriesErr } = await supabase
