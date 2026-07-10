@@ -25,8 +25,11 @@ async function runStep<T>(
     );
     const result = await Promise.race([fn(), timeout]);
     return { name, ok: true, duration_ms: Date.now() - start, result };
-  } catch (e) {
-    const error = e instanceof Error ? e.message : String(e);
+  } catch (e: any) {
+    let error: string;
+    if (e instanceof Error) error = e.message;
+    else if (e && typeof e === "object") error = e.message || e.details || e.hint || e.code || JSON.stringify(e);
+    else error = String(e);
     console.error(`[cron-daily-predictions] step "${name}" failed: ${error}`);
     return { name, ok: false, duration_ms: Date.now() - start, error };
   }
@@ -60,7 +63,7 @@ async function refreshCrossBorderSignals(supabase: any) {
   const { data: countries, error: countriesErr } = await supabase
     .from("canonical_entities")
     .select("id, iso3")
-    .in("entity_type", ["country", "territory"])
+    .eq("entity_type", "country")
     .in("iso3", iso3s);
   if (countriesErr) throw countriesErr;
 
