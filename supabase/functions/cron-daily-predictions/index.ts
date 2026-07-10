@@ -63,7 +63,7 @@ async function refreshCrossBorderSignals(supabase: any) {
   const { data: countries, error: countriesErr } = await supabase
     .from("canonical_entities")
     .select("id, iso3")
-    .in("entity_type", ["country", "territory"])
+    .eq("entity_type", "country")
     .in("iso3", iso3s);
   if (countriesErr) throw countriesErr;
 
