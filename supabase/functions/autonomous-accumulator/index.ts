@@ -27,7 +27,8 @@ const PROVIDERS: {
   provider: string;
   max_age_hours: number;
   fn: string;
-  table: "normalized_metrics" | "economic_indicators" | "community_metrics";
+  table: "normalized_metrics" | "economic_indicators" | "community_metrics" | "satellite_observations";
+  freshness_col?: "created_at" | "timestamp";
   filter_col?: string;
   filter_val?: string;
 }[] = [
@@ -37,7 +38,7 @@ const PROVIDERS: {
   { provider: "entsoe",        max_age_hours: 8,   fn: "pull-entsoe",        table: "normalized_metrics", filter_col: "provider_name", filter_val: "entsoe" },
   { provider: "worldbank",     max_age_hours: 26,  fn: "pull-worldbank",     table: "economic_indicators", filter_col: "source",       filter_val: "WorldBank" },
   // satellite writes to satellite_observations, not normalized_metrics
-  { provider: "satellite",     max_age_hours: 26,  fn: "fetch-satellite-global", table: "satellite_observations" as any },
+  { provider: "satellite",     max_age_hours: 72,  fn: "fetch-satellite-global", table: "satellite_observations", freshness_col: "timestamp" },
   { provider: "community",     max_age_hours: 14,  fn: "seed-community-metrics", table: "community_metrics" },
 ];
 
@@ -56,15 +57,17 @@ serve(async (req) => {
 
   for (const p of PROVIDERS) {
     try {
+      const freshnessCol = p.freshness_col ?? "created_at";
       let q = supabase
         .from(p.table)
-        .select("created_at")
-        .order("created_at", { ascending: false })
+        .select(freshnessCol)
+        .order(freshnessCol, { ascending: false })
         .limit(1);
       if (p.filter_col && p.filter_val) q = q.eq(p.filter_col, p.filter_val);
       const { data: latest } = await q.maybeSingle();
 
-      const lastTs = latest?.created_at ? new Date(latest.created_at).getTime() : 0;
+      const value = latest?.[freshnessCol];
+      const lastTs = value ? new Date(value).getTime() : 0;
       const ageHours = lastTs ? (Date.now() - lastTs) / 3600000 : 9999;
       const overdue = ageHours > p.max_age_hours;
 
