@@ -25,7 +25,7 @@ async function verifyEd25519Signature(
       .replace(/-/g, '+')
       .replace(/_/g, '/');
     const paddedPem = pemContents.padEnd(Math.ceil(pemContents.length / 4) * 4, '=');
-    const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+    const binaryKey = Uint8Array.from(atob(paddedPem), c => c.charCodeAt(0));
     
     // Import the public key
     const publicKey = await crypto.subtle.importKey(
