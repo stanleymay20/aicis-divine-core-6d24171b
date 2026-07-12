@@ -15,12 +15,16 @@ async function verifyEd25519Signature(
   publicKeyPem: string
 ): Promise<boolean> {
   try {
-    // Parse PEM format public key
+    // Parse PEM/base64/base64url public key formats. Older self-peer rows may
+    // contain escaped newlines or url-safe base64 rather than strict PEM.
     const pemContents = publicKeyPem
       .replace(/-----BEGIN PUBLIC KEY-----/g, '')
       .replace(/-----END PUBLIC KEY-----/g, '')
-      .replace(/\s/g, '');
-    
+      .replace(/\\n/g, '')
+      .replace(/\s/g, '')
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const paddedPem = pemContents.padEnd(Math.ceil(pemContents.length / 4) * 4, '=');
     const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
     
     // Import the public key
@@ -33,7 +37,9 @@ async function verifyEd25519Signature(
     );
     
     // Decode signature from base64
-    const signatureBytes = Uint8Array.from(atob(signature), c => c.charCodeAt(0));
+    const normalizedSignature = signature.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedSignature = normalizedSignature.padEnd(Math.ceil(normalizedSignature.length / 4) * 4, '=');
+    const signatureBytes = Uint8Array.from(atob(paddedSignature), c => c.charCodeAt(0));
     const payloadBytes = new TextEncoder().encode(payload);
     
     // Verify signature
