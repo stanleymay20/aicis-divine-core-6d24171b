@@ -6,7 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const NODE_ID = Deno.env.get("AICIS_CLUSTER_ID") ?? "aicis-node-1";
+const NODE_ID = Deno.env.get("AICIS_CLUSTER_ID") ?? "aicis-local-l4-global";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 
 // Parse PEM-encoded PKCS#8 Ed25519 private key
 async function importEd25519PrivateKey(pem: string): Promise<CryptoKey> {
@@ -29,6 +30,12 @@ async function signPayload(payload: string, privateKey: CryptoKey): Promise<stri
   const data = new TextEncoder().encode(payload);
   const signature = await crypto.subtle.sign("Ed25519", privateKey, data);
   return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 serve(async (req) => {
@@ -72,7 +79,8 @@ serve(async (req) => {
     const { data: bundles } = await supabase
       .from("federation_outbound_queue")
       .select("*")
-      .eq("status", "queued")
+      .in("status", ["queued", "failed"])
+      .lt("attempts", 5)
       .order("window_start", { ascending: true });
 
     if (!bundles || bundles.length === 0) {
@@ -99,18 +107,62 @@ serve(async (req) => {
     for (const bundle of bundles) {
       const bodyString = JSON.stringify(bundle.payload);
       const signature = await signPayload(bodyString, privateKey);
+      const contentHash = await sha256Hex(bodyString);
+      const { data: activeKey } = await supabase
+        .from("federation_signing_keys")
+        .select("key_id")
+        .eq("is_active", true)
+        .eq("key_status", "active")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const signedBundle = {
+        bundle_hash: contentHash,
+        key_id: activeKey?.key_id ?? null,
+        signature,
+        algorithm: "Ed25519",
+        payload_size_bytes: new TextEncoder().encode(bodyString).length,
+        signed_at: new Date().toISOString(),
+        verified: false,
+      };
+
+      const { data: existingSigned } = await supabase
+        .from("federation_signed_bundles")
+        .select("id")
+        .eq("bundle_hash", bundle.hash)
+        .maybeSingle();
+
+      if (existingSigned?.id) {
+        await supabase
+          .from("federation_signed_bundles")
+          .update(signedBundle)
+          .eq("id", existingSigned.id);
+      } else {
+        await supabase
+          .from("federation_signed_bundles")
+          .insert(signedBundle);
+      }
+
+      if (bundle.hash !== contentHash) {
+        await supabase
+          .from("federation_outbound_queue")
+          .update({ hash: contentHash })
+          .eq("id", bundle.id);
+      }
 
       let bundleErrors = 0;
 
       for (const peer of peers) {
         try {
+          const isSelfPeer = SUPABASE_URL && peer.base_url?.includes(new URL(SUPABASE_URL).host);
           const response = await fetch(`${peer.base_url}/fed-ingest`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-AICIS-Node": NODE_ID,
+              "X-AICIS-Node": isSelfPeer ? peer.peer_name : NODE_ID,
               "X-AICIS-Signature": signature,
-              "Content-SHA256": bundle.hash,
+              "Content-SHA256": contentHash,
             },
             body: bodyString,
           });

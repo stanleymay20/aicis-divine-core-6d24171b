@@ -23,24 +23,36 @@ serve(async (req) => {
   });
 
   try {
-
     const observations: any[] = [];
+    const body = await req.json().catch(() => ({}));
+    const batchSize = Math.min(Math.max(Number(body?.batch_size ?? 24), 1), 75);
+    const offset = Math.max(Number(body?.offset ?? 0), 0);
+
+    const end = new Date();
+    end.setUTCDate(end.getUTCDate() - 2); // NASA POWER daily data can lag by 24-48h
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - 6);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10).replaceAll('-', '');
     
     // NASA POWER API - Solar/Weather data
     try {
-      const countries = ['USA', 'GBR', 'DEU', 'NRU', 'KEN', 'GHA'];
-      const coords: Record<string, {lat: number, lon: number}> = {
-        'USA': {lat: 39, lon: -98},
-        'GBR': {lat: 54, lon: -2},
-        'DEU': {lat: 51, lon: 10},
-        'NRU': {lat: -0.5228, lon: 166.9315},
-        'KEN': {lat: 0.0236, lon: 37.9062},
-        'GHA': {lat: 7.9465, lon: -1.0232}
-      };
-      
-      for (const iso of countries) {
-        const {lat, lon} = coords[iso];
-        const nasaUrl = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN,PRECTOTCORR,T2M&community=AG&longitude=${lon}&latitude=${lat}&start=20240101&end=20240131&format=JSON`;
+      const { data: countries, error: countryError } = await supabase
+        .from('canonical_entities')
+        .select('iso3,lat,lon')
+        .eq('entity_type', 'country')
+        .not('iso3', 'is', null)
+        .not('lat', 'is', null)
+        .not('lon', 'is', null)
+        .order('iso3', { ascending: true })
+        .range(offset, offset + batchSize - 1);
+
+      if (countryError) throw countryError;
+
+      for (const country of countries ?? []) {
+        const iso = country.iso3;
+        const lat = Number(country.lat);
+        const lon = Number(country.lon);
+        const nasaUrl = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=ALLSKY_SFC_SW_DWN,PRECTOTCORR,T2M&community=AG&longitude=${lon}&latitude=${lat}&start=${fmt(start)}&end=${fmt(end)}&format=JSON`;
         
         const response = await fetch(nasaUrl);
         if (response.ok) {
@@ -51,19 +63,39 @@ serve(async (req) => {
             const dates = Object.keys(params.T2M);
             const lastDate = dates[dates.length - 1];
             
-            observations.push({
-              iso_code: iso,
-              lat, lon,
-              timestamp: new Date(`${lastDate.slice(0,4)}-${lastDate.slice(4,6)}-${lastDate.slice(6,8)}`).toISOString(),
-              source: 'NASA_POWER',
-              layer: 'TEMPERATURE',
-              value: params.T2M[lastDate],
-              confidence: 0.95,
-              metadata: {
-                solar: params.ALLSKY_SFC_SW_DWN?.[lastDate],
-                precipitation: params.PRECTOTCORR?.[lastDate]
-              }
-            });
+              const observedAt = new Date(`${lastDate.slice(0,4)}-${lastDate.slice(4,6)}-${lastDate.slice(6,8)}T00:00:00Z`).toISOString();
+              observations.push(
+                {
+                  iso_code: iso,
+                  lat, lon,
+                  timestamp: observedAt,
+                  source: 'NASA_POWER',
+                  layer: 'TEMPERATURE',
+                  value: params.T2M[lastDate],
+                  confidence: 0.95,
+                  metadata: { window_start: fmt(start), window_end: fmt(end), batch_offset: offset },
+                },
+                {
+                  iso_code: iso,
+                  lat, lon,
+                  timestamp: observedAt,
+                  source: 'NASA_POWER',
+                  layer: 'SOLAR_IRRADIANCE',
+                  value: params.ALLSKY_SFC_SW_DWN?.[lastDate] ?? null,
+                  confidence: 0.95,
+                  metadata: { window_start: fmt(start), window_end: fmt(end), batch_offset: offset },
+                },
+                {
+                  iso_code: iso,
+                  lat, lon,
+                  timestamp: observedAt,
+                  source: 'NASA_POWER',
+                  layer: 'PRECIPITATION',
+                  value: params.PRECTOTCORR?.[lastDate] ?? null,
+                  confidence: 0.95,
+                  metadata: { window_start: fmt(start), window_end: fmt(end), batch_offset: offset },
+                }
+              );
           }
         }
       }
@@ -87,6 +119,12 @@ serve(async (req) => {
 
     console.log(`Fetched ${observations.length} satellite observations, inserted ${inserted}`);
 
+    await supabase.from('automation_logs').insert({
+      job_name: 'fetch-satellite-global',
+      status: inserted > 0 ? 'success' : 'warning',
+      message: `Fetched ${observations.length}, inserted ${inserted}, offset=${offset}, batch=${batchSize}`,
+    });
+
     await finishProviderRun(supabase, run, {
       records_fetched: observations.length,
       records_inserted: inserted,
@@ -96,7 +134,9 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       ok: true,
       fetched: observations.length,
-      inserted
+      inserted,
+      offset,
+      batch_size: batchSize,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
