@@ -404,6 +404,7 @@ Deno.serve(async (req) => {
   const startedAt = Date.now();
   const supa = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   let processed = 0, extracted = 0, none = 0, low = 0;
+  const extractedIds: string[] = [];
 
   try {
     const url = new URL(req.url);
@@ -480,6 +481,7 @@ Deno.serve(async (req) => {
             update.affected_countries = [top.iso3];
             update.country_extraction_status = "extracted";
             update.country_extraction_confidence = confidence;
+            extractedIds.push(sig.id);
             extracted++;
           } else {
             update.country_extraction_status = "skipped_existing";
@@ -492,12 +494,12 @@ Deno.serve(async (req) => {
       if (uErr) throw uErr;
     }
 
-    if (extracted > 0) {
+    if (extractedIds.length > 0) {
       await supa
         .from("global_signals")
         .update({ geocoded_at: null })
-        .eq("geo_method", "failed")
-        .not("affected_countries", "eq", "{}");
+        .in("id", extractedIds)
+        .eq("geo_method", "failed");
     }
 
     await supa.from("automation_logs").insert({

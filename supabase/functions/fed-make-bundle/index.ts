@@ -14,6 +14,12 @@ function laplaceNoise(epsilon: number, sensitivity: number = 1): number {
   return -b * Math.sign(u) * Math.log(1 - 2 * Math.abs(u));
 }
 
+async function sha256Hex(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -53,17 +59,10 @@ serve(async (req) => {
       .gte("captured_at", windowStart.toISOString())
       .lte("captured_at", windowEnd.toISOString());
 
-    if (!metrics || metrics.length === 0) {
-      console.log("No metrics in window");
-      return new Response(JSON.stringify({ ok: false, message: "No metrics in window" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    }
-
     // Group by division
     const divisionStats = new Map<string, { sum: number; count: number; values: number[] }>();
-    
-    metrics.forEach(m => {
+
+    (metrics ?? []).forEach(m => {
       if (!share_divisions.includes(m.division)) return;
       
       const ips = Number(m.impact_per_sc || 0);
@@ -97,6 +96,44 @@ serve(async (req) => {
       });
     }
 
+    // Fallback for the current single-node planetary mesh: if division ROI metrics
+    // are empty, federate aggregate risk/warning evidence so bundle production does
+    // not silently stall. This preserves no-PII, aggregate-only sharing.
+    if (signals.length === 0) {
+      const { data: risks, error: riskError } = await supabase
+        .from("risk_ranking_predictions")
+        .select("country_iso3,domain,risk_probability,rank_position,generated_at")
+        .gte("generated_at", windowStart.toISOString())
+        .lte("generated_at", windowEnd.toISOString())
+        .order("risk_probability", { ascending: false })
+        .limit(200);
+      if (riskError) throw riskError;
+
+      const grouped = new Map<string, { sum: number; count: number; max: number }>();
+      for (const row of risks ?? []) {
+        const key = row.domain ?? "unknown";
+        const stat = grouped.get(key) ?? { sum: 0, count: 0, max: 0 };
+        const probability = Number(row.risk_probability ?? 0);
+        stat.sum += probability;
+        stat.count += 1;
+        stat.max = Math.max(stat.max, probability);
+        grouped.set(key, stat);
+      }
+
+      for (const [domain, stat] of grouped.entries()) {
+        if (stat.count < Math.max(1, Number(min_sample ?? 1))) continue;
+        const avg = stat.sum / stat.count;
+        const noised_avg = Math.max(0, Math.min(1, avg + laplaceNoise(Number(dp_epsilon ?? 1) * stat.count, 0.01)));
+        signals.push({
+          domain,
+          signal_type: "aggregate_risk_prior",
+          risk_probability_avg: noised_avg,
+          risk_probability_max: stat.max,
+          sample_size: stat.count,
+        });
+      }
+    }
+
     if (signals.length === 0) {
       console.log("No signals meet min_sample threshold");
       return new Response(JSON.stringify({ ok: false, message: "No signals meet threshold" }), {
@@ -113,11 +150,7 @@ serve(async (req) => {
     };
 
     // Hash payload
-    const encoder = new TextEncoder();
-    const data = encoder.encode(JSON.stringify(payload));
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    const hash = await sha256Hex(JSON.stringify(payload));
 
     // Insert into outbound queue
     const { error: insertError } = await supabase

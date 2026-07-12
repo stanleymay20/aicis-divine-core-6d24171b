@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const NODE_ID = Deno.env.get("AICIS_CLUSTER_ID") ?? "aicis-node-1";
+const NODE_ID = Deno.env.get("AICIS_CLUSTER_ID") ?? "aicis-local-l4-global";
 
 // Parse PEM-encoded PKCS#8 Ed25519 private key
 async function importEd25519PrivateKey(pem: string): Promise<CryptoKey> {
@@ -29,6 +29,12 @@ async function signPayload(payload: string, privateKey: CryptoKey): Promise<stri
   const data = new TextEncoder().encode(payload);
   const signature = await crypto.subtle.sign("Ed25519", privateKey, data);
   return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 serve(async (req) => {
@@ -99,6 +105,19 @@ serve(async (req) => {
     for (const bundle of bundles) {
       const bodyString = JSON.stringify(bundle.payload);
       const signature = await signPayload(bodyString, privateKey);
+      const signatureHash = await sha256Hex(signature);
+
+      await supabase
+        .from("federation_signed_bundles")
+        .upsert({
+          bundle_hash: bundle.hash,
+          key_id: signatureHash.slice(0, 32),
+          signature,
+          algorithm: "Ed25519",
+          payload_size_bytes: new TextEncoder().encode(bodyString).length,
+          signed_at: new Date().toISOString(),
+          verified: false,
+        }, { onConflict: "bundle_hash" });
 
       let bundleErrors = 0;
 
