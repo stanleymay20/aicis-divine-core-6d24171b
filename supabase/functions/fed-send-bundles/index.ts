@@ -31,12 +31,6 @@ async function signPayload(payload: string, privateKey: CryptoKey): Promise<stri
   return btoa(String.fromCharCode(...new Uint8Array(signature)));
 }
 
-async function sha256Hex(value: string): Promise<string> {
-  const data = new TextEncoder().encode(value);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -105,19 +99,41 @@ serve(async (req) => {
     for (const bundle of bundles) {
       const bodyString = JSON.stringify(bundle.payload);
       const signature = await signPayload(bodyString, privateKey);
-      const signatureHash = await sha256Hex(signature);
+      const { data: activeKey } = await supabase
+        .from("federation_signing_keys")
+        .select("key_id")
+        .eq("is_active", true)
+        .eq("key_status", "active")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      await supabase
+      const signedBundle = {
+        bundle_hash: bundle.hash,
+        key_id: activeKey?.key_id ?? null,
+        signature,
+        algorithm: "Ed25519",
+        payload_size_bytes: new TextEncoder().encode(bodyString).length,
+        signed_at: new Date().toISOString(),
+        verified: false,
+      };
+
+      const { data: existingSigned } = await supabase
         .from("federation_signed_bundles")
-        .upsert({
-          bundle_hash: bundle.hash,
-          key_id: signatureHash.slice(0, 32),
-          signature,
-          algorithm: "Ed25519",
-          payload_size_bytes: new TextEncoder().encode(bodyString).length,
-          signed_at: new Date().toISOString(),
-          verified: false,
-        }, { onConflict: "bundle_hash" });
+        .select("id")
+        .eq("bundle_hash", bundle.hash)
+        .maybeSingle();
+
+      if (existingSigned?.id) {
+        await supabase
+          .from("federation_signed_bundles")
+          .update(signedBundle)
+          .eq("id", existingSigned.id);
+      } else {
+        await supabase
+          .from("federation_signed_bundles")
+          .insert(signedBundle);
+      }
 
       let bundleErrors = 0;
 
