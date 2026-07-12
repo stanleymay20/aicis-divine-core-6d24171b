@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const NODE_ID = Deno.env.get("AICIS_CLUSTER_ID") ?? "aicis-local-l4-global";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 
 // Parse PEM-encoded PKCS#8 Ed25519 private key
 async function importEd25519PrivateKey(pem: string): Promise<CryptoKey> {
@@ -72,7 +73,8 @@ serve(async (req) => {
     const { data: bundles } = await supabase
       .from("federation_outbound_queue")
       .select("*")
-      .eq("status", "queued")
+      .in("status", ["queued", "failed"])
+      .lt("attempts", 5)
       .order("window_start", { ascending: true });
 
     if (!bundles || bundles.length === 0) {
@@ -139,11 +141,12 @@ serve(async (req) => {
 
       for (const peer of peers) {
         try {
+          const isSelfPeer = SUPABASE_URL && peer.base_url?.includes(new URL(SUPABASE_URL).host);
           const response = await fetch(`${peer.base_url}/fed-ingest`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-AICIS-Node": NODE_ID,
+              "X-AICIS-Node": isSelfPeer ? peer.peer_name : NODE_ID,
               "X-AICIS-Signature": signature,
               "Content-SHA256": bundle.hash,
             },
