@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
     const iso3Set = new Set<string>();
     for (const s of signals) {
       const ac = (s.affected_countries || []) as string[];
-      if (ac.length === 1) iso3Set.add(ac[0]);
+      if (ac.length >= 1) iso3Set.add(ac[0]);
     }
 
     const entitiesByIso = new Map<string, GeoEntity[]>();
