@@ -69,15 +69,31 @@ Deno.serve(async (req) => {
   let processed = 0, byCountry = 0, byPlace = 0, byCentroid = 0, failed = 0;
 
   try {
-    // Pick rows that are unprocessed OR previously failed but now have a country.
+    // Pass 1: never-geocoded rows (partial index idx_gs_pending_geocode).
     const { data: pending, error } = await supa
       .from("global_signals")
       .select("id,title,summary,translated_title,translated_summary,affected_countries,geo_method,ingested_at")
-      .or("geocoded_at.is.null,geo_method.eq.failed")
+      .is("geocoded_at", null)
       .order("first_detected_at", { ascending: false })
       .limit(BATCH);
     if (error) throw error;
     const signals = pending || [];
+
+    // Pass 2: retry ONLY previously-failed rows that have since gained a country.
+    // Rows with no country at all are never retried — they would loop forever.
+    if (signals.length < BATCH) {
+      const { data: retry, error: rErr } = await supa
+        .from("global_signals")
+        .select("id,title,summary,translated_title,translated_summary,affected_countries,geo_method,ingested_at")
+        .eq("geo_method", "failed")
+        .not("affected_countries", "is", null)
+        .neq("affected_countries", "{}")
+        .order("first_detected_at", { ascending: false })
+        .limit(BATCH - signals.length);
+      if (rErr) throw rErr;
+      signals.push(...(retry || []));
+    }
+
 
     // Pre-cache geo entities per ISO3 we encounter
     const iso3Set = new Set<string>();
