@@ -69,21 +69,39 @@ Deno.serve(async (req) => {
   let processed = 0, byCountry = 0, byPlace = 0, byCentroid = 0, failed = 0;
 
   try {
-    // Pick rows that are unprocessed OR previously failed but now have a country.
+    // Pass 1: never-geocoded rows (partial index idx_gs_pending_geocode).
     const { data: pending, error } = await supa
       .from("global_signals")
       .select("id,title,summary,translated_title,translated_summary,affected_countries,geo_method,ingested_at")
-      .or("geocoded_at.is.null,geo_method.eq.failed")
+      .is("geocoded_at", null)
       .order("first_detected_at", { ascending: false })
       .limit(BATCH);
     if (error) throw error;
     const signals = pending || [];
 
+    // Pass 2: retry ONLY previously-failed rows that have since gained a country.
+    // Rows with no country at all are never retried — they would loop forever.
+    // Only when the fresh backlog is fully drained — this scan is expensive.
+    if (signals.length === 0) {
+      const { data: retry, error: rErr } = await supa
+        .from("global_signals")
+        .select("id,title,summary,translated_title,translated_summary,affected_countries,geo_method,ingested_at")
+        .eq("geo_method", "failed")
+        .not("affected_countries", "is", null)
+        .neq("affected_countries", "{}")
+        .order("first_detected_at", { ascending: false })
+        .limit(BATCH);
+
+      if (rErr) throw rErr;
+      signals.push(...(retry || []));
+    }
+
+
     // Pre-cache geo entities per ISO3 we encounter
     const iso3Set = new Set<string>();
     for (const s of signals) {
       const ac = (s.affected_countries || []) as string[];
-      if (ac.length === 1) iso3Set.add(ac[0]);
+      if (ac.length >= 1) iso3Set.add(ac[0]);
     }
 
     const entitiesByIso = new Map<string, GeoEntity[]>();
@@ -117,7 +135,11 @@ Deno.serve(async (req) => {
     for (const sig of signals) {
       processed++;
       const ac = (sig.affected_countries || []) as string[];
-      const iso3 = ac.length === 1 ? ac[0] : null;
+      // Multi-country signals resolve to their primary (first) country rather than
+      // being dropped as "failed" — this was silently losing most geo coverage.
+      const iso3 = ac.length >= 1 ? ac[0] : null;
+      const isMultiCountry = ac.length > 1;
+
 
       const nowIso = new Date().toISOString();
       const ingestRef = (sig as any).ingested_at;
@@ -165,7 +187,12 @@ Deno.serve(async (req) => {
             byCountry++;
           }
         }
+        if (isMultiCountry) {
+          update.geo_confidence = Math.min(Number(update.geo_confidence ?? 0), 40);
+        }
       }
+
+
 
       const { error: uErr } = await supa.from("global_signals").update(update).eq("id", sig.id);
       if (uErr) throw uErr;
