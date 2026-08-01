@@ -133,7 +133,11 @@ Deno.serve(async (req) => {
     for (const sig of signals) {
       processed++;
       const ac = (sig.affected_countries || []) as string[];
-      const iso3 = ac.length === 1 ? ac[0] : null;
+      // Multi-country signals resolve to their primary (first) country rather than
+      // being dropped as "failed" — this was silently losing most geo coverage.
+      const iso3 = ac.length >= 1 ? ac[0] : null;
+      const isMultiCountry = ac.length > 1;
+
 
       const nowIso = new Date().toISOString();
       const ingestRef = (sig as any).ingested_at;
