@@ -185,7 +185,12 @@ Deno.serve(async (req) => {
             byCountry++;
           }
         }
+        if (isMultiCountry) {
+          update.geo_confidence = Math.min(Number(update.geo_confidence ?? 0), 40);
+          update.geo_multi_country = true;
+        }
       }
+
 
       const { error: uErr } = await supa.from("global_signals").update(update).eq("id", sig.id);
       if (uErr) throw uErr;
