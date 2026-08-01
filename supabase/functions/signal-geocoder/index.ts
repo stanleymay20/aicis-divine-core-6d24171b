@@ -81,7 +81,8 @@ Deno.serve(async (req) => {
 
     // Pass 2: retry ONLY previously-failed rows that have since gained a country.
     // Rows with no country at all are never retried — they would loop forever.
-    if (signals.length < BATCH) {
+    // Only when the fresh backlog is fully drained — this scan is expensive.
+    if (signals.length === 0) {
       const { data: retry, error: rErr } = await supa
         .from("global_signals")
         .select("id,title,summary,translated_title,translated_summary,affected_countries,geo_method,ingested_at")
@@ -89,7 +90,8 @@ Deno.serve(async (req) => {
         .not("affected_countries", "is", null)
         .neq("affected_countries", "{}")
         .order("first_detected_at", { ascending: false })
-        .limit(BATCH - signals.length);
+        .limit(BATCH);
+
       if (rErr) throw rErr;
       signals.push(...(retry || []));
     }
