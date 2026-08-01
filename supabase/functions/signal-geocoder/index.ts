@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
         }
         if (isMultiCountry) {
           update.geo_confidence = Math.min(Number(update.geo_confidence ?? 0), 40);
-          update.geo_multi_country = true;
+          }
         }
       }
 
