@@ -10216,6 +10216,51 @@ export type Database = {
         }
         Relationships: []
       }
+      pipeline_replay_runs: {
+        Row: {
+          created_at: string
+          finished_at: string | null
+          id: string
+          lane: string
+          mode: string
+          notes: string | null
+          requested_limit: number
+          requeued_count: number
+          started_at: string
+          status: string
+          triggered_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          lane: string
+          mode?: string
+          notes?: string | null
+          requested_limit?: number
+          requeued_count?: number
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          lane?: string
+          mode?: string
+          notes?: string | null
+          requested_limit?: number
+          requeued_count?: number
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       planetary_stats_snapshots: {
         Row: {
           canonical_mismatches: number
@@ -17279,6 +17324,24 @@ export type Database = {
           _success?: boolean
         }
         Returns: undefined
+      }
+      replay_backlog_summary: {
+        Args: never
+        Returns: {
+          lane: string
+          replayable_count: number
+          stuck_count: number
+        }[]
+      }
+      replay_requeue_country: { Args: { p_limit?: number }; Returns: number }
+      replay_requeue_enrichment: { Args: { p_limit?: number }; Returns: number }
+      replay_requeue_geocode: {
+        Args: { p_limit?: number; p_require_country?: boolean }
+        Returns: number
+      }
+      replay_requeue_translation: {
+        Args: { p_limit?: number }
+        Returns: number
       }
       resolve_source_trust: {
         Args: { p_source: string }
