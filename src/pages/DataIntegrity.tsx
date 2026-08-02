@@ -8,6 +8,8 @@ import { CheckCircle2, AlertTriangle, AlertOctagon, Activity, ShieldCheck } from
 import { cn } from "@/lib/utils";
 import { SEO } from "@/components/SEO";
 import { TrainingFreshnessPanel } from "@/components/data-pipeline/TrainingFreshnessPanel";
+import { PipelineReplayPanel } from "@/components/data-pipeline/PipelineReplayPanel";
+
 
 interface IntegrityRow {
   check_name: string;
@@ -151,6 +153,11 @@ export default function DataIntegrity() {
       <PanelBoundary>
         <TrainingFreshnessPanel />
       </PanelBoundary>
+
+      <PanelBoundary>
+        <PipelineReplayPanel />
+      </PanelBoundary>
+
 
 
       {isLoading && <Card className="p-6 text-sm text-muted-foreground">Measuring database…</Card>}
