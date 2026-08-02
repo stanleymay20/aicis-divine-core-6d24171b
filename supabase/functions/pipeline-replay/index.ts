@@ -34,7 +34,7 @@ const LANES: Record<Exclude<Lane, "all">, { rpc: string; args: (limit: number, f
   country: {
     rpc: "replay_requeue_country",
     args: (limit) => ({ p_limit: limit }),
-    processor: "country-extractor",
+    processor: "signal-country-extractor",
   },
   enrichment: {
     rpc: "replay_requeue_enrichment",
