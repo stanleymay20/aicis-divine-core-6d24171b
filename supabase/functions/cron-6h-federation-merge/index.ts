@@ -19,11 +19,8 @@ serve(async (req) => {
   try {
     console.log("Running federation merge cron...");
 
-    await supabase.from("automation_logs").insert({
-      job_name: "cron-6h-federation-merge",
-      status: "running",
-      message: "Starting federation merge"
-    });
+    // No 'running' start row: the zombie-job cleaner flips unclosed rows to
+    // 'timeout' even on successful runs. Terminal status is logged below.
 
     // Merge global prior
     const mergeResult = await supabase.functions.invoke("fed-merge-global-prior");
