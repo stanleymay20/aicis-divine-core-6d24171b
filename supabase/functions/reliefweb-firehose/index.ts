@@ -116,7 +116,8 @@ serve(async (req) => {
           }
           const xml = await rssRes.text();
           const blocks = xml.split(/<item[\s>]/i).slice(1);
-          console.log("reliefweb rss blocks", feed, blocks.length);
+          console.log("reliefweb rss blocks", feed, blocks.length, "len", xml.length, xml.slice(0, 200).replace(/\s+/g, " "));
+
           for (const b of blocks) {
             const pick = (tag: string) => {
               const m = b.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
