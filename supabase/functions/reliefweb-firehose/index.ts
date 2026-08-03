@@ -94,40 +94,58 @@ serve(async (req) => {
   // no appname. Country ISO3 is absent there — the country-extractor lane
   // resolves it downstream from the title.
   if (httpStatus === 403 || (errMsg && items.length === 0)) {
-    try {
-      const rssRes = await fetch("https://reliefweb.int/updates/rss.xml", {
-        headers: { "User-Agent": `${appname}/1.0 (https://aicis.io; ops@aicis.io)`, Accept: "application/rss+xml" },
-      });
-      if (rssRes.ok) {
-        const xml = await rssRes.text();
-        const blocks = xml.split(/<item[\s>]/i).slice(1);
-        const parsed: any[] = [];
-        for (const b of blocks) {
-          const pick = (tag: string) => {
-            const m = b.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
-            if (!m) return null;
-            return m[1]
-              .replace(/<!\[CDATA\[|\]\]>/g, "")
-              .replace(/<[^>]+>/g, "")
-              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
-              .trim();
-          };
-          const title = pick("title");
-          if (!title) continue;
-          const link = pick("link");
-          const pub = pick("pubDate");
-          const created = pub && !isNaN(Date.parse(pub)) ? new Date(pub).toISOString() : new Date().toISOString();
-          parsed.push({ id: link, fields: { title, url: link, date: { created }, country: [] } });
-        }
-        if (parsed.length > 0) {
-          items = parsed;
-          errMsg = null;
-          httpStatus = 200;
+    const RSS_FEEDS = [
+      "https://reliefweb.int/updates/rss.xml",
+      "https://reliefweb.int/disasters/rss.xml",
+    ];
+    const UAS = [
+      "Mozilla/5.0 (compatible; AICIS/1.0; +https://aicis.io)",
+      `${appname}/1.0 (https://aicis.io; ops@aicis.io)`,
+    ];
+    const parsed: any[] = [];
+    outer:
+    for (const feed of RSS_FEEDS) {
+      for (const ua of UAS) {
+        try {
+          const rssRes = await fetch(feed, {
+            headers: { "User-Agent": ua, Accept: "application/rss+xml, application/xml, text/xml, */*" },
+          });
+          if (!rssRes.ok) {
+            console.error("reliefweb rss non-ok", feed, rssRes.status);
+            continue;
+          }
+          const xml = await rssRes.text();
+          const blocks = xml.split(/<item[\s>]/i).slice(1);
+          console.log("reliefweb rss blocks", feed, blocks.length);
+          for (const b of blocks) {
+            const pick = (tag: string) => {
+              const m = b.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+              if (!m) return null;
+              return m[1]
+                .replace(/<!\[CDATA\[|\]\]>/g, "")
+                .replace(/<[^>]+>/g, "")
+                .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+                .trim();
+            };
+            const title = pick("title");
+            if (!title) continue;
+            const link = pick("link");
+            const pub = pick("pubDate");
+            const created = pub && !isNaN(Date.parse(pub)) ? new Date(pub).toISOString() : new Date().toISOString();
+            parsed.push({ id: link, fields: { title, url: link, date: { created }, country: [] } });
+          }
+          if (parsed.length > 0) break outer;
+        } catch (e) {
+          console.error("reliefweb rss fallback failed", feed, (e as Error).message);
         }
       }
-    } catch (e) {
-      console.error("reliefweb rss fallback failed", (e as Error).message);
     }
+    if (parsed.length > 0) {
+      items = parsed;
+      errMsg = null;
+      httpStatus = 200;
+    }
+
 
     if (items.length === 0) {
       await supabase.from("automation_logs").insert({
