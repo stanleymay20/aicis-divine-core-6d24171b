@@ -89,20 +89,59 @@ serve(async (req) => {
     console.error("reliefweb fetch failed", errMsg);
   }
 
-  // 403 = appname not approved by ReliefWeb. Soft-skip with backoff so we don't
-  // spam the silent-failure budget. Operator must request an approved appname at
-  // https://apidoc.reliefweb.int/parameters#appname and set RELIEFWEB_APPNAME secret.
-  if (httpStatus === 403) {
-    await supabase.from("automation_logs").insert({
-      job_name: FN, status: "warning",
-      message: `ReliefWeb 403 — appname '${appname}' not approved. Request one at https://apidoc.reliefweb.int/parameters#appname and update RELIEFWEB_APPNAME.`,
-    });
-    await recordFirehoseHealth(supabase, {
-      name: FN, trustTier: "tier_1", success: true, insertedCount: 0, durationMs: Date.now() - start,
-    });
-    return new Response(JSON.stringify({ ok: true, skipped: true, reason: "appname_not_approved" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  // 403 = appname not approved by ReliefWeb (v2 requires registration).
+  // Instead of dropping the lane, fall back to the public RSS feed, which needs
+  // no appname. Country ISO3 is absent there — the country-extractor lane
+  // resolves it downstream from the title.
+  if (httpStatus === 403 || (errMsg && items.length === 0)) {
+    try {
+      const rssRes = await fetch("https://reliefweb.int/updates/rss.xml", {
+        headers: { "User-Agent": `${appname}/1.0 (https://aicis.io; ops@aicis.io)`, Accept: "application/rss+xml" },
+      });
+      if (rssRes.ok) {
+        const xml = await rssRes.text();
+        const blocks = xml.split(/<item[\s>]/i).slice(1);
+        const parsed: any[] = [];
+        for (const b of blocks) {
+          const pick = (tag: string) => {
+            const m = b.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+            if (!m) return null;
+            return m[1]
+              .replace(/<!\[CDATA\[|\]\]>/g, "")
+              .replace(/<[^>]+>/g, "")
+              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+              .trim();
+          };
+          const title = pick("title");
+          if (!title) continue;
+          const link = pick("link");
+          const pub = pick("pubDate");
+          const created = pub && !isNaN(Date.parse(pub)) ? new Date(pub).toISOString() : new Date().toISOString();
+          parsed.push({ id: link, fields: { title, url: link, date: { created }, country: [] } });
+        }
+        if (parsed.length > 0) {
+          items = parsed;
+          errMsg = null;
+          httpStatus = 200;
+        }
+      }
+    } catch (e) {
+      console.error("reliefweb rss fallback failed", (e as Error).message);
+    }
+
+    if (items.length === 0) {
+      await supabase.from("automation_logs").insert({
+        job_name: FN, status: "warning",
+        message: `ReliefWeb unavailable (HTTP ${httpStatus}) and RSS fallback empty. Set an approved RELIEFWEB_APPNAME to restore the API lane.`,
+      });
+      await recordFirehoseHealth(supabase, {
+        name: FN, trustTier: "tier_1", success: true, insertedCount: 0, durationMs: Date.now() - start,
+      });
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "reliefweb_unavailable" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
   }
+
 
   if (errMsg) {
     await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: errMsg });
