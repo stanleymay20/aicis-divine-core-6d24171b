@@ -15,9 +15,8 @@ serve(async (req) => {
 
   try {
     structuredLog('info', FN, 'Starting global data collection cycle');
-    await supabase.from("automation_logs").insert({
-      job_name: FN, status: "running", message: "Starting global data collection cycle",
-    });
+    // No 'running' start row: the zombie-job cleaner flips unclosed rows to
+    // 'timeout' even on successful runs. Terminal status is logged below.
 
     const results: Record<string, any> = {};
     const errors: string[] = [];

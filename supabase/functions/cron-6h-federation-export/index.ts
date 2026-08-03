@@ -19,11 +19,8 @@ serve(async (req) => {
   try {
     console.log("Running federation export cron...");
 
-    await supabase.from("automation_logs").insert({
-      job_name: "cron-6h-federation-export",
-      status: "running",
-      message: "Starting federation export"
-    });
+    // No 'running' start row: the zombie-job cleaner flips unclosed rows to
+    // 'timeout' even on successful runs. Terminal status is logged below.
 
     // Step 1: Make bundle
     const makeResult = await supabase.functions.invoke("fed-make-bundle");

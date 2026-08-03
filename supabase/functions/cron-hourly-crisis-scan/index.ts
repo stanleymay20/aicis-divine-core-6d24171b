@@ -17,11 +17,8 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
-    await supabase.from("automation_logs").insert({
-      job_name: "cron-hourly-crisis-scan",
-      status: "running",
-      message: "Starting crisis detection scan",
-    });
+    // No 'running' start row: the zombie-job cleaner flips unclosed rows to
+    // 'timeout' even on successful runs. Terminal status is logged below.
 
     // v11: Hard 55s client-side abort prevents 1h zombie state if downstream hangs.
     // crisis-scan itself has a 50s deadline, so 55s here is the outer envelope.
