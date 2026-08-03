@@ -97,6 +97,9 @@ serve(async (req) => {
     const RSS_FEEDS = [
       "https://reliefweb.int/updates/rss.xml",
       "https://reliefweb.int/disasters/rss.xml",
+      // Some egress IPs get an empty 200 body straight from reliefweb; a public
+      // raw-proxy restores the same XML without needing an approved appname.
+      "https://api.allorigins.win/raw?url=https%3A%2F%2Freliefweb.int%2Fupdates%2Frss.xml",
     ];
     const UAS = [
       "Mozilla/5.0 (compatible; AICIS/1.0; +https://aicis.io)",
@@ -108,12 +111,17 @@ serve(async (req) => {
       for (const ua of UAS) {
         try {
           const rssRes = await fetch(feed, {
-            headers: { "User-Agent": ua, Accept: "application/rss+xml, application/xml, text/xml, */*" },
+            headers: {
+              "User-Agent": ua,
+              Accept: "application/rss+xml, application/xml, text/xml, */*",
+              "Accept-Encoding": "identity",
+            },
           });
           if (!rssRes.ok) {
             console.error("reliefweb rss non-ok", feed, rssRes.status);
             continue;
           }
+
           const xml = await rssRes.text();
           const blocks = xml.split(/<item[\s>]/i).slice(1);
           console.log("reliefweb rss blocks", feed, blocks.length, "len", xml.length, xml.slice(0, 200).replace(/\s+/g, " "));
