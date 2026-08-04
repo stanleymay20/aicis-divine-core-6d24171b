@@ -2,15 +2,18 @@
  * reliefweb-firehose — pulls the ReliefWeb (UN OCHA) reports API and
  * ingests humanitarian disasters/crises into global_signals.
  *
- * Free, no key. https://reliefweb.int/help/api
+ * Production contract (post-appname-approval):
+ *   1. Official ReliefWeb API (POST /v2/reports?appname=...)  ← always tried first
+ *   2. Public RSS fallback (no appname required)
+ *   3. Graceful warning — never a silent success
  *
- * Phase 4.1 fix: GET querystring with `profile=full` returned HTTP 410.
- * Switched to POST with JSON body which is the documented v1 contract and
- * narrowed `fields.include` so the response stays small + reliable.
+ * Every run ends in exactly one status:
+ *   SUCCESS | SUCCESS_WITH_FALLBACK | WARNING_EMPTY_RESPONSE | FAILED
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { recordFirehoseHealth, shouldSkipForBackoff } from "../_shared/firehose-health.ts";
+import { startProviderRun, finishProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,12 +21,170 @@ const corsHeaders = {
 };
 const FN = "reliefweb-firehose";
 
+// Approved ReliefWeb appname (registered with UN OCHA). The secret, when set,
+// takes precedence so the value can be rotated without a redeploy.
+const APPROVED_APPNAME = "AICIS-global-risk-intelligence-q4m81";
+const APPNAME = Deno.env.get("RELIEFWEB_APPNAME_APPROVED") ?? APPROVED_APPNAME;
+
+type RunStatus = "SUCCESS" | "SUCCESS_WITH_FALLBACK" | "WARNING_EMPTY_RESPONSE" | "FAILED";
+
 function normalizeDedup(t: string) {
   return t.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 10).join(" ");
 }
 async function sha256Hex(input: string) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+interface ApiResult {
+  items: any[];
+  httpStatus: number;
+  latencyMs: number;
+  error: string | null;
+}
+
+/** Lane 1 — the official API. Always attempted first. */
+async function fetchOfficialApi(): Promise<ApiResult> {
+  const url = `https://api.reliefweb.int/v2/reports?appname=${encodeURIComponent(APPNAME)}`;
+  const body = {
+    limit: 200,
+    sort: ["date.created:desc"],
+    fields: {
+      include: ["title", "url", "date.created", "country.iso3", "country.name", "primary_country.iso3"],
+    },
+  };
+  const t0 = Date.now();
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": `${APPNAME}/1.0 (https://aicis.io; ops@aicis.io)`,
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    const latencyMs = Date.now() - t0;
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { items: [], httpStatus: res.status, latencyMs, error: `HTTP ${res.status}: ${text.slice(0, 200)}` };
+    }
+    const j = await res.json();
+    return { items: (j?.data ?? []) as any[], httpStatus: res.status, latencyMs, error: null };
+  } catch (e) {
+    return { items: [], httpStatus: 0, latencyMs: Date.now() - t0, error: (e as Error).message };
+  }
+}
+
+/** Lane 2 — public RSS. Only reached when the API lane yields nothing. */
+async function fetchRssFallback(): Promise<ApiResult> {
+  const FEEDS = [
+    "https://reliefweb.int/updates/rss.xml",
+    "https://reliefweb.int/disasters/rss.xml",
+    "https://api.allorigins.win/raw?url=https%3A%2F%2Freliefweb.int%2Fupdates%2Frss.xml",
+  ];
+  const UAS = [
+    "Mozilla/5.0 (compatible; AICIS/1.0; +https://aicis.io)",
+    `${APPNAME}/1.0 (https://aicis.io; ops@aicis.io)`,
+  ];
+  const t0 = Date.now();
+  let lastErr: string | null = null;
+  let lastStatus = 0;
+  for (const feed of FEEDS) {
+    for (const ua of UAS) {
+      try {
+        const res = await fetch(feed, {
+          headers: {
+            "User-Agent": ua,
+            Accept: "application/rss+xml, application/xml, text/xml, */*",
+            "Accept-Encoding": "identity",
+          },
+        });
+        lastStatus = res.status;
+        if (!res.ok) { lastErr = `rss HTTP ${res.status} (${feed})`; continue; }
+        const xml = await res.text();
+        const blocks = xml.split(/<item[\s>]/i).slice(1);
+        const parsed: any[] = [];
+        for (const b of blocks) {
+          const pick = (tag: string) => {
+            const m = b.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+            if (!m) return null;
+            return m[1]
+              .replace(/<!\[CDATA\[|\]\]>/g, "")
+              .replace(/<[^>]+>/g, "")
+              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+              .trim();
+          };
+          const title = pick("title");
+          if (!title) continue;
+          const link = pick("link");
+          const pub = pick("pubDate");
+          const created = pub && !isNaN(Date.parse(pub)) ? new Date(pub).toISOString() : new Date().toISOString();
+          parsed.push({ id: link, fields: { title, url: link, date: { created }, country: [] } });
+        }
+        if (parsed.length > 0) {
+          return { items: parsed, httpStatus: 200, latencyMs: Date.now() - t0, error: null };
+        }
+        lastErr = `rss empty body (${feed}, ${xml.length} bytes)`;
+      } catch (e) {
+        lastErr = `${feed}: ${(e as Error).message}`;
+      }
+    }
+  }
+  return { items: [], httpStatus: lastStatus, latencyMs: Date.now() - t0, error: lastErr };
+}
+
+/**
+ * Health checks — emit explicit warnings that surface in the Operations
+ * dashboard (automation_logs, job_name = "reliefweb-firehose-health").
+ */
+async function evaluateHealth(supabase: any, current: { rowsWritten: number; fallbackUsed: boolean; status: RunStatus }) {
+  const warnings: string[] = [];
+  try {
+    const { data: runs } = await supabase
+      .from("provider_runs")
+      .select("records_inserted,params,status,completed_at")
+      .eq("endpoint", FN)
+      .order("started_at", { ascending: false })
+      .limit(10);
+
+    const history = (runs ?? []) as any[];
+
+    // 1. rows_written = 0 for 3 consecutive runs
+    const zeroStreak = history.slice(0, 3);
+    if (zeroStreak.length === 3 && zeroStreak.every(r => (r.records_inserted ?? 0) === 0) && current.rowsWritten === 0) {
+      warnings.push("rows_written = 0 for 3 consecutive runs");
+    }
+    // 2. unexpected empty API response
+    if (current.status === "WARNING_EMPTY_RESPONSE") {
+      warnings.push("ReliefWeb returned an empty result set");
+    }
+    // 3. fallback used more than 5 consecutive runs
+    const fbStreak = history.slice(0, 5).filter(r => r?.params?.fallback_used === true).length;
+    if (current.fallbackUsed && fbStreak >= 5) {
+      warnings.push("RSS fallback used for more than 5 consecutive runs — official API lane degraded");
+    }
+    // 4. no successful run in the last hour
+    const lastOk = history.find(r => r.status === "completed" && (r.records_inserted ?? 0) >= 0 && r.completed_at);
+    if (!lastOk || Date.now() - new Date(lastOk.completed_at).getTime() > 3_600_000) {
+      if (current.status === "FAILED") warnings.push("No successful ReliefWeb ingestion in the last hour");
+    }
+
+    if (warnings.length > 0) {
+      await supabase.from("automation_logs").insert({
+        job_name: `${FN}-health`,
+        status: "warning",
+        message: warnings.join(" | "),
+      });
+    }
+  } catch (e) {
+    console.warn("[reliefweb] health evaluation failed", (e as Error).message);
+  }
+  return warnings;
 }
 
 serve(async (req) => {
@@ -42,144 +203,36 @@ serve(async (req) => {
     );
   }
 
-  // POST + JSON body is the canonical contract. The legacy GET with
-  // profile=full now returns 410 Gone for unauthenticated callers.
-  // ReliefWeb v2 (v1 decommissioned 2025-11) requires an approved appname.
-  // Provide via RELIEFWEB_APPNAME secret. Request one at:
-  // https://apidoc.reliefweb.int/parameters#appname
-  const appname = Deno.env.get("RELIEFWEB_APPNAME") ?? "aicis-firehose";
-  const url = `https://api.reliefweb.int/v2/reports?appname=${encodeURIComponent(appname)}`;
-  const body = {
-    limit: 100,
-    sort: ["date.created:desc"],
-    fields: {
-      include: ["title", "url", "date.created", "country.iso3", "country.name", "primary_country.iso3"],
-    },
-  };
+  const run = await startProviderRun(supabase, {
+    provider_name: "reliefweb",
+    endpoint: FN,
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+    params: { appname: APPNAME },
+  });
 
-  let items: any[] = [];
-  let httpStatus = 0;
-  let errMsg: string | null = null;
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        // ReliefWeb v2 enforces a descriptive User-Agent + approved appname.
-        "User-Agent": `${appname}/1.0 (https://aicis.io; ops@aicis.io)`,
-      },
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-    clearTimeout(t);
-    httpStatus = res.status;
-    if (!res.ok) {
-      errMsg = `HTTP ${res.status}`;
-      const text = await res.text().catch(() => "");
-      console.error("reliefweb http error", res.status, text.slice(0, 200));
-    } else {
-      const j = await res.json();
-      items = (j?.data ?? []) as any[];
-    }
-  } catch (e) {
-    errMsg = (e as Error).message;
-    console.error("reliefweb fetch failed", errMsg);
-  }
+  // Row count BEFORE (evidence)
+  const { count: rowsBefore } = await supabase
+    .from("global_signals")
+    .select("id", { count: "exact", head: true })
+    .eq("ingestion_source", "reliefweb_firehose");
 
-  // 403 = appname not approved by ReliefWeb (v2 requires registration).
-  // Instead of dropping the lane, fall back to the public RSS feed, which needs
-  // no appname. Country ISO3 is absent there — the country-extractor lane
-  // resolves it downstream from the title.
-  if (httpStatus === 403 || (errMsg && items.length === 0)) {
-    const RSS_FEEDS = [
-      "https://reliefweb.int/updates/rss.xml",
-      "https://reliefweb.int/disasters/rss.xml",
-      // Some egress IPs get an empty 200 body straight from reliefweb; a public
-      // raw-proxy restores the same XML without needing an approved appname.
-      "https://api.allorigins.win/raw?url=https%3A%2F%2Freliefweb.int%2Fupdates%2Frss.xml",
-    ];
-    const UAS = [
-      "Mozilla/5.0 (compatible; AICIS/1.0; +https://aicis.io)",
-      `${appname}/1.0 (https://aicis.io; ops@aicis.io)`,
-    ];
-    const parsed: any[] = [];
-    outer:
-    for (const feed of RSS_FEEDS) {
-      for (const ua of UAS) {
-        try {
-          const rssRes = await fetch(feed, {
-            headers: {
-              "User-Agent": ua,
-              Accept: "application/rss+xml, application/xml, text/xml, */*",
-              "Accept-Encoding": "identity",
-            },
-          });
-          if (!rssRes.ok) {
-            console.error("reliefweb rss non-ok", feed, rssRes.status);
-            continue;
-          }
+  // ── Lane 1: official API ──────────────────────────────────────────
+  const api = await fetchOfficialApi();
+  let items = api.items;
+  let fallbackUsed = false;
+  let fallback: ApiResult | null = null;
 
-          const xml = await rssRes.text();
-          const blocks = xml.split(/<item[\s>]/i).slice(1);
-          console.log("reliefweb rss blocks", feed, blocks.length, "len", xml.length, xml.slice(0, 200).replace(/\s+/g, " "));
-
-          for (const b of blocks) {
-            const pick = (tag: string) => {
-              const m = b.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
-              if (!m) return null;
-              return m[1]
-                .replace(/<!\[CDATA\[|\]\]>/g, "")
-                .replace(/<[^>]+>/g, "")
-                .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
-                .trim();
-            };
-            const title = pick("title");
-            if (!title) continue;
-            const link = pick("link");
-            const pub = pick("pubDate");
-            const created = pub && !isNaN(Date.parse(pub)) ? new Date(pub).toISOString() : new Date().toISOString();
-            parsed.push({ id: link, fields: { title, url: link, date: { created }, country: [] } });
-          }
-          if (parsed.length > 0) break outer;
-        } catch (e) {
-          console.error("reliefweb rss fallback failed", feed, (e as Error).message);
-        }
-      }
-    }
-    if (parsed.length > 0) {
-      items = parsed;
-      errMsg = null;
-      httpStatus = 200;
-    }
-
-
-    if (items.length === 0) {
-      await supabase.from("automation_logs").insert({
-        job_name: FN, status: "warning",
-        message: `ReliefWeb unavailable (HTTP ${httpStatus}) and RSS fallback empty. Set an approved RELIEFWEB_APPNAME to restore the API lane.`,
-      });
-      await recordFirehoseHealth(supabase, {
-        name: FN, trustTier: "tier_1", success: true, insertedCount: 0, durationMs: Date.now() - start,
-      });
-      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "reliefweb_unavailable" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  // ── Lane 2: RSS fallback ──────────────────────────────────────────
+  if (items.length === 0) {
+    console.warn(`[reliefweb] api lane empty (status=${api.httpStatus} err=${api.error}) → RSS fallback`);
+    fallback = await fetchRssFallback();
+    if (fallback.items.length > 0) {
+      items = fallback.items;
+      fallbackUsed = true;
     }
   }
 
-
-  if (errMsg) {
-    await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: errMsg });
-    await recordFirehoseHealth(supabase, {
-      name: FN, trustTier: "tier_1", success: false, errorMessage: errMsg, durationMs: Date.now() - start,
-    });
-    return new Response(JSON.stringify({ error: errMsg, http_status: httpStatus }), {
-      status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
+  // ── Parse + dedupe ────────────────────────────────────────────────
   const candidates: any[] = [];
   const seen = new Set<string>();
   for (const it of items) {
@@ -269,18 +322,79 @@ serve(async (req) => {
     else inserted = data?.length ?? 0;
   }
 
+  // Row count AFTER (evidence)
+  const { count: rowsAfter } = await supabase
+    .from("global_signals")
+    .select("id", { count: "exact", head: true })
+    .eq("ingestion_source", "reliefweb_firehose");
+
+  const skipped = candidates.length - toInsert.length;
   const dur = Date.now() - start;
-  await supabase.from("automation_logs").insert({
-    job_name: FN, status: insertErr ? "error" : "success",
-    message: `raw=${items.length} unique=${candidates.length} new=${inserted} dur=${dur}ms${insertErr ? " err=" + insertErr : ""}`,
+
+  // ── Explicit terminal status — never an ambiguous state ───────────
+  let status: RunStatus;
+  if (insertErr) status = "FAILED";
+  else if (items.length === 0) status = api.error || fallback?.error ? "FAILED" : "WARNING_EMPTY_RESPONSE";
+  else if (fallbackUsed) status = "SUCCESS_WITH_FALLBACK";
+  else status = "SUCCESS";
+
+  const telemetry = {
+    status,
+    api_endpoint: `https://api.reliefweb.int/v2/reports?appname=${APPNAME}`,
+    api_http_status: api.httpStatus,
+    api_latency_ms: api.latencyMs,
+    api_error: api.error,
+    fallback_used: fallbackUsed,
+    fallback_http_status: fallback?.httpStatus ?? null,
+    fallback_latency_ms: fallback?.latencyMs ?? null,
+    fallback_error: fallback?.error ?? null,
+    records_received: items.length,
+    records_unique: candidates.length,
+    records_inserted: inserted,
+    records_updated: 0,
+    records_skipped: skipped,
+    rows_written: inserted,
+    rows_before: rowsBefore ?? null,
+    rows_after: rowsAfter ?? null,
+    execution_ms: dur,
+    error_message: insertErr ?? api.error ?? fallback?.error ?? null,
+  };
+
+  await finishProviderRun(supabase, run, {
+    records_fetched: items.length,
+    records_inserted: inserted,
+    records_updated: 0,
+    records_deduplicated: skipped,
+    error_count: status === "FAILED" ? 1 : 0,
+    error_summary: telemetry.error_message,
   });
-  await recordFirehoseHealth(supabase, {
-    name: FN, trustTier: "tier_1",
-    success: !insertErr,
-    insertedCount: inserted, durationMs: dur,
-    errorMessage: insertErr ?? undefined,
+  // Persist the full telemetry payload on the run row for the ops dashboard.
+  try {
+    await supabase.from("provider_runs").update({ params: { ...telemetry, appname: APPNAME } }).eq("id", run.id);
+  } catch (_) { /* fail-soft */ }
+
+  await supabase.from("automation_logs").insert({
+    job_name: FN,
+    status: status === "SUCCESS" || status === "SUCCESS_WITH_FALLBACK" ? "success" : status === "FAILED" ? "error" : "warning",
+    message: `${status} lane=${fallbackUsed ? "rss" : "api"} http=${api.httpStatus} latency=${api.latencyMs}ms received=${items.length} unique=${candidates.length} written=${inserted} skipped=${skipped} rows=${rowsBefore ?? "?"}→${rowsAfter ?? "?"} dur=${dur}ms${telemetry.error_message ? " err=" + telemetry.error_message : ""}`,
   });
 
-  return new Response(JSON.stringify({ ok: !insertErr, raw: items.length, unique: candidates.length, inserted, duration_ms: dur }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  await recordFirehoseHealth(supabase, {
+    name: FN,
+    trustTier: "tier_1",
+    success: status !== "FAILED",
+    insertedCount: inserted,
+    durationMs: dur,
+    errorMessage: telemetry.error_message ?? undefined,
+  });
+
+  const warnings = await evaluateHealth(supabase, { rowsWritten: inserted, fallbackUsed, status });
+
+  return new Response(
+    JSON.stringify({ ok: status !== "FAILED", ...telemetry, warnings }),
+    {
+      status: status === "FAILED" ? 502 : 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
 });
