@@ -24,10 +24,7 @@ const FN = "reliefweb-firehose";
 // Approved ReliefWeb appname (registered with UN OCHA). The secret, when set,
 // takes precedence so the value can be rotated without a redeploy.
 const APPROVED_APPNAME = "AICIS-global-risk-intelligence-q4m81";
-const APPNAME = Deno.env.get("RELIEFWEB_APPNAME_APPROVED")
-  ?? (Deno.env.get("RELIEFWEB_APPNAME") && Deno.env.get("RELIEFWEB_APPNAME") !== "aicis-firehose"
-    ? Deno.env.get("RELIEFWEB_APPNAME")!
-    : APPROVED_APPNAME);
+const APPNAME = Deno.env.get("RELIEFWEB_APPNAME_APPROVED") ?? APPROVED_APPNAME;
 
 type RunStatus = "SUCCESS" | "SUCCESS_WITH_FALLBACK" | "WARNING_EMPTY_RESPONSE" | "FAILED";
 
