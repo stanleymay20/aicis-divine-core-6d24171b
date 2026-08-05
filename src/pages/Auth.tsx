@@ -28,9 +28,11 @@ const Auth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        void supabase.auth.getUser().then(({ data: { user } }) => {
-          if (user) navigate("/morning-brief", { replace: true });
-        });
+        window.setTimeout(() => {
+          void supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) navigate("/morning-brief", { replace: true });
+          });
+        }, 0);
       }
     });
 

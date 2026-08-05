@@ -44,7 +44,9 @@ export const useAuth = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (!mounted) return;
-        void applyValidatedUser(session);
+        // Defer network validation until after the auth callback completes;
+        // awaiting another auth method inside this callback can deadlock.
+        window.setTimeout(() => void applyValidatedUser(session), 0);
       }
     );
 
