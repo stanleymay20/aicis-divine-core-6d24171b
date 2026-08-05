@@ -12,23 +12,48 @@ export const useAuth = () => {
   useEffect(() => {
     let mounted = true;
 
+    const applyValidatedUser = async (nextSession: Session | null) => {
+      if (!nextSession) {
+        if (!mounted) return;
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase.auth.getUser();
+      if (!mounted) return;
+
+      if (error || !data.user) {
+        // A locally cached token is not proof of authentication. Remove an
+        // invalid session so protected routes cannot enter a redirect loop.
+        await supabase.auth.signOut({ scope: "local" });
+        if (!mounted) return;
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      setSession(nextSession);
+      setUser(data.user);
+      setLoading(false);
+    };
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         if (!mounted) return;
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
+        // Defer network validation until after the auth callback completes;
+        // awaiting another auth method inside this callback can deadlock.
+        window.setTimeout(() => void applyValidatedUser(session), 0);
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    // THEN check for an existing session and validate it with the auth server.
+    void supabase.auth.getSession().then(({ data: { session } }) =>
+      applyValidatedUser(session)
+    );
 
     // Refresh token on tab visibility change to prevent stale sessions
     const handleVisibilityChange = () => {
@@ -36,8 +61,7 @@ export const useAuth = () => {
         supabase.auth.getSession().then(({ data: { session } }) => {
           if (!mounted) return;
           if (session) {
-            setSession(session);
-            setUser(session.user);
+            void applyValidatedUser(session);
           }
           // Do NOT reset to null on transient failures — only trust onAuthStateChange for sign-out
         });

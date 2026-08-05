@@ -20,15 +20,19 @@ const Auth = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
         navigate("/morning-brief", { replace: true });
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        navigate("/morning-brief", { replace: true });
+        window.setTimeout(() => {
+          void supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) navigate("/morning-brief", { replace: true });
+          });
+        }, 0);
       }
     });
 
@@ -196,6 +200,11 @@ const Auth = () => {
                     });
                   }
                   if (result.redirected) return;
+                   const { data: { user }, error } = await supabase.auth.getUser();
+                   if (error || !user) {
+                     throw error ?? new Error("Google sign-in did not create a valid session.");
+                   }
+                   navigate("/morning-brief", { replace: true });
                 } catch (error: any) {
                   toast({
                     title: "Google Sign-In Failed",
