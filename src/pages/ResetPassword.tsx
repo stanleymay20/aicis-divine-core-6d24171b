@@ -13,23 +13,32 @@ const ResetPassword = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
+  const [verificationFailed, setVerificationFailed] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check for recovery token in URL hash
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const query = new URLSearchParams(window.location.search);
+    if (params.get("type") === "recovery" || query.get("type") === "recovery") {
       setIsRecovery(true);
-    } else {
-      // Also listen for auth state change with recovery event
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-        if (event === "PASSWORD_RECOVERY") {
-          setIsRecovery(true);
-        }
-      });
-      return () => subscription.unsubscribe();
     }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setIsRecovery(true);
+    });
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && (params.get("type") === "recovery" || query.get("type") === "recovery")) {
+        setIsRecovery(true);
+      }
+    });
+
+    const timeout = window.setTimeout(() => setVerificationFailed(true), 8000);
+    return () => {
+      window.clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleReset = async (e: React.FormEvent) => {
@@ -79,8 +88,10 @@ const ResetPassword = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4" role="main">
         <Card className="w-full max-w-md p-8 bg-card/50 backdrop-blur-sm border-primary/20 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Verifying recovery link...</p>
+          {!verificationFailed && <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />}
+          <p className="text-muted-foreground">
+            {verificationFailed ? "This recovery link is invalid or has expired." : "Verifying recovery link..."}
+          </p>
           <p className="text-xs text-muted-foreground mt-2">
             If nothing happens,{" "}
             <button onClick={() => navigate("/auth")} className="text-primary hover:underline">

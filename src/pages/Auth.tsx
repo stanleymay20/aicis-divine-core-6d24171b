@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,15 @@ import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import aicisLogo from "@/assets/aicis-logo.png";
 
+const NEXT_PATH_KEY = "aicis.auth.next";
+
+const safeNextPath = (value: unknown): string => {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/command-center";
+  }
+  return value === "/auth" || value.startsWith("/reset-password") ? "/command-center" : value;
+};
+
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [isReset, setIsReset] = useState(false);
@@ -17,12 +26,18 @@ const Auth = () => {
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+
+  const stateFrom = (location.state as { from?: string } | null)?.from;
+  const queryNext = new URLSearchParams(location.search).get("next");
+  const nextPath = safeNextPath(stateFrom ?? queryNext ?? sessionStorage.getItem(NEXT_PATH_KEY));
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
-        navigate("/morning-brief", { replace: true });
+        sessionStorage.removeItem(NEXT_PATH_KEY);
+        navigate(nextPath, { replace: true });
       }
     });
 
@@ -30,14 +45,17 @@ const Auth = () => {
       if (session) {
         window.setTimeout(() => {
           void supabase.auth.getUser().then(({ data: { user } }) => {
-            if (user) navigate("/morning-brief", { replace: true });
+            if (user) {
+              sessionStorage.removeItem(NEXT_PATH_KEY);
+              navigate(nextPath, { replace: true });
+            }
           });
         }, 0);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, nextPath]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +85,7 @@ const Auth = () => {
           password,
           options: {
             data: { full_name: fullName },
-            emailRedirectTo: `${window.location.origin}/`,
+            emailRedirectTo: `${window.location.origin}/auth?next=${encodeURIComponent(nextPath)}`,
           },
         });
         if (error) throw error;
@@ -189,6 +207,7 @@ const Auth = () => {
               onClick={async () => {
                 setLoading(true);
                 try {
+                  sessionStorage.setItem(NEXT_PATH_KEY, nextPath);
                   const result = await lovable.auth.signInWithOAuth("google", {
                     redirect_uri: window.location.origin,
                   });
@@ -204,7 +223,8 @@ const Auth = () => {
                    if (error || !user) {
                      throw error ?? new Error("Google sign-in did not create a valid session.");
                    }
-                   navigate("/morning-brief", { replace: true });
+                    sessionStorage.removeItem(NEXT_PATH_KEY);
+                    navigate(nextPath, { replace: true });
                 } catch (error: any) {
                   toast({
                     title: "Google Sign-In Failed",

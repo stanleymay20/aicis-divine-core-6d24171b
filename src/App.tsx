@@ -16,6 +16,7 @@ import { AICISLayout } from "@/components/aicis/AICISLayout";
 import ScrollToTop from "@/components/ScrollToTop";
 import { RouteSEO } from "@/components/RouteSEO";
 import { Loader2 } from "lucide-react";
+import { AuthProvider } from "@/hooks/useAuth";
 
 import Landing from "./pages/Landing";
 import Index from "./pages/Index";
@@ -140,9 +141,10 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <ScrollToTop />
-          <RouteSEO />
-          <DemoModeProvider>
+          <AuthProvider>
+            <ScrollToTop />
+            <RouteSEO />
+            <DemoModeProvider>
             <ExecutiveModeProvider>
             <IntelligenceMemoryProvider>
               <DegradedModeBanner />
@@ -219,7 +221,8 @@ const App = () => (
               </Routes>
             </IntelligenceMemoryProvider>
             </ExecutiveModeProvider>
-          </DemoModeProvider>
+            </DemoModeProvider>
+          </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

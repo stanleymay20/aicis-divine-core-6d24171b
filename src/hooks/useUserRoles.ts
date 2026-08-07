@@ -12,6 +12,7 @@ export function useUserRoles() {
     enabled: !!user?.id,
     staleTime: 60_000,
     queryFn: async () => {
+      if (!user?.id) return [];
       const metadataRoles = [
         user?.app_metadata?.role,
         user?.user_metadata?.role,
@@ -21,7 +22,7 @@ export function useUserRoles() {
       const { data } = await supabase
         .from("user_roles" as any)
         .select("role")
-        .eq("user_id", user!.id);
+        .eq("user_id", user.id);
 
       const dbRoles = (data ?? []).map((row: any) => row.role).filter(Boolean);
       return Array.from(new Set([...metadataRoles, ...dbRoles])) as AICISRole[];
