@@ -25,8 +25,9 @@ export const useUserTier = () => {
     gcTime: 5 * 60_000,
     retry: 1,
     queryFn: async (): Promise<AccessTier> => {
+      if (!user?.id) return "free";
       const { data, error } = await supabase.rpc("get_user_tier", {
-        _user_id: user!.id,
+        _user_id: user.id,
       });
       if (error) throw error;
       const t = (data as string) ?? "free";
