@@ -49,9 +49,12 @@ export const ProtectedRoute = ({
   const checkingTier = needsTierCheck && tierLoading;
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || unavailable) return;
     if (!user && !isDemo) {
-      navigate("/auth", { replace: true, state: { from: location.pathname } });
+      navigate("/auth", {
+        replace: true,
+        state: { from: `${location.pathname}${location.search}${location.hash}` },
+      });
       return;
     }
     if (needsTierCheck && !tierLoading) {
@@ -68,6 +71,7 @@ export const ProtectedRoute = ({
     }
   }, [
     authLoading,
+    unavailable,
     user,
     isDemo,
     needsTierCheck,
@@ -76,6 +80,8 @@ export const ProtectedRoute = ({
     requiredTier,
     navigate,
     location.pathname,
+    location.search,
+    location.hash,
   ]);
 
   if (authLoading || checkingTier) return <FullScreenSkeleton />;
