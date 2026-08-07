@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import aicisLogo from "@/assets/aicis-logo.png";
+import { useAuth } from "@/hooks/useAuth";
 
 const NEXT_PATH_KEY = "aicis.auth.next";
 
@@ -16,6 +17,13 @@ const safeNextPath = (value: unknown): string => {
     return "/command-center";
   }
   return value === "/auth" || value.startsWith("/reset-password") ? "/command-center" : value;
+};
+
+const authErrorMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : "An unexpected error occurred.";
+  return /failed to fetch|network|load failed/i.test(message)
+    ? "The secure authentication service is temporarily unavailable. Please retry shortly."
+    : message;
 };
 
 const Auth = () => {
@@ -28,34 +36,18 @@ const Auth = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
 
   const stateFrom = (location.state as { from?: string } | null)?.from;
   const queryNext = new URLSearchParams(location.search).get("next");
   const nextPath = safeNextPath(stateFrom ?? queryNext ?? sessionStorage.getItem(NEXT_PATH_KEY));
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        sessionStorage.removeItem(NEXT_PATH_KEY);
-        navigate(nextPath, { replace: true });
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        window.setTimeout(() => {
-          void supabase.auth.getUser().then(({ data: { user } }) => {
-            if (user) {
-              sessionStorage.removeItem(NEXT_PATH_KEY);
-              navigate(nextPath, { replace: true });
-            }
-          });
-        }, 0);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate, nextPath]);
+    if (!authLoading && user) {
+      sessionStorage.removeItem(NEXT_PATH_KEY);
+      navigate(nextPath, { replace: true });
+    }
+  }, [authLoading, navigate, nextPath, user]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,7 +89,7 @@ const Auth = () => {
     } catch (error: any) {
       toast({
         title: "Authentication Failed",
-        description: error.message || "An unexpected error occurred.",
+        description: authErrorMessage(error),
         variant: "destructive",
       });
     } finally {
@@ -214,7 +206,7 @@ const Auth = () => {
                   if (result.error) {
                     toast({
                       title: "Google Sign-In Failed",
-                      description: result.error instanceof Error ? result.error.message : "Unknown error",
+                      description: authErrorMessage(result.error),
                       variant: "destructive",
                     });
                   }
@@ -228,7 +220,7 @@ const Auth = () => {
                 } catch (error: any) {
                   toast({
                     title: "Google Sign-In Failed",
-                    description: error.message || "An unexpected error occurred.",
+                    description: authErrorMessage(error),
                     variant: "destructive",
                   });
                 } finally {
