@@ -8,6 +8,7 @@ import {
   useUserTier,
 } from "@/hooks/useUserTier";
 import { Shield, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -37,7 +38,7 @@ export const ProtectedRoute = ({
   children,
   requiredTier = "free",
 }: ProtectedRouteProps) => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, unavailable } = useAuth();
   const { isDemo } = useDemoMode();
   const { tier, loading: tierLoading } = useUserTier();
   const navigate = useNavigate();
@@ -78,6 +79,20 @@ export const ProtectedRoute = ({
   ]);
 
   if (authLoading || checkingTier) return <FullScreenSkeleton />;
+  if (unavailable) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-4">
+          <Shield className="h-10 w-10 text-primary mx-auto" />
+          <h1 className="text-xl font-semibold text-foreground">Authentication is temporarily unavailable</h1>
+          <p className="text-sm text-muted-foreground">
+            Your session was preserved. Retry when the secure backend is available.
+          </p>
+          <Button type="button" onClick={() => window.location.reload()}>Retry authentication</Button>
+        </div>
+      </div>
+    );
+  }
   if (!user && !isDemo) return null;
   if (needsTierCheck && !tierMeetsRequirement(tier, requiredTier)) return null;
 
