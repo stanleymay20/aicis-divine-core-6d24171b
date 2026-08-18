@@ -134,9 +134,20 @@ function buildMetricNormalizer(
     if (inBand) return { fn: (v) => normalizeWithBenchmark(v, benchmark), method: "domain_benchmark" };
   }
   if (scale && scale.p95 > scale.p05) {
+    // Heavy-tailed absolute quantities (GDP, population) span many orders of magnitude;
+    // linear rescaling flattens all but the largest countries to 0, so use log scaling.
+    const heavyTailed = scale.p05 > 0 && scale.p95 / scale.p05 >= 100;
+    if (heavyTailed) {
+      const lo = Math.log10(scale.p05), hi = Math.log10(scale.p95);
+      return {
+        fn: (v) => clamp100(Math.round(((Math.log10(Math.max(v, 1e-9)) - lo) / (hi - lo)) * 1000) / 10),
+        method: "empirical_log_p05_p95",
+      };
+    }
     const span = scale.p95 - scale.p05;
     return { fn: (v) => clamp100(Math.round(((v - scale.p05) / span) * 1000) / 10), method: "empirical_p05_p95" };
   }
+
   if (benchmark) return { fn: (v) => normalizeWithBenchmark(v, benchmark), method: "domain_benchmark" };
   return { fn: (v) => clamp100(v), method: "raw_clamped" };
 }
