@@ -420,11 +420,139 @@ export type Database = {
           },
         ]
       }
+      agent_evidence_citations: {
+        Row: {
+          analysis_id: string | null
+          created_at: string
+          excerpt: string | null
+          id: string
+          observed_at: string | null
+          source_kind: string
+          source_row_id: string | null
+          source_table: string | null
+          source_title: string | null
+          source_url: string | null
+          specialist: string
+          task_id: string
+          weight: number | null
+        }
+        Insert: {
+          analysis_id?: string | null
+          created_at?: string
+          excerpt?: string | null
+          id?: string
+          observed_at?: string | null
+          source_kind: string
+          source_row_id?: string | null
+          source_table?: string | null
+          source_title?: string | null
+          source_url?: string | null
+          specialist: string
+          task_id: string
+          weight?: number | null
+        }
+        Update: {
+          analysis_id?: string | null
+          created_at?: string
+          excerpt?: string | null
+          id?: string
+          observed_at?: string | null
+          source_kind?: string
+          source_row_id?: string | null
+          source_table?: string | null
+          source_title?: string | null
+          source_url?: string | null
+          specialist?: string
+          task_id?: string
+          weight?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_evidence_citations_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "agent_specialist_analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_evidence_citations_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_coordination_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_evidence_citations_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_quality"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
+      agent_outcome_scores: {
+        Row: {
+          created_at: string
+          dissent_was_right: boolean | null
+          evidence_refs: Json
+          id: string
+          notes: string | null
+          outcome_summary: string
+          scored_at: string
+          scored_by: string | null
+          synthesis_correct: boolean | null
+          task_id: string
+        }
+        Insert: {
+          created_at?: string
+          dissent_was_right?: boolean | null
+          evidence_refs?: Json
+          id?: string
+          notes?: string | null
+          outcome_summary: string
+          scored_at?: string
+          scored_by?: string | null
+          synthesis_correct?: boolean | null
+          task_id: string
+        }
+        Update: {
+          created_at?: string
+          dissent_was_right?: boolean | null
+          evidence_refs?: Json
+          id?: string
+          notes?: string | null
+          outcome_summary?: string
+          scored_at?: string
+          scored_by?: string | null
+          synthesis_correct?: boolean | null
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_outcome_scores_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_coordination_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_outcome_scores_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_quality"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
       agent_specialist_analyses: {
         Row: {
           assessment: string
+          assumptions: Json
+          claim: string | null
           confidence: number
+          counterevidence: Json
           created_at: string
+          error: string | null
           evidence_count: number
           evidence_references: Json
           id: string
@@ -435,13 +563,18 @@ export type Database = {
           prompt_hash: string | null
           provider: string | null
           specialist: string
+          status: string
           task_id: string
           uncertainty_notes: string | null
         }
         Insert: {
           assessment: string
+          assumptions?: Json
+          claim?: string | null
           confidence?: number
+          counterevidence?: Json
           created_at?: string
+          error?: string | null
           evidence_count?: number
           evidence_references?: Json
           id?: string
@@ -452,13 +585,18 @@ export type Database = {
           prompt_hash?: string | null
           provider?: string | null
           specialist: string
+          status?: string
           task_id: string
           uncertainty_notes?: string | null
         }
         Update: {
           assessment?: string
+          assumptions?: Json
+          claim?: string | null
           confidence?: number
+          counterevidence?: Json
           created_at?: string
+          error?: string | null
           evidence_count?: number
           evidence_references?: Json
           id?: string
@@ -469,6 +607,7 @@ export type Database = {
           prompt_hash?: string | null
           provider?: string | null
           specialist?: string
+          status?: string
           task_id?: string
           uncertainty_notes?: string | null
         }
@@ -492,48 +631,81 @@ export type Database = {
       agent_syntheses: {
         Row: {
           agreed_points: Json
+          confidence_lower: number | null
+          confidence_upper: number | null
           created_at: string
+          degradation_reason: string | null
+          degraded: boolean
+          disputed_points: Json
           evidence_reference_count: number
           executive_summary: string
           human_authorization_required: boolean
           id: string
+          missing_evidence: Json
           model: string | null
+          next_verification_step: string | null
           overall_confidence: number
           preserved_dissent: Json
           prompt_hash: string | null
           provider: string | null
           recommended_analysis: string | null
+          specialists_failed: number
+          specialists_succeeded: number
+          strongest_evidence: string | null
           task_id: string
+          weakest_assumption: string | null
         }
         Insert: {
           agreed_points?: Json
+          confidence_lower?: number | null
+          confidence_upper?: number | null
           created_at?: string
+          degradation_reason?: string | null
+          degraded?: boolean
+          disputed_points?: Json
           evidence_reference_count?: number
           executive_summary: string
           human_authorization_required?: boolean
           id?: string
+          missing_evidence?: Json
           model?: string | null
+          next_verification_step?: string | null
           overall_confidence?: number
           preserved_dissent?: Json
           prompt_hash?: string | null
           provider?: string | null
           recommended_analysis?: string | null
+          specialists_failed?: number
+          specialists_succeeded?: number
+          strongest_evidence?: string | null
           task_id: string
+          weakest_assumption?: string | null
         }
         Update: {
           agreed_points?: Json
+          confidence_lower?: number | null
+          confidence_upper?: number | null
           created_at?: string
+          degradation_reason?: string | null
+          degraded?: boolean
+          disputed_points?: Json
           evidence_reference_count?: number
           executive_summary?: string
           human_authorization_required?: boolean
           id?: string
+          missing_evidence?: Json
           model?: string | null
+          next_verification_step?: string | null
           overall_confidence?: number
           preserved_dissent?: Json
           prompt_hash?: string | null
           provider?: string | null
           recommended_analysis?: string | null
+          specialists_failed?: number
+          specialists_succeeded?: number
+          strongest_evidence?: string | null
           task_id?: string
+          weakest_assumption?: string | null
         }
         Relationships: [
           {
@@ -11286,6 +11458,62 @@ export type Database = {
         }
         Relationships: []
       }
+      prediction_ledger_classifications: {
+        Row: {
+          basis: Json
+          classified_at: string
+          classifier_version: string
+          earliest_outcome_at: string | null
+          evidence: string | null
+          id: string
+          ledger_id: string
+          ledger_key: string
+          predicted_at: string | null
+          prospective_status: string
+          seal_origin: string
+          sealed_at: string | null
+          validation_mode: string
+        }
+        Insert: {
+          basis?: Json
+          classified_at?: string
+          classifier_version?: string
+          earliest_outcome_at?: string | null
+          evidence?: string | null
+          id?: string
+          ledger_id: string
+          ledger_key: string
+          predicted_at?: string | null
+          prospective_status: string
+          seal_origin: string
+          sealed_at?: string | null
+          validation_mode: string
+        }
+        Update: {
+          basis?: Json
+          classified_at?: string
+          classifier_version?: string
+          earliest_outcome_at?: string | null
+          evidence?: string | null
+          id?: string
+          ledger_id?: string
+          ledger_key?: string
+          predicted_at?: string | null
+          prospective_status?: string
+          seal_origin?: string
+          sealed_at?: string | null
+          validation_mode?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prediction_ledger_classifications_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "prediction_ledger"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prediction_ledger_outcomes: {
         Row: {
           absolute_error: number
@@ -16251,17 +16479,21 @@ export type Database = {
       }
       agent_run_quality: {
         Row: {
+          citation_count: number | null
+          cited_specialists: number | null
+          confidence_span: number | null
           created_at: string | null
           disagreements: number | null
-          evidence_cited_specialists: number | null
-          quality_run: boolean | null
-          specialists: number | null
+          distinct_perspectives: number | null
+          perspective_spread: number | null
+          specialists_failed: number | null
+          specialists_ok: number | null
           status: string | null
           subject_key: string | null
+          subject_kind: string | null
           syntheses: number | null
           task_id: string | null
           task_key: string | null
-          total_evidence_refs: number | null
         }
         Relationships: []
       }
@@ -17003,6 +17235,23 @@ export type Database = {
         }
         Relationships: []
       }
+      prediction_ledger_performance_split: {
+        Row: {
+          awaiting_horizon: number | null
+          domain: string | null
+          first_prediction_at: string | null
+          last_prediction_at: string | null
+          matured: number | null
+          mean_absolute_error: number | null
+          mean_brier_score: number | null
+          model_version: string | null
+          prospective_status: string | null
+          scored_total: number | null
+          sealed_total: number | null
+          validation_mode: string | null
+        }
+        Relationships: []
+      }
       prospective_prediction_performance: {
         Row: {
           brier_score: number | null
@@ -17015,6 +17264,16 @@ export type Database = {
           prospective_predictions: number | null
           scored: number | null
           scoring_coverage_pct: number | null
+        }
+        Relationships: []
+      }
+      prospective_skill_summary: {
+        Row: {
+          matured_prospective: number | null
+          mean_brier_score: number | null
+          next_maturity_date: string | null
+          pending_prospective: number | null
+          scored_prospective: number | null
         }
         Relationships: []
       }
@@ -17948,6 +18207,10 @@ export type Database = {
         Args: { p_job: string; p_payload?: Json; p_token: string }
         Returns: boolean
       }
+      classify_prediction_ledger: {
+        Args: { p_limit?: number; p_version?: string }
+        Returns: Json
+      }
       cleanup_expired_exports: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
       cleanup_zombie_jobs: { Args: never; Returns: undefined }
@@ -18743,6 +19006,10 @@ export type Database = {
       trigger_wb_ingest: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
       verify_prediction_ledger_chain: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
+      verify_prediction_ledger_chain_full: {
         Args: { p_limit?: number }
         Returns: Json
       }
