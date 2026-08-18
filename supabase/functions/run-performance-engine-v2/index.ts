@@ -111,6 +111,37 @@ function normalizeWithBenchmark(value: number, benchmark?: { structural_floor: n
   return Math.max(0, Math.min(100, Math.round(((value - structural_floor) / (structural_ceiling - structural_floor)) * 1000) / 10));
 }
 
+interface MetricScale { metric_name: string; p05: number; p50: number; p95: number; country_count: number }
+
+const clamp100 = (v: number) => Math.max(0, Math.min(100, v));
+
+/**
+ * Scale-aware metric normalizer.
+ *
+ * Domain benchmarks assume metrics already live on a 0-100 index scale. Many real
+ * indicators do not (e.g. World Bank WGI runs -2.5..+2.5, GDP is absolute USD), which
+ * silently clamped whole domains to 0. When a metric's measured world-wide range does
+ * not sit inside the domain benchmark band, the metric is rescaled against its own
+ * empirically observed p05..p95 range (from metric_scale_reference) instead.
+ * Direction convention is unchanged: higher raw value = higher index.
+ */
+function buildMetricNormalizer(
+  benchmark?: { structural_floor: number; structural_ceiling: number },
+  scale?: MetricScale,
+): { fn: (v: number) => number; method: string } {
+  if (benchmark && scale) {
+    const inBand = scale.p05 >= benchmark.structural_floor - 1e-9 && scale.p95 <= benchmark.structural_ceiling + 1e-9;
+    if (inBand) return { fn: (v) => normalizeWithBenchmark(v, benchmark), method: "domain_benchmark" };
+  }
+  if (scale && scale.p95 > scale.p05) {
+    const span = scale.p95 - scale.p05;
+    return { fn: (v) => clamp100(Math.round(((v - scale.p05) / span) * 1000) / 10), method: "empirical_p05_p95" };
+  }
+  if (benchmark) return { fn: (v) => normalizeWithBenchmark(v, benchmark), method: "domain_benchmark" };
+  return { fn: (v) => clamp100(v), method: "raw_clamped" };
+}
+
+
 function detectPeriodicity(periods: string[]): string {
   if (periods.length < 2) return "unknown";
   if (periods.some(p => /Q[1-4]/.test(p))) return "quarterly";
