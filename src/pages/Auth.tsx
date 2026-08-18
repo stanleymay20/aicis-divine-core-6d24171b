@@ -211,12 +211,19 @@ const Auth = () => {
                     });
                   }
                   if (result.redirected) return;
-                   const { data: { user }, error } = await supabase.auth.getUser();
-                   if (error || !user) {
-                     throw error ?? new Error("Google sign-in did not create a valid session.");
-                   }
-                    sessionStorage.removeItem(NEXT_PATH_KEY);
-                    navigate(nextPath, { replace: true });
+                  // Only validate against the auth server when a session token
+                  // actually exists; calling getUser() without one sends the
+                  // publishable key and returns a misleading 403.
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session) {
+                    throw new Error("Google sign-in did not create a valid session.");
+                  }
+                  const { data: { user }, error } = await supabase.auth.getUser();
+                  if (error || !user) {
+                    throw error ?? new Error("Google sign-in did not create a valid session.");
+                  }
+                  sessionStorage.removeItem(NEXT_PATH_KEY);
+                  navigate(nextPath, { replace: true });
                 } catch (error: any) {
                   toast({
                     title: "Google Sign-In Failed",
