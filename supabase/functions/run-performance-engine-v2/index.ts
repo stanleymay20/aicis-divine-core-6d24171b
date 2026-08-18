@@ -494,7 +494,7 @@ Deno.serve(async (req) => {
         );
 
         domainResults.push(dp);
-        domainScores[domain] = dp.performanceIndex;
+        domainScores[domain] = dp.performanceIndex ?? 0;
         totalDomains++;
         if (dp.structuralBreak) breakCount++;
 
