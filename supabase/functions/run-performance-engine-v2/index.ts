@@ -344,14 +344,23 @@ function computeDomainPerformance(
   return {
     domain, performanceIndex, momentumScore, momentumTStat,
     volatilityIndex: vol.total, volatilityDownside: vol.downside, volatilityUpside: vol.upside, volatilitySkewRatio: vol.ratio,
-    riskPressureScore, forecast90d, forecast1y, forecastDirection,
-    confidenceScore: conf, forecastUpper80, forecastLower80, forecastUpper95, forecastLower95,
+    riskPressureScore,
+    // Frozen => forecasts are withheld (null), never emitted as 0.
+    forecast90d: frozen ? null : forecast90d,
+    forecast1y: frozen ? null : forecast1y,
+    forecastDirection,
+    confidenceScore: frozen ? Math.min(conf, 25) : conf,
+    forecastUpper80: frozen ? null : forecastUpper80,
+    forecastLower80: frozen ? null : forecastLower80,
+    forecastUpper95: frozen ? null : forecastUpper95,
+    forecastLower95: frozen ? null : forecastLower95,
     structuralBreak: brk.detected, structuralBreakPValue: brk.pValue,
     dataGapCount: gap.gapCount, dataStaleDays: gap.staleDays,
     normalizationMethods: Array.from(methods), scaledMetricCount,
-
+    forecastsFrozen: frozen,
   };
 }
+
 
 // ─── Main Handler ───────────────────────────────────────────────────
 
