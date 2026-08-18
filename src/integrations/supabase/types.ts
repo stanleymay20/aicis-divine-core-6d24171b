@@ -8871,6 +8871,45 @@ export type Database = {
         }
         Relationships: []
       }
+      metric_scale_reference: {
+        Row: {
+          computed_at: string
+          country_count: number
+          domain: string | null
+          max_value: number
+          metric_name: string
+          min_value: number
+          observation_count: number
+          p05: number
+          p50: number
+          p95: number
+        }
+        Insert: {
+          computed_at?: string
+          country_count: number
+          domain?: string | null
+          max_value: number
+          metric_name: string
+          min_value: number
+          observation_count: number
+          p05: number
+          p50: number
+          p95: number
+        }
+        Update: {
+          computed_at?: string
+          country_count?: number
+          domain?: string | null
+          max_value?: number
+          metric_name?: string
+          min_value?: number
+          observation_count?: number
+          p05?: number
+          p50?: number
+          p95?: number
+        }
+        Relationships: []
+      }
       metrics: {
         Row: {
           confidence: number | null
@@ -18467,6 +18506,7 @@ export type Database = {
       reconcile_canonical_clusters: { Args: never; Returns: Json }
       refresh_all_source_iq: { Args: never; Returns: number }
       refresh_graph_relationship_evidence: { Args: never; Returns: Json }
+      refresh_metric_scale_reference: { Args: never; Returns: Json }
       refresh_planetary_edge_evidence: { Args: never; Returns: Json }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
       refresh_recommendation_quality_scores: {
