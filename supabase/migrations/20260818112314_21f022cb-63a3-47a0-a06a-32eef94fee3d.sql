@@ -1,0 +1,1 @@
+SELECT public.refresh_metric_scale_reference();
