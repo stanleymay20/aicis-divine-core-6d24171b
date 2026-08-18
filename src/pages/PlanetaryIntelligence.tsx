@@ -650,6 +650,7 @@ export default function PlanetaryIntelligence() {
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-[1500px] mx-auto h-full overflow-y-auto space-y-5 animate-fade-in">
       <SEO
+        path="/planetary-intelligence"
         title="Planetary Intelligence — Evidence, Discovery & Prediction Ledger"
         description="Evidence-weighted planetary knowledge graph, weak-signal discovery, hypothesis testing and a tamper-evident prediction ledger, all measured from live production data."
       />
