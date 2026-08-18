@@ -62,6 +62,7 @@ const TrainingDataset = lazy(() => import("./pages/TrainingDataset"));
 const RiskRanking = lazy(() => import("./pages/RiskRanking"));
 const LearningLoop = lazy(() => import("./pages/LearningLoop"));
 const IntelligenceEngine = lazy(() => import("./pages/IntelligenceEngine"));
+const PlanetaryIntelligence = lazy(() => import("./pages/PlanetaryIntelligence"));
 const Simulation = lazy(() => import("./pages/Simulation"));
 const Predictions = lazy(() => import("./pages/Predictions"));
 const ApiAudit = lazy(() => import("./pages/ApiAudit"));
@@ -196,6 +197,7 @@ const App = () => (
                 <Route path="/risk-ranking" element={<Protected tier="sovereign"><RiskRanking /></Protected>} />
                 <Route path="/learning-loop" element={<Protected tier="sovereign"><LearningLoop /></Protected>} />
                 <Route path="/intelligence-engine" element={<Shell tier="sovereign"><IntelligenceEngine /></Shell>} />
+                <Route path="/planetary-intelligence" element={<Shell tier="sovereign"><PlanetaryIntelligence /></Shell>} />
                 <Route path="/simulation" element={<Protected tier="sovereign"><Simulation /></Protected>} />
                 <Route path="/predictions" element={<Protected tier="sovereign"><Predictions /></Protected>} />
                 <Route path="/api-audit" element={<Protected tier="enterprise"><ApiAudit /></Protected>} />
