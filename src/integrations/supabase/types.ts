@@ -7717,6 +7717,87 @@ export type Database = {
         }
         Relationships: []
       }
+      graph_relationship_evidence: {
+        Row: {
+          confidence: number | null
+          country_count: number | null
+          created_at: string
+          decay_half_life_days: number
+          direction: string
+          evidence_status: string
+          evidence_strength: number | null
+          id: string
+          last_measured_at: string | null
+          metadata: Json
+          method: string
+          object_key: string
+          object_kind: string
+          observed_from: string | null
+          observed_to: string | null
+          relation_type: string
+          relationship_key: string
+          sample_size: number | null
+          source_row_id: string | null
+          source_table: string
+          subject_key: string
+          subject_kind: string
+          updated_at: string
+          window_days: number | null
+        }
+        Insert: {
+          confidence?: number | null
+          country_count?: number | null
+          created_at?: string
+          decay_half_life_days?: number
+          direction?: string
+          evidence_status?: string
+          evidence_strength?: number | null
+          id?: string
+          last_measured_at?: string | null
+          metadata?: Json
+          method: string
+          object_key: string
+          object_kind: string
+          observed_from?: string | null
+          observed_to?: string | null
+          relation_type: string
+          relationship_key: string
+          sample_size?: number | null
+          source_row_id?: string | null
+          source_table: string
+          subject_key: string
+          subject_kind: string
+          updated_at?: string
+          window_days?: number | null
+        }
+        Update: {
+          confidence?: number | null
+          country_count?: number | null
+          created_at?: string
+          decay_half_life_days?: number
+          direction?: string
+          evidence_status?: string
+          evidence_strength?: number | null
+          id?: string
+          last_measured_at?: string | null
+          metadata?: Json
+          method?: string
+          object_key?: string
+          object_kind?: string
+          observed_from?: string | null
+          observed_to?: string | null
+          relation_type?: string
+          relationship_key?: string
+          sample_size?: number | null
+          source_row_id?: string | null
+          source_table?: string
+          subject_key?: string
+          subject_kind?: string
+          updated_at?: string
+          window_days?: number | null
+        }
+        Relationships: []
+      }
       health_data: {
         Row: {
           affected_count: number
@@ -15076,6 +15157,140 @@ export type Database = {
           },
         ]
       }
+      weak_signal_detections: {
+        Row: {
+          baseline_mean: number
+          baseline_sample_size: number
+          baseline_stddev: number
+          confidence: number | null
+          corroborating_domains: number
+          corroborating_sources: number
+          created_at: string
+          detected_at: string
+          detected_on: string
+          domain: string
+          evidence: Json
+          id: string
+          iso3: string
+          method: string
+          novelty_score: number | null
+          observed_value: number
+          review_verdict: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          run_id: string | null
+          signal_class: string
+          status: string
+          updated_at: string
+          window_days: number
+          z_score: number
+        }
+        Insert: {
+          baseline_mean: number
+          baseline_sample_size: number
+          baseline_stddev: number
+          confidence?: number | null
+          corroborating_domains?: number
+          corroborating_sources?: number
+          created_at?: string
+          detected_at?: string
+          detected_on?: string
+          domain: string
+          evidence?: Json
+          id?: string
+          iso3: string
+          method: string
+          novelty_score?: number | null
+          observed_value: number
+          review_verdict?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          run_id?: string | null
+          signal_class: string
+          status?: string
+          updated_at?: string
+          window_days: number
+          z_score: number
+        }
+        Update: {
+          baseline_mean?: number
+          baseline_sample_size?: number
+          baseline_stddev?: number
+          confidence?: number | null
+          corroborating_domains?: number
+          corroborating_sources?: number
+          created_at?: string
+          detected_at?: string
+          detected_on?: string
+          domain?: string
+          evidence?: Json
+          id?: string
+          iso3?: string
+          method?: string
+          novelty_score?: number | null
+          observed_value?: number
+          review_verdict?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          run_id?: string | null
+          signal_class?: string
+          status?: string
+          updated_at?: string
+          window_days?: number
+          z_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weak_signal_detections_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "weak_signal_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weak_signal_runs: {
+        Row: {
+          candidates_scanned: number
+          completed_at: string | null
+          created_at: string
+          detections_written: number
+          error: string | null
+          id: string
+          input_max_date: string | null
+          input_stale_days: number | null
+          parameters: Json
+          started_at: string
+          status: string
+        }
+        Insert: {
+          candidates_scanned?: number
+          completed_at?: string | null
+          created_at?: string
+          detections_written?: number
+          error?: string | null
+          id?: string
+          input_max_date?: string | null
+          input_stale_days?: number | null
+          parameters?: Json
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          candidates_scanned?: number
+          completed_at?: string | null
+          created_at?: string
+          detections_written?: number
+          error?: string | null
+          id?: string
+          input_max_date?: string | null
+          input_stale_days?: number | null
+          parameters?: Json
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       web_search_sweep_queries: {
         Row: {
           auto_generated: boolean
@@ -15698,6 +15913,93 @@ export type Database = {
           key_id?: string | null
           public_key?: string | null
           rotation_policy_days?: number | null
+        }
+        Relationships: []
+      }
+      graph_relationship_current: {
+        Row: {
+          confidence: number | null
+          country_count: number | null
+          created_at: string | null
+          decay_half_life_days: number | null
+          decayed_weight: number | null
+          direction: string | null
+          evidence_age_days: number | null
+          evidence_status: string | null
+          evidence_strength: number | null
+          id: string | null
+          last_measured_at: string | null
+          metadata: Json | null
+          method: string | null
+          object_key: string | null
+          object_kind: string | null
+          observed_from: string | null
+          observed_to: string | null
+          relation_type: string | null
+          relationship_key: string | null
+          sample_size: number | null
+          source_row_id: string | null
+          source_table: string | null
+          subject_key: string | null
+          subject_kind: string | null
+          updated_at: string | null
+          window_days: number | null
+        }
+        Insert: {
+          confidence?: number | null
+          country_count?: number | null
+          created_at?: string | null
+          decay_half_life_days?: number | null
+          decayed_weight?: never
+          direction?: string | null
+          evidence_age_days?: never
+          evidence_status?: string | null
+          evidence_strength?: number | null
+          id?: string | null
+          last_measured_at?: string | null
+          metadata?: Json | null
+          method?: string | null
+          object_key?: string | null
+          object_kind?: string | null
+          observed_from?: string | null
+          observed_to?: string | null
+          relation_type?: string | null
+          relationship_key?: string | null
+          sample_size?: number | null
+          source_row_id?: string | null
+          source_table?: string | null
+          subject_key?: string | null
+          subject_kind?: string | null
+          updated_at?: string | null
+          window_days?: number | null
+        }
+        Update: {
+          confidence?: number | null
+          country_count?: number | null
+          created_at?: string | null
+          decay_half_life_days?: number | null
+          decayed_weight?: never
+          direction?: string | null
+          evidence_age_days?: never
+          evidence_status?: string | null
+          evidence_strength?: number | null
+          id?: string | null
+          last_measured_at?: string | null
+          metadata?: Json | null
+          method?: string | null
+          object_key?: string | null
+          object_kind?: string | null
+          observed_from?: string | null
+          observed_to?: string | null
+          relation_type?: string | null
+          relationship_key?: string | null
+          sample_size?: number | null
+          source_row_id?: string | null
+          source_table?: string | null
+          subject_key?: string | null
+          subject_kind?: string | null
+          updated_at?: string | null
+          window_days?: number | null
         }
         Relationships: []
       }
@@ -17095,6 +17397,16 @@ export type Database = {
         Args: { _iso3: string; _max_hours?: number }
         Returns: boolean
       }
+      detect_weak_signals: {
+        Args: {
+          p_anomaly_z?: number
+          p_baseline_days?: number
+          p_min_baseline_n?: number
+          p_weak_z?: number
+          p_window_days?: number
+        }
+        Returns: Json
+      }
       drive_planetary_causal_engine: {
         Args: { p_limit?: number }
         Returns: Json
@@ -17526,6 +17838,7 @@ export type Database = {
       recompute_pipeline_health_statuses: { Args: never; Returns: number }
       reconcile_canonical_clusters: { Args: never; Returns: Json }
       refresh_all_source_iq: { Args: never; Returns: number }
+      refresh_graph_relationship_evidence: { Args: never; Returns: Json }
       refresh_planetary_edge_evidence: { Args: never; Returns: Json }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
       refresh_recommendation_quality_scores: {
