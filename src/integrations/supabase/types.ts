@@ -7888,6 +7888,74 @@ export type Database = {
         }
         Relationships: []
       }
+      hypothesis_evaluations: {
+        Row: {
+          ci_lower: number | null
+          ci_upper: number | null
+          country_count: number
+          created_at: string
+          effect_size: number | null
+          evaluated_at: string
+          evidence: Json
+          fisher_z: number | null
+          hypothesis_id: string
+          id: string
+          input_max_date: string | null
+          input_stale_days: number | null
+          method: string
+          p_value: number | null
+          result_hash: string
+          sample_size: number
+          verdict: string
+        }
+        Insert: {
+          ci_lower?: number | null
+          ci_upper?: number | null
+          country_count: number
+          created_at?: string
+          effect_size?: number | null
+          evaluated_at?: string
+          evidence?: Json
+          fisher_z?: number | null
+          hypothesis_id: string
+          id?: string
+          input_max_date?: string | null
+          input_stale_days?: number | null
+          method: string
+          p_value?: number | null
+          result_hash: string
+          sample_size: number
+          verdict: string
+        }
+        Update: {
+          ci_lower?: number | null
+          ci_upper?: number | null
+          country_count?: number
+          created_at?: string
+          effect_size?: number | null
+          evaluated_at?: string
+          evidence?: Json
+          fisher_z?: number | null
+          hypothesis_id?: string
+          id?: string
+          input_max_date?: string | null
+          input_stale_days?: number | null
+          method?: string
+          p_value?: number | null
+          result_hash?: string
+          sample_size?: number
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_evaluations_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_hypotheses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ingestion_errors: {
         Row: {
           created_at: string
@@ -8032,6 +8100,66 @@ export type Database = {
             referencedColumns: ["publisher_key"]
           },
         ]
+      }
+      intelligence_hypotheses: {
+        Row: {
+          alpha: number
+          created_at: string
+          created_by: string | null
+          hypothesis_key: string
+          id: string
+          lag_days: number
+          method: string
+          min_effect_size: number
+          min_sample_size: number
+          object_domain: string
+          rationale: string | null
+          scope: string
+          scope_iso3: string | null
+          statement: string
+          status: string
+          subject_domain: string
+          updated_at: string
+        }
+        Insert: {
+          alpha?: number
+          created_at?: string
+          created_by?: string | null
+          hypothesis_key: string
+          id?: string
+          lag_days?: number
+          method?: string
+          min_effect_size?: number
+          min_sample_size?: number
+          object_domain: string
+          rationale?: string | null
+          scope?: string
+          scope_iso3?: string | null
+          statement: string
+          status?: string
+          subject_domain: string
+          updated_at?: string
+        }
+        Update: {
+          alpha?: number
+          created_at?: string
+          created_by?: string | null
+          hypothesis_key?: string
+          id?: string
+          lag_days?: number
+          method?: string
+          min_effect_size?: number
+          min_sample_size?: number
+          object_domain?: string
+          rationale?: string | null
+          scope?: string
+          scope_iso3?: string | null
+          statement?: string
+          status?: string
+          subject_domain?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       intelligence_index: {
         Row: {
@@ -10773,6 +10901,131 @@ export type Database = {
           risk_score?: number
         }
         Relationships: []
+      }
+      prediction_ledger: {
+        Row: {
+          chain_hash: string
+          domain: string | null
+          features: Json
+          horizon_days: number
+          id: string
+          interval_lower: number | null
+          interval_upper: number | null
+          ledger_key: string
+          method: string
+          model_version: string
+          payload_hash: string
+          predicted_at: string
+          predicted_probability: number
+          previous_hash: string
+          sealed_at: string
+          sequence_number: number
+          source_row_id: string | null
+          source_table: string
+          status: string
+          subject_key: string
+          subject_kind: string
+          target_date: string
+        }
+        Insert: {
+          chain_hash: string
+          domain?: string | null
+          features?: Json
+          horizon_days: number
+          id?: string
+          interval_lower?: number | null
+          interval_upper?: number | null
+          ledger_key: string
+          method: string
+          model_version: string
+          payload_hash: string
+          predicted_at: string
+          predicted_probability: number
+          previous_hash: string
+          sealed_at?: string
+          sequence_number?: number
+          source_row_id?: string | null
+          source_table: string
+          status?: string
+          subject_key: string
+          subject_kind?: string
+          target_date: string
+        }
+        Update: {
+          chain_hash?: string
+          domain?: string | null
+          features?: Json
+          horizon_days?: number
+          id?: string
+          interval_lower?: number | null
+          interval_upper?: number | null
+          ledger_key?: string
+          method?: string
+          model_version?: string
+          payload_hash?: string
+          predicted_at?: string
+          predicted_probability?: number
+          previous_hash?: string
+          sealed_at?: string
+          sequence_number?: number
+          source_row_id?: string | null
+          source_table?: string
+          status?: string
+          subject_key?: string
+          subject_kind?: string
+          target_date?: string
+        }
+        Relationships: []
+      }
+      prediction_ledger_outcomes: {
+        Row: {
+          absolute_error: number
+          actual_label: number
+          brier_score: number
+          created_at: string
+          id: string
+          ledger_id: string
+          observed_value: number | null
+          outcome_evidence: Json
+          outcome_hash: string
+          outcome_source: string
+          realized_at: string
+        }
+        Insert: {
+          absolute_error: number
+          actual_label: number
+          brier_score: number
+          created_at?: string
+          id?: string
+          ledger_id: string
+          observed_value?: number | null
+          outcome_evidence?: Json
+          outcome_hash: string
+          outcome_source: string
+          realized_at?: string
+        }
+        Update: {
+          absolute_error?: number
+          actual_label?: number
+          brier_score?: number
+          created_at?: string
+          id?: string
+          ledger_id?: string
+          observed_value?: number | null
+          outcome_evidence?: Json
+          outcome_hash?: string
+          outcome_source?: string
+          realized_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prediction_ledger_outcomes_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: true
+            referencedRelation: "prediction_ledger"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       predictions: {
         Row: {
@@ -16392,6 +16645,24 @@ export type Database = {
         }
         Relationships: []
       }
+      prediction_ledger_performance: {
+        Row: {
+          domain: string | null
+          expired_unscored: number | null
+          first_prediction_at: string | null
+          last_prediction_at: string | null
+          mean_absolute_error: number | null
+          mean_brier_score: number | null
+          mean_observed: number | null
+          mean_predicted: number | null
+          model_version: string | null
+          open_awaiting_horizon: number | null
+          scored_pct: number | null
+          scored_total: number | null
+          sealed_total: number | null
+        }
+        Relationships: []
+      }
       quantivis_country_dashboard: {
         Row: {
           avg_freshness: number | null
@@ -17426,9 +17697,14 @@ export type Database = {
       ensure_admin_region_demographics: { Args: never; Returns: Json }
       ensure_country_profiles_from_normalized: { Args: never; Returns: number }
       ensure_l0_reporting_anchors: { Args: never; Returns: number }
+      evaluate_all_hypotheses: { Args: never; Returns: Json }
       evaluate_auto_block: { Args: never; Returns: Json }
       evaluate_forecast_readiness: {
         Args: { _mae_threshold?: number }
+        Returns: Json
+      }
+      evaluate_hypothesis: {
+        Args: { p_history_days?: number; p_hypothesis_id: string }
         Returns: Json
       }
       expire_stale_risk_actions: {
@@ -17765,6 +18041,7 @@ export type Database = {
         }
         Returns: Json
       }
+      normal_two_sided_p: { Args: { z: number }; Returns: number }
       normalize_tier: { Args: { _raw: string }; Returns: string }
       phase_b_backchain_ledger: {
         Args: { p_batch?: number; p_source_table: string }
@@ -17822,6 +18099,7 @@ export type Database = {
           run_id: string
         }[]
       }
+      realize_prediction_ledger: { Args: { p_limit?: number }; Returns: Json }
       realize_risk_predictions: {
         Args: { p_horizon_days?: number }
         Returns: {
@@ -17933,6 +18211,10 @@ export type Database = {
           volatility_score: number
           zscore_recent: number
         }[]
+      }
+      seal_predictions_into_ledger: {
+        Args: { p_limit?: number }
+        Returns: Json
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
@@ -18056,6 +18338,10 @@ export type Database = {
       trigger_village_unify: { Args: never; Returns: undefined }
       trigger_wb_ingest: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
+      verify_prediction_ledger_chain: {
+        Args: { p_limit?: number }
+        Returns: Json
+      }
       wilson_interval: {
         Args: { p_successes: number; p_total: number; p_z?: number }
         Returns: Json
