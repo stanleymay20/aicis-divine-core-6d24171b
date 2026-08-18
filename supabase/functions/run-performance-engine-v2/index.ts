@@ -394,16 +394,26 @@ Deno.serve(async (req) => {
     if (profErr) throw new Error(`Failed to load profiles: ${profErr.message}`);
     const validProfiles = (profiles || []).filter((p: any) => p.iso3 && p.country_name && p.kpis);
 
-    // 3. Load benchmarks, weights, coupling
-    const [benchRes, weightRes, couplingRes, historyRes] = await Promise.all([
+    // 3. Load benchmarks, weights, coupling, metric scale reference
+    const [benchRes, weightRes, couplingRes, historyRes, scaleRes] = await Promise.all([
       supabase.from("global_domain_benchmarks").select("*"),
       supabase.from("domain_weights").select("domain, weight").eq("model_version", MODEL_VERSION),
       supabase.from("domain_coupling_matrix").select("*").eq("model_version", MODEL_VERSION),
       supabase.from("country_performance_snapshots").select("domain, performance_index").order("created_at", { ascending: false }).limit(200),
+      supabase.from("metric_scale_reference").select("metric_name, p05, p50, p95, country_count"),
     ]);
 
     const benchmarks: Record<string, Benchmark> = {};
     for (const b of benchRes.data || []) benchmarks[b.domain] = b;
+
+    const metricScales: Record<string, MetricScale> = {};
+    for (const s of scaleRes.data || []) {
+      metricScales[s.metric_name] = {
+        metric_name: s.metric_name, p05: Number(s.p05), p50: Number(s.p50),
+        p95: Number(s.p95), country_count: Number(s.country_count),
+      };
+    }
+
 
     const weights: Record<string, number> = {};
     for (const w of weightRes.data || []) weights[w.domain] = Number(w.weight);
