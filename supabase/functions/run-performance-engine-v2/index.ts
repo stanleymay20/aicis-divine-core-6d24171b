@@ -299,7 +299,7 @@ function computeDomainPerformance(
   const normalized: MetricEntry[] = metrics.map((m) => {
     const { fn, method } = buildMetricNormalizer(benchmark, scales[m.metric]);
     methods.add(method);
-    if (method === "empirical_p05_p95") scaledMetricCount++;
+    if (method.startsWith("empirical_")) scaledMetricCount++;
     return { ...m, value: fn(m.value) };
   });
 
