@@ -27,72 +27,61 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let mounted = true;
 
-    const applyValidatedUser = async (nextSession: Session | null) => {
-      if (!nextSession) {
-        if (!mounted) return;
-        setSession(null);
-        setUser(null);
-        setUnavailable(false);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        if (!mounted) return;
-
-        if (error || !data.user) {
-          // Only remove a definitively rejected token. A network outage must
-          // not destroy a valid refresh token or create a redirect loop.
-          if (!isNetworkError(error)) {
-            await supabase.auth.signOut({ scope: "local" });
-          }
-          if (!mounted) return;
-          setSession(null);
-          setUser(null);
-          setUnavailable(isNetworkError(error));
-          setLoading(false);
-          return;
-        }
-
-        setSession(nextSession);
-        setUser(data.user);
-        setUnavailable(false);
-        setLoading(false);
-      } catch (error) {
-        if (!mounted) return;
-        setSession(null);
-        setUser(null);
-        setUnavailable(isNetworkError(error));
-        setLoading(false);
-      }
+    // Apply session state synchronously. Never await another auth method here:
+    // the Supabase client holds an internal lock during sign-in, so calling
+    // getUser()/getSession() from inside the callback can deadlock and leave
+    // the UI stuck on "Processing...".
+    const applySession = (nextSession: Session | null) => {
+      if (!mounted) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      setUnavailable(false);
+      setLoading(false);
     };
 
-    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (!mounted) return;
-        // Defer network validation until after the auth callback completes;
-        // awaiting another auth method inside this callback can deadlock.
-        window.setTimeout(() => void applyValidatedUser(session), 0);
+      (_event, nextSession) => {
+        applySession(nextSession);
       }
     );
 
-    // THEN check for an existing session and validate it with the auth server.
     void supabase.auth.getSession()
-      .then(({ data: { session } }) => applyValidatedUser(session))
+      .then(({ data: { session: existing } }) => applySession(existing))
       .catch((error) => {
         if (!mounted) return;
         setUnavailable(isNetworkError(error));
         setLoading(false);
       });
 
-    // Refresh token on tab visibility change to prevent stale sessions
+    // Background validation (outside the auth callback) — clears definitively
+    // rejected tokens without blocking navigation into the app.
+    const validate = () => {
+      void supabase.auth.getUser()
+        .then(async ({ data, error }) => {
+          if (!mounted || !error) return;
+          if (isNetworkError(error)) {
+            setUnavailable(true);
+            return;
+          }
+          if (!data?.user) {
+            await supabase.auth.signOut({ scope: "local" });
+            if (!mounted) return;
+            setSession(null);
+            setUser(null);
+          }
+        })
+        .catch(() => {
+          if (mounted) setUnavailable(true);
+        });
+    };
+
+    const validateTimer = window.setTimeout(validate, 1200);
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         void supabase.auth.getSession()
-          .then(({ data: { session } }) => {
-            if (mounted && session) void applyValidatedUser(session);
+          .then(({ data: { session: current } }) => {
+            if (mounted && current) applySession(current);
           })
           .catch(() => {
             if (mounted) setUnavailable(true);
@@ -103,6 +92,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return () => {
       mounted = false;
+      window.clearTimeout(validateTimer);
       subscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
