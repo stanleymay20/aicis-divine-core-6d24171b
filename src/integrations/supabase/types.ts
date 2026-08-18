@@ -309,6 +309,249 @@ export type Database = {
           },
         ]
       }
+      agent_coordination_tasks: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          domains: string[]
+          error: string | null
+          evidence_window_days: number
+          id: string
+          model: string | null
+          provider: string | null
+          question: string
+          requested_by: string | null
+          started_at: string | null
+          status: string
+          subject_key: string | null
+          subject_kind: string
+          task_key: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          domains?: string[]
+          error?: string | null
+          evidence_window_days?: number
+          id?: string
+          model?: string | null
+          provider?: string | null
+          question: string
+          requested_by?: string | null
+          started_at?: string | null
+          status?: string
+          subject_key?: string | null
+          subject_kind?: string
+          task_key: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          domains?: string[]
+          error?: string | null
+          evidence_window_days?: number
+          id?: string
+          model?: string | null
+          provider?: string | null
+          question?: string
+          requested_by?: string | null
+          started_at?: string | null
+          status?: string
+          subject_key?: string | null
+          subject_kind?: string
+          task_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      agent_disagreements: {
+        Row: {
+          created_at: string
+          divergence: number | null
+          id: string
+          position_a: string
+          position_b: string
+          resolution: string | null
+          specialist_a: string
+          specialist_b: string
+          task_id: string
+          topic: string
+        }
+        Insert: {
+          created_at?: string
+          divergence?: number | null
+          id?: string
+          position_a: string
+          position_b: string
+          resolution?: string | null
+          specialist_a: string
+          specialist_b: string
+          task_id: string
+          topic: string
+        }
+        Update: {
+          created_at?: string
+          divergence?: number | null
+          id?: string
+          position_a?: string
+          position_b?: string
+          resolution?: string | null
+          specialist_a?: string
+          specialist_b?: string
+          task_id?: string
+          topic?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_disagreements_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_coordination_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_disagreements_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_quality"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
+      agent_specialist_analyses: {
+        Row: {
+          assessment: string
+          confidence: number
+          created_at: string
+          evidence_count: number
+          evidence_references: Json
+          id: string
+          key_findings: Json
+          latency_ms: number | null
+          model: string | null
+          model_version: string | null
+          prompt_hash: string | null
+          provider: string | null
+          specialist: string
+          task_id: string
+          uncertainty_notes: string | null
+        }
+        Insert: {
+          assessment: string
+          confidence?: number
+          created_at?: string
+          evidence_count?: number
+          evidence_references?: Json
+          id?: string
+          key_findings?: Json
+          latency_ms?: number | null
+          model?: string | null
+          model_version?: string | null
+          prompt_hash?: string | null
+          provider?: string | null
+          specialist: string
+          task_id: string
+          uncertainty_notes?: string | null
+        }
+        Update: {
+          assessment?: string
+          confidence?: number
+          created_at?: string
+          evidence_count?: number
+          evidence_references?: Json
+          id?: string
+          key_findings?: Json
+          latency_ms?: number | null
+          model?: string | null
+          model_version?: string | null
+          prompt_hash?: string | null
+          provider?: string | null
+          specialist?: string
+          task_id?: string
+          uncertainty_notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_specialist_analyses_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_coordination_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_specialist_analyses_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_run_quality"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
+      agent_syntheses: {
+        Row: {
+          agreed_points: Json
+          created_at: string
+          evidence_reference_count: number
+          executive_summary: string
+          human_authorization_required: boolean
+          id: string
+          model: string | null
+          overall_confidence: number
+          preserved_dissent: Json
+          prompt_hash: string | null
+          provider: string | null
+          recommended_analysis: string | null
+          task_id: string
+        }
+        Insert: {
+          agreed_points?: Json
+          created_at?: string
+          evidence_reference_count?: number
+          executive_summary: string
+          human_authorization_required?: boolean
+          id?: string
+          model?: string | null
+          overall_confidence?: number
+          preserved_dissent?: Json
+          prompt_hash?: string | null
+          provider?: string | null
+          recommended_analysis?: string | null
+          task_id: string
+        }
+        Update: {
+          agreed_points?: Json
+          created_at?: string
+          evidence_reference_count?: number
+          executive_summary?: string
+          human_authorization_required?: boolean
+          id?: string
+          model?: string | null
+          overall_confidence?: number
+          preserved_dissent?: Json
+          prompt_hash?: string | null
+          provider?: string | null
+          recommended_analysis?: string | null
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_syntheses_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: true
+            referencedRelation: "agent_coordination_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_syntheses_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: true
+            referencedRelation: "agent_run_quality"
+            referencedColumns: ["task_id"]
+          },
+        ]
+      }
       ai_chat_messages: {
         Row: {
           content: string
@@ -10905,8 +11148,10 @@ export type Database = {
       prediction_ledger: {
         Row: {
           chain_hash: string
+          correction_reason: string | null
           domain: string | null
           features: Json
+          hash_version: string
           horizon_days: number
           id: string
           interval_lower: number | null
@@ -10914,10 +11159,15 @@ export type Database = {
           ledger_key: string
           method: string
           model_version: string
+          outcome_knowable_at: string | null
+          outcome_observed_at: string | null
+          payload_canonical: Json | null
           payload_hash: string
           predicted_at: string
           predicted_probability: number
           previous_hash: string
+          prospective_eligible: boolean
+          seal_mode: string
           sealed_at: string
           sequence_number: number
           source_row_id: string | null
@@ -10925,12 +11175,16 @@ export type Database = {
           status: string
           subject_key: string
           subject_kind: string
+          superseded_by_ledger_id: string | null
+          supersedes_ledger_id: string | null
           target_date: string
         }
         Insert: {
           chain_hash: string
+          correction_reason?: string | null
           domain?: string | null
           features?: Json
+          hash_version?: string
           horizon_days: number
           id?: string
           interval_lower?: number | null
@@ -10938,10 +11192,15 @@ export type Database = {
           ledger_key: string
           method: string
           model_version: string
+          outcome_knowable_at?: string | null
+          outcome_observed_at?: string | null
+          payload_canonical?: Json | null
           payload_hash: string
           predicted_at: string
           predicted_probability: number
           previous_hash: string
+          prospective_eligible?: boolean
+          seal_mode?: string
           sealed_at?: string
           sequence_number?: number
           source_row_id?: string | null
@@ -10949,12 +11208,16 @@ export type Database = {
           status?: string
           subject_key: string
           subject_kind?: string
+          superseded_by_ledger_id?: string | null
+          supersedes_ledger_id?: string | null
           target_date: string
         }
         Update: {
           chain_hash?: string
+          correction_reason?: string | null
           domain?: string | null
           features?: Json
+          hash_version?: string
           horizon_days?: number
           id?: string
           interval_lower?: number | null
@@ -10962,10 +11225,15 @@ export type Database = {
           ledger_key?: string
           method?: string
           model_version?: string
+          outcome_knowable_at?: string | null
+          outcome_observed_at?: string | null
+          payload_canonical?: Json | null
           payload_hash?: string
           predicted_at?: string
           predicted_probability?: number
           previous_hash?: string
+          prospective_eligible?: boolean
+          seal_mode?: string
           sealed_at?: string
           sequence_number?: number
           source_row_id?: string | null
@@ -10973,6 +11241,8 @@ export type Database = {
           status?: string
           subject_key?: string
           subject_kind?: string
+          superseded_by_ledger_id?: string | null
+          supersedes_ledger_id?: string | null
           target_date?: string
         }
         Relationships: []
@@ -15417,7 +15687,9 @@ export type Database = {
           baseline_stddev: number
           confidence: number | null
           corroborating_domains: number
+          corroborating_evidence: Json
           corroborating_sources: number
+          corroboration_quality: string
           created_at: string
           detected_at: string
           detected_on: string
@@ -15428,6 +15700,9 @@ export type Database = {
           method: string
           novelty_score: number | null
           observed_value: number
+          realized_at: string | null
+          realized_outcome: string | null
+          review_notes: string | null
           review_verdict: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -15444,7 +15719,9 @@ export type Database = {
           baseline_stddev: number
           confidence?: number | null
           corroborating_domains?: number
+          corroborating_evidence?: Json
           corroborating_sources?: number
+          corroboration_quality?: string
           created_at?: string
           detected_at?: string
           detected_on?: string
@@ -15455,6 +15732,9 @@ export type Database = {
           method: string
           novelty_score?: number | null
           observed_value: number
+          realized_at?: string | null
+          realized_outcome?: string | null
+          review_notes?: string | null
           review_verdict?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -15471,7 +15751,9 @@ export type Database = {
           baseline_stddev?: number
           confidence?: number | null
           corroborating_domains?: number
+          corroborating_evidence?: Json
           corroborating_sources?: number
+          corroboration_quality?: string
           created_at?: string
           detected_at?: string
           detected_on?: string
@@ -15482,6 +15764,9 @@ export type Database = {
           method?: string
           novelty_score?: number | null
           observed_value?: number
+          realized_at?: string | null
+          realized_outcome?: string | null
+          review_notes?: string | null
           review_verdict?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -15922,6 +16207,22 @@ export type Database = {
           sample_size: number | null
           success_count: number | null
           success_rate_pct: number | null
+        }
+        Relationships: []
+      }
+      agent_run_quality: {
+        Row: {
+          created_at: string | null
+          disagreements: number | null
+          evidence_cited_specialists: number | null
+          quality_run: boolean | null
+          specialists: number | null
+          status: string | null
+          subject_key: string | null
+          syntheses: number | null
+          task_id: string | null
+          task_key: string | null
+          total_evidence_refs: number | null
         }
         Relationships: []
       }
@@ -16660,6 +16961,21 @@ export type Database = {
           scored_pct: number | null
           scored_total: number | null
           sealed_total: number | null
+        }
+        Relationships: []
+      }
+      prospective_prediction_performance: {
+        Row: {
+          brier_score: number | null
+          calibration_gap: number | null
+          domain: string | null
+          due: number | null
+          mean_observed: number | null
+          mean_predicted: number | null
+          model_version: string | null
+          prospective_predictions: number | null
+          scored: number | null
+          scoring_coverage_pct: number | null
         }
         Relationships: []
       }
@@ -17470,6 +17786,18 @@ export type Database = {
           },
         ]
       }
+      weak_signal_quality: {
+        Row: {
+          detections: number | null
+          domain_corroborated: number | null
+          false_positives: number | null
+          precision_pct: number | null
+          quality_status: string | null
+          reviewed: number | null
+          true_positives: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       aggregate_country_snapshots: {
@@ -18085,6 +18413,28 @@ export type Database = {
         Args: { p_domain: string }
         Returns: string
       }
+      prediction_ledger_canonical_payload: {
+        Args: {
+          p_domain: string
+          p_features: Json
+          p_hi: number
+          p_horizon_days: number
+          p_lo: number
+          p_method: string
+          p_model_version: string
+          p_outcome_knowable_at: string
+          p_predicted_at: string
+          p_probability: number
+          p_seal_mode: string
+          p_sealed_at: string
+          p_source_row_id: string
+          p_source_table: string
+          p_subject_key: string
+          p_subject_kind: string
+          p_target_date: string
+        }
+        Returns: Json
+      }
       prospective_accumulation_monitor: { Args: never; Returns: Json }
       prospective_coverage_gaps: { Args: never; Returns: Json }
       prospective_domain_breakdown: { Args: never; Returns: Json }
@@ -18165,6 +18515,10 @@ export type Database = {
           tier: string
         }[]
       }
+      review_weak_signal: {
+        Args: { p_detection_id: string; p_notes?: string; p_verdict: string }
+        Returns: Json
+      }
       rollup_community_to_urban: { Args: never; Returns: number }
       rollup_country_to_regional: { Args: never; Returns: number }
       rollup_provider_runs: {
@@ -18244,6 +18598,16 @@ export type Database = {
       start_controlled_pilot_run: {
         Args: { p_action_ids: string[]; p_notes?: string }
         Returns: string
+      }
+      supersede_prediction_ledger_entry: {
+        Args: {
+          p_ledger_id: string
+          p_new_hi?: number
+          p_new_lo?: number
+          p_new_probability?: number
+          p_reason: string
+        }
+        Returns: Json
       }
       timeout_zombie_jobs: { Args: never; Returns: Json }
       training_dataset_missing_days: {
