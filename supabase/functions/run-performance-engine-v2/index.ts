@@ -542,15 +542,19 @@ Deno.serve(async (req) => {
       if (domainResults.length === 0) continue;
 
       // National performance aggregation
-      let tw = 0, wp = 0, wm = 0, wv = 0, wr = 0, wf90 = 0, wf1y = 0, wc = 0;
+      let tw = 0, wp = 0, wm = 0, wv = 0, wr = 0, wf90 = 0, wf1y = 0, wc = 0, forecastWeight = 0;
       for (const dp of domainResults) {
         const w = weights[dp.domain] || 0.05;
-        tw += w; wp += dp.performanceIndex * w; wm += dp.momentumScore * w;
-        wv += dp.volatilityIndex * w; wr += dp.riskPressureScore * w;
-        wf90 += dp.forecast90d * w; wf1y += dp.forecast1y * w; wc += dp.confidenceScore * w;
+        tw += w; wp += (dp.performanceIndex ?? 0) * w; wm += dp.momentumScore * w;
+        wv += dp.volatilityIndex * w; wr += (dp.riskPressureScore ?? 0) * w;
+        wc += dp.confidenceScore * w;
+        if (dp.forecast90d !== null && dp.forecast1y !== null) {
+          wf90 += dp.forecast90d * w; wf1y += dp.forecast1y * w; forecastWeight += w;
+        }
       }
       const n = tw || 1;
       const overallIndex = Math.round(wp / n);
+
       const momentum = Math.round((wm / n) * 10) / 10;
       const volatility = Math.round(wv / n);
       const fragility = computeSystemicFragilityV2(domainScores, couplingMatrix);
