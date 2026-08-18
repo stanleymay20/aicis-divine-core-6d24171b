@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.compute_pns_certification() TO postgres;

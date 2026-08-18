@@ -44,28 +44,32 @@ serve(async (req) => {
       
       const minutesSinceSync = timeSinceSync / (1000 * 60);
 
-      // Determine status based on data freshness
+      // Deterministic freshness-derived health. Previously these scores carried a
+      // Math.random() component, which made an operational KPI partly fabricated.
+      // Performance is now a pure, reproducible function of measured data freshness.
       if (minutesSinceSync < 60) {
         status = 'operational';
         uptime = 99.9;
-        performance = 95 + Math.random() * 5;
+        performance = 100 - (minutesSinceSync / 60) * 5;          // 100 -> 95
         apiConnected = true;
       } else if (minutesSinceSync < 360) {
         status = 'operational';
         uptime = 99.5;
-        performance = 85 + Math.random() * 10;
+        performance = 95 - ((minutesSinceSync - 60) / 300) * 10;  // 95 -> 85
         apiConnected = true;
       } else if (minutesSinceSync < 1440) {
         status = 'degraded';
         uptime = 95.0;
-        performance = 70 + Math.random() * 15;
+        performance = 85 - ((minutesSinceSync - 360) / 1080) * 15; // 85 -> 70
         apiConnected = false;
       } else {
         status = 'offline';
         uptime = 80.0;
-        performance = 50 + Math.random() * 20;
+        performance = Math.max(30, 70 - ((minutesSinceSync - 1440) / 1440) * 20);
         apiConnected = false;
       }
+      performance = Math.round(performance * 100) / 100;
+
 
       // Check division-specific metrics for additional adjustments
       if (divisionKey === 'crisis') {
