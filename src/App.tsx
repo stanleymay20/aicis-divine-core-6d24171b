@@ -62,6 +62,7 @@ const TrainingDataset = lazy(() => import("./pages/TrainingDataset"));
 const RiskRanking = lazy(() => import("./pages/RiskRanking"));
 const LearningLoop = lazy(() => import("./pages/LearningLoop"));
 const IntelligenceEngine = lazy(() => import("./pages/IntelligenceEngine"));
+const PlanetaryIntelligence = lazy(() => import("./pages/PlanetaryIntelligence"));
 const Simulation = lazy(() => import("./pages/Simulation"));
 const Predictions = lazy(() => import("./pages/Predictions"));
 const ApiAudit = lazy(() => import("./pages/ApiAudit"));
