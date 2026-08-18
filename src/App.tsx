@@ -197,6 +197,7 @@ const App = () => (
                 <Route path="/risk-ranking" element={<Protected tier="sovereign"><RiskRanking /></Protected>} />
                 <Route path="/learning-loop" element={<Protected tier="sovereign"><LearningLoop /></Protected>} />
                 <Route path="/intelligence-engine" element={<Shell tier="sovereign"><IntelligenceEngine /></Shell>} />
+                <Route path="/planetary-intelligence" element={<Shell tier="sovereign"><PlanetaryIntelligence /></Shell>} />
                 <Route path="/simulation" element={<Protected tier="sovereign"><Simulation /></Protected>} />
                 <Route path="/predictions" element={<Protected tier="sovereign"><Predictions /></Protected>} />
                 <Route path="/api-audit" element={<Protected tier="enterprise"><ApiAudit /></Protected>} />
