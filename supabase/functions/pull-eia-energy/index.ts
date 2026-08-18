@@ -47,21 +47,22 @@ serve(async (req) => {
         if (data.response && data.response.data && data.response.data.length > 0) {
           const latest = data.response.data[0];
           
-          // Calculate metrics
+          // Only values actually reported by EIA are persisted.
+          // stability_index / renewable_percentage were previously randomised —
+          // synthetic operational data — and are now left NULL until a real
+          // provider series backs them.
           const gridLoad = parseFloat(latest.value) || 0;
-          const capacity = gridLoad * 1.3; // Estimate capacity as 30% above current load
-          const stabilityIndex = 85 + Math.random() * 10; // 85-95 range
-          const renewablePercentage = 25 + Math.random() * 25; // 25-50% range
 
           records.push({
             region: region.name,
             grid_load: gridLoad,
-            capacity: capacity,
-            stability_index: stabilityIndex,
-            renewable_percentage: renewablePercentage,
-            outage_risk: stabilityIndex > 90 ? 'stable' : stabilityIndex > 80 ? 'warning' : 'critical',
+            capacity: null,
+            stability_index: null,
+            renewable_percentage: null,
+            outage_risk: 'unknown',
             updated_at: new Date().toISOString()
           });
+
         }
 
         // Respect API rate limits

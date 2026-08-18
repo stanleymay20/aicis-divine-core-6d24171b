@@ -38,11 +38,41 @@ serve(async (req) => {
 
     let synced = 0;
 
+    let unreachable = 0;
+    let unconfigured = 0;
+
     for (const partner of partners || []) {
       try {
-        // Simulate oracle sync (in production, fetch from partner.api_endpoint)
-        const trustDelta = (Math.random() - 0.5) * 5; // -2.5 to +2.5
-        const newTrust = Math.max(0, Math.min(100, Number(partner.trust_score) + trustDelta));
+        const endpoint: string | null = partner.api_endpoint ?? null;
+
+        // Previously this applied a random trust delta — fabricated operational data.
+        // Trust now moves only on a real reachability measurement of the partner endpoint.
+        if (!endpoint) {
+          unconfigured++;
+          await supabase
+            .from("partner_oracles")
+            .update({ last_checked: new Date().toISOString() })
+            .eq("id", partner.id);
+          continue;
+        }
+
+        let ok = false;
+        try {
+          const res = await fetch(endpoint, {
+            method: "GET",
+            signal: AbortSignal.timeout(8000),
+          });
+          ok = res.ok;
+          await res.body?.cancel().catch(() => {});
+        } catch {
+          ok = false;
+        }
+
+        const current = Number(partner.trust_score) || 0;
+        const newTrust = ok
+          ? Math.min(100, current + 1)
+          : Math.max(0, current - 5);
+        if (!ok) unreachable++;
 
         await supabase
           .from("partner_oracles")
@@ -58,16 +88,18 @@ serve(async (req) => {
       }
     }
 
+
     await supabase.from("system_logs").insert({
       division: "governance",
       action: "gov_sync_partners",
       user_id: user.id,
       log_level: "info",
-      result: `Synced ${synced} partner oracles`,
+      result: `Probed ${synced} partner oracles (${unreachable} unreachable, ${unconfigured} without endpoint)`,
     });
 
     return new Response(
-      JSON.stringify({ ok: true, synced }),
+      JSON.stringify({ ok: true, synced, unreachable, unconfigured }),
+
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {

@@ -102,26 +102,13 @@ serve(async (req) => {
       structuredLog('warn', FN, `NASA POWER: ${(e as Error).message}`);
     });
 
-    // FAO data (static reference - FAO API requires auth)
-    await resilientCall(`${FN}:fao`, async () => {
-      const crops = [
-        { country: 'India', iso: 'IND', crop: 'rice', yield: 4.2 + (Math.random() * 0.3 - 0.15) },
-        { country: 'China', iso: 'CHN', crop: 'wheat', yield: 5.6 + (Math.random() * 0.4 - 0.2) },
-        { country: 'Brazil', iso: 'BRA', crop: 'soybean', yield: 3.4 + (Math.random() * 0.2 - 0.1) }
-      ];
-      const faoRecords = crops.map(c => ({
-        country: c.country, iso_code: c.iso, source: 'faostat',
-        metric_name: 'crop_yield', value: parseFloat(c.yield.toFixed(2)),
-        unit: 'tonnes_per_hectare', crop: c.crop,
-        date: `${new Date().getFullYear()}-01-01`
-      }));
-      const { error } = await supabase.from('food_data').insert(faoRecords);
-      if (error) throw new Error(`DB insert: ${error.message}`);
-      results.food += faoRecords.length;
-    }, { timeoutMs: 10000 }).catch(e => {
-      results.errors.push(`FAO: ${(e as Error).message}`);
-      structuredLog('warn', FN, `FAO: ${(e as Error).message}`);
-    });
+    // FAO/FAOSTAT: no authorized credential configured for this deployment.
+    // Previously this block wrote randomised crop-yield values into food_data as if
+    // they were real observations. That is synthetic operational data and is removed.
+    // A missing provider must surface as a provider gap, never as fabricated data.
+    results.errors.push('FAOSTAT: no authorized API credential configured (provider unavailable)');
+    structuredLog('warn', FN, 'FAOSTAT skipped: no authorized API credential configured');
+
 
     await supabase.from('automation_logs').insert({
       job_name: FN,

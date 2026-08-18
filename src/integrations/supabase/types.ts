@@ -10268,11 +10268,17 @@ export type Database = {
           dependency_type: string | null
           edge_key: string
           evidence_confidence: number | null
+          evidence_status: string
           id: string
           latency_hours: number | null
+          measured_at: string | null
+          measured_correlation: number | null
+          measured_country_count: number | null
+          measured_sample_size: number | null
           metadata: Json | null
           propagation_strength: number | null
           source_node_key: string
+          strength_basis: string
           target_node_key: string
         }
         Insert: {
@@ -10281,11 +10287,17 @@ export type Database = {
           dependency_type?: string | null
           edge_key: string
           evidence_confidence?: number | null
+          evidence_status?: string
           id?: string
           latency_hours?: number | null
+          measured_at?: string | null
+          measured_correlation?: number | null
+          measured_country_count?: number | null
+          measured_sample_size?: number | null
           metadata?: Json | null
           propagation_strength?: number | null
           source_node_key: string
+          strength_basis?: string
           target_node_key: string
         }
         Update: {
@@ -10294,11 +10306,17 @@ export type Database = {
           dependency_type?: string | null
           edge_key?: string
           evidence_confidence?: number | null
+          evidence_status?: string
           id?: string
           latency_hours?: number | null
+          measured_at?: string | null
+          measured_correlation?: number | null
+          measured_country_count?: number | null
+          measured_sample_size?: number | null
           metadata?: Json | null
           propagation_strength?: number | null
           source_node_key?: string
+          strength_basis?: string
           target_node_key?: string
         }
         Relationships: []
@@ -10307,12 +10325,14 @@ export type Database = {
         Row: {
           causal_path: Json | null
           evidence_score: number | null
+          evidence_status: string | null
           generated_at: string | null
           id: string
           impact_probability: number | null
           impact_severity: number | null
           impact_type: string | null
           impacted_node_key: string | null
+          measured_correlation: number | null
           projected_time_window: string | null
           propagation_key: string
           recommended_interventions: Json | null
@@ -10323,12 +10343,14 @@ export type Database = {
         Insert: {
           causal_path?: Json | null
           evidence_score?: number | null
+          evidence_status?: string | null
           generated_at?: string | null
           id?: string
           impact_probability?: number | null
           impact_severity?: number | null
           impact_type?: string | null
           impacted_node_key?: string | null
+          measured_correlation?: number | null
           projected_time_window?: string | null
           propagation_key: string
           recommended_interventions?: Json | null
@@ -10339,12 +10361,14 @@ export type Database = {
         Update: {
           causal_path?: Json | null
           evidence_score?: number | null
+          evidence_status?: string | null
           generated_at?: string | null
           id?: string
           impact_probability?: number | null
           impact_severity?: number | null
           impact_type?: string | null
           impacted_node_key?: string | null
+          measured_correlation?: number | null
           projected_time_window?: string | null
           propagation_key?: string
           recommended_interventions?: Json | null
@@ -10453,6 +10477,36 @@ export type Database = {
           node_type?: string | null
           operational_status?: string | null
           resilience_score?: number | null
+        }
+        Relationships: []
+      }
+      pns_certification_runs: {
+        Row: {
+          created_at: string
+          gates: Json
+          gates_passed: number
+          gates_total: number
+          id: string
+          overall_score: number
+          run_at: string
+        }
+        Insert: {
+          created_at?: string
+          gates: Json
+          gates_passed: number
+          gates_total: number
+          id?: string
+          overall_score: number
+          run_at?: string
+        }
+        Update: {
+          created_at?: string
+          gates?: Json
+          gates_passed?: number
+          gates_total?: number
+          id?: string
+          overall_score?: number
+          run_at?: string
         }
         Relationships: []
       }
@@ -16981,6 +17035,7 @@ export type Database = {
         Args: { _change_threshold?: number; _window_days?: number }
         Returns: Json
       }
+      compute_pns_certification: { Args: never; Returns: Json }
       compute_prospective_score: { Args: never; Returns: Json }
       compute_risk_propagation: {
         Args: never
@@ -17039,6 +17094,10 @@ export type Database = {
       country_l0_is_stale: {
         Args: { _iso3: string; _max_hours?: number }
         Returns: boolean
+      }
+      drive_planetary_causal_engine: {
+        Args: { p_limit?: number }
+        Returns: Json
       }
       enqueue_quantivis_event_batch: {
         Args: { p_limit?: number }
@@ -17433,6 +17492,10 @@ export type Database = {
         Returns: undefined
       }
       planetary_batch_tick: { Args: never; Returns: Json }
+      planetary_domain_to_metric_domain: {
+        Args: { p_domain: string }
+        Returns: string
+      }
       prospective_accumulation_monitor: { Args: never; Returns: Json }
       prospective_coverage_gaps: { Args: never; Returns: Json }
       prospective_domain_breakdown: { Args: never; Returns: Json }
@@ -17463,6 +17526,7 @@ export type Database = {
       recompute_pipeline_health_statuses: { Args: never; Returns: number }
       reconcile_canonical_clusters: { Args: never; Returns: Json }
       refresh_all_source_iq: { Args: never; Returns: number }
+      refresh_planetary_edge_evidence: { Args: never; Returns: Json }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
       refresh_recommendation_quality_scores: {
         Args: never

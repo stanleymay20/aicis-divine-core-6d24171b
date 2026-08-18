@@ -41,7 +41,58 @@ serve(async (req) => {
     structuredLog('info', FN, 'Starting crisis scan', { user_id: userId });
 
     const crisisTypes = ['weather', 'seismic', 'outage', 'health'];
-    const regions = ['North America', 'Europe', 'Asia', 'Africa', 'South America'];
+    // Evidence-derived focus. Region and severity used to be Math.random() —
+    // fabricated operational data written into crisis_events and adi_decisions.
+    // They are now derived from real global_signals evidence in the last 24h,
+    // and a crisis kind with no evidence produces NO crisis record at all.
+    const KIND_CATEGORIES: Record<string, string[]> = {
+      weather: ['climate_disaster', 'water_hydrology'],
+      seismic: ['climate_disaster', 'infrastructure'],
+      outage: ['energy', 'infrastructure'],
+      health: ['public_health'],
+    };
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    async function deriveFocus(kind: string) {
+      const { data, error } = await supabaseClient
+        .from('global_signals')
+        .select('id, affected_regions, geo_admin0_iso3, impact_score, urgency_score')
+        .in('category', KIND_CATEGORIES[kind] ?? [])
+        .gte('first_detected_at', since24h)
+        .order('impact_score', { ascending: false, nullsFirst: false })
+        .limit(200);
+      if (error || !data || data.length === 0) return null;
+
+      const tally = new Map<string, number>();
+      for (const row of data) {
+        const keys: string[] = Array.isArray(row.affected_regions) && row.affected_regions.length
+          ? row.affected_regions as string[]
+          : (row.geo_admin0_iso3 ? [row.geo_admin0_iso3 as string] : []);
+        for (const k of keys) tally.set(k, (tally.get(k) ?? 0) + 1);
+      }
+      const top = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (!top) return null;
+
+      const focused = data.filter((r) => {
+        const keys: string[] = Array.isArray(r.affected_regions) && r.affected_regions.length
+          ? r.affected_regions as string[]
+          : (r.geo_admin0_iso3 ? [r.geo_admin0_iso3 as string] : []);
+        return keys.includes(top[0]);
+      });
+      const avg = (f: (r: any) => number) =>
+        focused.reduce((s, r) => s + (f(r) || 0), 0) / Math.max(1, focused.length);
+      // impact/urgency are 0-100 -> severity 0-10, deterministic and reproducible.
+      const severity = Math.max(0, Math.min(10,
+        Math.round((0.6 * avg((r) => r.impact_score) + 0.4 * avg((r) => r.urgency_score)) / 10)));
+
+      return {
+        region: top[0],
+        severity,
+        evidence_signal_count: focused.length,
+        evidence_signal_ids: focused.slice(0, 25).map((r) => r.id),
+      };
+    }
+
     const results = [];
     const escalations = [];
     let aiSkipped = false;
@@ -63,8 +114,11 @@ serve(async (req) => {
 
     // Fire all AI calls in parallel with a global timeout to prevent edge function timeout
     const aiPromises = crisisTypes.map(async (kind) => {
-      const region = regions[Math.floor(Math.random() * regions.length)];
+      const focus = await deriveFocus(kind);
+      if (!focus) return null; // no real evidence → no fabricated crisis
+      const region = focus.region;
       let details: string | null = null;
+
 
       if (!aiSkipped) {
         try {
@@ -121,7 +175,7 @@ serve(async (req) => {
         details = `[AI assessment unavailable — credits exhausted] Crisis type: ${kind}, Region: ${region}`;
       }
 
-      return { kind, region, details };
+      return { kind, region, details, focus };
     });
 
     // Race AI batch against deadline — guarantees we exit before 60s edge timeout.
@@ -133,18 +187,20 @@ serve(async (req) => {
     ]);
 
     for (const settled of aiResults) {
-      if (settled.status !== 'fulfilled') continue;
+      if (settled.status !== 'fulfilled' || !settled.value) continue;
       if (deadlineExceeded()) { structuredLog('warn', FN, 'deadline reached, skipping remaining writes'); break; }
-      const { kind, region, details } = settled.value;
+      const { kind, region, details, focus } = settled.value;
 
-      const severity = Math.floor(Math.random() * 10);
+      const severity = focus.severity;
       const status = severity >= 7 ? 'escalated' : 'monitoring';
+      const evidenceNote = `\n\n---\n**Evidence:** ${focus.evidence_signal_count} corroborating signals in the last 24h (severity derived from measured impact/urgency scores).`;
 
       const { data: crisis, error: insertError } = await supabaseClient
         .from('crisis_events')
-        .insert({ kind, region, severity, status, details_md: details, opened_at: new Date().toISOString() })
+        .insert({ kind, region, severity, status, details_md: (details ?? '') + evidenceNote, opened_at: new Date().toISOString() })
         .select()
         .single();
+
 
       if (insertError) {
         structuredLog('warn', FN, `Insert failed for ${kind}`, { error: insertError.message });

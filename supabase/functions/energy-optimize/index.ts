@@ -26,7 +26,25 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
 
-    // Use AI for energy grid optimization
+    // Read REAL observed grid state. This function previously inserted hard-coded
+    // "sample" grid rows into energy_grid and presented them as operational data.
+    // It now only analyses measurements produced by real provider ingestion.
+    const { data: energyData, error: gridError } = await supabaseClient
+      .from('energy_grid')
+      .select('region, grid_load, capacity, stability_index, renewable_percentage, outage_risk, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(50);
+
+    if (gridError) throw new Error(`energy_grid read failed: ${gridError.message}`);
+
+    if (!energyData || energyData.length === 0) {
+      return new Response(JSON.stringify({
+        ok: false,
+        code: 'no_observed_grid_data',
+        message: 'No observed energy grid measurements are available. Optimization is not produced from synthetic data.',
+      }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -38,66 +56,37 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are an energy optimization AI managing global power grids. Analyze grid loads, stability, and renewable energy integration. Provide optimization recommendations.'
+            content: 'You are an energy grid analyst. Analyse ONLY the measurements provided. Where a field is null, state explicitly that it is unmeasured rather than assuming a value. Provide optimization recommendations with stated uncertainty.'
           },
-          { role: 'user', content: 'Analyze current energy grid status and provide optimization strategies' }
+          { role: 'user', content: `Observed energy grid measurements (JSON):\n${JSON.stringify(energyData)}\n\nAnalyse grid load, stability and renewable integration, and give optimization strategies.` }
         ],
       }),
     });
 
     if (!aiResponse.ok) {
-      throw new Error('AI processing failed');
+      const body = await aiResponse.text();
+      return new Response(JSON.stringify({ error: 'AI processing failed', status: aiResponse.status, details: body }), {
+        status: aiResponse.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const aiData = await aiResponse.json();
     const optimization = aiData.choices[0].message.content;
 
-    // Generate sample energy data
-    const energyData = [
-      {
-        region: 'North America',
-        grid_load: 75.5,
-        capacity: 10000.0,
-        stability_index: 92.3,
-        renewable_percentage: 35.8,
-        outage_risk: 'stable'
-      },
-      {
-        region: 'Europe',
-        grid_load: 82.1,
-        capacity: 8500.0,
-        stability_index: 88.7,
-        renewable_percentage: 42.3,
-        outage_risk: 'stable'
-      },
-      {
-        region: 'Asia',
-        grid_load: 88.9,
-        capacity: 15000.0,
-        stability_index: 85.2,
-        renewable_percentage: 28.5,
-        outage_risk: 'fluctuating'
-      }
-    ];
-
-    // Store energy data
-    for (const data of energyData) {
-      await supabaseClient.from('energy_grid').insert(data);
-    }
-
-    // Log optimization
     await supabaseClient.from('system_logs').insert({
       user_id: user.id,
       division: 'energy',
       action: 'energy_optimization',
       result: 'completed',
       log_level: 'success',
-      metadata: { optimization, regions: energyData.length }
+      metadata: { optimization, regions: energyData.length, source: 'observed_energy_grid' }
     });
 
-    return new Response(JSON.stringify({ optimization, energyData }), {
+    return new Response(JSON.stringify({ optimization, energyData, evidence_rows: energyData.length }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
   } catch (error) {
     console.error('Error in energy-optimize:', error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
