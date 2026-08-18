@@ -270,21 +270,32 @@ interface Benchmark { domain: string; structural_floor: number; structural_ceili
 function computeDomainPerformance(
   domain: string, metrics: MetricEntry[], completeness: number,
   benchmark: Benchmark | undefined, stabilityScore: number, params: { alpha: number; beta: number },
-  frozen: boolean,
+  frozen: boolean, scales: Record<string, MetricScale> = {},
 ) {
   if (frozen || !metrics || metrics.length === 0) {
     const conf = frozen ? 10 : Math.max(10, Math.min(95, Math.round(completeness * 30)));
-    return { domain, performanceIndex: 0, momentumScore: 0, momentumTStat: 0, volatilityIndex: 0, volatilityDownside: 0, volatilityUpside: 0, volatilitySkewRatio: 1, riskPressureScore: 50, forecast90d: 0, forecast1y: 0, forecastDirection: "stable" as const, confidenceScore: conf, forecastUpper80: 0, forecastLower80: 0, forecastUpper95: 0, forecastLower95: 0, structuralBreak: false, structuralBreakPValue: 1, dataGapCount: 0, dataStaleDays: 0 };
+    return { domain, performanceIndex: 0, momentumScore: 0, momentumTStat: 0, volatilityIndex: 0, volatilityDownside: 0, volatilityUpside: 0, volatilitySkewRatio: 1, riskPressureScore: 50, forecast90d: 0, forecast1y: 0, forecastDirection: "stable" as const, confidenceScore: conf, forecastUpper80: 0, forecastLower80: 0, forecastUpper95: 0, forecastLower95: 0, structuralBreak: false, structuralBreakPValue: 1, dataGapCount: 0, dataStaleDays: 0, normalizationMethods: [] as string[], scaledMetricCount: 0 };
   }
 
-  const sorted = [...metrics].sort((a, b) => a.period.localeCompare(b.period));
+  // Normalize every metric onto a common 0-100 index before any modelling, using the
+  // metric's own measured world-wide range when the domain benchmark scale does not apply.
+  const methods = new Set<string>();
+  let scaledMetricCount = 0;
+  const normalized: MetricEntry[] = metrics.map((m) => {
+    const { fn, method } = buildMetricNormalizer(benchmark, scales[m.metric]);
+    methods.add(method);
+    if (method === "empirical_p05_p95") scaledMetricCount++;
+    return { ...m, value: fn(m.value) };
+  });
+
+  const sorted = [...normalized].sort((a, b) => a.period.localeCompare(b.period));
   const gap = fillDataGaps(sorted);
   const values = gap.values;
   const periods = sorted.map(m => m.period);
   const periodicity = detectPeriodicity(periods);
 
   const avg = values.slice(-5).reduce((s, v) => s + v, 0) / Math.min(5, values.length);
-  const performanceIndex = Math.round(normalizeWithBenchmark(avg, benchmark));
+  const performanceIndex = Math.round(clamp100(avg));
   const { momentum: momentumScore, tStat: momentumTStat } = computeMomentumV2(values);
   const vol = computeVolatilityDetailed(values);
   const brk = detectStructuralBreakCUSUM(values, params.alpha, params.beta);
@@ -303,8 +314,9 @@ function computeDomainPerformance(
   if (brk.detected) riskPressureScore = Math.min(100, riskPressureScore + 10);
 
   const holt = holtSmoothing(forecastValues, activeParams.alpha, activeParams.beta);
-  const holtNorm = Math.round(normalizeWithBenchmark(holt.level, benchmark));
-  const trendNorm = benchmark ? (holt.trend / (benchmark.structural_ceiling - benchmark.structural_floor)) * 100 : holt.trend;
+  const holtNorm = Math.round(clamp100(holt.level));
+  const trendNorm = holt.trend; // series is already on the 0-100 index scale
+
   const damp = Math.max(0.3, 1 - vol.total / 200);
   const momFactor = momentumScore / 100;
   const p90 = horizonToPeriods(90, periodicity);
