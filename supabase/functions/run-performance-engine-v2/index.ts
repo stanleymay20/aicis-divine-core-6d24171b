@@ -272,10 +272,14 @@ function computeDomainPerformance(
   benchmark: Benchmark | undefined, stabilityScore: number, params: { alpha: number; beta: number },
   frozen: boolean, scales: Record<string, MetricScale> = {},
 ) {
-  if (frozen || !metrics || metrics.length === 0) {
-    const conf = frozen ? 10 : Math.max(10, Math.min(95, Math.round(completeness * 30)));
-    return { domain, performanceIndex: 0, momentumScore: 0, momentumTStat: 0, volatilityIndex: 0, volatilityDownside: 0, volatilityUpside: 0, volatilitySkewRatio: 1, riskPressureScore: 50, forecast90d: 0, forecast1y: 0, forecastDirection: "stable" as const, confidenceScore: conf, forecastUpper80: 0, forecastLower80: 0, forecastUpper95: 0, forecastLower95: 0, structuralBreak: false, structuralBreakPValue: 1, dataGapCount: 0, dataStaleDays: 0, normalizationMethods: [] as string[], scaledMetricCount: 0 };
+  // A forecast freeze must suppress FORECASTS only. Measurement (performance index,
+  // momentum, volatility) is observed fact and must keep flowing — writing 0 while frozen
+  // fabricates a "dead domain" reading that never happened.
+  if (!metrics || metrics.length === 0) {
+    const conf = Math.max(10, Math.min(95, Math.round(completeness * 30)));
+    return { domain, performanceIndex: null as number | null, momentumScore: 0, momentumTStat: 0, volatilityIndex: 0, volatilityDownside: 0, volatilityUpside: 0, volatilitySkewRatio: 1, riskPressureScore: null as number | null, forecast90d: null as number | null, forecast1y: null as number | null, forecastDirection: "stable" as const, confidenceScore: conf, forecastUpper80: null as number | null, forecastLower80: null as number | null, forecastUpper95: null as number | null, forecastLower95: null as number | null, structuralBreak: false, structuralBreakPValue: 1, dataGapCount: 0, dataStaleDays: 0, normalizationMethods: [] as string[], scaledMetricCount: 0, forecastsFrozen: frozen };
   }
+
 
   // Normalize every metric onto a common 0-100 index before any modelling, using the
   // metric's own measured world-wide range when the domain benchmark scale does not apply.
