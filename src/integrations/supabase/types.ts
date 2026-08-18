@@ -10261,6 +10261,99 @@ export type Database = {
         }
         Relationships: []
       }
+      planetary_dependency_edges: {
+        Row: {
+          bidirectional: boolean | null
+          created_at: string | null
+          dependency_type: string | null
+          edge_key: string
+          evidence_confidence: number | null
+          id: string
+          latency_hours: number | null
+          metadata: Json | null
+          propagation_strength: number | null
+          source_node_key: string
+          target_node_key: string
+        }
+        Insert: {
+          bidirectional?: boolean | null
+          created_at?: string | null
+          dependency_type?: string | null
+          edge_key: string
+          evidence_confidence?: number | null
+          id?: string
+          latency_hours?: number | null
+          metadata?: Json | null
+          propagation_strength?: number | null
+          source_node_key: string
+          target_node_key: string
+        }
+        Update: {
+          bidirectional?: boolean | null
+          created_at?: string | null
+          dependency_type?: string | null
+          edge_key?: string
+          evidence_confidence?: number | null
+          id?: string
+          latency_hours?: number | null
+          metadata?: Json | null
+          propagation_strength?: number | null
+          source_node_key?: string
+          target_node_key?: string
+        }
+        Relationships: []
+      }
+      planetary_propagation_events: {
+        Row: {
+          causal_path: Json | null
+          evidence_score: number | null
+          generated_at: string | null
+          id: string
+          impact_probability: number | null
+          impact_severity: number | null
+          impact_type: string | null
+          impacted_node_key: string | null
+          projected_time_window: string | null
+          propagation_key: string
+          recommended_interventions: Json | null
+          source_domain: string | null
+          source_event: string
+          source_region: string | null
+        }
+        Insert: {
+          causal_path?: Json | null
+          evidence_score?: number | null
+          generated_at?: string | null
+          id?: string
+          impact_probability?: number | null
+          impact_severity?: number | null
+          impact_type?: string | null
+          impacted_node_key?: string | null
+          projected_time_window?: string | null
+          propagation_key: string
+          recommended_interventions?: Json | null
+          source_domain?: string | null
+          source_event: string
+          source_region?: string | null
+        }
+        Update: {
+          causal_path?: Json | null
+          evidence_score?: number | null
+          generated_at?: string | null
+          id?: string
+          impact_probability?: number | null
+          impact_severity?: number | null
+          impact_type?: string | null
+          impacted_node_key?: string | null
+          projected_time_window?: string | null
+          propagation_key?: string
+          recommended_interventions?: Json | null
+          source_domain?: string | null
+          source_event?: string
+          source_region?: string | null
+        }
+        Relationships: []
+      }
       planetary_stats_snapshots: {
         Row: {
           canonical_mismatches: number
@@ -10318,6 +10411,48 @@ export type Database = {
           provenance_sources?: number
           reporting_countries?: number
           snapped_at?: string
+        }
+        Relationships: []
+      }
+      planetary_system_nodes: {
+        Row: {
+          baseline_risk: number | null
+          created_at: string | null
+          geographic_scope: string | null
+          id: string
+          metadata: Json | null
+          node_domain: string
+          node_key: string
+          node_name: string
+          node_type: string | null
+          operational_status: string | null
+          resilience_score: number | null
+        }
+        Insert: {
+          baseline_risk?: number | null
+          created_at?: string | null
+          geographic_scope?: string | null
+          id?: string
+          metadata?: Json | null
+          node_domain: string
+          node_key: string
+          node_name: string
+          node_type?: string | null
+          operational_status?: string | null
+          resilience_score?: number | null
+        }
+        Update: {
+          baseline_risk?: number | null
+          created_at?: string | null
+          geographic_scope?: string | null
+          id?: string
+          metadata?: Json | null
+          node_domain?: string
+          node_key?: string
+          node_name?: string
+          node_type?: string | null
+          operational_status?: string | null
+          resilience_score?: number | null
         }
         Relationships: []
       }
@@ -15800,6 +15935,20 @@ export type Database = {
         }
         Relationships: []
       }
+      planetary_causal_command_view: {
+        Row: {
+          generated_at: string | null
+          impact_probability: number | null
+          impact_severity: number | null
+          impact_type: string | null
+          impacted_system: string | null
+          projected_time_window: string | null
+          recommended_interventions: Json | null
+          source_domain: string | null
+          source_event: string | null
+        }
+        Relationships: []
+      }
       planetary_country_integrity: {
         Row: {
           canonical_name: string | null
@@ -16953,6 +17102,15 @@ export type Database = {
           severity: string
           target_function: string
         }[]
+      }
+      generate_planetary_propagation_event: {
+        Args: {
+          p_initial_severity?: number
+          p_source_domain: string
+          p_source_event: string
+          p_source_region?: string
+        }
+        Returns: Json
       }
       generate_risk_action_recommendations: {
         Args: { p_top_n?: number }
