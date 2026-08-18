@@ -477,7 +477,7 @@ Deno.serve(async (req) => {
 
         const dp = computeDomainPerformance(
           domain, metrics, domainData.completeness ?? 0.5,
-          benchmarks[domain], bt.stabilityScore, calibrated, frozen,
+          benchmarks[domain], bt.stabilityScore, calibrated, frozen, metricScales,
         );
 
         domainResults.push(dp);
