@@ -111,6 +111,48 @@ function normalizeWithBenchmark(value: number, benchmark?: { structural_floor: n
   return Math.max(0, Math.min(100, Math.round(((value - structural_floor) / (structural_ceiling - structural_floor)) * 1000) / 10));
 }
 
+interface MetricScale { metric_name: string; p05: number; p50: number; p95: number; country_count: number }
+
+const clamp100 = (v: number) => Math.max(0, Math.min(100, v));
+
+/**
+ * Scale-aware metric normalizer.
+ *
+ * Domain benchmarks assume metrics already live on a 0-100 index scale. Many real
+ * indicators do not (e.g. World Bank WGI runs -2.5..+2.5, GDP is absolute USD), which
+ * silently clamped whole domains to 0. When a metric's measured world-wide range does
+ * not sit inside the domain benchmark band, the metric is rescaled against its own
+ * empirically observed p05..p95 range (from metric_scale_reference) instead.
+ * Direction convention is unchanged: higher raw value = higher index.
+ */
+function buildMetricNormalizer(
+  benchmark?: { structural_floor: number; structural_ceiling: number },
+  scale?: MetricScale,
+): { fn: (v: number) => number; method: string } {
+  if (benchmark && scale) {
+    const inBand = scale.p05 >= benchmark.structural_floor - 1e-9 && scale.p95 <= benchmark.structural_ceiling + 1e-9;
+    if (inBand) return { fn: (v) => normalizeWithBenchmark(v, benchmark), method: "domain_benchmark" };
+  }
+  if (scale && scale.p95 > scale.p05) {
+    // Heavy-tailed absolute quantities (GDP, population) span many orders of magnitude;
+    // linear rescaling flattens all but the largest countries to 0, so use log scaling.
+    const heavyTailed = scale.p05 > 0 && scale.p95 / scale.p05 >= 100;
+    if (heavyTailed) {
+      const lo = Math.log10(scale.p05), hi = Math.log10(scale.p95);
+      return {
+        fn: (v) => clamp100(Math.round(((Math.log10(Math.max(v, 1e-9)) - lo) / (hi - lo)) * 1000) / 10),
+        method: "empirical_log_p05_p95",
+      };
+    }
+    const span = scale.p95 - scale.p05;
+    return { fn: (v) => clamp100(Math.round(((v - scale.p05) / span) * 1000) / 10), method: "empirical_p05_p95" };
+  }
+
+  if (benchmark) return { fn: (v) => normalizeWithBenchmark(v, benchmark), method: "domain_benchmark" };
+  return { fn: (v) => clamp100(v), method: "raw_clamped" };
+}
+
+
 function detectPeriodicity(periods: string[]): string {
   if (periods.length < 2) return "unknown";
   if (periods.some(p => /Q[1-4]/.test(p))) return "quarterly";
@@ -239,21 +281,36 @@ interface Benchmark { domain: string; structural_floor: number; structural_ceili
 function computeDomainPerformance(
   domain: string, metrics: MetricEntry[], completeness: number,
   benchmark: Benchmark | undefined, stabilityScore: number, params: { alpha: number; beta: number },
-  frozen: boolean,
+  frozen: boolean, scales: Record<string, MetricScale> = {},
 ) {
-  if (frozen || !metrics || metrics.length === 0) {
-    const conf = frozen ? 10 : Math.max(10, Math.min(95, Math.round(completeness * 30)));
-    return { domain, performanceIndex: 0, momentumScore: 0, momentumTStat: 0, volatilityIndex: 0, volatilityDownside: 0, volatilityUpside: 0, volatilitySkewRatio: 1, riskPressureScore: 50, forecast90d: 0, forecast1y: 0, forecastDirection: "stable" as const, confidenceScore: conf, forecastUpper80: 0, forecastLower80: 0, forecastUpper95: 0, forecastLower95: 0, structuralBreak: false, structuralBreakPValue: 1, dataGapCount: 0, dataStaleDays: 0 };
+  // A forecast freeze must suppress FORECASTS only. Measurement (performance index,
+  // momentum, volatility) is observed fact and must keep flowing — writing 0 while frozen
+  // fabricates a "dead domain" reading that never happened.
+  if (!metrics || metrics.length === 0) {
+    const conf = Math.max(10, Math.min(95, Math.round(completeness * 30)));
+    return { domain, performanceIndex: null as number | null, momentumScore: 0, momentumTStat: 0, volatilityIndex: 0, volatilityDownside: 0, volatilityUpside: 0, volatilitySkewRatio: 1, riskPressureScore: null as number | null, forecast90d: null as number | null, forecast1y: null as number | null, forecastDirection: "stable" as const, confidenceScore: conf, forecastUpper80: null as number | null, forecastLower80: null as number | null, forecastUpper95: null as number | null, forecastLower95: null as number | null, structuralBreak: false, structuralBreakPValue: 1, dataGapCount: 0, dataStaleDays: 0, normalizationMethods: [] as string[], scaledMetricCount: 0, forecastsFrozen: frozen };
   }
 
-  const sorted = [...metrics].sort((a, b) => a.period.localeCompare(b.period));
+
+  // Normalize every metric onto a common 0-100 index before any modelling, using the
+  // metric's own measured world-wide range when the domain benchmark scale does not apply.
+  const methods = new Set<string>();
+  let scaledMetricCount = 0;
+  const normalized: MetricEntry[] = metrics.map((m) => {
+    const { fn, method } = buildMetricNormalizer(benchmark, scales[m.metric]);
+    methods.add(method);
+    if (method.startsWith("empirical_")) scaledMetricCount++;
+    return { ...m, value: fn(m.value) };
+  });
+
+  const sorted = [...normalized].sort((a, b) => a.period.localeCompare(b.period));
   const gap = fillDataGaps(sorted);
   const values = gap.values;
   const periods = sorted.map(m => m.period);
   const periodicity = detectPeriodicity(periods);
 
   const avg = values.slice(-5).reduce((s, v) => s + v, 0) / Math.min(5, values.length);
-  const performanceIndex = Math.round(normalizeWithBenchmark(avg, benchmark));
+  const performanceIndex = Math.round(clamp100(avg));
   const { momentum: momentumScore, tStat: momentumTStat } = computeMomentumV2(values);
   const vol = computeVolatilityDetailed(values);
   const brk = detectStructuralBreakCUSUM(values, params.alpha, params.beta);
@@ -272,8 +329,9 @@ function computeDomainPerformance(
   if (brk.detected) riskPressureScore = Math.min(100, riskPressureScore + 10);
 
   const holt = holtSmoothing(forecastValues, activeParams.alpha, activeParams.beta);
-  const holtNorm = Math.round(normalizeWithBenchmark(holt.level, benchmark));
-  const trendNorm = benchmark ? (holt.trend / (benchmark.structural_ceiling - benchmark.structural_floor)) * 100 : holt.trend;
+  const holtNorm = Math.round(clamp100(holt.level));
+  const trendNorm = holt.trend; // series is already on the 0-100 index scale
+
   const damp = Math.max(0.3, 1 - vol.total / 200);
   const momFactor = momentumScore / 100;
   const p90 = horizonToPeriods(90, periodicity);
@@ -297,12 +355,23 @@ function computeDomainPerformance(
   return {
     domain, performanceIndex, momentumScore, momentumTStat,
     volatilityIndex: vol.total, volatilityDownside: vol.downside, volatilityUpside: vol.upside, volatilitySkewRatio: vol.ratio,
-    riskPressureScore, forecast90d, forecast1y, forecastDirection,
-    confidenceScore: conf, forecastUpper80, forecastLower80, forecastUpper95, forecastLower95,
+    riskPressureScore,
+    // Frozen => forecasts are withheld (null), never emitted as 0.
+    forecast90d: frozen ? null : forecast90d,
+    forecast1y: frozen ? null : forecast1y,
+    forecastDirection,
+    confidenceScore: frozen ? Math.min(conf, 25) : conf,
+    forecastUpper80: frozen ? null : forecastUpper80,
+    forecastLower80: frozen ? null : forecastLower80,
+    forecastUpper95: frozen ? null : forecastUpper95,
+    forecastLower95: frozen ? null : forecastLower95,
     structuralBreak: brk.detected, structuralBreakPValue: brk.pValue,
     dataGapCount: gap.gapCount, dataStaleDays: gap.staleDays,
+    normalizationMethods: Array.from(methods), scaledMetricCount,
+    forecastsFrozen: frozen,
   };
 }
+
 
 // ─── Main Handler ───────────────────────────────────────────────────
 
@@ -349,16 +418,26 @@ Deno.serve(async (req) => {
     if (profErr) throw new Error(`Failed to load profiles: ${profErr.message}`);
     const validProfiles = (profiles || []).filter((p: any) => p.iso3 && p.country_name && p.kpis);
 
-    // 3. Load benchmarks, weights, coupling
-    const [benchRes, weightRes, couplingRes, historyRes] = await Promise.all([
+    // 3. Load benchmarks, weights, coupling, metric scale reference
+    const [benchRes, weightRes, couplingRes, historyRes, scaleRes] = await Promise.all([
       supabase.from("global_domain_benchmarks").select("*"),
       supabase.from("domain_weights").select("domain, weight").eq("model_version", MODEL_VERSION),
       supabase.from("domain_coupling_matrix").select("*").eq("model_version", MODEL_VERSION),
       supabase.from("country_performance_snapshots").select("domain, performance_index").order("created_at", { ascending: false }).limit(200),
+      supabase.from("metric_scale_reference").select("metric_name, p05, p50, p95, country_count"),
     ]);
 
     const benchmarks: Record<string, Benchmark> = {};
     for (const b of benchRes.data || []) benchmarks[b.domain] = b;
+
+    const metricScales: Record<string, MetricScale> = {};
+    for (const s of scaleRes.data || []) {
+      metricScales[s.metric_name] = {
+        metric_name: s.metric_name, p05: Number(s.p05), p50: Number(s.p50),
+        p95: Number(s.p95), country_count: Number(s.country_count),
+      };
+    }
+
 
     const weights: Record<string, number> = {};
     for (const w of weightRes.data || []) weights[w.domain] = Number(w.weight);
@@ -422,11 +501,11 @@ Deno.serve(async (req) => {
 
         const dp = computeDomainPerformance(
           domain, metrics, domainData.completeness ?? 0.5,
-          benchmarks[domain], bt.stabilityScore, calibrated, frozen,
+          benchmarks[domain], bt.stabilityScore, calibrated, frozen, metricScales,
         );
 
         domainResults.push(dp);
-        domainScores[domain] = dp.performanceIndex;
+        domainScores[domain] = dp.performanceIndex ?? 0;
         totalDomains++;
         if (dp.structuralBreak) breakCount++;
 
@@ -474,15 +553,19 @@ Deno.serve(async (req) => {
       if (domainResults.length === 0) continue;
 
       // National performance aggregation
-      let tw = 0, wp = 0, wm = 0, wv = 0, wr = 0, wf90 = 0, wf1y = 0, wc = 0;
+      let tw = 0, wp = 0, wm = 0, wv = 0, wr = 0, wf90 = 0, wf1y = 0, wc = 0, forecastWeight = 0;
       for (const dp of domainResults) {
         const w = weights[dp.domain] || 0.05;
-        tw += w; wp += dp.performanceIndex * w; wm += dp.momentumScore * w;
-        wv += dp.volatilityIndex * w; wr += dp.riskPressureScore * w;
-        wf90 += dp.forecast90d * w; wf1y += dp.forecast1y * w; wc += dp.confidenceScore * w;
+        tw += w; wp += (dp.performanceIndex ?? 0) * w; wm += dp.momentumScore * w;
+        wv += dp.volatilityIndex * w; wr += (dp.riskPressureScore ?? 0) * w;
+        wc += dp.confidenceScore * w;
+        if (dp.forecast90d !== null && dp.forecast1y !== null) {
+          wf90 += dp.forecast90d * w; wf1y += dp.forecast1y * w; forecastWeight += w;
+        }
       }
       const n = tw || 1;
       const overallIndex = Math.round(wp / n);
+
       const momentum = Math.round((wm / n) * 10) / 10;
       const volatility = Math.round(wv / n);
       const fragility = computeSystemicFragilityV2(domainScores, couplingMatrix);
