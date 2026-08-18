@@ -344,6 +344,8 @@ function computeDomainPerformance(
     confidenceScore: conf, forecastUpper80, forecastLower80, forecastUpper95, forecastLower95,
     structuralBreak: brk.detected, structuralBreakPValue: brk.pValue,
     dataGapCount: gap.gapCount, dataStaleDays: gap.staleDays,
+    normalizationMethods: Array.from(methods), scaledMetricCount,
+
   };
 }
 
