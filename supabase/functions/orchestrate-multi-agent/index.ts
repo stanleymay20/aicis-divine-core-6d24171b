@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
     if (!question) return json({ error: "question is required" }, 400);
     if (domains.length < 2) return json({ error: "at least two domains are required" }, 400);
 
-    const task_key = `${subject_kind}:${subject_key ?? "global"}:${await sha256(question)}`.slice(0, 180);
+    const task_key = `${subject_kind}:${subject_key ?? "global"}:${(await sha256(question)).slice(0, 16)}:${new Date().toISOString()}`;
 
     const { data: task, error: taskErr } = await supabase
       .from("agent_coordination_tasks")
