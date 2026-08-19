@@ -131,34 +131,36 @@ Deno.serve(async (req) => {
       const rows: EvidenceRow[] = [];
       let sig = supabase
         .from("global_signals")
-        .select("id,title,summary,source_url,ingested_at,event_date,category,geo_admin0_iso3")
+        .select("id,title,summary,primary_source,ingested_at,occurred_at,category,geo_admin0_iso3")
         .gte("ingested_at", since)
         .in("category", DOMAIN_CATEGORIES[domain])
         .order("ingested_at", { ascending: false })
         .limit(12);
       if (subject_kind === "country" && subject_key) sig = sig.eq("geo_admin0_iso3", subject_key);
-      const { data: signals } = await sig;
+      const { data: signals, error: sigErr } = await sig;
+      if (sigErr) throw sigErr;
       (signals ?? []).forEach((s: any, i: number) =>
         rows.push({
           ref: `${domain}-S${i + 1}`,
           source_kind: "signal",
           source_table: "global_signals",
           source_row_id: s.id,
-          source_url: s.source_url,
+          source_url: s.primary_source ?? null,
           source_title: s.title ?? "(untitled signal)",
           excerpt: (s.summary ?? "").slice(0, 400) || null,
-          observed_at: s.event_date ?? s.ingested_at,
+          observed_at: s.occurred_at ?? s.ingested_at,
         }),
       );
 
       if (subject_kind === "country" && subject_key) {
-        const { data: snaps } = await supabase
+        const { data: snaps, error: snapErr } = await supabase
           .from("country_performance_snapshots")
-          .select("id,domain,performance_index,momentum,volatility,snapshot_date")
-          .eq("country_iso3", subject_key)
+          .select("id,domain,performance_index,momentum_score,volatility_index,snapshot_date")
+          .eq("iso3", subject_key)
           .eq("domain", domain)
           .order("snapshot_date", { ascending: false })
           .limit(4);
+        if (snapErr) throw snapErr;
         (snaps ?? []).forEach((s: any, i: number) =>
           rows.push({
             ref: `${domain}-M${i + 1}`,
@@ -167,7 +169,7 @@ Deno.serve(async (req) => {
             source_row_id: s.id,
             source_url: null,
             source_title: `${domain} performance index ${s.snapshot_date}`,
-            excerpt: `index=${s.performance_index}, momentum=${s.momentum}, volatility=${s.volatility}`,
+            excerpt: `index=${s.performance_index}, momentum=${s.momentum_score}, volatility=${s.volatility_index}`,
             observed_at: s.snapshot_date,
           }),
         );
