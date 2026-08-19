@@ -408,6 +408,13 @@ export type Database = {
             foreignKeyName: "agent_disagreements_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
+            referencedRelation: "agent_case_quality"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "agent_disagreements_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
             referencedRelation: "agent_coordination_tasks"
             referencedColumns: ["id"]
           },
@@ -478,6 +485,13 @@ export type Database = {
             foreignKeyName: "agent_evidence_citations_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
+            referencedRelation: "agent_case_quality"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "agent_evidence_citations_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
             referencedRelation: "agent_coordination_tasks"
             referencedColumns: ["id"]
           },
@@ -528,6 +542,13 @@ export type Database = {
           task_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "agent_outcome_scores_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_case_quality"
+            referencedColumns: ["task_id"]
+          },
           {
             foreignKeyName: "agent_outcome_scores_task_id_fkey"
             columns: ["task_id"]
@@ -612,6 +633,13 @@ export type Database = {
           uncertainty_notes?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "agent_specialist_analyses_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "agent_case_quality"
+            referencedColumns: ["task_id"]
+          },
           {
             foreignKeyName: "agent_specialist_analyses_task_id_fkey"
             columns: ["task_id"]
@@ -708,6 +736,13 @@ export type Database = {
           weakest_assumption?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "agent_syntheses_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: true
+            referencedRelation: "agent_case_quality"
+            referencedColumns: ["task_id"]
+          },
           {
             foreignKeyName: "agent_syntheses_task_id_fkey"
             columns: ["task_id"]
@@ -16477,6 +16512,32 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_case_quality: {
+        Row: {
+          citations: number | null
+          citations_complete: boolean | null
+          completed_at: string | null
+          confidence_lower: number | null
+          confidence_upper: number | null
+          created_at: string | null
+          degradation_reason: string | null
+          degraded: boolean | null
+          disagreements: number | null
+          distinct_specialists: number | null
+          domains: string[] | null
+          error: string | null
+          has_synthesis: boolean | null
+          perspectives_failed: number | null
+          perspectives_ok: number | null
+          question: string | null
+          status: string | null
+          subject_key: string | null
+          subject_kind: string | null
+          task_id: string | null
+          task_key: string | null
+        }
+        Relationships: []
+      }
       agent_run_quality: {
         Row: {
           citation_count: number | null
@@ -17252,6 +17313,17 @@ export type Database = {
         }
         Relationships: []
       }
+      prediction_ledger_validation_summary: {
+        Row: {
+          matured: number | null
+          mean_brier: number | null
+          predictions: number | null
+          prospective_status: string | null
+          scored_outcomes: number | null
+          validation_mode: string | null
+        }
+        Relationships: []
+      }
       prospective_prediction_performance: {
         Row: {
           brier_score: number | null
@@ -17274,6 +17346,15 @@ export type Database = {
           next_maturity_date: string | null
           pending_prospective: number | null
           scored_prospective: number | null
+        }
+        Relationships: []
+      }
+      prospective_skill_verified: {
+        Row: {
+          prospective_matured: number | null
+          prospective_mean_brier: number | null
+          prospective_scored: number | null
+          prospective_total: number | null
         }
         Relationships: []
       }
@@ -18239,6 +18320,7 @@ export type Database = {
         Returns: Json
       }
       compute_pns_certification: { Args: never; Returns: Json }
+      compute_pns_certification_gate_i: { Args: never; Returns: Json }
       compute_prospective_score: { Args: never; Returns: Json }
       compute_risk_propagation: {
         Args: never
