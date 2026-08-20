@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SEO } from "@/components/SEO";
-import { Network, Radar, FlaskConical, ScrollText, ShieldCheck, AlertTriangle } from "lucide-react";
+import { MultiAgentSection, ProspectiveSplitPanel } from "@/components/planetary/MultiAgentSection";
+import { Network, Users, Radar, FlaskConical, ScrollText, ShieldCheck, AlertTriangle } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
@@ -678,6 +679,7 @@ export default function PlanetaryIntelligence() {
           <TabsTrigger value="discovery">Discovery</TabsTrigger>
           <TabsTrigger value="experiments">Experiments</TabsTrigger>
           <TabsTrigger value="ledger">Prediction ledger</TabsTrigger>
+          <TabsTrigger value="agents">Multi-agent</TabsTrigger>
           <TabsTrigger value="certification">Certification</TabsTrigger>
         </TabsList>
 
@@ -691,7 +693,13 @@ export default function PlanetaryIntelligence() {
           <ExperimentsSection />
         </TabsContent>
         <TabsContent value="ledger">
-          <LedgerSection />
+          <div className="space-y-4">
+            <ProspectiveSplitPanel />
+            <LedgerSection />
+          </div>
+        </TabsContent>
+        <TabsContent value="agents">
+          <MultiAgentSection />
         </TabsContent>
         <TabsContent value="certification">
           <CertificationSection />
