@@ -3,12 +3,12 @@
  * nested federation by deriving baseline community indicators from each
  * admin_region's intrinsic attributes.
  *
- * v2 enhancements (enterprise-grade):
- *  - Auto-bootstraps admin_regions from REST Countries when starved (<50 regions)
- *    using each country's capital + major cities as L1 admin units with
- *    population estimates. Eliminates the "60 rows/24h" starvation gap.
- *  - Day-bucketed dedup: skips region+indicator already inserted today.
- *  - Insert-count assertion logged as a hard signal in automation_logs.
+ * v3 storage/history behavior:
+ *  - Auto-bootstraps admin_regions from REST Countries when starved (<50 regions).
+ *  - Uses community_metric_state + record_derived_community_metrics() for
+ *    change-aware persistence: unchanged values are skipped forever, while
+ *    genuinely new/changed observations are appended to community_metrics.
+ *  - Historical observations are never deleted by this seeder.
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -21,7 +21,6 @@ const corsHeaders = {
 const FN = "seed-community-metrics";
 
 async function bootstrapAdminRegions(supabase: any): Promise<number> {
-  // Fetch every country with capital + population to seed L1 admin units.
   try {
     const r = await fetch(
       "https://restcountries.com/v3.1/all?fields=cca3,capital,population,area,latlng,subregion",
@@ -36,7 +35,6 @@ async function bootstrapAdminRegions(supabase: any): Promise<number> {
       const area = Number(c.area) || 0;
       if (!iso3 || pop <= 0) continue;
 
-      // Country level (L0) — synthetic root region per ISO3.
       rows.push({
         country_iso3: iso3,
         admin_level: 0,
@@ -50,7 +48,6 @@ async function bootstrapAdminRegions(supabase: any): Promise<number> {
         metadata: { subregion: c.subregion ?? null },
       });
 
-      // Capital city (L1) — assume 8% of population is urban capital, classic Zipf approximation.
       const capital = Array.isArray(c.capital) ? c.capital[0] : null;
       if (capital) {
         rows.push({
@@ -68,8 +65,7 @@ async function bootstrapAdminRegions(supabase: any): Promise<number> {
       }
     }
     if (rows.length === 0) return 0;
-    // Insert in chunks; rely on PK to skip dupes silently — admin_regions has no unique constraint
-    // on (country_iso3, name), so we pre-filter by checking existence per ISO3.
+
     const { data: existing } = await supabase
       .from("admin_regions")
       .select("country_iso3,name")
@@ -100,7 +96,6 @@ serve(async (req) => {
   const start = Date.now();
 
   try {
-    // 0. Bootstrap admin_regions if starved (<50 eligible).
     const { error: anchorErr } = await supabase.rpc("ensure_l0_reporting_anchors");
     if (anchorErr) throw anchorErr;
     const { error: demoErr } = await supabase.rpc("ensure_admin_region_demographics");
@@ -117,9 +112,6 @@ serve(async (req) => {
       bootstrapped = await bootstrapAdminRegions(supabase);
     }
 
-    // 1. Pull eligible regions across ALL admin levels (0-4).
-    // GAP FIX: previously limited to admin_level<=3, missing 17,904 L4 regions.
-    // Paginate to bypass PostgREST 1000-row default cap.
     const regions: any[] = [];
     const PAGE = 1000;
     for (let from = 0; from < 30000; from += PAGE) {
@@ -136,10 +128,8 @@ serve(async (req) => {
       regions.push(...page);
       if (page.length < PAGE) break;
     }
-    const error = null as any;
 
-    if (error) throw error;
-    if (!regions || regions.length === 0) {
+    if (regions.length === 0) {
       await supabase.from("automation_logs").insert({
         job_name: FN,
         status: "error",
@@ -150,26 +140,6 @@ serve(async (req) => {
       });
     }
 
-    // 2. Rolling-window dedup: derived demographics are static, so re-inserting them
-    // daily produced ~4.4M redundant rows/day (115 GB table). Skip any region+indicator
-    // already captured within the retention window (7 days).
-    const windowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const dedupKey = new Set<string>();
-    const DPAGE = 1000;
-    for (let from = 0; from < 200000; from += DPAGE) {
-      const { data: page } = await supabase
-        .from("community_metrics")
-        .select("region_id,indicator_key")
-        .gte("captured_at", windowStart.toISOString())
-        .eq("source", "derived_admin_regions")
-        .range(from, from + DPAGE - 1);
-      if (!page || page.length === 0) break;
-      for (const e of page as any[]) dedupKey.add(`${e.region_id}|${e.indicator_key}`);
-      if (page.length < DPAGE) break;
-    }
-
-
-    const now = new Date().toISOString();
     const rows: any[] = [];
 
     for (const r of regions) {
@@ -181,13 +151,30 @@ serve(async (req) => {
       const urbanFlag = r.urban_rural === "urban" ? 1 : 0;
 
       const candidates = [
-        { key: "population_estimate", value: pop, unit: "persons", domain: "demographics", meta: { admin_level: r.admin_level, derivation: "intrinsic" } },
-        { key: "population_density_km2", value: density, unit: "persons_per_km2", domain: "demographics", meta: { admin_level: r.admin_level, area_km2: area } },
-        { key: "urban_classification", value: urbanFlag, unit: "boolean", domain: "settlement", meta: { admin_level: r.admin_level, label: r.urban_rural || "unknown" } },
+        {
+          key: "population_estimate",
+          value: pop,
+          unit: "persons",
+          domain: "demographics",
+          meta: { admin_level: r.admin_level, derivation: "intrinsic" },
+        },
+        {
+          key: "population_density_km2",
+          value: density,
+          unit: "persons_per_km2",
+          domain: "demographics",
+          meta: { admin_level: r.admin_level, area_km2: area },
+        },
+        {
+          key: "urban_classification",
+          value: urbanFlag,
+          unit: "boolean",
+          domain: "settlement",
+          meta: { admin_level: r.admin_level, label: r.urban_rural || "unknown" },
+        },
       ];
 
       for (const c of candidates) {
-        if (dedupKey.has(`${r.id}|${c.key}`)) continue;
         rows.push({
           region_id: r.id,
           country_iso3: r.country_iso3,
@@ -195,40 +182,40 @@ serve(async (req) => {
           indicator_key: c.key,
           value: c.value,
           unit: c.unit,
-          source: "derived_admin_regions",
-          captured_at: now,
           metadata: c.meta,
         });
       }
     }
 
+    // Persist through the database-side state machine so comparison + history
+    // insertion is atomic. This avoids both repeated full-history scans and
+    // race conditions between overlapping seeder invocations.
     let inserted = 0;
     const chunkSize = 1000;
     for (let i = 0; i < rows.length; i += chunkSize) {
       const chunk = rows.slice(i, i + chunkSize);
-      const { error: insErr } = await supabase.from("community_metrics").insert(chunk);
-      if (!insErr) inserted += chunk.length;
-      else console.error("[seed-community-metrics] insert error:", insErr.message);
+      const { data, error: rpcErr } = await supabase.rpc("record_derived_community_metrics", {
+        _rows: chunk,
+      });
+      if (rpcErr) throw rpcErr;
+      inserted += Number(data) || 0;
     }
-
-    // Hard assertion: log status as 'error' if 0 inserted from non-empty candidate set.
-    const status =
-      rows.length === 0
-        ? "success" // already up-to-date today
-        : inserted === rows.length
-        ? "success"
-        : inserted > 0
-        ? "partial"
-        : "error";
 
     await supabase.from("automation_logs").insert({
       job_name: FN,
-      status,
-      message: `Bootstrapped ${bootstrapped} regions; seeded ${inserted}/${rows.length} metrics from ${regions.length} regions in ${Date.now() - start}ms`,
+      status: "success",
+      message: `Bootstrapped ${bootstrapped} regions; appended ${inserted} changed metrics from ${rows.length} candidates across ${regions.length} regions in ${Date.now() - start}ms`,
     });
 
     return new Response(
-      JSON.stringify({ ok: true, inserted, candidates: rows.length, regions: regions.length, bootstrapped }),
+      JSON.stringify({
+        ok: true,
+        inserted,
+        candidates: rows.length,
+        unchanged: rows.length - inserted,
+        regions: regions.length,
+        bootstrapped,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
