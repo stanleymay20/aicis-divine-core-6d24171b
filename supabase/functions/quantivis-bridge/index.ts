@@ -6,17 +6,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
 };
 
-// ─── Surface Registry ──────────────────────────────────────────────
-// Maps URL resource → { view, default_order, filterable columns, default limit }
 type SurfaceDef = {
   view: string;
   order_by: string;
   order_desc: boolean;
-  filters: string[];           // exact-match filterable columns
-  range_filters?: { col: string; gte_param?: string; lte_param?: string }[]; // time/value ranges
+  filters: string[];
+  range_filters?: { col: string; gte_param?: string; lte_param?: string }[];
   default_limit: number;
   max_limit: number;
-  /** Column used as the high-water mark for incremental sync. Required for /sync. */
   cursor_col?: string;
 };
 
@@ -26,6 +23,10 @@ const SURFACES: Record<string, SurfaceDef> = {
     order_by: "period",
     order_desc: true,
     filters: ["iso3", "domain", "metric_name", "provider_name"],
+    // Quantivis sync uses small trailing time windows specifically to keep this
+    // large surface bounded. These parameters were previously ignored, causing
+    // every request to scan the full signal view despite ?since/&until=.
+    range_filters: [{ col: "period", gte_param: "since", lte_param: "until" }],
     default_limit: 100,
     max_limit: 1000,
     cursor_col: "period",
@@ -37,7 +38,6 @@ const SURFACES: Record<string, SurfaceDef> = {
     filters: ["entity_type", "iso3", "sovereignty_status"],
     default_limit: 100,
     max_limit: 1000,
-    // No time column on this materialized aggregate — sync via offset pagination only.
   },
   countries: {
     view: "quantivis_country_dashboard",
@@ -132,7 +132,6 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
-  // Validate API key
   const encoder = new TextEncoder();
   const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(apiKey));
   const keyHash = Array.from(new Uint8Array(hashBuffer), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -155,11 +154,10 @@ serve(async (req) => {
   const resource = pathParts[1] || "";
 
   try {
-    // Catalog endpoint — discovery
     if (resource === "" || resource === "catalog") {
       return json({
         api: "Quantivis Bridge API",
-        version: "2.0",
+        version: "2.1",
         surfaces: Object.entries(SURFACES).map(([key, def]) => ({
           path: `/${key}`,
           view: def.view,
@@ -171,7 +169,7 @@ serve(async (req) => {
           })) ?? [],
           default_limit: def.default_limit,
           max_limit: def.max_limit,
-          pagination: "?limit=N&offset=M (use until/since for time-window paging on time-series surfaces)",
+          pagination: "?limit=N&offset=M; add &include_total=1 only when an exact total is genuinely required",
         })),
         stats_endpoint: "/stats",
         sync_endpoint: "/sync (status) or /sync/:surface (incremental pull, advances cursor)",
@@ -204,14 +202,6 @@ serve(async (req) => {
       });
     }
 
-    // ─── Incremental sync ──────────────────────────────────────────
-    // GET  /sync                  → status of all cursors for this org
-    // GET  /sync/:surface         → fetch only rows newer than last cursor
-    //   ?limit=N                  → max rows (capped by surface.max_limit)
-    //   ?since=ISO                → override stored cursor (one-shot)
-    //   ?until=ISO                → upper bound (defaults to now)
-    //   ?dry_run=1                → don't advance cursor
-    //   ?reset=1                  → reset cursor to epoch before fetching
     if (resource === "sync") {
       const syncSurface = pathParts[2];
       if (!syncSurface) {
@@ -247,7 +237,6 @@ serve(async (req) => {
         sdef.max_limit,
       );
 
-      // Load (or create) cursor
       const { data: existing } = await sb
         .from("quantivis_sync_cursors")
         .select("last_synced_at")
@@ -258,7 +247,6 @@ serve(async (req) => {
       const since = overrideSince
         ?? (reset ? "1970-01-01T00:00:00Z" : (existing?.last_synced_at ?? "1970-01-01T00:00:00Z"));
 
-      // Pull only rows in (since, until] ordered ascending by cursor for stable paging
       const { data, error: qErr } = await sb
         .from(sdef.view)
         .select("*")
@@ -273,10 +261,8 @@ serve(async (req) => {
       const newHighWater = rows.length > 0
         ? String(rows[rows.length - 1][sdef.cursor_col!] ?? since)
         : since;
-
       const hasMore = rows.length === syncLimit;
 
-      // Advance cursor unless dry-run
       if (!dryRun && rows.length > 0) {
         await sb.from("quantivis_sync_cursors").upsert(
           {
@@ -317,23 +303,27 @@ serve(async (req) => {
       }, 404);
     }
 
-    // Pagination
     const limit = Math.min(
       parseInt(url.searchParams.get("limit") || String(def.default_limit), 10) || def.default_limit,
       def.max_limit,
     );
     const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+    const includeTotal = url.searchParams.get("include_total") === "1";
 
-    // Build query
-    let q = sb.from(def.view).select("*", { count: "exact" });
+    // Exact count on very large views was the dominant latency/timeout cost: a
+    // request for 10 rows still forced PostgreSQL to count the entire filtered
+    // view. Totals are now explicitly opt-in. Normal sync pagination detects
+    // continuation by receiving a full page, which may cause one harmless final
+    // empty request but avoids full-table counts on every page.
+    let q = includeTotal
+      ? sb.from(def.view).select("*", { count: "exact" })
+      : sb.from(def.view).select("*");
 
-    // Exact-match filters
     for (const col of def.filters) {
       const v = url.searchParams.get(col);
       if (v !== null && v !== "") q = q.eq(col, v);
     }
 
-    // Range filters (time windows)
     for (const rf of def.range_filters ?? []) {
       const since = rf.gte_param ? url.searchParams.get(rf.gte_param) : null;
       const until = rf.lte_param ? url.searchParams.get(rf.lte_param) : null;
@@ -341,23 +331,28 @@ serve(async (req) => {
       if (until) q = q.lte(rf.col, until);
     }
 
-    // Order + paginate
     q = q.order(def.order_by, { ascending: !def.order_desc, nullsFirst: false });
     q = q.range(offset, offset + limit - 1);
 
     const { data, count, error } = await q;
     if (error) throw error;
 
+    const pageCount = data?.length ?? 0;
+    const nextOffset = includeTotal && count != null
+      ? (offset + limit < count ? offset + limit : null)
+      : (pageCount === limit ? offset + limit : null);
+
     return json({
       surface: resource,
       view: def.view,
       data: data ?? [],
-      count: data?.length || 0,
-      total: count ?? null,
+      count: pageCount,
+      total: includeTotal ? (count ?? null) : null,
       pagination: {
         limit,
         offset,
-        next_offset: count != null && offset + limit < count ? offset + limit : null,
+        next_offset: nextOffset,
+        total_included: includeTotal,
       },
       filters_applied: Object.fromEntries(
         [...def.filters, ...(def.range_filters?.flatMap((r) => [r.gte_param, r.lte_param].filter(Boolean) as string[]) ?? [])]
