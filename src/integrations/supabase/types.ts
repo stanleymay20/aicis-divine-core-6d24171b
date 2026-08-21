@@ -18826,6 +18826,10 @@ export type Database = {
       prospective_model_breakdown: { Args: never; Returns: Json }
       prospective_summary_stats: { Args: never; Returns: Json }
       prune_retention_logs: { Args: never; Returns: Json }
+      purge_derived_community_metrics: {
+        Args: { _batch?: number; _keep_days?: number }
+        Returns: number
+      }
       realize_due_prospective_forecasts: {
         Args: { limit_count?: number }
         Returns: {
