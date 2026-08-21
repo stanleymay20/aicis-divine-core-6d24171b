@@ -150,17 +150,24 @@ serve(async (req) => {
       });
     }
 
-    // 2. Day-bucket dedup: skip region+indicator already inserted today.
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
-    const { data: existingToday } = await supabase
-      .from("community_metrics")
-      .select("region_id,indicator_key")
-      .gte("captured_at", todayStart.toISOString())
-      .eq("source", "derived_admin_regions");
-    const dedupKey = new Set(
-      (existingToday || []).map((e: any) => `${e.region_id}|${e.indicator_key}`),
-    );
+    // 2. Rolling-window dedup: derived demographics are static, so re-inserting them
+    // daily produced ~4.4M redundant rows/day (115 GB table). Skip any region+indicator
+    // already captured within the retention window (7 days).
+    const windowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const dedupKey = new Set<string>();
+    const DPAGE = 1000;
+    for (let from = 0; from < 200000; from += DPAGE) {
+      const { data: page } = await supabase
+        .from("community_metrics")
+        .select("region_id,indicator_key")
+        .gte("captured_at", windowStart.toISOString())
+        .eq("source", "derived_admin_regions")
+        .range(from, from + DPAGE - 1);
+      if (!page || page.length === 0) break;
+      for (const e of page as any[]) dedupKey.add(`${e.region_id}|${e.indicator_key}`);
+      if (page.length < DPAGE) break;
+    }
+
 
     const now = new Date().toISOString();
     const rows: any[] = [];
