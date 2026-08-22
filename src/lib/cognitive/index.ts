@@ -9,3 +9,5 @@ export * from "./causal";
 export * from "./cascade";
 export * from "./counterfactual";
 export * from "./benchmark";
+export * from "./hypothesis";
+export * from "./temporal";
