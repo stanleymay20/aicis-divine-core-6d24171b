@@ -130,7 +130,8 @@ CREATE POLICY "Service manages evidence requests" ON public.aicis_evidence_reque
 CREATE POLICY "Service manages temporal relations" ON public.aicis_temporal_relations
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
-CREATE OR REPLACE VIEW public.aicis_active_hypothesis_competitions AS
+CREATE OR REPLACE VIEW public.aicis_active_hypothesis_competitions
+WITH (security_invoker = true) AS
 SELECT
   s.id,
   s.question,
