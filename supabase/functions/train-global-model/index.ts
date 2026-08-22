@@ -1,92 +1,106 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST" },
+    });
+  }
+
+  const { response: authResponse } = await requireAdminOrCron(req, corsHeaders);
+  if (authResponse) return authResponse;
+
   try {
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // Analyze last 30 days of data
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    
-    // Get vulnerability patterns
-    const { data: vulnerabilities } = await supabase
-      .from('vulnerability_scores')
-      .select('*')
-      .gte('computed_at', thirtyDaysAgo);
-    
-    // Get alerts patterns
-    const { data: alerts } = await supabase
-      .from('critical_alerts')
-      .select('*')
-      .gte('triggered_at', thirtyDaysAgo);
-    
-    // Analyze source performance
-    const sourcePerformance: Record<string, {count: number, avgSeverity: number}> = {};
-    
+
+    const { data: vulnerabilities, error: vulnerabilityError } = await supabase
+      .from("vulnerability_scores")
+      .select("*")
+      .gte("computed_at", thirtyDaysAgo);
+    if (vulnerabilityError) throw vulnerabilityError;
+
+    const { data: alerts, error: alertError } = await supabase
+      .from("critical_alerts")
+      .select("*")
+      .gte("triggered_at", thirtyDaysAgo);
+    if (alertError) throw alertError;
+
+    const sourcePerformance: Record<string, { count: number; avgSeverity: number }> = {};
+
     alerts?.forEach((alert: any) => {
-      const source = alert.meta?.source || 'unknown';
+      const source = String(alert.meta?.source || "unknown").slice(0, 120);
       if (!sourcePerformance[source]) {
-        sourcePerformance[source] = {count: 0, avgSeverity: 0};
+        sourcePerformance[source] = { count: 0, avgSeverity: 0 };
       }
       sourcePerformance[source].count++;
-      sourcePerformance[source].avgSeverity += alert.severity || 0;
+      sourcePerformance[source].avgSeverity += Number(alert.severity || 0);
     });
-    
-    // Calculate averages
-    Object.keys(sourcePerformance).forEach(source => {
+
+    Object.keys(sourcePerformance).forEach((source) => {
       const perf = sourcePerformance[source];
       perf.avgSeverity = perf.count > 0 ? perf.avgSeverity / perf.count : 0;
     });
-    
-    // Log learning outcome
-    const { error: logError } = await supabase
-      .from('ai_learning_log')
-      .insert({
-        source_table: 'critical_alerts',
-        success: true,
-        insight: JSON.stringify({
-          period: '30_days',
-          vulnerabilities_analyzed: vulnerabilities?.length || 0,
-          alerts_analyzed: alerts?.length || 0,
-          source_performance: sourcePerformance,
-          timestamp: new Date().toISOString()
-        })
-      });
 
-    console.log('Training complete:', sourcePerformance);
+    const { error: logError } = await supabase.from("ai_learning_log").insert({
+      source_table: "critical_alerts",
+      success: true,
+      insight: JSON.stringify({
+        period: "30_days",
+        vulnerabilities_analyzed: vulnerabilities?.length || 0,
+        alerts_analyzed: alerts?.length || 0,
+        source_performance: sourcePerformance,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+    if (logError) throw logError;
 
-    return new Response(JSON.stringify({ 
+    console.log(JSON.stringify({
+      level: "info",
+      function: "train-global-model",
+      message: "Training analysis complete",
+      sources: Object.keys(sourcePerformance).length,
+      timestamp: new Date().toISOString(),
+    }));
+
+    return new Response(JSON.stringify({
       ok: true,
       analyzed: {
         vulnerabilities: vulnerabilities?.length || 0,
-        alerts: alerts?.length || 0
+        alerts: alerts?.length || 0,
       },
-      sourcePerformance
+      sourcePerformance,
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   } catch (error) {
-    console.error('Error in train-global-model:', error);
-    
-    return new Response(JSON.stringify({ 
-      ok: false,
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    }), {
+    console.error(JSON.stringify({
+      level: "error",
+      function: "train-global-model",
+      message: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString(),
+    }));
+
+    return new Response(JSON.stringify({ ok: false, error: "Model training analysis failed" }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
