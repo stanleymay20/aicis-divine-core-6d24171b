@@ -107,14 +107,18 @@ const Lazy = ({ children }: { children: React.ReactNode }) => (
 
 import type { AccessTier } from "@/hooks/useUserTier";
 
+type OperationalRole = "admin" | "operator" | "analyst";
+
 const Protected = ({
   children,
   tier,
+  role,
 }: {
   children: React.ReactNode;
   tier?: AccessTier;
+  role?: OperationalRole;
 }) => (
-  <ProtectedRoute requiredTier={tier}>
+  <ProtectedRoute requiredTier={tier} requiredRole={role}>
     <Lazy>{children}</Lazy>
   </ProtectedRoute>
 );
@@ -122,11 +126,13 @@ const Protected = ({
 const Shell = ({
   children,
   tier,
+  role,
 }: {
   children: React.ReactNode;
   tier?: AccessTier;
+  role?: OperationalRole;
 }) => (
-  <ProtectedRoute requiredTier={tier}>
+  <ProtectedRoute requiredTier={tier} requiredRole={role}>
     <AICISLayout>
       <div className="overflow-y-auto h-full flex flex-col">
         <Lazy>{children}</Lazy>
@@ -173,7 +179,7 @@ const App = () => (
                 <Route path="/decisions" element={<Protected><Decisions /></Protected>} />
                 <Route path="/evidence-command" element={<Protected><EvidenceCommand /></Protected>} />
                 <Route path="/governance" element={<Protected><GovernanceHub /></Protected>} />
-                <Route path="/admin" element={<Protected><AdminDashboard /></Protected>} />
+                <Route path="/admin" element={<Protected role="admin"><AdminDashboard /></Protected>} />
                 <Route path="/deepdive/:iso3" element={<Protected><CountryDeepDivePage /></Protected>} />
                 <Route path="/resolution" element={<Protected><ResolutionExplorer /></Protected>} />
                 <Route path="/watchlist" element={<Protected><Watchlist /></Protected>} />
@@ -186,7 +192,7 @@ const App = () => (
                 <Route path="/signal-validation" element={<Protected><SignalValidation /></Protected>} />
                 <Route path="/operational-truth" element={<Protected><OperationalTruth /></Protected>} />
                 <Route path="/system-status" element={<Protected><SystemStatus /></Protected>} />
-                <Route path="/infra-ops" element={<Protected><InfraOps /></Protected>} />
+                <Route path="/infra-ops" element={<Protected role="operator"><InfraOps /></Protected>} />
                 <Route path="/developers" element={<Protected><DeveloperPortal /></Protected>} />
                 <Route path="/forecast-validation" element={<Shell><ForecastValidation /></Shell>} />
                 <Route path="/system-pulse" element={<Shell><SystemPulse /></Shell>} />
@@ -204,21 +210,21 @@ const App = () => (
                 <Route path="/local-events" element={<Shell><LocalEvents /></Shell>} />
                 <Route path="/local-events/:iso3" element={<Shell><LocalEvents /></Shell>} />
                 <Route path="/local-events/:iso3/:locality" element={<Shell><LocalEvents /></Shell>} />
-                <Route path="/admin/export-center" element={<Protected><ExportCenter /></Protected>} />
+                <Route path="/admin/export-center" element={<Protected role="admin"><ExportCenter /></Protected>} />
                 <Route path="/export-center" element={<Protected><ExportCenter /></Protected>} />
                 <Route path="/data-export" element={<Protected><ExportCenter /></Protected>} />
                 <Route path="/export-layer" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
                 <Route path="/exports" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
                 <Route path="/quantivis-exports" element={<Protected tier="enterprise"><ExportLayer /></Protected>} />
                 <Route path="/pilot-truth" element={<Shell><PilotTruthFeed /></Shell>} />
-                <Route path="/data-pipeline" element={<Shell><DataPipeline /></Shell>} />
+                <Route path="/data-pipeline" element={<Shell role="operator"><DataPipeline /></Shell>} />
                 <Route path="/outcome-cockpit" element={<Shell><OutcomeCockpit /></Shell>} />
                 <Route path="/system-catalog" element={<Shell><SystemCatalog /></Shell>} />
                 <Route path="/analyst" element={<Shell><AnalystDashboard /></Shell>} />
                 <Route path="/analyst-dashboard" element={<Shell><AnalystDashboard /></Shell>} />
-                <Route path="/data-integrity" element={<Protected><DataIntegrity /></Protected>} />
+                <Route path="/data-integrity" element={<Protected role="operator"><DataIntegrity /></Protected>} />
                 <Route path="/brief/today" element={<Protected><MinisterBrief /></Protected>} />
-                <Route path="/federation-admin" element={<Protected><FederationAdmin /></Protected>} />
+                <Route path="/federation-admin" element={<Protected role="admin"><FederationAdmin /></Protected>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </IntelligenceMemoryProvider>
