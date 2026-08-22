@@ -7,16 +7,16 @@ import {
   tierMeetsRequirement,
   useUserTier,
 } from "@/hooks/useUserTier";
+import { AICISRole, useUserRoles } from "@/hooks/useUserRoles";
 import { Shield, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  /**
-   * Minimum tier required to view this route. Defaults to "free".
-   * "sovereign" or "enterprise" will redirect to /upgrade when unmet.
-   */
+  /** Minimum commercial access tier. */
   requiredTier?: AccessTier;
+  /** Minimum operational role. Role checks are never bypassed by demo mode. */
+  requiredRole?: "admin" | "operator" | "analyst";
 }
 
 const FullScreenSkeleton = () => (
@@ -34,22 +34,40 @@ const FullScreenSkeleton = () => (
   </div>
 );
 
+const roleMeetsRequirement = (
+  roles: AICISRole[],
+  requiredRole?: "admin" | "operator" | "analyst",
+) => {
+  if (!requiredRole) return true;
+  if (roles.includes("admin")) return true;
+  if (requiredRole === "admin") return false;
+  if (roles.includes("operator")) return true;
+  if (requiredRole === "operator") return false;
+  return roles.includes("analyst");
+};
+
 export const ProtectedRoute = ({
   children,
   requiredTier = "free",
+  requiredRole,
 }: ProtectedRouteProps) => {
   const { user, loading: authLoading, unavailable } = useAuth();
   const { isDemo } = useDemoMode();
   const { tier, loading: tierLoading } = useUserTier();
+  const { roles, isLoading: rolesLoading } = useUserRoles();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Demo mode bypasses both auth and tier — read-only preview only
+  // Demo mode may bypass commercial tier checks for read-only previews, but it
+  // must never grant operational/admin privileges.
   const needsTierCheck = requiredTier !== "free" && !isDemo;
+  const needsRoleCheck = Boolean(requiredRole);
   const checkingTier = needsTierCheck && tierLoading;
+  const checkingRole = needsRoleCheck && !isDemo && rolesLoading;
 
   useEffect(() => {
     if (authLoading || unavailable) return;
+
     if (!user && !isDemo) {
       navigate("/auth", {
         replace: true,
@@ -57,17 +75,29 @@ export const ProtectedRoute = ({
       });
       return;
     }
-    if (needsTierCheck && !tierLoading) {
-      if (!tierMeetsRequirement(tier, requiredTier)) {
-        navigate("/upgrade", {
-          replace: true,
-          state: {
-            requiredTier,
-            currentTier: tier,
-            from: location.pathname,
-          },
-        });
-      }
+
+    if (needsRoleCheck && isDemo) {
+      navigate("/command-center", { replace: true });
+      return;
+    }
+
+    if (needsRoleCheck && !rolesLoading && !roleMeetsRequirement(roles, requiredRole)) {
+      navigate("/command-center", {
+        replace: true,
+        state: { accessDenied: true, requiredRole, from: location.pathname },
+      });
+      return;
+    }
+
+    if (needsTierCheck && !tierLoading && !tierMeetsRequirement(tier, requiredTier)) {
+      navigate("/upgrade", {
+        replace: true,
+        state: {
+          requiredTier,
+          currentTier: tier,
+          from: location.pathname,
+        },
+      });
     }
   }, [
     authLoading,
@@ -75,16 +105,20 @@ export const ProtectedRoute = ({
     user,
     isDemo,
     needsTierCheck,
+    needsRoleCheck,
     tierLoading,
     tier,
     requiredTier,
+    rolesLoading,
+    roles,
+    requiredRole,
     navigate,
     location.pathname,
     location.search,
     location.hash,
   ]);
 
-  if (authLoading || checkingTier) return <FullScreenSkeleton />;
+  if (authLoading || checkingTier || checkingRole) return <FullScreenSkeleton />;
   if (unavailable) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -100,6 +134,7 @@ export const ProtectedRoute = ({
     );
   }
   if (!user && !isDemo) return null;
+  if (needsRoleCheck && (isDemo || !roleMeetsRequirement(roles, requiredRole))) return null;
   if (needsTierCheck && !tierMeetsRequirement(tier, requiredTier)) return null;
 
   return <>{children}</>;
