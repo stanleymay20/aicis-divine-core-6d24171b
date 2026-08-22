@@ -1,12 +1,14 @@
 // Phase 1 — Relevance Intelligence Layer
 // Scores canonical global_signals against user_relevance_profiles.
-// Template/deterministic first: no AI call, no token burn, safe for frequent cron.
+// Deterministic scoring: no AI call and safe for frequent authenticated/cron use.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireAdminOrCron, requireUser } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -87,30 +89,38 @@ const DEFAULT_SECTORS = [
   "humanitarian",
 ];
 
-function arr(v: string[] | null | undefined): string[] {
-  return Array.isArray(v) ? v.filter(Boolean).map((x) => String(x).toLowerCase()) : [];
+function arr(value: string[] | null | undefined): string[] {
+  return Array.isArray(value)
+    ? value.filter(Boolean).map((item) => String(item).toLowerCase())
+    : [];
 }
 
-function overlap(a: string[] | null | undefined, b: string[] | null | undefined): { hit: boolean; matches: string[] } {
+function overlap(
+  a: string[] | null | undefined,
+  b: string[] | null | undefined,
+): { hit: boolean; matches: string[] } {
   const A = new Set(arr(a));
   const B = arr(b);
-  const matches = B.filter((x) => A.has(x));
+  const matches = B.filter((item) => A.has(item));
   return { hit: matches.length > 0, matches };
 }
 
-function textIncludes(text: string, terms: string[] | null | undefined): { hit: boolean; matches: string[] } {
+function textIncludes(
+  text: string,
+  terms: string[] | null | undefined,
+): { hit: boolean; matches: string[] } {
   const lower = text.toLowerCase();
-  const matches = arr(terms).filter((t) => t.length >= 2 && lower.includes(t));
+  const matches = arr(terms).filter((term) => term.length >= 2 && lower.includes(term));
   return { hit: matches.length > 0, matches };
 }
 
-function clamp(n: number, lo = 0, hi = 100) {
-  return Math.max(lo, Math.min(hi, n));
+function clamp(number: number, lo = 0, hi = 100) {
+  return Math.max(lo, Math.min(hi, number));
 }
 
-function normScore(n: number | null | undefined) {
-  if (typeof n !== "number" || Number.isNaN(n)) return 0;
-  return clamp(n);
+function normScore(number: number | null | undefined) {
+  if (typeof number !== "number" || Number.isNaN(number)) return 0;
+  return clamp(number);
 }
 
 function trustScore(tier: string | null): number {
@@ -130,7 +140,13 @@ function tierOf(score: number): "critical" | "important" | "monitor" | "discover
 
 function relevance(signal: Signal, profile: Profile) {
   const weights = { ...DEFAULT_WEIGHTS, ...(profile.weights ?? {}) };
-  const haystack = [signal.title, signal.summary, signal.category, signal.subcategory, ...(signal.affected_stakeholders ?? [])]
+  const haystack = [
+    signal.title,
+    signal.summary,
+    signal.category,
+    signal.subcategory,
+    ...(signal.affected_stakeholders ?? []),
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -141,17 +157,40 @@ function relevance(signal: Signal, profile: Profile) {
   const entities = textIncludes(haystack, profile.watched_entities);
   const excluded = textIncludes(haystack, profile.excluded_topics);
 
-  const domainMatch = topics.hit || (profile.watched_topics?.length ?? 0) === 0 ? (topics.hit ? 100 : 45) : 0;
-  const geoMatch = country.hit ? 100 : region.hit ? 70 : (profile.watched_countries?.length ?? 0) === 0 ? 45 : 0;
-  const sectorMatch = sector.hit ? 100 : (profile.watched_sectors?.length ?? 0) === 0 ? 45 : 0;
-  const entityMatch = entities.hit ? 100 : (profile.watched_entities?.length ?? 0) === 0 ? 35 : 0;
+  const domainMatch = topics.hit || (profile.watched_topics?.length ?? 0) === 0
+    ? topics.hit ? 100 : 45
+    : 0;
+  const geoMatch = country.hit
+    ? 100
+    : region.hit
+      ? 70
+      : (profile.watched_countries?.length ?? 0) === 0
+        ? 45
+        : 0;
+  const sectorMatch = sector.hit
+    ? 100
+    : (profile.watched_sectors?.length ?? 0) === 0
+      ? 45
+      : 0;
+  const entityMatch = entities.hit
+    ? 100
+    : (profile.watched_entities?.length ?? 0) === 0
+      ? 35
+      : 0;
 
   const impact = normScore(signal.impact_score);
   const urgency = normScore(signal.urgency_score);
   const confidence = normScore(signal.confidence_score);
   const novelty = normScore(signal.novelty_score ?? 50);
-  const corrob = Math.min(100, Math.max(0, ((signal.corroboration_count ?? signal.merged_source_count ?? 1) - 1) * 18));
-  const anomalyWeakSignalBoost = Math.max(novelty, corrob, urgency >= 70 && confidence < 55 ? 75 : 0);
+  const corroboration = Math.min(
+    100,
+    Math.max(0, ((signal.corroboration_count ?? signal.merged_source_count ?? 1) - 1) * 18),
+  );
+  const anomalyWeakSignalBoost = Math.max(
+    novelty,
+    corroboration,
+    urgency >= 70 && confidence < 55 ? 75 : 0,
+  );
 
   let score =
     domainMatch * weights.domain_match +
@@ -167,8 +206,11 @@ function relevance(signal: Signal, profile: Profile) {
   if (sourceTrust < 45 && score >= 70) score -= 8;
   if (excluded.hit) score -= 35;
 
-  const weakSignalProtected = novelty >= 85 || corrob >= 45 || (urgency >= 75 && impact >= 60);
-  if (weakSignalProtected) score = Math.max(score, profile.discovery_threshold ?? 40);
+  const weakSignalProtected =
+    novelty >= 85 || corroboration >= 45 || (urgency >= 75 && impact >= 60);
+  if (weakSignalProtected) {
+    score = Math.max(score, profile.discovery_threshold ?? 40);
+  }
 
   score = clamp(Math.round(score));
 
@@ -197,31 +239,39 @@ function relevance(signal: Signal, profile: Profile) {
         excluded_topics: excluded.matches,
       },
       weak_signal_protected: weakSignalProtected,
-      explanation: explain(score, { country, region, sector, topics, entities, weakSignalProtected, excluded }),
+      explanation: explain(score, {
+        country,
+        region,
+        sector,
+        topics,
+        entities,
+        weakSignalProtected,
+        excluded,
+      }),
     },
   };
 }
 
 function explain(score: number, ctx: any): string {
   if (ctx.excluded.hit) return "Lowered because it matched an excluded topic.";
-  if (score >= 85) return "Critical because it strongly matches your watched context and has high urgency or impact.";
-  if (score >= 70) return "Important because it overlaps with your watched geography, sector, topic, or entity.";
+  if (score >= 85) return "Critical because it strongly matches watched context and has high urgency or impact.";
+  if (score >= 70) return "Important because it overlaps with watched geography, sector, topic, or entity.";
   if (score >= 55) return "Monitor because it has partial relevance or meaningful operational severity.";
   if (ctx.weakSignalProtected) return "Discovery because it is an unusual or emerging weak signal worth preserving.";
   return "Hidden from default alerts because it has low user-context relevance.";
 }
 
 async function ensureProfile(sb: any, userId: string): Promise<Profile> {
-  const { data: existing, error: readErr } = await sb
+  const { data: existing, error: readError } = await sb
     .from("user_relevance_profiles")
     .select("id,user_id,workspace_id,watched_countries,watched_regions,watched_sectors,watched_topics,watched_entities,excluded_topics,alert_threshold,discovery_threshold,weights")
     .eq("user_id", userId)
     .is("workspace_id", null)
     .maybeSingle();
-  if (readErr) throw readErr;
+  if (readError) throw readError;
   if (existing) return existing as Profile;
 
-  const { data: created, error: insertErr } = await sb
+  const { data: created, error: insertError } = await sb
     .from("user_relevance_profiles")
     .insert({
       user_id: userId,
@@ -238,20 +288,54 @@ async function ensureProfile(sb: any, userId: string): Promise<Profile> {
     })
     .select("id,user_id,workspace_id,watched_countries,watched_regions,watched_sectors,watched_topics,watched_entities,excluded_topics,alert_threshold,discovery_threshold,weights")
     .single();
-  if (insertErr) throw insertErr;
+  if (insertError) throw insertError;
   return created as Profile;
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST" },
+    });
+  }
+
+  const privileged = await requireAdminOrCron(req, corsHeaders);
+  let privilegedMode = privileged.response === null;
+  let actorUserId: string | null = privileged.user?.id ?? null;
+
+  if (!privilegedMode) {
+    const { ctx, response } = await requireUser(req, corsHeaders);
+    if (response || !ctx) return response!;
+    actorUserId = ctx.user.id;
+  }
+
   const started = Date.now();
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   try {
-    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    const limit = Math.min(Number(body.limit ?? BATCH), 2000);
-    const userId = body.user_id ? String(body.user_id) : null;
+    const body = await req.json().catch(() => ({}));
+    const requestedLimit = Number(body.limit ?? BATCH);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(Math.floor(requestedLimit), 1), 2000)
+      : BATCH;
+    const requestedUserId = body.user_id ? String(body.user_id) : null;
     const bootstrap = body.bootstrap !== false;
+
+    if (!privilegedMode && requestedUserId && requestedUserId !== actorUserId) {
+      return new Response(JSON.stringify({ ok: false, error: "Forbidden", reason: "cross_user_scope" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Cron/admin may score one requested user or all profiles. Ordinary users
+    // are always scoped to their authenticated user id regardless of body data.
+    const userId = privilegedMode ? requestedUserId : actorUserId;
 
     let profiles: Profile[] = [];
     if (userId && bootstrap) {
@@ -260,10 +344,16 @@ Deno.serve(async (req) => {
       let profileQuery = sb
         .from("user_relevance_profiles")
         .select("id,user_id,workspace_id,watched_countries,watched_regions,watched_sectors,watched_topics,watched_entities,excluded_topics,alert_threshold,discovery_threshold,weights")
-        .limit(200);
-      if (userId) profileQuery = profileQuery.eq("user_id", userId);
-      const { data, error: pErr } = await profileQuery;
-      if (pErr) throw pErr;
+        .limit(privilegedMode ? 200 : 1);
+
+      if (userId) {
+        profileQuery = profileQuery.eq("user_id", userId);
+      } else if (!privilegedMode) {
+        throw new Error("Authenticated relevance scoring requires a user scope");
+      }
+
+      const { data, error: profileError } = await profileQuery;
+      if (profileError) throw profileError;
       profiles = (data ?? []) as Profile[];
     }
 
@@ -278,25 +368,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: signals, error: sErr } = await sb
+    const { data: signals, error: signalError } = await sb
       .from("global_signals")
       .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,confidence_score,urgency_score,impact_score,source_trust_tier,novelty_score,corroboration_count,merged_source_count,first_detected_at,latest_update_at")
       .eq("canonical_event_status", "canonical")
       .order("latest_update_at", { ascending: false, nullsFirst: false })
       .limit(limit);
-    if (sErr) throw sErr;
+    if (signalError) throw signalError;
 
     const rows: any[] = [];
     for (const profile of profiles) {
       for (const signal of (signals ?? []) as Signal[]) {
-        const r = relevance(signal, profile);
+        const result = relevance(signal, profile);
         rows.push({
           signal_id: signal.id,
           user_id: profile.user_id,
           workspace_id: profile.workspace_id,
-          relevance_score: r.relevance_score,
-          relevance_tier: r.relevance_tier,
-          relevance_reason: r.relevance_reason,
+          relevance_score: result.relevance_score,
+          relevance_tier: result.relevance_tier,
+          relevance_reason: result.relevance_reason,
           computed_at: new Date().toISOString(),
         });
       }
@@ -312,8 +402,8 @@ Deno.serve(async (req) => {
       written += chunk.length;
     }
 
-    const counts = rows.reduce((acc: Record<string, number>, r) => {
-      acc[r.relevance_tier] = (acc[r.relevance_tier] ?? 0) + 1;
+    const counts = rows.reduce((acc: Record<string, number>, row) => {
+      acc[row.relevance_tier] = (acc[row.relevance_tier] ?? 0) + 1;
       return acc;
     }, {});
 
@@ -325,20 +415,31 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: true,
+      scope: privilegedMode ? (userId ? "privileged_user" : "privileged_all") : "self",
       profiles: profiles.length,
       signals: signals?.length ?? 0,
       scored: written,
       counts,
       elapsed_ms: Date.now() - started,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e: any) {
-    const msg = e?.message || String(e);
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     await sb.from("automation_logs").insert({
       job_name: "score-signal-relevance",
       status: "error",
-      message: msg.slice(0, 500),
+      message: message.slice(0, 500),
     });
-    return new Response(JSON.stringify({ ok: false, error: msg }), {
+    console.error(JSON.stringify({
+      level: "error",
+      function: "score-signal-relevance",
+      message,
+      actor_user_id: actorUserId,
+      privileged: privilegedMode,
+      timestamp: new Date().toISOString(),
+    }));
+    return new Response(JSON.stringify({ ok: false, error: "Relevance scoring failed" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
