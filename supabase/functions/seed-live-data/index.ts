@@ -1,10 +1,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resilientCall, structuredLog, handleCors, corsHeaders, errorResponse, jsonResponse } from "../_shared/resilience.ts";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const FN = "seed-live-data";
 
-// Define interfaces for data structures
 interface GDACSEvent {
   eventtype: string;
   eventname: string;
@@ -42,6 +42,9 @@ interface ReliefWebDisaster {
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
+
+  const { response: authResponse } = await requireAdminOrCron(req, corsHeaders);
+  if (authResponse) return authResponse;
 
   const start = Date.now();
   const supabase = createClient(
@@ -226,7 +229,6 @@ serve(async (req) => {
       const arr = await resp.json();
       const rows: any[] = Array.isArray(arr) && arr.length > 1 ? arr[1] : [];
 
-      // Group by country, get latest non-null value + previous value to detect drop
       const byCountry = new Map<string, { latest: number; latestYear: string; prev: number | null; name: string }>();
       for (const r of rows) {
         if (r.value === null) continue;
@@ -282,13 +284,11 @@ serve(async (req) => {
 
     // 8. USGS WaterWatch — Streamflow & drought conditions
     await resilientCall(`${FN}:usgs-water`, async () => {
-      // USGS Water Services: current streamflow conditions, focus on drought (low flow) sites
       const resp = await fetch("https://waterservices.usgs.gov/nwis/iv/?format=json&stateCd=ca&parameterCd=00060&siteStatus=active");
       if (!resp.ok) throw new Error(`USGS Water: ${resp.status}`);
       const data = await resp.json();
       const series = data.value?.timeSeries || [];
 
-      // Aggregate by state into one signal per anomaly cluster
       const stateAnomalies: Record<string, { low: number; total: number; sites: string[] }> = {};
       for (const ts of series.slice(0, 200)) {
         const siteName = ts.sourceInfo?.siteName || "";
@@ -334,14 +334,12 @@ serve(async (req) => {
 
     // 9. UNHCR — Refugee & displacement movements
     await resilientCall(`${FN}:unhcr`, async () => {
-      // UNHCR Refugee Population Statistics public API
       const yearNow = new Date().getFullYear();
       const resp = await fetch(`https://api.unhcr.org/population/v1/population/?yearFrom=${yearNow - 1}&yearTo=${yearNow}&coo_all=true&limit=30`);
       if (!resp.ok) throw new Error(`UNHCR: ${resp.status}`);
       const data = await resp.json();
       const items = data.items || [];
 
-      // Group by origin country and surface major flows
       const flows: Record<string, { refugees: number; asylum: number; idps: number; coo_name: string }> = {};
       for (const item of items) {
         const coo = item.coo_iso || item.coo;
@@ -420,7 +418,6 @@ serve(async (req) => {
       }
     }, { maxRetries: 1, timeoutMs: 25000 }).catch(e => results.errors.push(`AI Diplomacy: ${(e as Error).message}`));
 
-    // Log
     const total = results.crises + results.alerts + results.intel_events + results.security_incidents + results.critical_alerts;
     await supabase.from("automation_logs").insert({
       job_name: FN, status: results.errors.length > 0 ? "partial" : "success",
