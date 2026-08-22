@@ -1,9 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 interface CountryAggregate {
@@ -24,41 +26,49 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "POST" },
+    });
+  }
+
+  const { response: authResponse } = await requireAdminOrCron(req, corsHeaders);
+  if (authResponse) return authResponse;
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const sb = createClient(supabaseUrl, serviceKey);
 
   try {
-    // 1. Get latest snapshot date
-    const { data: latestRow } = await sb
+    const { data: latestRow, error: latestError } = await sb
       .from("country_performance_snapshots")
       .select("snapshot_date")
       .order("snapshot_date", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
+    if (latestError) throw latestError;
     if (!latestRow) {
       return new Response(
-        JSON.stringify({ error: "No snapshot data available" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ ok: false, error: "No snapshot data available" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const snapshotDate = latestRow.snapshot_date;
 
-    // 2. Use server-side SQL aggregation — 1 row per country, no truncation
-    const { data: countries, error: rpcErr } = await sb.rpc(
+    const { data: countries, error: rpcError } = await sb.rpc(
       "aggregate_country_snapshots",
-      { _snapshot_date: snapshotDate }
+      { _snapshot_date: snapshotDate },
     );
 
-    if (rpcErr || !countries?.length) {
-      throw new Error(rpcErr?.message || "No aggregated data returned");
+    if (rpcError || !countries?.length) {
+      throw new Error(rpcError?.message || "No aggregated data returned");
     }
 
     const typed = countries as CountryAggregate[];
 
-    // 3. Rank: Top 5 Deteriorating (highest risk + negative momentum + breaks)
     const deteriorating = [...typed]
       .sort((a, b) => {
         const scoreA = a.avg_risk * 0.5 + Math.abs(Math.min(a.avg_momentum, 0)) * 0.3 + a.total_breaks * 0.2;
@@ -67,7 +77,6 @@ Deno.serve(async (req) => {
       })
       .slice(0, 5);
 
-    // 4. Rank: Top 5 Improving (positive momentum + low risk)
     const improving = [...typed]
       .sort((a, b) => {
         const scoreA = Math.max(a.avg_momentum, 0) * 0.5 + (100 - a.avg_risk) * 0.3 + a.domains_up * 0.2;
@@ -76,121 +85,146 @@ Deno.serve(async (req) => {
       })
       .slice(0, 5);
 
-    // 5. Highest fragility (lowest = most fragile)
     const fragility = [...typed]
       .sort((a, b) => a.avg_fragility - b.avg_fragility)
       .slice(0, 5);
 
-    // 6. Break density leaders
     const breakLeaders = [...typed]
       .sort((a, b) => b.total_breaks - a.total_breaks)
       .slice(0, 10);
 
-    // 7. Global stats
     const totalCountries = typed.length;
-    const totalDomains = typed.reduce((s, c) => s + c.domain_count, 0);
-    const avgConfidence = +(
-      typed.reduce((s, c) => s + c.avg_confidence, 0) / totalCountries
-    ).toFixed(1);
-    const totalBreaks = typed.reduce((s, c) => s + c.total_breaks, 0);
+    const totalDomains = typed.reduce((sum, country) => sum + country.domain_count, 0);
+    const avgConfidence = totalCountries > 0
+      ? +(typed.reduce((sum, country) => sum + country.avg_confidence, 0) / totalCountries).toFixed(1)
+      : null;
+    const totalBreaks = typed.reduce((sum, country) => sum + country.total_breaks, 0);
 
-    // 8. Get calibration MAPE
-    const { data: calData } = await sb
+    const { data: calibration, error: calibrationError } = await sb
       .from("calibration_metrics")
       .select("metric_value")
       .eq("metric_name", "mape")
       .order("computed_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
+    if (calibrationError) throw calibrationError;
 
-    const actualMape = calData?.metric_value ?? 13.0;
+    // Missing calibration must remain missing. A decision brief must never
+    // replace absent evidence with a plausible-looking default statistic.
+    const actualMape = calibration?.metric_value == null
+      ? null
+      : Number(calibration.metric_value);
 
-    // 9. Compose sections
     const issueDate = new Date().toISOString().split("T")[0];
     const weekNum = getISOWeek(new Date());
+
+    // Idempotency guard for repeated cron/admin calls on the same date.
+    const { data: existingBrief, error: existingError } = await sb
+      .from("weekly_briefs")
+      .select("id, issue_number, brief_date")
+      .eq("brief_date", issueDate)
+      .limit(1)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existingBrief) {
+      return new Response(JSON.stringify({
+        ok: true,
+        already_generated: true,
+        id: existingBrief.id,
+        issue_number: existingBrief.issue_number,
+        brief_date: existingBrief.brief_date,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const calibrationText = actualMape == null
+      ? "Calibration MAPE is not currently available."
+      : `Calibration MAPE: ${actualMape.toFixed(1)}%.`;
+    const confidenceText = avgConfidence == null
+      ? "Average confidence is not currently available."
+      : `Average confidence: ${avgConfidence}%.`;
 
     const sections = {
       executive_summary: {
         title: "Executive Summary",
         content:
           `AICIS Global Structural Risk Brief — Week ${weekNum}, ${issueDate}. ` +
-          `The engine processed ${totalCountries} countries across ${totalDomains} domain models. ` +
-          `Average MAPE: ${Number(actualMape).toFixed(1)}%. Average confidence: ${avgConfidence}%. ` +
-          `Total structural breaks detected: ${totalBreaks}. ` +
-          `System status: Nominal. Kill-switch: Not triggered.`,
+          `The current snapshot contains ${totalCountries} countries across ${totalDomains} domain models. ` +
+          `${calibrationText} ${confidenceText} ` +
+          `Total structural breaks detected in the aggregated snapshot: ${totalBreaks}.`,
       },
       deteriorating: {
         title: "Top 5 Deteriorating Nations",
-        countries: deteriorating.map((c) => ({
-          iso3: c.iso3,
-          risk_pressure: c.avg_risk,
-          momentum: c.avg_momentum,
-          fragility: c.avg_fragility,
-          breaks: c.total_breaks,
-          domains_declining: c.domains_down,
+        countries: deteriorating.map((country) => ({
+          iso3: country.iso3,
+          risk_pressure: country.avg_risk,
+          momentum: country.avg_momentum,
+          fragility: country.avg_fragility,
+          breaks: country.total_breaks,
+          domains_declining: country.domains_down,
         })),
       },
       improving: {
         title: "Top 5 Improving Nations",
-        countries: improving.map((c) => ({
-          iso3: c.iso3,
-          momentum: c.avg_momentum,
-          risk_pressure: c.avg_risk,
-          performance: c.avg_performance,
-          domains_rising: c.domains_up,
+        countries: improving.map((country) => ({
+          iso3: country.iso3,
+          momentum: country.avg_momentum,
+          risk_pressure: country.avg_risk,
+          performance: country.avg_performance,
+          domains_rising: country.domains_up,
         })),
       },
       fragility_watch: {
         title: "Systemic Fragility Watch",
-        countries: fragility.map((c) => ({
-          iso3: c.iso3,
-          fragility_score: c.avg_fragility,
-          risk_pressure: c.avg_risk,
-          breaks: c.total_breaks,
+        countries: fragility.map((country) => ({
+          iso3: country.iso3,
+          fragility_score: country.avg_fragility,
+          risk_pressure: country.avg_risk,
+          breaks: country.total_breaks,
         })),
       },
       break_density: {
         title: "Structural Break Density",
-        leaders: breakLeaders.map((c) => ({
-          iso3: c.iso3,
-          total_breaks: c.total_breaks,
-          confidence: c.avg_confidence,
+        leaders: breakLeaders.map((country) => ({
+          iso3: country.iso3,
+          total_breaks: country.total_breaks,
+          confidence: country.avg_confidence,
         })),
       },
       confidence_assessment: {
         title: "Confidence Assessment",
         avg_confidence: avgConfidence,
-        mape: Number(actualMape),
+        mape: actualMape,
         note:
-          avgConfidence < 40
-            ? "Low confidence is expected during the statistical compounding phase (first 14-30 days). Residual depth is accumulating."
-            : "Confidence levels are within operational range.",
+          avgConfidence == null
+            ? "Confidence aggregation is unavailable for this snapshot."
+            : avgConfidence < 40
+              ? "Current average confidence is low; decisions should require stronger corroboration and human review."
+              : "Current average confidence is within the configured operational range.",
       },
       methodology: {
         title: "Methodology Note",
         content:
-          "Rankings derived from APE-V2.1 engine output: Holt double-exponential smoothing, " +
-          "8-period OLS momentum with t-stat filtering (|t| ≥ 1.5), CUSUM structural break detection, " +
-          "and nonlinear systemic fragility propagation. Confidence scores are Platt-calibrated " +
-          "and hard-capped at 95%. Data sources: World Bank, WHO, FAO, EIA, OWID, NVD, GDELT. " +
-          "This brief is auto-generated and does not constitute policy advice.",
+          "Rankings are derived from the current country performance snapshot and its configured statistical pipeline. " +
+          "Exact upstream sources and provenance must be verified from the source ledger for each observation. " +
+          "This brief is auto-generated decision support and does not constitute policy advice.",
       },
     };
 
     const summaryMd = generateMarkdown(sections, issueDate, weekNum);
 
-    // 10. Get next issue number
-    const { data: lastIssue } = await sb
+    const { data: lastIssue, error: issueError } = await sb
       .from("weekly_briefs")
       .select("issue_number")
       .order("issue_number", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
+    if (issueError) throw issueError;
 
-    const issueNumber = (lastIssue?.issue_number ?? 0) + 1;
+    const issueNumber = Number(lastIssue?.issue_number ?? 0) + 1;
 
-    // 11. Insert
-    const { data: inserted, error: insertErr } = await sb
+    const { data: inserted, error: insertError } = await sb
       .from("weekly_briefs")
       .insert({
         issue_number: issueNumber,
@@ -203,6 +237,7 @@ Deno.serve(async (req) => {
           engine_version: "APE-V2.1",
           generated_by: "generate-weekly-brief",
           aggregation: "server-side SQL",
+          calibration_available: actualMape != null,
         },
         countries_covered: totalCountries,
         models_count: totalDomains,
@@ -212,55 +247,56 @@ Deno.serve(async (req) => {
       .select()
       .single();
 
-    if (insertErr) throw insertErr;
+    if (insertError) throw insertError;
 
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        issue_number: issueNumber,
-        brief_date: issueDate,
-        countries_covered: totalCountries,
-        models_count: totalDomains,
-        avg_mape: actualMape,
-        avg_confidence: avgConfidence,
-        total_breaks: totalBreaks,
-        id: inserted?.id,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err) {
-    console.error("generate-weekly-brief error:", err);
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({
+      ok: true,
+      issue_number: issueNumber,
+      brief_date: issueDate,
+      countries_covered: totalCountries,
+      models_count: totalDomains,
+      avg_mape: actualMape,
+      avg_confidence: avgConfidence,
+      total_breaks: totalBreaks,
+      id: inserted?.id,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      function: "generate-weekly-brief",
+      message: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString(),
+    }));
+    return new Response(JSON.stringify({ ok: false, error: "Weekly brief generation failed" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
 
-function getISOWeek(d: Date): number {
-  const date = new Date(d.getTime());
+function getISOWeek(input: Date): number {
+  const date = new Date(input.getTime());
   date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));
   const week1 = new Date(date.getFullYear(), 0, 4);
-  return (
-    1 +
-    Math.round(
-      ((date.getTime() - week1.getTime()) / 86400000 -
-        3 +
-        ((week1.getDay() + 6) % 7)) /
-        7
-    )
+  return 1 + Math.round(
+    ((date.getTime() - week1.getTime()) / 86400000 -
+      3 +
+      ((week1.getDay() + 6) % 7)) /
+      7,
   );
 }
 
 function generateMarkdown(
   sections: Record<string, any>,
   date: string,
-  week: number
+  week: number,
 ): string {
   const lines: string[] = [];
 
-  lines.push(`# AICIS Global Structural Risk Brief`);
+  lines.push("# AICIS Global Structural Risk Brief");
   lines.push(`**Week ${week} — ${date}**`);
   lines.push("");
   lines.push(`## ${sections.executive_summary.title}`);
@@ -270,42 +306,48 @@ function generateMarkdown(
   lines.push(`## ${sections.deteriorating.title}`);
   lines.push("| Rank | Country | Risk Pressure | Momentum | Fragility | Breaks |");
   lines.push("|------|---------|--------------|----------|-----------|--------|");
-  sections.deteriorating.countries.forEach((c: any, i: number) => {
-    lines.push(`| ${i + 1} | ${c.iso3} | ${c.risk_pressure} | ${c.momentum} | ${c.fragility} | ${c.breaks} |`);
+  sections.deteriorating.countries.forEach((country: any, index: number) => {
+    lines.push(`| ${index + 1} | ${country.iso3} | ${country.risk_pressure} | ${country.momentum} | ${country.fragility} | ${country.breaks} |`);
   });
   lines.push("");
 
   lines.push(`## ${sections.improving.title}`);
   lines.push("| Rank | Country | Momentum | Risk Pressure | Performance | Domains ↑ |");
   lines.push("|------|---------|----------|--------------|-------------|-----------|");
-  sections.improving.countries.forEach((c: any, i: number) => {
-    lines.push(`| ${i + 1} | ${c.iso3} | ${c.momentum} | ${c.risk_pressure} | ${c.performance} | ${c.domains_rising} |`);
+  sections.improving.countries.forEach((country: any, index: number) => {
+    lines.push(`| ${index + 1} | ${country.iso3} | ${country.momentum} | ${country.risk_pressure} | ${country.performance} | ${country.domains_rising} |`);
   });
   lines.push("");
 
   lines.push(`## ${sections.fragility_watch.title}`);
   lines.push("| Country | Fragility Score | Risk Pressure | Breaks |");
   lines.push("|---------|----------------|--------------|--------|");
-  sections.fragility_watch.countries.forEach((c: any) => {
-    lines.push(`| ${c.iso3} | ${c.fragility_score} | ${c.risk_pressure} | ${c.breaks} |`);
+  sections.fragility_watch.countries.forEach((country: any) => {
+    lines.push(`| ${country.iso3} | ${country.fragility_score} | ${country.risk_pressure} | ${country.breaks} |`);
   });
   lines.push("");
 
   lines.push(`## ${sections.break_density.title}`);
   lines.push("| Country | Total Breaks | Confidence |");
   lines.push("|---------|-------------|------------|");
-  sections.break_density.leaders.forEach((c: any) => {
-    lines.push(`| ${c.iso3} | ${c.total_breaks} | ${c.confidence}% |`);
+  sections.break_density.leaders.forEach((country: any) => {
+    lines.push(`| ${country.iso3} | ${country.total_breaks} | ${country.confidence}% |`);
   });
   lines.push("");
 
   lines.push(`## ${sections.confidence_assessment.title}`);
-  lines.push(`Average Confidence: **${sections.confidence_assessment.avg_confidence}%** | MAPE: **${sections.confidence_assessment.mape.toFixed(1)}%**`);
+  const confidence = sections.confidence_assessment.avg_confidence == null
+    ? "unavailable"
+    : `${sections.confidence_assessment.avg_confidence}%`;
+  const mape = sections.confidence_assessment.mape == null
+    ? "unavailable"
+    : `${Number(sections.confidence_assessment.mape).toFixed(1)}%`;
+  lines.push(`Average Confidence: **${confidence}** | MAPE: **${mape}**`);
   lines.push("");
   lines.push(`> ${sections.confidence_assessment.note}`);
   lines.push("");
 
-  lines.push(`---`);
+  lines.push("---");
   lines.push(`*${sections.methodology.content}*`);
 
   return lines.join("\n");
