@@ -7,10 +7,21 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies and build output
 node_modules
 dist
 dist-ssr
+coverage
+
+# Environment files: only the documented template belongs in Git
+.env
+.env.*
+!.env.example
 *.local
+
+# Local Supabase state
+.supabase
+supabase/.temp
 
 # Editor directories and files
 .vscode/*
