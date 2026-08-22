@@ -1,312 +1,430 @@
-import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { AICISLayout } from "@/components/aicis/AICISLayout";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { QueryPanel } from "@/components/ui/query-panel";
+import { Progress } from "@/components/ui/progress";
+import {
+  Activity,
+  ArrowRight,
+  BrainCircuit,
+  CheckCircle2,
+  CircleDashed,
+  FlaskConical,
+  GitBranch,
+  Network,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Brain, Network, FlaskConical, RefreshCw, Play, AlertTriangle, Activity, Globe } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-const DOMAINS = ["governance", "health", "energy", "finance", "food", "security", "education", "climate", "population"];
+const db = supabase as any;
+
+type VerifiedEdge = {
+  id: string;
+  source_name: string;
+  source_entity_id: string;
+  source_type?: string;
+  target_name: string;
+  target_entity_id: string;
+  target_type?: string;
+  relationship_type: string;
+  strength: number | null;
+  confidence: number;
+};
+
+type Cascade = {
+  id: string;
+  cascade_key: string;
+  origin_name: string;
+  terminal_name: string | null;
+  systemic_score: number;
+  structural_confidence: number;
+  causal_confidence: number | null;
+  hop_count: number;
+  cross_domain_count: number;
+  last_detected_at: string;
+};
+
+type TopologyChange = {
+  id: string;
+  change_kind: string;
+  entity_name: string | null;
+  entity_type: string | null;
+  severity: number;
+  delta: number | null;
+  created_at: string;
+};
+
+type CausalAssessment = {
+  id: string;
+  relationship_id: string;
+  verdict: string;
+  causal_score: number;
+  confidence: number;
+  temporal_precedence: number;
+  mechanism_support: number;
+  contradiction_penalty: number;
+  confounder_penalty: number;
+  assessed_at: string;
+};
 
 export default function IntelligenceEngine() {
   const qc = useQueryClient();
-  const [domain, setDomain] = useState<string>("all");
+  const { isAdmin, isOperator } = useUserRoles();
 
-  // ── ML Inference ──
-  const ml = useQuery({
-    queryKey: ["ml-predictions", domain],
+  const verifiedGraph = useQuery({
+    queryKey: ["cognitive-core", "verified-graph"],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("run-ml-inference", {
-        body: { mode: "list", top_n: 50, domain: domain === "all" ? undefined : domain },
+      const { data, error } = await db
+        .from("aicis_verified_graph")
+        .select("id,source_entity_id,source_name,source_type,target_entity_id,target_name,target_type,relationship_type,strength,confidence")
+        .order("confidence", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as VerifiedEdge[];
+    },
+    staleTime: 30_000,
+  });
+
+  const cascades = useQuery({
+    queryKey: ["cognitive-core", "cascades"],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("aicis_supported_cascades")
+        .select("*")
+        .order("systemic_score", { ascending: false })
+        .limit(40);
+      if (error) throw error;
+      return (data ?? []) as Cascade[];
+    },
+    retry: 1,
+  });
+
+  const topology = useQuery({
+    queryKey: ["cognitive-core", "topology"],
+    enabled: isAdmin || isOperator,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("aicis_recent_topology_changes")
+        .select("id,change_kind,entity_name,entity_type,severity,delta,created_at")
+        .order("severity", { ascending: false })
+        .limit(30);
+      if (error) throw error;
+      return (data ?? []) as TopologyChange[];
+    },
+    retry: 1,
+  });
+
+  const causal = useQuery({
+    queryKey: ["cognitive-core", "causal-assessments"],
+    enabled: isAdmin || isOperator,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("aicis_causal_assessments")
+        .select("id,relationship_id,verdict,causal_score,confidence,temporal_precedence,mechanism_support,contradiction_penalty,confounder_penalty,assessed_at")
+        .order("assessed_at", { ascending: false })
+        .limit(60);
+      if (error) throw error;
+      return (data ?? []) as CausalAssessment[];
+    },
+    retry: 1,
+  });
+
+  const topologyScan = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("cognitive-topology-scan", { body: {} });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success(data?.unchanged ? "World topology unchanged" : "World topology refreshed");
+      qc.invalidateQueries({ queryKey: ["cognitive-core"] });
+    },
+    onError: (error: any) => toast.error(error?.message ?? "Topology scan failed"),
+  });
+
+  const causalScan = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("cognitive-causal-cascade-scan", {
+        body: { max_relationships: 1000, max_cascade_hops: 5, min_causal_score: 0.55 },
       });
       if (error) throw error;
       return data;
     },
-  });
-
-  const inferMut = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("run-ml-inference", { body: { mode: "infer" } });
-      if (error) throw error;
-      return data;
+    onSuccess: (data) => {
+      toast.success(`Causal scan complete · ${data?.supported_cascades ?? 0} supported cascades`);
+      qc.invalidateQueries({ queryKey: ["cognitive-core"] });
     },
-    onSuccess: (d) => { toast.success(`Inferred ${d?.rows_inserted ?? 0} predictions`); qc.invalidateQueries({ queryKey: ["ml-predictions"] }); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: any) => toast.error(error?.message ?? "Causal scan failed"),
   });
 
-  // ── Graph Propagation ──
-  const prop = useQuery({
-    queryKey: ["propagation", domain],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("compute-graph-propagation", {
-        body: { mode: "list", top_n: 50, domain: domain === "all" ? undefined : domain },
-      });
-      if (error) throw error;
-      return data;
-    },
-  });
+  const edges = verifiedGraph.data ?? [];
+  const supportedCascades = cascades.data ?? [];
+  const changes = topology.data ?? [];
+  const assessments = causal.data ?? [];
 
-  const propMut = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("compute-graph-propagation", { body: { mode: "compute" } });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (d) => { toast.success(`Computed ${d?.rows_inserted ?? 0} contagion paths`); qc.invalidateQueries({ queryKey: ["propagation"] }); },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  // ── Simulations ──
-  const sims = useQuery({
-    queryKey: ["simulations"],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("run-simulation", { body: { mode: "list", limit: 20 } });
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const [simName, setSimName] = useState("Food shock — Brazil");
-  const [simDomain, setSimDomain] = useState("food");
-  const [simIso, setSimIso] = useState("BRA");
-  const [simMag, setSimMag] = useState("0.10");
-
-  const runSim = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("run-simulation", {
-        body: { mode: "run", scenario_name: simName, domain: simDomain, magnitude: Number(simMag), iso3: simIso || null, direction: "down" },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => { toast.success("Simulation complete"); qc.invalidateQueries({ queryKey: ["simulations"] }); },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  // KPI rollup
-  const mlRows = (ml.data as any)?.rows ?? [];
-  const propRows = (prop.data as any)?.rows ?? [];
-  const simRows = (sims.data as any)?.rows ?? [];
-  const stats = useMemo(() => {
-    const probs = mlRows.map((r: any) => Number(r.risk_probability ?? 0));
-    const critical = probs.filter((p: number) => p >= 0.7).length;
-    const propScores = propRows.map((r: any) => Number(r.propagation_score ?? 0));
-    const highSpill = propScores.filter((s: number) => s >= 0.5).length;
+  const metrics = useMemo(() => {
+    const causalSupported = assessments.filter((item) => item.verdict === "causally-supported").length;
+    const mechanistic = assessments.filter((item) => item.verdict === "mechanistically-supported").length;
+    const contradicted = assessments.filter((item) => item.verdict === "contradicted").length;
+    const avgGraphConfidence = edges.length
+      ? edges.reduce((sum, edge) => sum + Number(edge.confidence ?? 0), 0) / edges.length
+      : 0;
     return {
-      predictions: mlRows.length,
-      critical,
-      paths: propRows.length,
-      highSpill,
-      sims: simRows.length,
+      verifiedEdges: edges.length,
+      avgGraphConfidence,
+      supportedCascades: supportedCascades.length,
+      causalSupported,
+      mechanistic,
+      contradicted,
+      topologyChanges: changes.length,
     };
-  }, [mlRows, propRows, simRows]);
+  }, [edges, supportedCascades, changes, assessments]);
+
+  const loading = verifiedGraph.isLoading || cascades.isLoading;
 
   return (
-    <AICISLayout>
-      <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-              <Brain className="h-5 w-5 text-primary" /> Intelligence Engine
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-              ML inference · graph propagation · scenario simulation. Logistic baseline v1 · cross-border contagion walk · deterministic what-if shocks.
-            </p>
+    <div className="min-h-full bg-background">
+      <div className="mx-auto max-w-[1500px] space-y-5 p-4 md:p-6 lg:p-8">
+        <header className="flex flex-col gap-4 border-b border-border/70 pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">
+              <Sparkles className="h-3.5 w-3.5" /> Understand · Cognitive Core
+            </div>
+            <div>
+              <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight md:text-3xl">
+                <BrainCircuit className="h-6 w-6 text-primary" /> Planetary Cognitive Core
+              </h1>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                Verified world structure, causal evidence, systemic cascades and topology change. Generated language can propose hypotheses; only evidence-backed state crosses into trusted computation.
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground border border-border rounded px-2 py-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live
-            </span>
-            <Select value={domain} onValueChange={setDomain}>
-              <SelectTrigger className="w-[160px] h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All domains</SelectItem>
-                {DOMAINS.map(d => <SelectItem key={d} value={d} className="capitalize">{d}</SelectItem>)}
-              </SelectContent>
-            </Select>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="gap-1.5 font-normal">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Evidence-first
+            </Badge>
+            {isAdmin && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => topologyScan.mutate()} disabled={topologyScan.isPending}>
+                  <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${topologyScan.isPending ? "animate-spin" : ""}`} />
+                  Scan topology
+                </Button>
+                <Button size="sm" onClick={() => causalScan.mutate()} disabled={causalScan.isPending}>
+                  <GitBranch className={`mr-1.5 h-3.5 w-3.5 ${causalScan.isPending ? "animate-pulse" : ""}`} />
+                  Scan causality
+                </Button>
+              </>
+            )}
           </div>
-        </div>
+        </header>
 
-        {/* KPI strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><Brain className="h-3 w-3" /> ML predictions</div>
-            <div className="text-2xl font-bold font-mono tabular-nums mt-1">{stats.predictions}</div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><AlertTriangle className="h-3 w-3" /> Critical ≥70%</div>
-            <div className="text-2xl font-bold font-mono tabular-nums text-destructive mt-1">{stats.critical}</div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><Network className="h-3 w-3" /> Contagion paths</div>
-            <div className="text-2xl font-bold font-mono tabular-nums text-primary mt-1">{stats.paths}</div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><Globe className="h-3 w-3" /> High spillover</div>
-            <div className="text-2xl font-bold font-mono tabular-nums text-amber-500 mt-1">{stats.highSpill}</div>
-          </Card>
-          <Card className="p-3 col-span-2 sm:col-span-1">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"><FlaskConical className="h-3 w-3" /> Simulations</div>
-            <div className="text-2xl font-bold font-mono tabular-nums mt-1">{stats.sims}</div>
-          </Card>
-        </div>
+        <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <Metric label="Verified edges" value={metrics.verifiedEdges} icon={<Network className="h-3.5 w-3.5" />} />
+          <Metric label="Graph confidence" value={metrics.avgGraphConfidence ? `${(metrics.avgGraphConfidence * 100).toFixed(0)}%` : "—"} icon={<ShieldCheck className="h-3.5 w-3.5" />} />
+          <Metric label="Supported cascades" value={metrics.supportedCascades} icon={<GitBranch className="h-3.5 w-3.5" />} />
+          <Metric label="Causal support" value={isAdmin || isOperator ? metrics.causalSupported : "restricted"} icon={<CheckCircle2 className="h-3.5 w-3.5" />} />
+          <Metric label="Mechanistic" value={isAdmin || isOperator ? metrics.mechanistic : "restricted"} icon={<Activity className="h-3.5 w-3.5" />} />
+          <Metric label="Topology shifts" value={isAdmin || isOperator ? metrics.topologyChanges : "restricted"} icon={<CircleDashed className="h-3.5 w-3.5" />} />
+        </section>
 
-        <Tabs defaultValue="ml" className="space-y-4">
-          <TabsList className="bg-muted/50 grid grid-cols-3 w-full max-w-2xl">
-            <TabsTrigger value="ml" className="text-xs data-[state=active]:bg-card"><Brain className="h-3.5 w-3.5 mr-1.5" /> ML inference</TabsTrigger>
-            <TabsTrigger value="graph" className="text-xs data-[state=active]:bg-card"><Network className="h-3.5 w-3.5 mr-1.5" /> Graph propagation</TabsTrigger>
-            <TabsTrigger value="sim" className="text-xs data-[state=active]:bg-card"><FlaskConical className="h-3.5 w-3.5 mr-1.5" /> Simulate</TabsTrigger>
-          </TabsList>
-
-        {/* ── ML Predictions ── */}
-        <TabsContent value="ml">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Risk probabilities (next 7 days)</CardTitle>
-                <CardDescription>Logistic baseline · model v1</CardDescription>
-              </div>
-              <Button size="sm" onClick={() => inferMut.mutate()} disabled={inferMut.isPending}>
-                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${inferMut.isPending ? "animate-spin" : ""}`} />
-                Run inference
-              </Button>
+        <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b border-border/60">
+              <CardTitle className="flex items-center gap-2 text-base"><Network className="h-4 w-4 text-primary" /> Verified world relationships</CardTitle>
+              <CardDescription>Only relationships that crossed the graph trust boundary. This is structured state, not an LLM narrative.</CardDescription>
             </CardHeader>
-            <CardContent>
-              <QueryPanel query={ml} skeleton="table" isEmpty={(d: any) => !d?.rows?.length} emptyMessage="No predictions yet — click Run inference">
-                {(d: any) => (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Country</TableHead>
-                        <TableHead>Domain</TableHead>
-                        <TableHead className="text-right">Probability</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {d.rows.slice(0, 30).map((r: any) => (
-                        <TableRow key={r.id}>
-                          <TableCell className="font-mono">{r.country_iso3}</TableCell>
-                          <TableCell>{r.domain}</TableCell>
-                          <TableCell className="text-right">
-                            <Badge variant={r.risk_probability > 0.6 ? "destructive" : r.risk_probability > 0.4 ? "default" : "secondary"}>
-                              {(r.risk_probability * 100).toFixed(1)}%
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </QueryPanel>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Graph Propagation ── */}
-        <TabsContent value="graph">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Contagion paths</CardTitle>
-                <CardDescription>Risk spreading from origin → target via cross-border signals</CardDescription>
-              </div>
-              <Button size="sm" onClick={() => propMut.mutate()} disabled={propMut.isPending}>
-                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${propMut.isPending ? "animate-spin" : ""}`} />
-                Compute
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <QueryPanel query={prop} skeleton="table" isEmpty={(d: any) => !d?.rows?.length} emptyMessage="No contagion data — click Compute (requires ML predictions first)">
-                {(d: any) => (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Origin</TableHead>
-                        <TableHead>Target</TableHead>
-                        <TableHead>Domain</TableHead>
-                        <TableHead className="text-right">Score</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {d.rows.slice(0, 30).map((r: any) => (
-                        <TableRow key={r.id}>
-                          <TableCell className="font-mono">{r.origin_iso3}</TableCell>
-                          <TableCell className="font-mono">{r.target_iso3}</TableCell>
-                          <TableCell>{r.domain}</TableCell>
-                          <TableCell className="text-right">
-                            <Badge variant={r.propagation_score > 0.5 ? "destructive" : "secondary"}>
-                              {(r.propagation_score * 100).toFixed(1)}%
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </QueryPanel>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Simulations ── */}
-        <TabsContent value="sim" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>What-if scenario</CardTitle>
-              <CardDescription>Apply a domain shock and project cross-border cascade</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <Input placeholder="Scenario name" value={simName} onChange={e => setSimName(e.target.value)} />
-                <Select value={simDomain} onValueChange={setSimDomain}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{DOMAINS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-                </Select>
-                <Input placeholder="ISO3 (optional, e.g. BRA)" value={simIso} onChange={e => setSimIso(e.target.value.toUpperCase())} maxLength={3} />
-                <Input placeholder="Magnitude (0–1)" type="number" step="0.05" value={simMag} onChange={e => setSimMag(e.target.value)} />
-              </div>
-              <Button onClick={() => runSim.mutate()} disabled={runSim.isPending} className="w-full md:w-auto">
-                <Play className="h-3.5 w-3.5 mr-1.5" /> Run simulation
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>Recent runs</CardTitle></CardHeader>
-            <CardContent>
-              <QueryPanel query={sims} skeleton="list" isEmpty={(d: any) => !d?.rows?.length} emptyMessage="No simulations yet">
-                {(d: any) => (
-                  <div className="space-y-2">
-                    {d.rows.map((r: any) => (
-                      <div key={r.id} className="border rounded-md p-3 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium text-sm">{r.scenario_name}</div>
-                          <Badge variant="outline">{r.shock_domain} · {r.shock_direction} {(r.shock_magnitude * 100).toFixed(0)}%</Badge>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {r.shock_iso3 ? `Origin: ${r.shock_iso3} · ` : ""}
-                          Affected: {Array.isArray(r.affected_countries) ? r.affected_countries.length : 0} countries ·
-                          Global impact: {Number(r.estimated_global_impact ?? 0).toFixed(2)}
-                        </div>
+            <CardContent className="p-0">
+              {loading ? (
+                <EmptyState text="Loading verified world model…" />
+              ) : edges.length === 0 ? (
+                <EmptyState text="No verified relationships have crossed the trust boundary yet." />
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {edges.slice(0, 14).map((edge) => (
+                    <div key={edge.id} className="grid gap-2 px-4 py-3 md:grid-cols-[1fr_auto_1fr_110px] md:items-center">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{edge.source_name}</div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{edge.source_type ?? "entity"}</div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </QueryPanel>
+                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <span className="max-w-[150px] truncate">{edge.relationship_type}</span><ArrowRight className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{edge.target_name}</div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{edge.target_type ?? "entity"}</div>
+                      </div>
+                      <Confidence value={Number(edge.confidence ?? 0)} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+
+          <Card>
+            <CardHeader className="border-b border-border/60">
+              <CardTitle className="flex items-center gap-2 text-base"><GitBranch className="h-4 w-4 text-primary" /> Systemic cascades</CardTitle>
+              <CardDescription>Multi-hop paths promoted only after structural and causal evidence thresholds are satisfied.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 p-4">
+              {supportedCascades.length === 0 ? (
+                <EmptyState text="No supported cascades yet. Candidate chains remain outside the trusted surface." compact />
+              ) : supportedCascades.slice(0, 8).map((cascade) => (
+                <div key={cascade.id} className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <span className="truncate">{cascade.origin_name}</span>
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{cascade.terminal_name ?? "downstream system"}</span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{cascade.hop_count} hops · detected {formatRelative(cascade.last_detected_at)}</div>
+                    </div>
+                    <Badge variant="outline" className="shrink-0 text-[10px]">{Math.round(cascade.systemic_score * 100)} systemic</Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-[10px] text-muted-foreground">
+                    <ConfidenceBar label="Structural" value={cascade.structural_confidence} />
+                    <ConfidenceBar label="Causal" value={cascade.causal_confidence ?? 0} />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+
+        {(isAdmin || isOperator) && (
+          <section className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader className="border-b border-border/60">
+                <CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4 text-primary" /> Causal evidence ledger</CardTitle>
+                <CardDescription>Association is kept separate from causal support. Contradictions and confounders lower the score explicitly.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4">
+                {assessments.length === 0 ? <EmptyState text="No causal assessments recorded yet." compact /> : assessments.slice(0, 12).map((item) => (
+                  <div key={item.id} className="rounded-md border border-border/60 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Badge variant={verdictVariant(item.verdict)} className="text-[10px]">{item.verdict.replaceAll("-", " ")}</Badge>
+                      <span className="font-mono text-xs tabular-nums">{Math.round(item.causal_score * 100)} / 100</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 md:grid-cols-4">
+                      <MiniScore label="Temporal" value={item.temporal_precedence} />
+                      <MiniScore label="Mechanism" value={item.mechanism_support} />
+                      <MiniScore label="Contradiction" value={item.contradiction_penalty} inverse />
+                      <MiniScore label="Confounder" value={item.confounder_penalty} inverse />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="border-b border-border/60">
+                <CardTitle className="flex items-center gap-2 text-base"><CircleDashed className="h-4 w-4 text-primary" /> Structural surprise</CardTitle>
+                <CardDescription>Changes in the shape of the world model: emerging connectors, cluster mergers, influence shifts and feedback candidates.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4">
+                {changes.length === 0 ? <EmptyState text="No material topology changes in the visible window." compact /> : changes.slice(0, 12).map((change) => (
+                  <div key={change.id} className="flex items-center gap-3 rounded-md border border-border/60 p-3">
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${change.severity >= 0.8 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
+                      {change.severity >= 0.8 ? <TriangleAlert className="h-4 w-4" /> : <Activity className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{change.change_kind.replaceAll(".", " ")}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">{change.entity_name ?? "system-level topology"} · {formatRelative(change.created_at)}</div>
+                    </div>
+                    <span className="font-mono text-xs tabular-nums">{Math.round(change.severity * 100)}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        <section className="grid gap-3 md:grid-cols-4">
+          <Principle icon={<ShieldCheck className="h-4 w-4" />} title="Evidence before belief" text="Observed state requires provenance; extracted language cannot certify itself." />
+          <Principle icon={<Network className="h-4 w-4" />} title="Structure before prose" text="Graph algorithms compute paths and topology; the LLM explains results rather than guessing them." />
+          <Principle icon={<FlaskConical className="h-4 w-4" />} title="Simulation is not fact" text="Counterfactual and predicted states remain explicitly separate from observation." />
+          <Principle icon={<BrainCircuit className="h-4 w-4" />} title="Learn from outcomes" text="Forecasts and hypotheses become measurable records that can later be calibrated against reality." />
+        </section>
       </div>
-    </AICISLayout>
+    </div>
   );
+}
+
+function Metric({ label, value, icon }: { label: string; value: string | number; icon: React.ReactNode }) {
+  return (
+    <Card className="p-3">
+      <div className="flex items-center gap-1.5 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{icon}{label}</div>
+      <div className="mt-1.5 truncate font-mono text-xl font-semibold tabular-nums">{value}</div>
+    </Card>
+  );
+}
+
+function Confidence({ value }: { value: number }) {
+  return (
+    <div className="min-w-[90px]">
+      <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground"><span>confidence</span><span>{Math.round(value * 100)}%</span></div>
+      <Progress value={value * 100} className="h-1" />
+    </div>
+  );
+}
+
+function ConfidenceBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <div className="mb-1 flex justify-between"><span>{label}</span><span>{Math.round(value * 100)}%</span></div>
+      <Progress value={value * 100} className="h-1" />
+    </div>
+  );
+}
+
+function MiniScore({ label, value, inverse = false }: { label: string; value: number; inverse?: boolean }) {
+  return (
+    <div>
+      <div className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground"><span>{label}</span><span>{Math.round(value * 100)}</span></div>
+      <Progress value={value * 100} className={`mt-1 h-1 ${inverse && value >= 0.5 ? "opacity-70" : ""}`} />
+    </div>
+  );
+}
+
+function Principle({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/15 p-3">
+      <div className="flex items-center gap-2 text-xs font-semibold">{icon}{title}</div>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{text}</p>
+    </div>
+  );
+}
+
+function EmptyState({ text, compact = false }: { text: string; compact?: boolean }) {
+  return (
+    <div className={`flex items-center justify-center text-center text-xs text-muted-foreground ${compact ? "min-h-24" : "min-h-40"}`}>
+      <div><CircleDashed className="mx-auto mb-2 h-5 w-5 opacity-60" />{text}</div>
+    </div>
+  );
+}
+
+function verdictVariant(verdict: string): "default" | "secondary" | "destructive" | "outline" {
+  if (verdict === "causally-supported") return "default";
+  if (verdict === "contradicted") return "destructive";
+  if (verdict === "mechanistically-supported") return "secondary";
+  return "outline";
+}
+
+function formatRelative(value: string) {
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return "unknown time";
+  const minutes = Math.max(0, Math.round((Date.now() - time) / 60_000));
+  if (minutes < 2) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
