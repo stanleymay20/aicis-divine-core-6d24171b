@@ -13,16 +13,20 @@ export function useUserRoles() {
     staleTime: 60_000,
     queryFn: async () => {
       if (!user?.id) return [];
+
+      // Authorization roles may come from server-controlled app_metadata or the
+      // database. Never trust user_metadata: users can edit it themselves.
       const metadataRoles = [
         user?.app_metadata?.role,
-        user?.user_metadata?.role,
-        ...(Array.isArray(user?.app_metadata?.roles) ? user?.app_metadata?.roles : []),
+        ...(Array.isArray(user?.app_metadata?.roles) ? user.app_metadata.roles : []),
       ].filter(Boolean) as string[];
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("user_roles" as any)
         .select("role")
         .eq("user_id", user.id);
+
+      if (error) throw error;
 
       const dbRoles = (data ?? []).map((row: any) => row.role).filter(Boolean);
       return Array.from(new Set([...metadataRoles, ...dbRoles])) as AICISRole[];
@@ -40,5 +44,6 @@ export function useUserRoles() {
     isOperator,
     isAnalyst,
     isLoading: rolesQuery.isLoading,
+    error: rolesQuery.error,
   };
 }
