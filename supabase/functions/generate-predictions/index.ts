@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
+import { resilientCall, structuredLog, handleCors, corsHeaders, errorResponse, jsonResponse } from "../_shared/resilience.ts";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const FN = "generate-predictions";
 
@@ -17,6 +18,9 @@ serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
 
+  const { response: authResponse } = await requireAdminOrCron(req, corsHeaders);
+  if (authResponse) return authResponse;
+
   const start = Date.now();
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -24,9 +28,6 @@ serve(async (req) => {
   );
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
-
     structuredLog('info', FN, 'Starting prediction generation (v3 hybrid)');
 
     // PRIMARY SOURCE: pull recent snapshots grouped by (domain, iso3)
