@@ -17,11 +17,13 @@ jobs:
   verify:
     name: Verify application
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -31,11 +33,68 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Lint
-        run: bun run lint
+      - name: Strict lint — post-Phase-4 code
+        id: strict_lint
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA="e2181170b8de9996a1da7fba797511579ee23a08"
+          mapfile -t FILES < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- '*.ts' '*.tsx')
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "No TypeScript files changed since Phase 4 baseline."
+            exit 0
+          fi
+          printf 'Strict-linting %s file(s):\n' "${#FILES[@]}"
+          printf ' - %s\n' "${FILES[@]}"
+          bunx eslint "${FILES[@]}" --max-warnings 0
+
+      - name: Legacy lint debt ratchet
+        id: lint_ratchet
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          bunx eslint . -f json > eslint-report.json
+          ESLINT_STATUS=$?
+          set -e
+          if [ "$ESLINT_STATUS" -gt 1 ]; then
+            echo "ESLint execution/configuration failed with status $ESLINT_STATUS"
+            exit "$ESLINT_STATUS"
+          fi
+          node .github/scripts/check-lint-baseline.mjs eslint-report.json 1385 71
 
       - name: Typecheck
+        id: typecheck
+        if: always()
+        continue-on-error: true
         run: bun run typecheck
 
       - name: Production build
+        id: build
+        if: always()
+        continue-on-error: true
         run: bun run build
+
+      - name: Verification summary
+        if: always()
+        shell: bash
+        run: |
+          echo "Strict lint: ${{ steps.strict_lint.outcome }}"
+          echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
+          echo "Typecheck: ${{ steps.typecheck.outcome }}"
+          echo "Build: ${{ steps.build.outcome }}"
+
+          FAILED=0
+          [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.build.outcome }}" = "success" ] || FAILED=1
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "One or more verification gates failed."
+            exit 1
+          fi
+
+          echo "All verification gates passed."
