@@ -2,35 +2,90 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export const jsonHeaders = { "Content-Type": "application/json" };
 
-export async function requireCronSecret(req: Request) {
+const authHeaders = (extraHeaders: Record<string, string> = {}) => ({
+  ...extraHeaders,
+  ...jsonHeaders,
+});
+
+const bearerToken = (req: Request) => {
+  const value = req.headers.get("authorization");
+  if (!value?.toLowerCase().startsWith("bearer ")) return null;
+  return value.replace(/^[Bb]earer\s+/, "");
+};
+
+export async function requireCronSecret(
+  req: Request,
+  extraHeaders: Record<string, string> = {},
+) {
   const expected = Deno.env.get("CRON_SECRET");
+  const provided = req.headers.get("x-cron-secret") || bearerToken(req);
 
-  const provided =
-    req.headers.get("x-cron-secret") ||
-    req.headers.get("authorization")?.replace("Bearer ", "");
-
-  if (!expected || provided !== expected) {
+  if (!expected || !provided || provided !== expected) {
     return new Response(JSON.stringify({ error: "Unauthorized cron request" }), {
       status: 401,
-      headers: jsonHeaders,
+      headers: authHeaders(extraHeaders),
     });
   }
 
   return null;
 }
 
+/**
+ * Fast-path check for trusted auth claims only. `user_metadata` is intentionally
+ * excluded because Supabase users can edit it themselves.
+ */
 export function userIsAdmin(user: any): boolean {
   return (
     user?.app_metadata?.role === "admin" ||
-    user?.user_metadata?.role === "admin" ||
     user?.app_metadata?.roles?.includes?.("admin")
   );
 }
 
-export async function requireAdminUser(req: Request) {
+async function userHasDatabaseRole(userId: string, role: string): Promise<boolean> {
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+
+  const { data, error } = await admin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", role)
+    .limit(1);
+
+  if (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      function: "auth",
+      message: "role_lookup_failed",
+      role,
+      user_id: userId,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    }));
+    return false;
+  }
+
+  return (data?.length ?? 0) > 0;
+}
+
+export async function requireAdminUser(
+  req: Request,
+  extraHeaders: Record<string, string> = {},
+) {
+  const headers = authHeaders(extraHeaders);
   const authHeader = req.headers.get("authorization");
-  if (!authHeader) {
-    return { user: null, response: new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: jsonHeaders }) };
+  const token = bearerToken(req);
+
+  if (!authHeader || !token) {
+    return {
+      user: null,
+      response: new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers,
+      }),
+    };
   }
 
   const supabase = createClient(
@@ -39,18 +94,58 @@ export async function requireAdminUser(req: Request) {
     { global: { headers: { Authorization: authHeader } } },
   );
 
-  const token = authHeader.replace("Bearer ", "");
   const { data, error } = await supabase.auth.getUser(token);
 
   if (error || !data?.user) {
-    return { user: null, response: new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: jsonHeaders }) };
+    return {
+      user: null,
+      response: new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers,
+      }),
+    };
   }
 
-  if (!userIsAdmin(data.user)) {
-    return { user: data.user, response: new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: jsonHeaders }) };
+  const isAdmin =
+    userIsAdmin(data.user) ||
+    (await userHasDatabaseRole(data.user.id, "admin"));
+
+  if (!isAdmin) {
+    return {
+      user: data.user,
+      response: new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers,
+      }),
+    };
   }
 
   return { user: data.user, response: null };
+}
+
+/**
+ * Privileged scheduled jobs may be called either by a trusted cron secret or
+ * by an authenticated administrator. This keeps scheduled execution possible
+ * without making service-role mutations public.
+ */
+export async function requireAdminOrCron(
+  req: Request,
+  extraHeaders: Record<string, string> = {},
+): Promise<{
+  user: any | null;
+  via: "admin" | "cron" | null;
+  response: Response | null;
+}> {
+  const expected = Deno.env.get("CRON_SECRET");
+  const providedCronSecret = req.headers.get("x-cron-secret");
+
+  if (expected && providedCronSecret && providedCronSecret === expected) {
+    return { user: null, via: "cron", response: null };
+  }
+
+  const { user, response } = await requireAdminUser(req, extraHeaders);
+  if (response) return { user, via: null, response };
+  return { user, via: "admin", response: null };
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -72,20 +167,18 @@ export interface UserAuthContext {
 
 /**
  * Validates the Authorization header (Bearer JWT) and returns either
- *   { ctx: { user, tier }, response: null }  on success, or
- *   { ctx: null, response: Response }        with status 401 on failure.
- *
- * Use `extraCorsHeaders` to merge in your function's CORS headers so
- * the error response is not blocked by the browser.
+ *   { ctx: { user, tier }, response: null } on success, or
+ *   { ctx: null, response: Response } with status 401 on failure.
  */
 export async function requireUser(
   req: Request,
   extraCorsHeaders: Record<string, string> = {},
 ): Promise<{ ctx: UserAuthContext | null; response: Response | null }> {
-  const headers = { ...extraCorsHeaders, ...jsonHeaders };
+  const headers = authHeaders(extraCorsHeaders);
   const authHeader = req.headers.get("authorization");
+  const token = bearerToken(req);
 
-  if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+  if (!authHeader || !token) {
     return {
       ctx: null,
       response: new Response(
@@ -101,7 +194,6 @@ export async function requireUser(
     { global: { headers: { Authorization: authHeader } } },
   );
 
-  const token = authHeader.replace(/^[Bb]earer\s+/, "");
   const { data, error } = await supabase.auth.getUser(token);
 
   if (error || !data?.user) {
@@ -114,8 +206,6 @@ export async function requireUser(
     };
   }
 
-  // Tier lookup uses the service role to bypass RLS on organizations,
-  // but only ever returns the tier for THIS user_id.
   const admin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -123,14 +213,23 @@ export async function requireUser(
 
   let tier: AccessTier = "free";
   try {
-    const { data: tierData } = await admin.rpc("get_user_tier", {
+    const { data: tierData, error: tierError } = await admin.rpc("get_user_tier", {
       _user_id: data.user.id,
     });
+    if (tierError) throw tierError;
     const t = (tierData as string) ?? "free";
     if (t === "enterprise" || t === "sovereign" || t === "free") {
       tier = t;
     }
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      function: "auth",
+      message: "tier_lookup_failed",
+      user_id: data.user.id,
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString(),
+    }));
     tier = "free";
   }
 
@@ -139,7 +238,6 @@ export async function requireUser(
 
 /**
  * Like requireUser, but additionally enforces a minimum access tier.
- * Returns 403 with the user's current tier when the requirement is not met.
  */
 export async function requireTier(
   req: Request,
@@ -150,7 +248,7 @@ export async function requireTier(
   if (response || !ctx) return { ctx: null, response };
 
   if (TIER_RANK[ctx.tier] < TIER_RANK[minTier]) {
-    const headers = { ...extraCorsHeaders, ...jsonHeaders };
+    const headers = authHeaders(extraCorsHeaders);
     return {
       ctx: null,
       response: new Response(
@@ -175,8 +273,16 @@ export async function enforceRateLimit(options: {
   route: string;
   limit?: number;
   windowSeconds?: number;
+  extraHeaders?: Record<string, string>;
 }) {
-  const { supabase, req, route, limit = 60, windowSeconds = 60 } = options;
+  const {
+    supabase,
+    req,
+    route,
+    limit = 60,
+    windowSeconds = 60,
+    extraHeaders = {},
+  } = options;
   const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const subject = forwardedFor || req.headers.get("cf-connecting-ip") || "unknown";
   const now = new Date();
@@ -194,7 +300,10 @@ export async function enforceRateLimit(options: {
   if (current && current.request_count >= limit) {
     return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
       status: 429,
-      headers: { ...jsonHeaders, "Retry-After": String(windowSeconds) },
+      headers: {
+        ...authHeaders(extraHeaders),
+        "Retry-After": String(windowSeconds),
+      },
     });
   }
 
@@ -227,7 +336,18 @@ export async function recordPipelineHealth(options: {
   message?: string;
   metadata?: Record<string, unknown>;
 }) {
-  const { supabase, jobName, status, source, insertedCount = 0, skippedCount = 0, errorCount = 0, durationMs, message, metadata = {} } = options;
+  const {
+    supabase,
+    jobName,
+    status,
+    source,
+    insertedCount = 0,
+    skippedCount = 0,
+    errorCount = 0,
+    durationMs,
+    message,
+    metadata = {},
+  } = options;
   await supabase.from("pipeline_health_events").insert({
     job_name: jobName,
     status,
