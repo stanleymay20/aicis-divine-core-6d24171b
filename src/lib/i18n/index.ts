@@ -21,7 +21,11 @@ export function getLocale(): Locale {
 }
 
 export function setLocale(loc: Locale) {
-  try { localStorage.setItem(STORAGE_KEY, loc); } catch {}
+  try {
+    localStorage.setItem(STORAGE_KEY, loc);
+  } catch {
+    // Storage can be unavailable in privacy-restricted or sandboxed contexts.
+  }
   document.documentElement.lang = loc;
 }
 
