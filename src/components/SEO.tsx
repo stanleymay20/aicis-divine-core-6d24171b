@@ -1,6 +1,6 @@
 import { Helmet } from "react-helmet-async";
 
-const SITE_URL = "https://aicis-divine-core.lovable.app";
+const SITE_URL = (import.meta.env.VITE_PUBLIC_SITE_URL || "https://aicis.netlify.app").replace(/\/$/, "");
 
 interface SEOProps {
   title: string;
