@@ -310,7 +310,7 @@ export default function IntelligenceEngine() {
                 {assessments.length === 0 ? <EmptyState text="No causal assessments recorded yet." compact /> : assessments.slice(0, 12).map((item) => (
                   <div key={item.id} className="rounded-md border border-border/60 p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <Badge variant={verdictVariant(item.verdict)} className="text-[10px]">{item.verdict.replaceAll("-", " ")}</Badge>
+                      <Badge variant={verdictVariant(item.verdict)} className="text-[10px]">{item.verdict.split("-").join(" ")}</Badge>
                       <span className="font-mono text-xs tabular-nums">{Math.round(item.causal_score * 100)} / 100</span>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 md:grid-cols-4">
@@ -336,7 +336,7 @@ export default function IntelligenceEngine() {
                       {change.severity >= 0.8 ? <TriangleAlert className="h-4 w-4" /> : <Activity className="h-4 w-4" />}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{change.change_kind.replaceAll(".", " ")}</div>
+                      <div className="truncate text-sm font-medium">{change.change_kind.split(".").join(" ")}</div>
                       <div className="truncate text-[11px] text-muted-foreground">{change.entity_name ?? "system-level topology"} · {formatRelative(change.created_at)}</div>
                     </div>
                     <span className="font-mono text-xs tabular-nums">{Math.round(change.severity * 100)}</span>
