@@ -15,6 +15,11 @@ type ResolvedPrediction = {
   aicis_model_outcomes: { binary_outcome: 0 | 1 } | null;
 };
 
+type RouteContext = {
+  domain: string;
+  modality: string;
+};
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -43,7 +48,7 @@ Deno.serve(async (req) => {
     );
     const { data: prediction, error: predictionError } = await supabase
       .from("aicis_model_predictions")
-      .select("id,model_id,probability,task,metadata")
+      .select("id,model_id,routing_decision_id,probability,task,metadata")
       .eq("id", body.prediction_id)
       .single();
     if (predictionError) throw predictionError;
@@ -88,12 +93,40 @@ Deno.serve(async (req) => {
       : null;
     const competence = meanBrier === null ? null : clamp01(1 - meanBrier);
 
+    let competencyUpdated = false;
+    if (competence !== null && prediction.routing_decision_id) {
+      const { data: routeData } = await supabase
+        .from("aicis_model_routing_decisions")
+        .select("domain,modality")
+        .eq("id", prediction.routing_decision_id)
+        .maybeSingle();
+
+      if (routeData) {
+        const route = routeData as RouteContext;
+        const { error: competencyUpdateError } = await supabase
+          .from("aicis_model_competency")
+          .update({
+            sample_size: pairs.length,
+            competence,
+            brier_score: meanBrier,
+            evaluated_at: new Date().toISOString(),
+          })
+          .eq("model_id", prediction.model_id)
+          .eq("domain", route.domain)
+          .eq("modality", route.modality)
+          .eq("task", prediction.task);
+        if (competencyUpdateError) throw competencyUpdateError;
+        competencyUpdated = true;
+      }
+    }
+
     return new Response(
       JSON.stringify({
         recorded: true,
         brier_score: brier,
         resolved_sample_size: pairs.length,
         empirical_competence: competence,
+        competency_updated: competencyUpdated,
       }),
       { headers: { ...cors, "content-type": "application/json" } },
     );
