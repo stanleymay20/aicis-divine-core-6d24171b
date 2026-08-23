@@ -49,7 +49,7 @@ export function scoreIntelligenceBenchmark(
   const brierScore = forecasts.length
     ? forecasts.reduce((sum, item) => sum + (clamp01(item.probability) - item.outcome) ** 2, 0) / forecasts.length
     : null;
-  const calibrationError = forecasts.length ? expectedCalibrationError(forecasts, 10) : null;
+  const calibrationError = forecasts.length ? benchmarkCalibrationError(forecasts, 10) : null;
 
   const unsupportedClaimRate = claims.length
     ? claims.filter((claim) => !claim.supported).length / claims.length
@@ -107,7 +107,7 @@ export function scoreIntelligenceBenchmark(
   };
 }
 
-export function expectedCalibrationError(cases: BinaryForecastCase[], bins = 10): number {
+export function benchmarkCalibrationError(cases: BinaryForecastCase[], bins = 10): number {
   if (cases.length === 0) return 0;
   const safeBins = Math.max(2, Math.min(50, Math.floor(bins)));
   let error = 0;
