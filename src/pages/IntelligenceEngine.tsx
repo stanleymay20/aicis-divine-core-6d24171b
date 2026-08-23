@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -22,7 +21,18 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const db = supabase as any;
+type QueryError = { message?: string };
+type QueryResponse<T> = { data: T[] | null; error: QueryError | null };
+type LooseQueryBuilder<T> = {
+  select: (columns?: string) => LooseQueryBuilder<T>;
+  order: (column: string, options?: { ascending?: boolean }) => LooseQueryBuilder<T>;
+  limit: (count: number) => PromiseLike<QueryResponse<T>>;
+};
+type LooseDatabase = {
+  from: <T>(relation: string) => LooseQueryBuilder<T>;
+};
+
+const db = supabase as unknown as LooseDatabase;
 
 type VerifiedEdge = {
   id: string;
@@ -81,12 +91,12 @@ export default function IntelligenceEngine() {
     queryKey: ["cognitive-core", "verified-graph"],
     queryFn: async () => {
       const { data, error } = await db
-        .from("aicis_verified_graph")
+        .from<VerifiedEdge>("aicis_verified_graph")
         .select("id,source_entity_id,source_name,source_type,target_entity_id,target_name,target_type,relationship_type,strength,confidence")
         .order("confidence", { ascending: false })
         .limit(100);
       if (error) throw error;
-      return (data ?? []) as VerifiedEdge[];
+      return data ?? [];
     },
     staleTime: 30_000,
   });
@@ -95,12 +105,12 @@ export default function IntelligenceEngine() {
     queryKey: ["cognitive-core", "cascades"],
     queryFn: async () => {
       const { data, error } = await db
-        .from("aicis_supported_cascades")
+        .from<Cascade>("aicis_supported_cascades")
         .select("*")
         .order("systemic_score", { ascending: false })
         .limit(40);
       if (error) throw error;
-      return (data ?? []) as Cascade[];
+      return data ?? [];
     },
     retry: 1,
   });
@@ -110,12 +120,12 @@ export default function IntelligenceEngine() {
     enabled: isAdmin || isOperator,
     queryFn: async () => {
       const { data, error } = await db
-        .from("aicis_recent_topology_changes")
+        .from<TopologyChange>("aicis_recent_topology_changes")
         .select("id,change_kind,entity_name,entity_type,severity,delta,created_at")
         .order("severity", { ascending: false })
         .limit(30);
       if (error) throw error;
-      return (data ?? []) as TopologyChange[];
+      return data ?? [];
     },
     retry: 1,
   });
@@ -125,12 +135,12 @@ export default function IntelligenceEngine() {
     enabled: isAdmin || isOperator,
     queryFn: async () => {
       const { data, error } = await db
-        .from("aicis_causal_assessments")
+        .from<CausalAssessment>("aicis_causal_assessments")
         .select("id,relationship_id,verdict,causal_score,confidence,temporal_precedence,mechanism_support,contradiction_penalty,confounder_penalty,assessed_at")
         .order("assessed_at", { ascending: false })
         .limit(60);
       if (error) throw error;
-      return (data ?? []) as CausalAssessment[];
+      return data ?? [];
     },
     retry: 1,
   });
@@ -145,7 +155,7 @@ export default function IntelligenceEngine() {
       toast.success(data?.unchanged ? "World topology unchanged" : "World topology refreshed");
       qc.invalidateQueries({ queryKey: ["cognitive-core"] });
     },
-    onError: (error: any) => toast.error(error?.message ?? "Topology scan failed"),
+    onError: (error: unknown) => toast.error(errorMessage(error, "Topology scan failed")),
   });
 
   const causalScan = useMutation({
@@ -160,7 +170,7 @@ export default function IntelligenceEngine() {
       toast.success(`Causal scan complete · ${data?.supported_cascades ?? 0} supported cascades`);
       qc.invalidateQueries({ queryKey: ["cognitive-core"] });
     },
-    onError: (error: any) => toast.error(error?.message ?? "Causal scan failed"),
+    onError: (error: unknown) => toast.error(errorMessage(error, "Causal scan failed")),
   });
 
   const edges = verifiedGraph.data ?? [];
@@ -168,23 +178,21 @@ export default function IntelligenceEngine() {
   const changes = topology.data ?? [];
   const assessments = causal.data ?? [];
 
-  const metrics = useMemo(() => {
-    const causalSupported = assessments.filter((item) => item.verdict === "causally-supported").length;
-    const mechanistic = assessments.filter((item) => item.verdict === "mechanistically-supported").length;
-    const contradicted = assessments.filter((item) => item.verdict === "contradicted").length;
-    const avgGraphConfidence = edges.length
-      ? edges.reduce((sum, edge) => sum + Number(edge.confidence ?? 0), 0) / edges.length
-      : 0;
-    return {
-      verifiedEdges: edges.length,
-      avgGraphConfidence,
-      supportedCascades: supportedCascades.length,
-      causalSupported,
-      mechanistic,
-      contradicted,
-      topologyChanges: changes.length,
-    };
-  }, [edges, supportedCascades, changes, assessments]);
+  const causalSupported = assessments.filter((item) => item.verdict === "causally-supported").length;
+  const mechanistic = assessments.filter((item) => item.verdict === "mechanistically-supported").length;
+  const contradicted = assessments.filter((item) => item.verdict === "contradicted").length;
+  const avgGraphConfidence = edges.length
+    ? edges.reduce((sum, edge) => sum + Number(edge.confidence ?? 0), 0) / edges.length
+    : 0;
+  const metrics = {
+    verifiedEdges: edges.length,
+    avgGraphConfidence,
+    supportedCascades: supportedCascades.length,
+    causalSupported,
+    mechanistic,
+    contradicted,
+    topologyChanges: changes.length,
+  };
 
   const loading = verifiedGraph.isLoading || cascades.isLoading;
 
@@ -427,4 +435,8 @@ function formatRelative(value: string) {
   const hours = Math.round(minutes / 60);
   if (hours < 48) return `${hours}h ago`;
   return `${Math.round(hours / 24)}d ago`;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
