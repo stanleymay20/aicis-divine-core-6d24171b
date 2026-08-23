@@ -115,6 +115,33 @@ Deno.serve(async (req) => {
     );
     if (outputError) throw outputError;
 
+    const probabilisticOutputs = body.outputs.filter(
+      (output) => output.probability !== undefined && Number.isFinite(output.probability),
+    );
+    if (probabilisticOutputs.length > 0) {
+      const { error: predictionError } = await supabase.from("aicis_model_predictions").insert(
+        probabilisticOutputs.map((output) => ({
+          routing_decision_id: route.id,
+          model_id: output.model_id,
+          cognitive_event_id: body.cognitive_event_id ?? null,
+          subject_entity_id: body.subject_entity_id ?? null,
+          task: body.task,
+          horizon: body.horizon ?? null,
+          prediction: output.output,
+          probability: clamp01(output.probability ?? 0.5),
+          confidence: clamp01(output.confidence),
+          valid_until: body.valid_until ?? null,
+          input_hash: body.input_hash,
+          metadata: {
+            execution_run_id: run.id,
+            prediction_kind: output.prediction_kind,
+            warning_count: output.warnings?.length ?? 0,
+          },
+        })),
+      );
+      if (predictionError) throw predictionError;
+    }
+
     const modelIds = body.outputs.map((output) => output.model_id);
     const { data: competencyData, error: competencyError } = await supabase
       .from("aicis_model_competency")
@@ -127,17 +154,13 @@ Deno.serve(async (req) => {
       ((competencyData ?? []) as CompetencyRow[]).map((row) => [row.model_id, row]),
     );
 
-    const probabilistic = body.outputs.filter(
-      (output) => output.probability !== undefined && Number.isFinite(output.probability),
-    );
-
     let probability: number | null = null;
     let disagreement = 0;
     let spread = 0;
     let confidence = 0;
 
-    if (probabilistic.length > 0) {
-      const weighted = probabilistic.map((output) => {
+    if (probabilisticOutputs.length > 0) {
+      const weighted = probabilisticOutputs.map((output) => {
         const quality = competency.get(output.model_id);
         const qualityWeight = quality
           ? clamp01(
@@ -221,6 +244,7 @@ Deno.serve(async (req) => {
         execution_run_id: run.id,
         ensemble_prediction_id: ensemble.id,
         status,
+        tracked_model_predictions: probabilisticOutputs.length,
         probability,
         confidence,
         disagreement,
