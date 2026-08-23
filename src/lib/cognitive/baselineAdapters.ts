@@ -10,14 +10,15 @@ import type {
   SpecialistModelAdapter,
 } from "./modelAdapters";
 import type { ModelExecutionOutput } from "./modelExecution";
+import type { CognitiveModality, CognitiveTask, ModelFamily } from "./modelRouter";
 
 export type BaselineKind = "logistic" | "persistence" | "drift";
 
 export class DeterministicBaselineAdapter implements SpecialistModelAdapter {
   readonly adapterKey = "deterministic-baseline-v1";
-  readonly families = ["linear"] as const;
-  readonly modalities = ["tabular", "sequence"] as const;
-  readonly tasks = ["classification", "forecasting"] as const;
+  readonly families: ModelFamily[] = ["linear"];
+  readonly modalities: CognitiveModality[] = ["tabular", "sequence"];
+  readonly tasks: CognitiveTask[] = ["classification", "forecasting"];
 
   canHandle(request: SpecialistInferenceRequest): boolean {
     if (request.family !== "linear") return false;
