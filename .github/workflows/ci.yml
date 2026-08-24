@@ -43,14 +43,17 @@ jobs:
           # Legacy Lovable references are being removed incrementally, but no new runtime
           # dependency on Lovable Cloud, Lovable AI Gateway, or Lovable auth may be added.
           BASE_SHA="bb83a8ae06ce9df1336a5b158521e87d818de144"
-          git diff --unified=0 "$BASE_SHA" HEAD -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.toml' '*.yml' '*.yaml' \
+          ADDED_LINES="$(git diff --unified=0 "$BASE_SHA" HEAD -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.toml' '*.yml' '*.yaml' \
             | grep '^+' \
-            | grep -v '^+++' \
-            | grep -Ei 'ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth|lovable cloud' \
-            && {
-              echo "New Lovable runtime dependency detected. AICIS must remain provider/host portable.";
-              exit 1;
-            } || true
+            | grep -v '^+++' || true)"
+
+          if printf '%s\n' "$ADDED_LINES" | grep -Eqi 'ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth|lovable cloud'; then
+            printf '%s\n' "$ADDED_LINES" | grep -Ei 'ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth|lovable cloud' || true
+            echo "New Lovable runtime dependency detected. AICIS must remain provider/host portable."
+            exit 1
+          fi
+
+          echo "No new Lovable runtime dependencies detected."
 
       - name: Strict lint — post-Phase-4 code
         id: strict_lint
