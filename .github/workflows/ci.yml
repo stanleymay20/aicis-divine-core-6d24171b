@@ -33,6 +33,25 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: No new Lovable runtime dependencies
+        id: lovable_runtime
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Portability baseline: after this point AICIS implementation is direct-to-repo.
+          # Legacy Lovable references are being removed incrementally, but no new runtime
+          # dependency on Lovable Cloud, Lovable AI Gateway, or Lovable auth may be added.
+          BASE_SHA="bb83a8ae06ce9df1336a5b158521e87d818de144"
+          git diff --unified=0 "$BASE_SHA" HEAD -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.toml' '*.yml' '*.yaml' \
+            | grep '^+' \
+            | grep -v '^+++' \
+            | grep -Ei 'ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth|lovable cloud' \
+            && {
+              echo "New Lovable runtime dependency detected. AICIS must remain provider/host portable.";
+              exit 1;
+            } || true
+
       - name: Strict lint — post-Phase-4 code
         id: strict_lint
         continue-on-error: true
@@ -81,12 +100,14 @@ jobs:
         if: always()
         shell: bash
         run: |
+          echo "Lovable runtime gate: ${{ steps.lovable_runtime.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
           echo "Build: ${{ steps.build.outcome }}"
 
           FAILED=0
+          [ "${{ steps.lovable_runtime.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
