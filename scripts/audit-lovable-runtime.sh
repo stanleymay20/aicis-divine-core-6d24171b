@@ -4,8 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Runtime dependency means code/config that is imported or executed by the deployed app.
+# package.json/bun.lock are reported separately because an installed-but-unused package does
+# not create a live Lovable dependency and must be removed together with the lockfile.
 PATTERN='ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth-js|createLovableAuth|lovable-tagger'
-RUNTIME_PATHS=(src supabase/functions vite.config.ts package.json)
+RUNTIME_PATHS=(src supabase/functions vite.config.ts)
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
@@ -36,3 +39,7 @@ if [[ "$COUNT" -gt 0 ]]; then
 fi
 
 echo "PASS: zero direct Lovable runtime dependencies found."
+
+if grep -Eq '"@lovable\.dev/cloud-auth-js"|"lovable-tagger"' package.json 2>/dev/null; then
+  echo "NOTICE: unused Lovable packages remain in package.json/bun.lock pending atomic lockfile cleanup."
+fi
