@@ -1,9 +1,9 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
+import { invokeInternalFunction } from "../_shared/internal-invoke.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 Deno.serve(async (req) => {
@@ -11,37 +11,29 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const guard = await requireAdminOrCron(req, corsHeaders);
+  if (guard.response) return guard.response;
 
   try {
-    // Call the main generator
-    const res = await fetch(`${supabaseUrl}/functions/v1/generate-weekly-brief`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceKey}`,
-      },
-    });
+    const invocation = await invokeInternalFunction<Record<string, unknown>>("generate-weekly-brief", {});
 
-    const body = await res.json();
-
-    if (!res.ok) {
-      console.error("Weekly brief generation failed:", body);
-      return new Response(JSON.stringify({ ok: false, error: body }), {
-        status: 500,
+    if (!invocation.ok) {
+      console.error("Weekly brief generation failed:", invocation.error);
+      return new Response(JSON.stringify({
+        ok: false,
+        error: invocation.error ?? `HTTP ${invocation.status}`,
+      }), {
+        status: invocation.status >= 400 ? invocation.status : 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log("Weekly brief generated:", body);
-    return new Response(JSON.stringify({ ok: true, ...body }), {
+    return new Response(JSON.stringify({ ok: true, ...(invocation.data ?? {}) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err) {
-    console.error("cron-generate-weekly-brief error:", err);
-    return new Response(JSON.stringify({ error: String(err) }), {
+  } catch (error) {
+    console.error("cron-generate-weekly-brief error:", error);
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
