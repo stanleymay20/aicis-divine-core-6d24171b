@@ -441,3 +441,6 @@ verify_jwt = false
 
 [functions.learn-relevance-profile]
 verify_jwt = false
+
+[functions.federation-verify-bundle]
+verify_jwt = false
