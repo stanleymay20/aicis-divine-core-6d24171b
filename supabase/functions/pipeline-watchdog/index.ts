@@ -1,120 +1,147 @@
 /**
- * pipeline-watchdog — runs every 15 minutes.
- *
- * 1. Calls find_stalled_pipelines() → identifies pipelines past 2× their interval.
- * 2. Auto-restarts them by invoking their target edge function.
- * 3. Logs SLO violations + critical alerts on repeated failures.
- * 4. Runs run_canary_probe() to verify end-to-end propagation.
+ * Pipeline watchdog: detects stalled pipelines, restarts them through the
+ * authenticated internal invocation bridge, records SLO violations, and runs
+ * the end-to-end canary probe.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
+import { invokeInternalFunction } from "../_shared/internal-invoke.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
+
+interface StalledPipeline {
+  pipeline_name: string;
+  target_function: string;
+  minutes_since_success: number;
+  expected_interval_minutes: number;
+  consecutive_failures: number;
+  severity: string;
+}
+
+interface RestartResult {
+  pipeline: string;
+  function_name: string;
+  ok: boolean;
+  status: number;
+  minutes_stale: number;
+  severity: string;
+  error?: string;
+}
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { ...corsHeaders, "Content-Type": "application/json" },
+});
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
 
   const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
-
   const startedAt = Date.now();
-  const result: Record<string, any> = { started_at: new Date().toISOString() };
+  const restarts: RestartResult[] = [];
 
   try {
-    // 1. Find stalled pipelines
-    const { data: stalled, error: stallErr } = await supabase.rpc("find_stalled_pipelines");
-    if (stallErr) throw stallErr;
+    const { data: stalledRaw, error: stallError } = await supabase.rpc("find_stalled_pipelines");
+    if (stallError) throw stallError;
+    const stalled = Array.isArray(stalledRaw) ? stalledRaw as StalledPipeline[] : [];
 
-    result.stalled_count = stalled?.length ?? 0;
-    result.restarts = [];
+    for (const pipeline of stalled) {
+      const target = pipeline.target_function;
+      if (!/^[a-z0-9-]+$/.test(target)) {
+        restarts.push({
+          pipeline: pipeline.pipeline_name,
+          function_name: target,
+          ok: false,
+          status: 400,
+          minutes_stale: Number(pipeline.minutes_since_success ?? 0),
+          severity: pipeline.severity ?? "unknown",
+          error: "invalid_target_function",
+        });
+        continue;
+      }
 
-    // 2. Auto-restart each stalled pipeline
-    for (const p of stalled || []) {
-      try {
-        const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/${p.target_function}`;
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      const invocation = await invokeInternalFunction(
+        target,
+        { trigger: "watchdog_restart", pipeline: pipeline.pipeline_name },
+        45_000,
+      );
+      const restart: RestartResult = {
+        pipeline: pipeline.pipeline_name,
+        function_name: target,
+        ok: invocation.ok,
+        status: invocation.status,
+        minutes_stale: Number(pipeline.minutes_since_success ?? 0),
+        severity: pipeline.severity ?? "unknown",
+      };
+      if (invocation.error) restart.error = invocation.error;
+      restarts.push(restart);
+
+      const { error: sloError } = await supabase.from("slo_violations").insert({
+        pipeline_name: pipeline.pipeline_name,
+        violation_type: "staleness_breach",
+        expected_value: Number(pipeline.expected_interval_minutes ?? 0),
+        actual_value: Number(pipeline.minutes_since_success ?? 0),
+        severity: pipeline.severity,
+        auto_remediated: invocation.ok,
+        remediation_action: invocation.ok ? `restarted ${target}` : `restart_failed_${invocation.status}`,
+      });
+      if (sloError) console.error("pipeline-watchdog SLO log failed", sloError.message);
+
+      if (pipeline.severity === "critical" || Number(pipeline.consecutive_failures ?? 0) >= 3) {
+        const { error: alertError } = await supabase.from("critical_alerts").insert({
+          headline: `Pipeline stalled: ${pipeline.pipeline_name} (${Math.round(Number(pipeline.minutes_since_success ?? 0))}m, ${Number(pipeline.consecutive_failures ?? 0)} fails)`,
+          level: "critical",
+          event_type: "pipeline_stall",
+          meta: {
+            pipeline: pipeline.pipeline_name,
+            minutes_stale: Number(pipeline.minutes_since_success ?? 0),
+            consecutive_failures: Number(pipeline.consecutive_failures ?? 0),
+            auto_restart_attempted: true,
+            auto_restart_ok: invocation.ok,
+            target_function: target,
           },
-          body: JSON.stringify({ trigger: "watchdog_restart" }),
         });
-
-        const ok = resp.ok;
-        result.restarts.push({
-          pipeline: p.pipeline_name,
-          fn: p.target_function,
-          status: resp.status,
-          ok,
-          minutes_stale: p.minutes_since_success,
-          severity: p.severity,
-        });
-
-        // Log SLO violation
-        await supabase.from("slo_violations").insert({
-          pipeline_name: p.pipeline_name,
-          violation_type: "staleness_breach",
-          expected_value: p.expected_interval_minutes,
-          actual_value: p.minutes_since_success,
-          severity: p.severity,
-          auto_remediated: ok,
-          remediation_action: ok ? `restarted ${p.target_function}` : `restart_failed_${resp.status}`,
-        });
-
-        // Critical alert if failing repeatedly
-        if (p.severity === "critical" || p.consecutive_failures >= 3) {
-          await supabase.from("critical_alerts").insert({
-            headline: `Pipeline stalled: ${p.pipeline_name} (${Math.round(p.minutes_since_success)}m, ${p.consecutive_failures} fails)`,
-            level: "critical",
-            event_type: "pipeline_stall",
-            meta: {
-              pipeline: p.pipeline_name,
-              minutes_stale: p.minutes_since_success,
-              consecutive_failures: p.consecutive_failures,
-              auto_restart_attempted: true,
-              auto_restart_ok: ok,
-            },
-          });
-        }
-      } catch (e) {
-        result.restarts.push({
-          pipeline: p.pipeline_name,
-          error: (e as Error).message,
-        });
+        if (alertError) console.error("pipeline-watchdog alert failed", alertError.message);
       }
     }
 
-    // 3. Run canary probe
-    const { data: canary } = await supabase.rpc("run_canary_probe");
-    result.canary = canary;
+    const { data: canary, error: canaryError } = await supabase.rpc("run_canary_probe");
+    if (canaryError) throw canaryError;
 
-    // 4. Self-heartbeat
-    await supabase.rpc("register_pipeline_heartbeat", {
+    const { error: heartbeatError } = await supabase.rpc("register_pipeline_heartbeat", {
       _pipeline_name: "pipeline-watchdog",
       _success: true,
-      _metadata: { stalled: result.stalled_count, restarts: result.restarts.length },
+      _metadata: {
+        stalled: stalled.length,
+        restart_attempts: restarts.length,
+        restart_failures: restarts.filter((item) => !item.ok).length,
+      },
     });
+    if (heartbeatError) console.error("pipeline-watchdog heartbeat failed", heartbeatError.message);
 
-    result.duration_ms = Date.now() - startedAt;
-    return new Response(JSON.stringify({ ok: true, ...result }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return json({
+      ok: restarts.every((item) => item.ok),
+      stalled_count: stalled.length,
+      restarts,
+      canary,
+      duration_ms: Date.now() - startedAt,
     });
-  } catch (e) {
-    const msg = (e as Error).message;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     await supabase.rpc("register_pipeline_heartbeat", {
       _pipeline_name: "pipeline-watchdog",
       _success: false,
-      _error: msg,
+      _error: message,
     });
-    console.error("pipeline-watchdog error:", e);
-    return new Response(JSON.stringify({ ok: false, error: msg, partial: result }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("pipeline-watchdog error", message);
+    return json({ ok: false, error: message, restarts }, 500);
   }
 });

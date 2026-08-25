@@ -1,143 +1,161 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
+const DIVISIONS = ["finance", "energy", "health", "food", "governance", "defense", "diplomacy", "crisis", "system"] as const;
+type Division = typeof DIVISIONS[number];
+
+interface KpiSnapshot {
+  division: Division;
+  metric: Record<string, unknown>;
+  composite_score: null;
+  risk_score: null;
+}
+
+const finiteNumbers = (values: unknown[]): number[] => values
+  .map((value) => Number(value))
+  .filter((value) => Number.isFinite(value));
+
+const average = (values: number[]): number | null =>
+  values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+
+const baseMetric = (sourceTable: string, recordCount: number, sourceError: string | null = null) => ({
+  source_table: sourceTable,
+  record_count: recordCount,
+  score_status: "uncalibrated",
+  observation_status: sourceError ? "source_error" : recordCount > 0 ? "observed" : "no_observation",
+  source_error: sourceError,
+});
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { ...corsHeaders, "Content-Type": "application/json" },
+});
+
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
   try {
-    console.log("Collecting division KPIs...");
-    const kpis = [];
+    const [revenue, energy, health, food, crisis] = await Promise.all([
+      supabase.from("revenue_streams").select("amount_usd")
+        .gte("timestamp", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+      supabase.from("energy_grid").select("stability_index, renewable_percentage")
+        .order("updated_at", { ascending: false }).limit(10),
+      supabase.from("health_data").select("severity_index")
+        .order("updated_at", { ascending: false }).limit(10),
+      supabase.from("food_security").select("yield_index")
+        .order("updated_at", { ascending: false }).limit(10),
+      supabase.from("crisis_events").select("id").neq("status", "resolved"),
+    ]);
 
-    // Finance division
-    const { data: revenueData } = await supabase
-      .from("revenue_streams")
-      .select("amount_usd")
-      .gte("timestamp", new Date(Date.now() - 24*60*60*1000).toISOString());
-    const revenue24h = revenueData?.reduce((sum, r) => sum + Number(r.amount_usd), 0) || 0;
-    kpis.push({
+    const revenueValues = finiteNumbers((revenue.data ?? []).map((row) => row.amount_usd));
+    const stabilityValues = finiteNumbers((energy.data ?? []).map((row) => row.stability_index));
+    const renewableValues = finiteNumbers((energy.data ?? []).map((row) => row.renewable_percentage));
+    const severityValues = finiteNumbers((health.data ?? []).map((row) => row.severity_index));
+    const yieldValues = finiteNumbers((food.data ?? []).map((row) => row.yield_index));
+
+    const snapshots = new Map<Division, KpiSnapshot>();
+    snapshots.set("finance", {
       division: "finance",
-      metric: { revenue_24h: revenue24h },
-      composite_score: Math.min(100, revenue24h / 100),
-      risk_score: revenue24h < 1000 ? 60 : 20
+      metric: {
+        ...baseMetric("revenue_streams", revenue.data?.length ?? 0, revenue.error?.message ?? null),
+        window_hours: 24,
+        revenue_usd_sum: revenueValues.length > 0 ? revenueValues.reduce((sum, value) => sum + value, 0) : null,
+      },
+      composite_score: null,
+      risk_score: null,
     });
-
-    // Energy division
-    const { data: energyData } = await supabase
-      .from("energy_grid")
-      .select("stability_index, renewable_percentage")
-      .order("updated_at", { ascending: false })
-      .limit(10);
-    const avgStability = (energyData?.reduce((s, e) => s + Number(e.stability_index || 0), 0) ?? 0) / (energyData?.length || 1);
-    const avgRenewable = (energyData?.reduce((s, e) => s + Number(e.renewable_percentage || 0), 0) ?? 0) / (energyData?.length || 1);
-    kpis.push({
+    snapshots.set("energy", {
       division: "energy",
-      metric: { avg_stability: avgStability, avg_renewable: avgRenewable },
-      composite_score: avgStability,
-      risk_score: 100 - avgStability
+      metric: {
+        ...baseMetric("energy_grid", energy.data?.length ?? 0, energy.error?.message ?? null),
+        avg_stability_index: average(stabilityValues),
+        avg_renewable_percentage: average(renewableValues),
+      },
+      composite_score: null,
+      risk_score: null,
     });
-
-    // Health division
-    const { data: healthData } = await supabase
-      .from("health_data")
-      .select("severity_index")
-      .order("updated_at", { ascending: false })
-      .limit(10);
-    const avgSeverity = (healthData?.reduce((s, h) => s + Number(h.severity_index || 0), 0) ?? 0) / (healthData?.length || 1);
-    kpis.push({
+    snapshots.set("health", {
       division: "health",
-      metric: { avg_severity: avgSeverity },
-      composite_score: Math.max(0, 100 - avgSeverity),
-      risk_score: avgSeverity
+      metric: {
+        ...baseMetric("health_data", health.data?.length ?? 0, health.error?.message ?? null),
+        avg_severity_index: average(severityValues),
+      },
+      composite_score: null,
+      risk_score: null,
     });
-
-    // Food division
-    const { data: foodData } = await supabase
-      .from("food_security")
-      .select("yield_index")
-      .order("updated_at", { ascending: false })
-      .limit(10);
-    const avgYield = (foodData?.reduce((s, f) => s + Number(f.yield_index || 0), 0) ?? 0) / (foodData?.length || 1) || 50;
-    kpis.push({
+    snapshots.set("food", {
       division: "food",
-      metric: { avg_yield: avgYield },
-      composite_score: avgYield,
-      risk_score: 100 - avgYield
+      metric: {
+        ...baseMetric("food_security", food.data?.length ?? 0, food.error?.message ?? null),
+        avg_yield_index: average(yieldValues),
+      },
+      composite_score: null,
+      risk_score: null,
     });
-
-    // Crisis division
-    const { data: crisisData } = await supabase
-      .from("crisis_events")
-      .select("*")
-      .neq("status", "resolved");
-    const activeCrises = crisisData?.length || 0;
-    kpis.push({
+    snapshots.set("crisis", {
       division: "crisis",
-      metric: { active_crises: activeCrises },
-      composite_score: Math.max(0, 100 - activeCrises * 10),
-      risk_score: Math.min(100, activeCrises * 10)
+      metric: {
+        ...baseMetric("crisis_events", crisis.data?.length ?? 0, crisis.error?.message ?? null),
+        active_crises: crisis.error ? null : crisis.data?.length ?? 0,
+      },
+      composite_score: null,
+      risk_score: null,
     });
 
-    // Defense, diplomacy, governance - placeholder metrics
-    ["defense", "diplomacy", "governance", "system"].forEach(div => {
-      kpis.push({
-        division: div,
-        metric: { status: "nominal" },
-        composite_score: 80,
-        risk_score: 20
+    for (const division of ["governance", "defense", "diplomacy", "system"] as const) {
+      snapshots.set(division, {
+        division,
+        metric: {
+          source_table: null,
+          record_count: 0,
+          score_status: "uncalibrated",
+          observation_status: "collector_not_configured",
+          note: "No calibrated division-level KPI source is configured for this collector.",
+        },
+        composite_score: null,
+        risk_score: null,
       });
-    });
+    }
 
-    // Insert all KPIs
-    const { data: inserted, error: insertError } = await supabase
-      .from("division_kpis")
-      .insert(kpis)
-      .select();
-
+    const rows = DIVISIONS.map((division) => snapshots.get(division)).filter((row): row is KpiSnapshot => Boolean(row));
+    const { data: inserted, error: insertError } = await supabase.from("division_kpis").insert(rows).select();
     if (insertError) throw insertError;
 
-    await supabase.from("system_logs").insert({
+    const { error: logError } = await supabase.from("system_logs").insert({
       action: "collect_division_kpis",
-      result: `Collected KPIs for ${kpis.length} divisions`,
+      result: `Collected ${rows.length} evidence-only KPI snapshots; composite and risk scores remain uncalibrated`,
       log_level: "info",
-      division: "system"
+      division: "system",
     });
+    if (logError) console.error("collect-division-kpis audit log failed", logError.message);
 
-    console.log(`KPIs collected for ${kpis.length} divisions`);
-
-    return new Response(
-      JSON.stringify({ 
-        ok: true, 
-        divisions: kpis.length,
-        kpis: inserted 
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({
+      ok: true,
+      divisions: rows.length,
+      score_status: "uncalibrated",
+      kpis: inserted,
+    });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error("Error collecting KPIs:", error);
-    
+    const message = error instanceof Error ? error.message : String(error);
     await supabase.from("system_logs").insert({
       action: "collect_division_kpis",
-      result: `Error: ${errorMessage}`,
+      result: `Error: ${message}`,
       log_level: "error",
-      division: "system"
+      division: "system",
     });
-
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ error: message }, 500);
   }
 });
