@@ -15,12 +15,10 @@ esac
 PATTERN='ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth-js|createLovableAuth|lovable-tagger'
 RUNTIME_PATHS=(src supabase/functions vite.config.ts package.json)
 
-# Temporary migration allowlist. These are the only runtime files still permitted
-# to contain direct Lovable references. Remove each path as it is converted. When
-# this list becomes empty, CI should switch to --strict.
+# Temporary migration allowlist. Only the final AICIS intelligence surface remains.
+# Remove this path and switch CI to --strict as soon as it is converted.
 MIGRATION_ALLOWLIST=(
   "supabase/functions/aicis-intelligence/index.ts"
-  "supabase/functions/decision-infer/index.ts"
 )
 
 TMP="$(mktemp)"
@@ -87,5 +85,4 @@ if [[ "$MODE" == "migration_gate" ]]; then
   exit 0
 fi
 
-# Report-only mode.
 echo "AICIS is NOT yet Lovable-runtime-independent."
