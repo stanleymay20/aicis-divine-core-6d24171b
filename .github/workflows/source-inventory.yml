@@ -1,0 +1,56 @@
+name: AICIS Lovable Source Inventory
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aicis-source-inventory
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    name: Read-only source inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production-data-preservation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify source credential
+        env:
+          AICIS_SOURCE_DATABASE_URL: ${{ secrets.AICIS_SOURCE_DATABASE_URL }}
+        run: |
+          test -n "$AICIS_SOURCE_DATABASE_URL" || {
+            echo "AICIS_SOURCE_DATABASE_URL is not configured" >&2
+            exit 1
+          }
+
+      - name: Inventory Lovable source without writes
+        env:
+          AICIS_SOURCE_DATABASE_URL: ${{ secrets.AICIS_SOURCE_DATABASE_URL }}
+          AICIS_TARGET_DATABASE_URL: ${{ secrets.AICIS_TARGET_DATABASE_URL }}
+        run: bash scripts/aicis-source-inventory.sh artifacts/aicis-source-inventory
+
+      - name: Assert inventory contains no row payload export
+        run: |
+          if find artifacts/aicis-source-inventory -type f \( -name '*.sql' -o -name '*.dump' -o -name '*.csv' \) | grep -q .; then
+            echo "Unexpected data export file found in read-only inventory" >&2
+            exit 1
+          fi
+
+      - name: Upload inventory manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: aicis-lovable-source-inventory-${{ github.run_id }}
+          path: artifacts/aicis-source-inventory
+          if-no-files-found: error
+          retention-days: 7
