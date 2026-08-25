@@ -1,156 +1,190 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
+import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret, x-scheduler-source",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+type CvssData = {
+  baseScore?: number;
+  baseSeverity?: string;
+};
+
+type CvssMetric = {
+  cvssData?: CvssData;
+  baseSeverity?: string;
+};
+
+type NvdReference = {
+  url?: string;
+  source?: string;
+  tags?: string[];
+};
+
+type CpeMatch = { criteria?: string };
+type NvdNode = { cpeMatch?: CpeMatch[] };
+type NvdConfiguration = { nodes?: NvdNode[] };
+
+type NvdCve = {
+  id?: string;
+  published?: string;
+  lastModified?: string;
+  descriptions?: Array<{ lang?: string; value?: string }>;
+  references?: NvdReference[];
+  configurations?: NvdConfiguration[];
+  metrics?: {
+    cvssMetricV31?: CvssMetric[];
+    cvssMetricV30?: CvssMetric[];
+    cvssMetricV2?: CvssMetric[];
+  };
+};
+
+type NvdResponse = {
+  totalResults?: number;
+  vulnerabilities?: Array<{ cve?: NvdCve }>;
+};
+
+type VulnerabilityRow = {
+  cve_id: string;
+  description: string;
+  severity: string;
+  cvss_score: number | null;
+  published_date: string | null;
+  last_modified: string | null;
+  affected_products: string[];
+  reference_links: Array<{ url: string; source: string | null; tags: string[] }>;
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-  
-  try {
-    // Use service role for system operations (cron jobs)
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
 
-    const apiKey = Deno.env.get("NVD_API_KEY");
+  const { response: authResponse } = await requireAdminOrCron(req, corsHeaders);
+  if (authResponse) return authResponse;
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+  const run = await startProviderRun(supabase, {
+    provider_name: "nvd",
+    endpoint: "pull-nvd-security",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+  });
+
+  try {
+    const apiKey = Deno.env.get("NVD_API_KEY") ?? "";
     if (!apiKey) throw new Error("NVD API key not configured");
 
-    console.log("Fetching vulnerability data from NVD...");
-
-    // Calculate date 7 days ago for recent vulnerabilities
     const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const startDate = sevenDaysAgo.toISOString().split('T')[0];
-    const endDate = new Date().toISOString().split('T')[0];
-
-    // Fetch recent CVEs
+    sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
+    const startDate = sevenDaysAgo.toISOString().split("T")[0];
+    const endDate = new Date().toISOString().split("T")[0];
     const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?pubStartDate=${startDate}T00:00:00.000&pubEndDate=${endDate}T23:59:59.999&resultsPerPage=50`;
-    
-    const response = await fetch(url, {
-      headers: {
-        'apiKey': apiKey
+
+    const response = await fetch(url, { headers: { apiKey } });
+    if (!response.ok) throw new Error(`NVD API error: ${response.status} ${response.statusText}`);
+
+    const data = await response.json() as NvdResponse;
+    const records: VulnerabilityRow[] = [];
+
+    for (const vulnerability of data.vulnerabilities ?? []) {
+      const cve = vulnerability.cve;
+      if (!cve?.id) continue;
+
+      const metric = firstMetric(cve);
+      const description = cve.descriptions?.find((item) => item.lang === "en")?.value
+        ?? cve.descriptions?.[0]?.value
+        ?? "No description available";
+
+      const affectedProducts: string[] = [];
+      for (const configuration of cve.configurations ?? []) {
+        for (const node of configuration.nodes ?? []) {
+          for (const match of node.cpeMatch ?? []) {
+            if (match.criteria) affectedProducts.push(match.criteria);
+          }
+        }
       }
-    });
 
-    if (!response.ok) {
-      throw new Error(`NVD API error: ${response.status} ${response.statusText}`);
-    }
+      const referenceLinks = (cve.references ?? [])
+        .filter((reference) => Boolean(reference.url))
+        .map((reference) => ({
+          url: String(reference.url),
+          source: reference.source ?? null,
+          tags: Array.isArray(reference.tags) ? reference.tags : [],
+        }));
 
-    const data = await response.json();
-    
-    console.log(`Fetched ${data.totalResults} vulnerabilities from NVD`);
-
-    const records = [];
-
-    if (data.vulnerabilities && Array.isArray(data.vulnerabilities)) {
-      for (const vuln of data.vulnerabilities) {
-        const cve = vuln.cve;
-        
-        // Extract CVSS score
-        let cvssScore = null;
-        let severity = 'UNKNOWN';
-        
-        if (cve.metrics) {
-          if (cve.metrics.cvssMetricV31 && cve.metrics.cvssMetricV31.length > 0) {
-            cvssScore = cve.metrics.cvssMetricV31[0].cvssData.baseScore;
-            severity = cve.metrics.cvssMetricV31[0].cvssData.baseSeverity;
-          } else if (cve.metrics.cvssMetricV30 && cve.metrics.cvssMetricV30.length > 0) {
-            cvssScore = cve.metrics.cvssMetricV30[0].cvssData.baseScore;
-            severity = cve.metrics.cvssMetricV30[0].cvssData.baseSeverity;
-          } else if (cve.metrics.cvssMetricV2 && cve.metrics.cvssMetricV2.length > 0) {
-            cvssScore = cve.metrics.cvssMetricV2[0].cvssData.baseScore;
-            severity = cve.metrics.cvssMetricV2[0].baseSeverity || 'MEDIUM';
-          }
-        }
-
-        // Extract description
-        let description = 'No description available';
-        if (cve.descriptions && cve.descriptions.length > 0) {
-          description = cve.descriptions[0].value;
-        }
-
-        // Extract affected products
-        const affectedProducts = [];
-        if (cve.configurations && cve.configurations.length > 0) {
-          for (const config of cve.configurations) {
-            if (config.nodes) {
-              for (const node of config.nodes) {
-                if (node.cpeMatch) {
-                  for (const match of node.cpeMatch) {
-                    if (match.criteria) {
-                      affectedProducts.push(match.criteria);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // Extract references
-        const referenceLinks = [];
-        if (cve.references && cve.references.length > 0) {
-          for (const ref of cve.references) {
-            referenceLinks.push({
-              url: ref.url,
-              source: ref.source,
-              tags: ref.tags || []
-            });
-          }
-        }
-
-        records.push({
-          cve_id: cve.id,
-          description: description.substring(0, 5000), // Limit description length
-          severity: severity,
-          cvss_score: cvssScore,
-          published_date: cve.published,
-          last_modified: cve.lastModified,
-          affected_products: affectedProducts.slice(0, 50), // Limit array size
-          reference_links: referenceLinks
-        });
-      }
+      records.push({
+        cve_id: cve.id,
+        description: description.slice(0, 5000),
+        severity: metric.severity,
+        cvss_score: metric.score,
+        published_date: cve.published ?? null,
+        last_modified: cve.lastModified ?? null,
+        affected_products: affectedProducts.slice(0, 50),
+        reference_links: referenceLinks,
+      });
     }
 
     if (records.length > 0) {
       const { error: insertError } = await supabase
-        .from('security_vulnerabilities')
-        .upsert(records, {
-          onConflict: 'cve_id',
-          ignoreDuplicates: false
-        });
-
+        .from("security_vulnerabilities")
+        .upsert(records, { onConflict: "cve_id", ignoreDuplicates: false });
       if (insertError) throw insertError;
     }
 
-    await supabase.from('system_logs').insert({
-      source: 'nvd',
-      level: 'info',
+    await supabase.from("system_logs").insert({
+      source: "nvd",
+      level: "info",
       message: `Successfully fetched ${records.length} security vulnerabilities`,
-      metadata: { 
+      metadata: {
         records_count: records.length,
-        total_available: data.totalResults,
-        date_range: `${startDate} to ${endDate}`
-      }
+        total_available: data.totalResults ?? null,
+        date_range: `${startDate} to ${endDate}`,
+        provenance: "NVD_API",
+      },
     });
 
-    return new Response(
-      JSON.stringify({ 
-        ok: true, 
-        message: `Fetched ${records.length} security vulnerabilities from last 7 days`,
-        data: records.slice(0, 10) // Return first 10 for preview
-      }), 
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (e) {
-    console.error("pull-nvd-security error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : 'Unknown error' }), 
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    await finishProviderRun(supabase, run, {
+      records_fetched: records.length,
+      records_inserted: records.length,
+    });
+
+    return json({
+      ok: true,
+      message: `Fetched ${records.length} observed NVD vulnerabilities from the last 7 days`,
+      records_count: records.length,
+    });
+  } catch (error) {
+    console.error("pull-nvd-security error:", error);
+    await failProviderRun(supabase, run, error);
+    return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
   }
 });
+
+function firstMetric(cve: NvdCve): { score: number | null; severity: string } {
+  const candidates = [
+    cve.metrics?.cvssMetricV31?.[0],
+    cve.metrics?.cvssMetricV30?.[0],
+    cve.metrics?.cvssMetricV2?.[0],
+  ];
+
+  for (const metric of candidates) {
+    if (!metric) continue;
+    const score = Number(metric.cvssData?.baseScore);
+    const severity = metric.cvssData?.baseSeverity ?? metric.baseSeverity ?? "UNKNOWN";
+    return { score: Number.isFinite(score) ? score : null, severity };
+  }
+  return { score: null, severity: "UNKNOWN" };
+}
+
+function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, ...extraHeaders, "Content-Type": "application/json" },
+  });
+}
