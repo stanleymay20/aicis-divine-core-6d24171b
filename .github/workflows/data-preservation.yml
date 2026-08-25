@@ -2,6 +2,11 @@ name: AICIS Data Preservation Snapshot
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/data-preservation.yml
 
 permissions:
   contents: read
