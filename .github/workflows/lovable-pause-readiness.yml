@@ -1,0 +1,91 @@
+name: AICIS Lovable Pause Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_project_ref:
+        description: Independent Supabase target project ref
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aicis-lovable-pause-readiness
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify AICIS survives Lovable pause
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production-data-preservation
+    env:
+      AICIS_SOURCE_PROJECT_REF: ps...nuhjjskrdazrakk
+      AICIS_TARGET_PROJECT_REF: ${{ inputs.target_project_ref }}
+      AICIS_TARGET_SUPABASE_URL: ${{ secrets.AICIS_TARGET_SUPABASE_URL }}
+      AICIS_TARGET_PUBLISHABLE_KEY: ${{ secrets.AICIS_TARGET_PUBLISHABLE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify target identity and required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AICIS_TARGET_PROJECT_REF" || { echo "Target project ref missing"; exit 1; }
+          test "$AICIS_TARGET_PROJECT_REF" != "$AICIS_SOURCE_PROJECT_REF" || { echo "Target cannot be Lovable source"; exit 1; }
+          test -n "$AICIS_TARGET_SUPABASE_URL" || { echo "AICIS_TARGET_SUPABASE_URL missing"; exit 1; }
+          test -n "$AICIS_TARGET_PUBLISHABLE_KEY" || { echo "AICIS_TARGET_PUBLISHABLE_KEY missing"; exit 1; }
+          case "$AICIS_TARGET_SUPABASE_URL" in
+            *"$AICIS_TARGET_PROJECT_REF"*) ;;
+            *) echo "Target URL does not contain target project ref"; exit 1 ;;
+          esac
+          case "$AICIS_TARGET_SUPABASE_URL" in
+            *"$AICIS_SOURCE_PROJECT_REF"*) echo "Target URL still points at Lovable source"; exit 1 ;;
+          esac
+
+      - name: Static pause-readiness gate
+        shell: bash
+        run: bash scripts/assert-lovable-pause-ready.sh
+
+      - name: Target Auth health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --connect-timeout 10 --max-time 20 \
+            "$AICIS_TARGET_SUPABASE_URL/auth/v1/health" >/tmp/auth-health.json
+          cat /tmp/auth-health.json
+
+      - name: Target REST API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --connect-timeout 10 --max-time 20 \
+            -H "apikey: $AICIS_TARGET_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $AICIS_TARGET_PUBLISHABLE_KEY" \
+            "$AICIS_TARGET_SUPABASE_URL/rest/v1/" >/tmp/rest-health.json
+          head -c 2000 /tmp/rest-health.json
+          echo
+
+      - name: Reject source URL leakage in built configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInF "$AICIS_SOURCE_PROJECT_REF" src public index.html vite.config.ts netlify.toml 2>/dev/null; then
+            echo "Source project ref remains in deployable frontend/runtime configuration" >&2
+            exit 1
+          fi
+
+      - name: Readiness summary
+        shell: bash
+        run: |
+          echo "STATIC_REBINDING=PASS"
+          echo "TARGET_AUTH=PASS"
+          echo "TARGET_REST=PASS"
+          echo "SOURCE_RUNTIME_LEAKAGE=PASS"
+          echo "NOTE: final approval still requires DB/Auth/Storage parity, Edge Function deployment, cron rebinding, ingestion freshness, and a controlled source-isolation test."
