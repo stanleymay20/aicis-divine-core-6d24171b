@@ -2,103 +2,98 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/**
+ * Market-data truth floor.
+ *
+ * Historical versions of this function asked an LLM to "generate realistic market
+ * data" and inserted hard-coded sample trades as executed transactions. That is
+ * forbidden: generated commentary is not market observation and sample orders are
+ * not executed trades.
+ *
+ * This endpoint now fails closed until a real, attributable market-data provider is
+ * configured. When a provider is added, observations must retain provider/source,
+ * observed_at, symbol/pair, price/volume fields and a provider event/trade id when
+ * available. Actual user/exchange executions must be ingested through a separate,
+ * authenticated execution connector—not synthesized here.
+ */
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST" && req.method !== "GET") {
+    return json({ ok: false, error: "Method not allowed" }, 405);
   }
 
   try {
-    const authHeader = req.headers.get('Authorization')!;
-    
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return json({ ok: false, error: "Unauthorized" }, 401);
+
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader } } },
     );
 
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) throw new Error('Unauthorized');
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) return json({ ok: false, error: "Unauthorized" }, 401);
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
+    // Do not fabricate a provider response. A future implementation must explicitly
+    // configure and call a real provider. Keeping this flag explicit makes accidental
+    // reintroduction of sample data harder during migration.
+    const provider = Deno.env.get("AICIS_MARKET_DATA_PROVIDER")?.trim();
+    const endpoint = Deno.env.get("AICIS_MARKET_DATA_ENDPOINT")?.trim();
 
-    // Use AI to analyze and fetch market data
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a financial AI analyzing cryptocurrency markets. Generate realistic market data including exchange rates, volumes, and trends for major cryptocurrencies (BTC, ETH, USDT) across major exchanges (Binance, Coinbase, OKX).'
-          },
-          { role: 'user', content: 'Provide current market overview with price analysis' }
-        ],
-      }),
-    });
+    if (!provider || !endpoint) {
+      await supabaseClient.from("system_logs").insert({
+        user_id: user.id,
+        division: "finance",
+        action: "market_data_fetch",
+        result: "no_market_provider_configured",
+        log_level: "warning",
+        metadata: {
+          rows_written: 0,
+          synthetic_data_allowed: false,
+          required_configuration: ["AICIS_MARKET_DATA_PROVIDER", "AICIS_MARKET_DATA_ENDPOINT"],
+        },
+      });
 
-    if (!aiResponse.ok) {
-      throw new Error('AI processing failed');
+      return json({
+        ok: false,
+        code: "no_market_provider_configured",
+        message: "No verified market-data provider is configured. AICIS will not generate or persist synthetic prices, volumes, trades, or profits.",
+        rows_written: 0,
+      }, 503);
     }
 
-    const aiData = await aiResponse.json();
-    const analysis = aiData.choices[0].message.content;
-
-    // Generate sample trade data
-    const mockTrades = [
-      {
-        exchange: 'Binance',
-        pair: 'BTC/USDT',
-        side: 'buy',
-        amount: 0.5,
-        price: 67500.00,
-        profit: 1250.50,
-        status: 'executed',
-        executed_at: new Date().toISOString()
-      },
-      {
-        exchange: 'Coinbase',
-        pair: 'ETH/USDT',
-        side: 'sell',
-        amount: 10.0,
-        price: 3850.00,
-        profit: 450.25,
-        status: 'executed',
-        executed_at: new Date().toISOString()
-      }
-    ];
-
-    // Store trades in database
-    for (const trade of mockTrades) {
-      await supabaseClient.from('trades').insert(trade);
-    }
-
-    // Log activity
-    await supabaseClient.from('system_logs').insert({
+    // Provider adapters must be implemented explicitly rather than treating an
+    // arbitrary endpoint as trustworthy data. This guards against silently accepting
+    // incompatible/unverified payloads merely because environment variables exist.
+    await supabaseClient.from("system_logs").insert({
       user_id: user.id,
-      division: 'finance',
-      action: 'market_data_fetch',
-      result: 'success',
-      log_level: 'info',
-      metadata: { trades: mockTrades.length }
+      division: "finance",
+      action: "market_data_fetch",
+      result: "provider_adapter_required",
+      log_level: "warning",
+      metadata: { provider, endpoint_configured: true, rows_written: 0 },
     });
 
-    return new Response(JSON.stringify({ analysis, trades: mockTrades }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json({
+      ok: false,
+      code: "provider_adapter_required",
+      message: `Market provider '${provider}' is configured, but its verified adapter has not yet been implemented. No data was written.`,
+      rows_written: 0,
+    }, 501);
   } catch (error) {
-    console.error('Error in fetch-market-data:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error("Error in fetch-market-data:", error);
+    return json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" }, 500);
   }
 });
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
