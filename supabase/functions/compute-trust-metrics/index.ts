@@ -1,130 +1,195 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
+interface MetricObservation {
+  type: string;
+  value: number;
+  unit: "percent";
+  metadata: Record<string, unknown>;
+}
+
+function normalizePercent(value: unknown): number | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  if (numeric <= 1) return numeric * 100;
+  if (numeric <= 100) return numeric;
+  return null;
+}
+
+function mean(values: number[]): number {
+  return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value * 100) / 100));
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+  const computedAt = new Date().toISOString();
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const [decisionsResult, rootResult, consentTotalResult, consentActiveResult, sdgResult, logsResult] = await Promise.all([
+      supabase.from("ai_decision_logs").select("confidence").order("created_at", { ascending: false }).limit(1000),
+      supabase.from("ledger_root_hashes").select("timestamp").order("timestamp", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("user_consent").select("id", { count: "exact", head: true }),
+      supabase.from("user_consent").select("id", { count: "exact", head: true }).is("revoked_at", null),
+      supabase.from("sdg_progress").select("progress_percent"),
+      supabase.from("automation_logs").select("status").gte("executed_at", oneDayAgo),
+    ]);
 
-    console.log('Computing public trust metrics...');
-
-    // 1. AI Trust Score (confidence - bias penalty)
-    const { data: decisions } = await supabaseClient
-      .from('ai_decision_logs')
-      .select('confidence, bias_score')
-      .order('created_at', { ascending: false })
-      .limit(1000);
-
-    let aiTrustScore = 0;
-    if (decisions && decisions.length > 0) {
-      const avgConfidence = decisions.reduce((sum, d) => sum + (Number(d.confidence) || 0), 0) / decisions.length;
-      const avgBias = decisions.reduce((sum, d) => sum + (Number(d.bias_score) || 0), 0) / decisions.length;
-      aiTrustScore = Math.max(0, Math.min(100, avgConfidence - (avgBias * 2)));
+    const queryErrors = [
+      decisionsResult.error,
+      rootResult.error,
+      consentTotalResult.error,
+      consentActiveResult.error,
+      sdgResult.error,
+      logsResult.error,
+    ].filter(Boolean);
+    if (queryErrors.length > 0) {
+      throw new Error(queryErrors.map((error) => error?.message ?? "unknown_query_error").join(" | "));
     }
 
-    // 2. Ledger Integrity Score
-    const { data: rootHash } = await supabaseClient
-      .from('ledger_root_hashes')
-      .select('*')
-      .order('timestamp', { ascending: false })
-      .limit(1)
-      .single();
+    const confidenceValues = (decisionsResult.data ?? [])
+      .map((row) => normalizePercent(row.confidence))
+      .filter((value): value is number => value !== null);
+    const aiRecordedConfidence = clampPercent(mean(confidenceValues));
 
-    const ledgerIntegrityScore = rootHash ? 99.9 : 0;
+    const lastRootAt = rootResult.data?.timestamp ? new Date(rootResult.data.timestamp).toISOString() : null;
+    const ledgerRootGenerated24h = lastRootAt && new Date(lastRootAt).getTime() >= new Date(oneDayAgo).getTime() ? 100 : 0;
 
-    // 3. GDPR Compliance Score
-    const { data: activeConsents } = await supabaseClient
-      .from('user_consent')
-      .select('id')
-      .is('revoked_at', null);
+    const totalConsents = consentTotalResult.count ?? 0;
+    const activeConsents = consentActiveResult.count ?? 0;
+    const activeConsentRatio = totalConsents > 0 ? clampPercent((activeConsents / totalConsents) * 100) : 0;
 
-    const gdprScore = 100; // Full compliance assumed with active consent system
+    const sdgValues = (sdgResult.data ?? [])
+      .map((row) => normalizePercent(row.progress_percent))
+      .filter((value): value is number => value !== null);
+    const sdgProgressMean = clampPercent(mean(sdgValues));
 
-    // 4. SDG Progress Index
-    const { data: sdgProgress } = await supabaseClient
-      .from('sdg_progress')
-      .select('progress_percent');
+    const completedAutomationLogs = (logsResult.data ?? []).filter((row) => row.status !== "running");
+    const successfulAutomationLogs = completedAutomationLogs.filter((row) => row.status === "success").length;
+    const automationSuccessRate24h = completedAutomationLogs.length > 0
+      ? clampPercent((successfulAutomationLogs / completedAutomationLogs.length) * 100)
+      : 0;
 
-    let sdgIndex = 0;
-    if (sdgProgress && sdgProgress.length > 0) {
-      sdgIndex = sdgProgress.reduce((sum, g) => sum + (Number(g.progress_percent) || 0), 0) / sdgProgress.length;
-    }
-
-    // 5. Data Protection Uptime (based on automation logs)
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: logs } = await supabaseClient
-      .from('automation_logs')
-      .select('status')
-      .gte('executed_at', oneDayAgo);
-
-    let dataProtectionUptime = 100;
-    if (logs && logs.length > 0) {
-      const successful = logs.filter(l => l.status === 'success').length;
-      dataProtectionUptime = (successful / logs.length) * 100;
-    }
-
-    // Insert/update metrics with cryptographic signature
-    const metricsData = [
-      { type: 'ai_trust_score', value: aiTrustScore, unit: 'percent' },
-      { type: 'ledger_integrity_score', value: ledgerIntegrityScore, unit: 'percent' },
-      { type: 'gdpr_compliance_score', value: gdprScore, unit: 'percent' },
-      { type: 'sdg_progress_index', value: sdgIndex, unit: 'percent' },
-      { type: 'data_protection_uptime', value: dataProtectionUptime, unit: 'percent' }
+    const observations: MetricObservation[] = [
+      {
+        type: "ai_recorded_confidence",
+        value: aiRecordedConfidence,
+        unit: "percent",
+        metadata: {
+          source: "ai_decision_logs.confidence",
+          sample_size: confidenceValues.length,
+          interpretation: "Mean recorded model confidence only; not an independent trust or accuracy certification.",
+        },
+      },
+      {
+        type: "ledger_root_generated_24h",
+        value: ledgerRootGenerated24h,
+        unit: "percent",
+        metadata: {
+          source: "ledger_root_hashes.timestamp",
+          last_root_at: lastRootAt,
+          interpretation: "Binary operational check: 100 means at least one ledger root was generated in the last 24 hours. It does not prove full ledger integrity.",
+        },
+      },
+      {
+        type: "active_consent_ratio",
+        value: activeConsentRatio,
+        unit: "percent",
+        metadata: {
+          source: "user_consent",
+          total_records: totalConsents,
+          active_records: activeConsents,
+          sample_size: totalConsents,
+          interpretation: "Share of stored consent records that are not revoked. This is not a GDPR compliance score.",
+        },
+      },
+      {
+        type: "sdg_progress_index",
+        value: sdgProgressMean,
+        unit: "percent",
+        metadata: {
+          source: "sdg_progress.progress_percent",
+          sample_size: sdgValues.length,
+          interpretation: "Arithmetic mean of recorded SDG progress percentages in AICIS.",
+        },
+      },
+      {
+        type: "automation_success_rate_24h",
+        value: automationSuccessRate24h,
+        unit: "percent",
+        metadata: {
+          source: "automation_logs.status",
+          completed_runs: completedAutomationLogs.length,
+          successful_runs: successfulAutomationLogs,
+          interpretation: "Share of completed automation-log records marked success in the last 24 hours; not infrastructure uptime.",
+        },
+      },
     ];
 
-    for (const metric of metricsData) {
-      // Create signature
-      const payload = `${metric.type}-${metric.value}-${new Date().toISOString()}`;
-      const hashBuffer = await crypto.subtle.digest(
-        'SHA-256',
-        new TextEncoder().encode(payload)
-      );
-      const signature = Array.from(new Uint8Array(hashBuffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-
-      await supabaseClient.from('trust_metrics').insert({
-        metric_type: metric.type,
-        metric_value: metric.value,
-        metric_unit: metric.unit,
-        signature: signature,
-        metadata: {
-          computed_at: new Date().toISOString(),
-          sample_size: decisions?.length || 0
-        }
+    for (const observation of observations) {
+      const payload = JSON.stringify({
+        metric_type: observation.type,
+        metric_value: observation.value,
+        metric_unit: observation.unit,
+        computed_at: computedAt,
+        metadata: observation.metadata,
       });
+      const digest = await sha256Hex(payload);
+      const { error } = await supabase.from("trust_metrics").insert({
+        metric_type: observation.type,
+        metric_value: observation.value,
+        metric_unit: observation.unit,
+        computed_at: computedAt,
+        signature: digest,
+        metadata: {
+          ...observation.metadata,
+          integrity_marker: "sha256_digest_not_authenticity_signature",
+          computed_by: "compute-trust-metrics",
+          authenticated_via: auth.via,
+        },
+      });
+      if (error) throw error;
     }
 
-    console.log('Trust metrics computed and signed');
-
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       success: true,
-      metrics: {
-        ai_trust_score: aiTrustScore.toFixed(1),
-        ledger_integrity_score: ledgerIntegrityScore,
-        gdpr_compliance_score: gdprScore,
-        sdg_progress_index: sdgIndex.toFixed(1),
-        data_protection_uptime: dataProtectionUptime.toFixed(1)
-      }
+      computed_at: computedAt,
+      authenticated_via: auth.via,
+      metrics: Object.fromEntries(observations.map((observation) => [observation.type, observation.value])),
+      caveat: "Operational observations only. No metric in this response is a legal, security, or certification attestation.",
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error('Error in compute-trust-metrics:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
+    console.error("Error in compute-trust-metrics:", error);
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

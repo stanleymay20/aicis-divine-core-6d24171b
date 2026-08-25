@@ -1,20 +1,39 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
+
+type HealthStatus = "healthy" | "degraded" | "down";
+
+interface HealthCheck {
+  component: string;
+  status: HealthStatus;
+  response_time_ms?: number;
+  error_message?: string;
+  basis: string;
+}
 
 async function retryCall<T>(fn: () => Promise<T>, retries = 2, baseMs = 300): Promise<T> {
   let last: Error | undefined;
-  for (let i = 0; i <= retries; i++) {
-    try { return await fn(); } catch (e) {
-      last = e instanceof Error ? e : new Error(String(e));
-      if (i < retries) await new Promise(r => setTimeout(r, baseMs * Math.pow(2, i)));
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      last = error instanceof Error ? error : new Error(String(error));
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, baseMs * Math.pow(2, attempt)));
+      }
     }
   }
-  throw last;
+  throw last ?? new Error("health_check_failed");
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 serve(async (req) => {
@@ -22,66 +41,99 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+  const healthChecks: HealthCheck[] = [];
+  const startTime = Date.now();
+
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    const healthChecks: any[] = [];
-    const startTime = Date.now();
-
-    // 1. Database health (with retry)
     try {
       const dbStart = Date.now();
       await retryCall(async () => {
-        const { error } = await supabase.from("organizations").select("count").limit(1).single();
+        const { error } = await supabase.from("organizations").select("id").limit(1);
         if (error) throw error;
       });
-      healthChecks.push({ component: "database", status: "healthy", response_time_ms: Date.now() - dbStart });
-    } catch (error: unknown) {
-      healthChecks.push({ component: "database", status: "down", error_message: error instanceof Error ? error.message : 'Unknown error' });
+      healthChecks.push({
+        component: "database",
+        status: "healthy",
+        response_time_ms: Date.now() - dbStart,
+        basis: "Service-role read query completed successfully.",
+      });
+    } catch (error) {
+      healthChecks.push({
+        component: "database",
+        status: "down",
+        error_message: messageOf(error),
+        basis: "Service-role read query failed after retry.",
+      });
     }
 
-    // 2. Storage health (with retry)
     try {
       const storageStart = Date.now();
       await retryCall(async () => {
         const { error } = await supabase.storage.listBuckets();
         if (error) throw error;
       });
-      healthChecks.push({ component: "storage", status: "healthy", response_time_ms: Date.now() - storageStart });
-    } catch (error: unknown) {
-      healthChecks.push({ component: "storage", status: "degraded", error_message: error instanceof Error ? error.message : 'Unknown error' });
+      healthChecks.push({
+        component: "storage",
+        status: "healthy",
+        response_time_ms: Date.now() - storageStart,
+        basis: "Storage bucket listing completed successfully.",
+      });
+    } catch (error) {
+      healthChecks.push({
+        component: "storage",
+        status: "degraded",
+        error_message: messageOf(error),
+        basis: "Storage bucket listing failed after retry.",
+      });
     }
 
-    // 3. Edge functions health (self-check)
-    healthChecks.push({ component: "edge_functions", status: "healthy", response_time_ms: Date.now() - startTime });
+    healthChecks.push({
+      component: "edge_runtime",
+      status: "healthy",
+      response_time_ms: Date.now() - startTime,
+      basis: "This health-check function is executing. This does not assert the health of every Edge Function.",
+    });
 
-    // Log health checks (best-effort, don't fail if logging fails)
-    try {
-      for (const check of healthChecks) {
-        await supabase.from("system_health").insert(check);
-      }
-    } catch (logErr) {
-      console.warn("Failed to log health checks:", logErr);
-    }
+    const healthRows = healthChecks.map((check) => ({
+      component: check.component,
+      status: check.status,
+      response_time_ms: check.response_time_ms ?? null,
+      error_message: check.error_message ?? null,
+    }));
+    const { error: logError } = await supabase.from("system_health").insert(healthRows);
+    if (logError) console.warn("Failed to persist health checks:", logError.message);
 
-    const overallStatus = healthChecks.every((c) => c.status === "healthy")
-      ? "healthy"
-      : healthChecks.some((c) => c.status === "down")
+    const overallStatus: HealthStatus = healthChecks.some((check) => check.status === "down")
       ? "down"
-      : "degraded";
+      : healthChecks.some((check) => check.status === "degraded")
+      ? "degraded"
+      : "healthy";
 
     return new Response(
-      JSON.stringify({ ok: true, status: overallStatus, checks: healthChecks, timestamp: new Date().toISOString() }),
-      { status: overallStatus === "down" ? 503 : 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        ok: overallStatus !== "down",
+        status: overallStatus,
+        checks: healthChecks,
+        authenticated_via: auth.via,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        status: overallStatus === "down" ? 503 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
-  } catch (e) {
-    console.error("Health check error:", e);
-    return new Response(
-      JSON.stringify({ error: (e as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  } catch (error) {
+    console.error("Health check error:", error);
+    return new Response(JSON.stringify({ error: messageOf(error) }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

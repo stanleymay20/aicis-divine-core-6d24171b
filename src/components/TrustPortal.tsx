@@ -2,126 +2,178 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Shield, CheckCircle, Lock, Globe, TrendingUp, FileCheck } from "lucide-react";
+import { Shield, CheckCircle, Lock, Globe, TrendingUp, FileCheck, type LucideIcon } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
+interface TrustMetric {
+  id: string;
+  metric_type: string;
+  metric_value: number | string;
+  metric_unit: string | null;
+  computed_at: string;
+  signature: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+interface TransparencyReport {
+  published_at: string;
+  total_users: number | null;
+  total_decisions: number | null;
+  gdpr_requests_count: number | null;
+  data_breaches_count: number | null;
+  signed_hash: string | null;
+}
+
+interface MetricPresentation {
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}
+
+const SUPPORTED_METRICS = [
+  "ai_recorded_confidence",
+  "ledger_root_generated_24h",
+  "active_consent_ratio",
+  "sdg_progress_index",
+  "automation_success_rate_24h",
+] as const;
+
+const metricPresentation: Record<string, MetricPresentation> = {
+  ai_recorded_confidence: {
+    label: "Recorded AI Confidence",
+    description: "Mean confidence recorded on recent AI decision logs; not an accuracy or trust certification.",
+    icon: Shield,
+  },
+  ledger_root_generated_24h: {
+    label: "Ledger Root Generated (24h)",
+    description: "Operational presence check for a recent ledger root; not proof that every ledger entry is valid.",
+    icon: CheckCircle,
+  },
+  active_consent_ratio: {
+    label: "Active Consent Record Ratio",
+    description: "Share of stored consent records that are not revoked; not a GDPR compliance score.",
+    icon: Lock,
+  },
+  sdg_progress_index: {
+    label: "Recorded SDG Progress Mean",
+    description: "Mean of SDG progress percentages currently recorded by AICIS.",
+    icon: Globe,
+  },
+  automation_success_rate_24h: {
+    label: "Automation Success Rate (24h)",
+    description: "Share of completed automation logs marked successful in the last 24 hours; not infrastructure uptime.",
+    icon: TrendingUp,
+  },
+};
+
+function metricColor(value: number): string {
+  if (value >= 95) return "text-success";
+  if (value >= 85) return "text-warning";
+  return "text-destructive";
+}
+
+function metricGlow(value: number): string {
+  if (value >= 95) return "bg-success/10";
+  if (value >= 85) return "bg-warning/10";
+  return "bg-destructive/10";
+}
+
+function metadataText(metadata: Record<string, unknown> | null, key: string): string | null {
+  const value = metadata?.[key];
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  return null;
+}
+
 export const TrustPortal = () => {
-  // Fetch latest trust metrics
   const { data: metrics, isLoading } = useQuery({
-    queryKey: ['trust-metrics'],
-    queryFn: async () => {
+    queryKey: ["trust-metrics"],
+    queryFn: async (): Promise<Record<string, TrustMetric>> => {
       const { data, error } = await supabase
-        .from('trust_metrics')
-        .select('*')
-        .order('computed_at', { ascending: false })
-        .limit(5);
-      
+        .from("trust_metrics")
+        .select("id, metric_type, metric_value, metric_unit, computed_at, signature, metadata")
+        .in("metric_type", [...SUPPORTED_METRICS])
+        .order("computed_at", { ascending: false })
+        .limit(50);
       if (error) throw error;
-      
-      // Group by metric type and get latest
-      const latestMetrics: Record<string, any> = {};
-      data?.forEach(m => {
-        if (!latestMetrics[m.metric_type]) {
-          latestMetrics[m.metric_type] = m;
-        }
-      });
-      
-      return latestMetrics;
-    }
+
+      const latest: Record<string, TrustMetric> = {};
+      for (const row of (data ?? []) as TrustMetric[]) {
+        if (!latest[row.metric_type]) latest[row.metric_type] = row;
+      }
+      return latest;
+    },
   });
 
-  // Fetch latest transparency report
   const { data: latestReport } = useQuery({
-    queryKey: ['transparency-reports'],
-    queryFn: async () => {
+    queryKey: ["transparency-reports"],
+    queryFn: async (): Promise<TransparencyReport | null> => {
       const { data, error } = await supabase
-        .from('transparency_reports')
-        .select('*')
-        .not('published_at', 'is', null)
-        .order('published_at', { ascending: false })
+        .from("transparency_reports")
+        .select("published_at, total_users, total_decisions, gdpr_requests_count, data_breaches_count, signed_hash")
+        .not("published_at", "is", null)
+        .order("published_at", { ascending: false })
         .limit(1)
-        .single();
-      
+        .maybeSingle();
       if (error) throw error;
-      return data;
-    }
+      return data as TransparencyReport | null;
+    },
   });
-
-  const getMetricIcon = (type: string) => {
-    switch (type) {
-      case 'ai_trust_score': return Shield;
-      case 'ledger_integrity_score': return CheckCircle;
-      case 'gdpr_compliance_score': return Lock;
-      case 'sdg_progress_index': return Globe;
-      case 'data_protection_uptime': return TrendingUp;
-      default: return FileCheck;
-    }
-  };
-
-  const getMetricLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      ai_trust_score: 'AI Trust Score',
-      ledger_integrity_score: 'Ledger Integrity',
-      gdpr_compliance_score: 'GDPR Compliance',
-      sdg_progress_index: 'SDG Progress Index',
-      data_protection_uptime: 'Data Protection Uptime (24h)'
-    };
-    return labels[type] || type;
-  };
-
-  const getMetricColor = (value: number) => {
-    if (value >= 95) return 'text-success';
-    if (value >= 85) return 'text-warning';
-    return 'text-destructive';
-  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h2 className="text-3xl font-bold flex items-center gap-2">
           <Shield className="h-8 w-8 text-primary" />
-          Public Trust Portal
+          Public Trust & Evidence Portal
         </h2>
         <p className="text-muted-foreground mt-1">
-          Transparency By Design – AICIS Global Data Ethics Charter
+          Operational evidence with explicit measurement boundaries. These indicators are not legal, security, or certification attestations.
         </p>
       </div>
 
-      {/* Trust Metrics Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {isLoading ? (
-          <div className="col-span-full text-center py-8">Loading trust metrics...</div>
+          <div className="col-span-full text-center py-8">Loading measured trust indicators...</div>
+        ) : Object.keys(metrics ?? {}).length === 0 ? (
+          <Card className="col-span-full">
+            <CardContent className="p-8 text-center text-muted-foreground">
+              No current measured trust indicators are available yet.
+            </CardContent>
+          </Card>
         ) : (
-          Object.entries(metrics || {}).map(([type, metric]: [string, any]) => {
-            const Icon = getMetricIcon(type);
-            const value = Number(metric.metric_value);
-            
+          Object.entries(metrics ?? {}).map(([type, metric]) => {
+            const presentation = metricPresentation[type] ?? {
+              label: type,
+              description: "Measured operational indicator.",
+              icon: FileCheck,
+            };
+            const Icon = presentation.icon;
+            const value = Math.max(0, Math.min(100, Number(metric.metric_value)));
+            const sampleSize = metadataText(metric.metadata, "sample_size");
+
             return (
               <Card key={type} className="relative overflow-hidden">
-                <div className={`absolute top-0 right-0 w-32 h-32 ${value >= 95 ? 'bg-success/10' : value >= 85 ? 'bg-warning/10' : 'bg-destructive/10'} rounded-full blur-3xl -mr-16 -mt-16`} />
-                
+                <div className={`absolute top-0 right-0 w-32 h-32 ${metricGlow(value)} rounded-full blur-3xl -mr-16 -mt-16`} />
                 <CardHeader className="relative">
                   <CardTitle className="flex items-center justify-between text-sm font-medium">
-                    <span>{getMetricLabel(type)}</span>
-                    <Icon className={`h-4 w-4 ${getMetricColor(value)}`} />
+                    <span>{presentation.label}</span>
+                    <Icon className={`h-4 w-4 ${metricColor(value)}`} />
                   </CardTitle>
+                  <CardDescription>{presentation.description}</CardDescription>
                 </CardHeader>
                 <CardContent className="relative">
                   <div className="space-y-2">
-                    <div className={`text-3xl font-bold ${getMetricColor(value)}`}>
-                      {value.toFixed(1)}%
-                    </div>
+                    <div className={`text-3xl font-bold ${metricColor(value)}`}>{value.toFixed(1)}%</div>
                     <Progress value={value} className="h-2" />
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Last updated: {new Date(metric.computed_at).toLocaleDateString()}</span>
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>Updated {new Date(metric.computed_at).toLocaleString()}</span>
                       {metric.signature && (
                         <Badge variant="outline" className="text-[10px]">
-                          <Lock className="h-2 w-2 mr-1" />
-                          Signed
+                          <Lock className="h-2 w-2 mr-1" /> SHA-256 digest
                         </Badge>
                       )}
                     </div>
+                    {sampleSize && <div className="text-xs text-muted-foreground">Sample size: {sampleSize}</div>}
                   </div>
                 </CardContent>
               </Card>
@@ -130,109 +182,82 @@ export const TrustPortal = () => {
         )}
       </div>
 
-      {/* Charter Overview */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileCheck className="h-5 w-5" />
-            AICIS Data Ethics Charter
+            Governance Controls & Measurement Boundaries
           </CardTitle>
           <CardDescription>
-            Our commitment to lawful, transparent, and privacy-preserving global intelligence
+            What AICIS currently records and what those records do—and do not—prove.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <h4 className="font-semibold text-sm">Data Access Tiers</h4>
+              <h4 className="font-semibold text-sm">Observed controls</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• <strong>Public:</strong> Aggregated, anonymized, 72h delayed</li>
-                <li>• <strong>Institutional:</strong> Live, region-level, verified nodes</li>
-                <li>• <strong>Administrative:</strong> Full audit access, encrypted</li>
+                <li>• Consent records include revocation state.</li>
+                <li>• DPIA and data-use-agreement records are supported.</li>
+                <li>• Ledger roots and operational automation results are recorded.</li>
+                <li>• Published transparency reports are stored separately from live metrics.</li>
               </ul>
             </div>
-            
             <div className="space-y-2">
-              <h4 className="font-semibold text-sm">Compliance Framework</h4>
+              <h4 className="font-semibold text-sm">Important boundaries</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• <strong>GDPR:</strong> Full Article 13-35 compliance</li>
-                <li>• <strong>AI Act:</strong> Transparency & explainability</li>
-                <li>• <strong>UN SDG:</strong> All 17 goals tracked</li>
-                <li>• <strong>OECD AI:</strong> Ethical principles aligned</li>
-              </ul>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="font-semibold text-sm">Security Measures</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• <strong>Encryption:</strong> AES-256-GCM at rest</li>
-                <li>• <strong>Transport:</strong> TLS 1.3 + HMAC auth</li>
-                <li>• <strong>Audit:</strong> Immutable ledger records</li>
-                <li>• <strong>Anonymization:</strong> PII redacted pre-training</li>
-              </ul>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="font-semibold text-sm">Accountability</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• <strong>Oversight:</strong> Ethics Council + GDPR Auditor</li>
-                <li>• <strong>Appeals:</strong> 7-day review process</li>
-                <li>• <strong>Reports:</strong> Annual transparency report</li>
-                <li>• <strong>Certification:</strong> ISO 27701 + 27001 ready</li>
+                <li>• A database control does not by itself establish GDPR or AI Act compliance.</li>
+                <li>• A ledger root does not by itself prove full ledger integrity.</li>
+                <li>• A SHA-256 digest is an integrity marker, not proof of signer identity.</li>
+                <li>• Certification claims require external evidence and are not inferred from these metrics.</li>
               </ul>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Latest Transparency Report */}
       {latestReport && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileCheck className="h-5 w-5" />
-              Latest Transparency Report
+              <FileCheck className="h-5 w-5" /> Latest Published Transparency Report
             </CardTitle>
-            <CardDescription>
-              Published: {new Date(latestReport.published_at).toLocaleDateString()}
-            </CardDescription>
+            <CardDescription>Published {new Date(latestReport.published_at).toLocaleDateString()}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4 mb-4">
               <div>
                 <div className="text-sm text-muted-foreground">Total Users</div>
-                <div className="text-2xl font-bold">{latestReport.total_users || 0}</div>
+                <div className="text-2xl font-bold">{latestReport.total_users ?? 0}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">AI Decisions</div>
-                <div className="text-2xl font-bold">{latestReport.total_decisions || 0}</div>
+                <div className="text-2xl font-bold">{latestReport.total_decisions ?? 0}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">GDPR Requests</div>
-                <div className="text-2xl font-bold">{latestReport.gdpr_requests_count || 0}</div>
+                <div className="text-sm text-muted-foreground">Recorded GDPR Requests</div>
+                <div className="text-2xl font-bold">{latestReport.gdpr_requests_count ?? 0}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Data Breaches</div>
-                <div className={`text-2xl font-bold ${latestReport.data_breaches_count === 0 ? 'text-success' : 'text-destructive'}`}>
-                  {latestReport.data_breaches_count || 0}
+                <div className="text-sm text-muted-foreground">Recorded Data Breaches</div>
+                <div className={`text-2xl font-bold ${(latestReport.data_breaches_count ?? 0) === 0 ? "text-success" : "text-destructive"}`}>
+                  {latestReport.data_breaches_count ?? 0}
                 </div>
               </div>
             </div>
-            
             {latestReport.signed_hash && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Lock className="h-3 w-3" />
-                <span>Report signed with hash: {latestReport.signed_hash.substring(0, 32)}...</span>
+                <span>Stored report hash: {latestReport.signed_hash.substring(0, 32)}...</span>
               </div>
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* Footer */}
       <div className="text-center text-sm text-muted-foreground border-t pt-6">
-        <p className="font-semibold">Protected Data Empowers People</p>
-        <p>AICIS 2025 Global Data Ethics Charter – Transparency By Design</p>
+        <p className="font-semibold">Transparency requires evidence and boundaries.</p>
+        <p>AICIS reports what its systems can demonstrate and leaves external certification to qualified independent assessment.</p>
       </div>
     </div>
   );
