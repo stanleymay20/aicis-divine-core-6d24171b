@@ -355,7 +355,7 @@ export default function PlanetaryGraphExplorer() {
     [entityLabelsQuery.data],
   );
 
-  const allEdges = edgesQuery.data ?? [];
+  const allEdges = useMemo(() => edgesQuery.data ?? [], [edgesQuery.data]);
   const filteredEdges = useMemo(
     () =>
       allEdges.filter((edge) => {
