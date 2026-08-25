@@ -33,27 +33,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: No new Lovable runtime dependencies
+      - name: Lovable runtime migration ratchet
         id: lovable_runtime
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
-          # Portability baseline: after this point AICIS implementation is direct-to-repo.
-          # Legacy Lovable references are being removed incrementally, but no new runtime
-          # dependency on Lovable Cloud, Lovable AI Gateway, or Lovable auth may be added.
-          BASE_SHA="bb83a8ae06ce9df1336a5b158521e87d818de144"
-          ADDED_LINES="$(git diff --unified=0 "$BASE_SHA" HEAD -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.toml' '*.yml' '*.yaml' \
-            | grep '^+' \
-            | grep -v '^+++' || true)"
-
-          if printf '%s\n' "$ADDED_LINES" | grep -Eqi 'ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth|lovable cloud'; then
-            printf '%s\n' "$ADDED_LINES" | grep -Ei 'ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth|lovable cloud' || true
-            echo "New Lovable runtime dependency detected. AICIS must remain provider/host portable."
-            exit 1
-          fi
-
-          echo "No new Lovable runtime dependencies detected."
+          bash scripts/audit-lovable-runtime.sh --migration-gate
 
       - name: Strict lint — post-Phase-4 code
         id: strict_lint
