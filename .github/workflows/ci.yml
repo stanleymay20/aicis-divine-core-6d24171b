@@ -41,6 +41,14 @@ jobs:
           set -euo pipefail
           bash scripts/audit-lovable-runtime.sh
 
+      - name: No executable source-project bindings
+        id: source_bindings
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/audit-source-project-bindings.sh --strict
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
@@ -94,6 +102,7 @@ jobs:
         shell: bash
         run: |
           echo "Lovable runtime gate: ${{ steps.lovable_runtime.outcome }}"
+          echo "Source-project binding gate: ${{ steps.source_bindings.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
@@ -101,6 +110,7 @@ jobs:
 
           FAILED=0
           [ "${{ steps.lovable_runtime.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.source_bindings.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
