@@ -38,13 +38,19 @@ jobs:
           AICIS_BACKUP_PASSPHRASE: ${{ secrets.AICIS_BACKUP_PASSPHRASE }}
         run: bash scripts/aicis-backup.sh artifacts/aicis-backup
 
+      - name: Assert no plaintext database payload remains
+        run: |
+          if find artifacts/aicis-backup -type f \( -name '*.dump' -o -name '*.sql' \) | grep -q .; then
+            echo "Plaintext database material remains in the artifact directory" >&2
+            exit 1
+          fi
+
       - name: Upload encrypted snapshot
         uses: actions/upload-artifact@v4
         with:
           name: aicis-encrypted-production-backup-${{ github.run_id }}
           path: |
             artifacts/aicis-backup/*.enc
-            artifacts/aicis-backup/*-schema.sql
             artifacts/aicis-backup/*-manifest.txt
           if-no-files-found: error
           retention-days: 7
