@@ -1,140 +1,182 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
+interface CriticalAlert {
+  id: string;
+  level: string | null;
+  headline: string | null;
+  country: string | null;
+  event_type: string | null;
+  severity: number | string | null;
+  iso3: string | null;
+  triggered_at: string;
+}
+
+interface DecisionRow { status: string | null; }
+interface EventRow { category: string | null; }
+
+interface NotificationInsert {
+  user_id: null;
+  type: "critical_alert";
+  title: string;
+  body: string;
+  metadata: {
+    alert_id: string;
+    iso3: string | null;
+    level: string | null;
+    severity: number | string | null;
+  };
+  read: false;
+  created_at: string;
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
 
   try {
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const body = await req.json().catch(() => ({}));
-    const action = body.action || 'process_queue';
+    const parsed = await req.json().catch(() => ({}));
+    const body = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+    const action = typeof body.action === "string" ? body.action : "process_queue";
 
-    if (action === 'process_queue') {
-      // Process pending notifications from critical_alerts
-      const { data: unacked } = await supabase
-        .from('critical_alerts')
-        .select('*')
-        .eq('acknowledged', false)
-        .order('triggered_at', { ascending: false })
+    if (action === "process_queue") {
+      const { data: alertData, error: alertError } = await supabase
+        .from("critical_alerts")
+        .select("id,level,headline,country,event_type,severity,iso3,triggered_at")
+        .eq("acknowledged", false)
+        .order("triggered_at", { ascending: false })
         .limit(50);
+      if (alertError) throw alertError;
 
-      if (!unacked?.length) {
-        return new Response(JSON.stringify({ ok: true, processed: 0 }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      const alerts = (alertData ?? []) as CriticalAlert[];
+      if (alerts.length === 0) {
+        return json({ ok: true, processed_alerts: 0, broadcasts_created: 0, authenticated_via: auth.via });
+      }
+
+      const notifications: NotificationInsert[] = [];
+      let duplicatesSkipped = 0;
+      for (const alert of alerts) {
+        const { data: existing, error: existingError } = await supabase
+          .from("user_notifications")
+          .select("id")
+          .eq("type", "critical_alert")
+          .is("user_id", null)
+          .contains("metadata", { alert_id: alert.id })
+          .limit(1);
+        if (existingError) throw existingError;
+        if (existing && existing.length > 0) {
+          duplicatesSkipped++;
+          continue;
+        }
+
+        const level = alert.level ?? "alert";
+        const headline = alert.headline ?? "Critical intelligence alert";
+        const location = alert.country ?? alert.iso3 ?? "Global";
+        const eventType = alert.event_type ?? "unspecified";
+        const severity = alert.severity === null ? "not recorded" : String(alert.severity);
+
+        notifications.push({
+          user_id: null,
+          type: "critical_alert",
+          title: `[${level}] ${headline}`,
+          body: `Location: ${location} | Event: ${eventType} | Recorded severity: ${severity}`,
+          metadata: { alert_id: alert.id, iso3: alert.iso3, level: alert.level, severity: alert.severity },
+          read: false,
+          created_at: new Date().toISOString(),
         });
       }
 
-      // Get all users with notification preferences (analysts and admins)
-      const { data: users } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .limit(100);
-
-      // For each critical alert, create in-app notification records
-      const notifications = unacked.map(alert => ({
-        user_id: null, // broadcast
-        type: 'critical_alert',
-        title: `[${alert.level}] ${alert.headline}`,
-        body: `Country: ${alert.country || 'Global'} | Event: ${alert.event_type || 'Unknown'} | Severity: ${alert.severity}/10`,
-        metadata: {
-          alert_id: alert.id,
-          iso3: alert.iso3,
-          level: alert.level,
-          severity: alert.severity,
-        },
-        read: false,
-        created_at: new Date().toISOString(),
-      }));
-
-      // Store notifications (we'll create the table if needed)
-      const { error: notifError } = await supabase
-        .from('user_notifications')
-        .insert(notifications);
-
-      if (notifError && notifError.code === '42P01') {
-        // Table doesn't exist yet - will be created via migration
-        console.log('user_notifications table not yet created');
+      if (notifications.length > 0) {
+        const { error: notificationError } = await supabase.from("user_notifications").insert(notifications);
+        if (notificationError) throw notificationError;
       }
 
-      // Log the processing
-      await supabase.from('automation_logs').insert({
-        job_name: 'notification-engine',
-        status: 'success',
-        message: `Processed ${unacked.length} alerts for ${users?.length || 0} users`,
+      await supabase.from("automation_logs").insert({
+        job_name: "notification-engine",
+        status: "success",
+        message: `Reviewed ${alerts.length} unacknowledged alerts; created ${notifications.length} broadcast notifications; skipped ${duplicatesSkipped} existing broadcasts`,
       });
 
-      return new Response(JSON.stringify({
+      return json({
         ok: true,
-        processed: unacked.length,
-        users_notified: users?.length || 0,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-
-    } else if (action === 'send_digest') {
-      // Daily digest: summarize last 24h alerts
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      
-      const [alertsRes, decisionsRes, eventsRes] = await Promise.all([
-        supabase.from('critical_alerts').select('*').gte('triggered_at', since).order('severity', { ascending: false }),
-        supabase.from('adi_decisions').select('*').gte('created_at', since).order('severity_score', { ascending: false }),
-        supabase.from('normalized_events').select('event_type, category, country_iso3, severity').gte('occurred_at', since),
-      ]);
-
-      const digest = {
-        period: '24h',
-        generated_at: new Date().toISOString(),
-        alerts: {
-          total: alertsRes.data?.length || 0,
-          critical: alertsRes.data?.filter(a => a.level === 'critical').length || 0,
-          high: alertsRes.data?.filter(a => a.level === 'high').length || 0,
-        },
-        decisions: {
-          total: decisionsRes.data?.length || 0,
-          approved: decisionsRes.data?.filter(d => d.status === 'approved').length || 0,
-          pending: decisionsRes.data?.filter(d => d.status === 'pending').length || 0,
-        },
-        events: {
-          total: eventsRes.data?.length || 0,
-          by_category: eventsRes.data?.reduce((acc: Record<string, number>, e: any) => {
-            acc[e.category] = (acc[e.category] || 0) + 1;
-            return acc;
-          }, {}),
-        },
-        top_alerts: alertsRes.data?.slice(0, 5).map(a => ({
-          headline: a.headline,
-          level: a.level,
-          country: a.country,
-          severity: a.severity,
-        })),
-      };
-
-      return new Response(JSON.stringify({ ok: true, digest }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        processed_alerts: alerts.length,
+        broadcasts_created: notifications.length,
+        duplicates_skipped: duplicatesSkipped,
+        delivery_scope: "in_app_broadcast",
+        authenticated_via: auth.via,
       });
     }
 
-    return new Response(JSON.stringify({ ok: false, error: 'Unknown action' }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    if (action === "send_digest") {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const [alertsResult, decisionsResult, eventsResult] = await Promise.all([
+        supabase.from("critical_alerts").select("headline,level,country,severity,triggered_at").gte("triggered_at", since).order("severity", { ascending: false }),
+        supabase.from("adi_decisions").select("status").gte("created_at", since),
+        supabase.from("normalized_events").select("category").gte("occurred_at", since),
+      ]);
+      if (alertsResult.error) throw alertsResult.error;
+      if (decisionsResult.error) throw decisionsResult.error;
+      if (eventsResult.error) throw eventsResult.error;
 
+      const alertRows = (alertsResult.data ?? []) as Array<Pick<CriticalAlert, "headline" | "level" | "country" | "severity" | "triggered_at">>;
+      const decisionRows = (decisionsResult.data ?? []) as DecisionRow[];
+      const eventRows = (eventsResult.data ?? []) as EventRow[];
+      const byCategory = eventRows.reduce<Record<string, number>>((accumulator, event) => {
+        const category = event.category ?? "uncategorized";
+        accumulator[category] = (accumulator[category] ?? 0) + 1;
+        return accumulator;
+      }, {});
+
+      const digest = {
+        period: "24h",
+        generated_at: new Date().toISOString(),
+        alerts: {
+          total: alertRows.length,
+          critical: alertRows.filter((alert) => alert.level === "critical").length,
+          high: alertRows.filter((alert) => alert.level === "high").length,
+        },
+        decisions: {
+          total: decisionRows.length,
+          approved: decisionRows.filter((decision) => decision.status === "approved").length,
+          pending: decisionRows.filter((decision) => decision.status === "pending").length,
+        },
+        events: { total: eventRows.length, by_category: byCategory },
+        top_alerts: alertRows.slice(0, 5).map((alert) => ({
+          headline: alert.headline,
+          level: alert.level,
+          country: alert.country,
+          recorded_severity: alert.severity,
+          triggered_at: alert.triggered_at,
+        })),
+      };
+      return json({ ok: true, digest, authenticated_via: auth.via });
+    }
+
+    return json({ ok: false, error: "Unknown action" }, 400);
   } catch (error) {
-    console.error('Notification engine error:', error);
-    return new Response(JSON.stringify({
-      ok: false, error: error instanceof Error ? error.message : 'Unknown error'
-    }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    console.error("Notification engine error:", error);
+    return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
