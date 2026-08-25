@@ -9,6 +9,7 @@ export interface AiChatRequest {
   responseFormat?: { type: "json_object" };
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
 }
 
 export interface AiChatResult {
@@ -28,8 +29,21 @@ interface OpenAiCompatibleResponse {
   [key: string]: unknown;
 }
 
+export class AiProviderError extends Error {
+  status?: number;
+  provider: string;
+
+  constructor(message: string, provider: string, status?: number) {
+    super(message);
+    this.name = "AiProviderError";
+    this.provider = provider;
+    this.status = status;
+  }
+}
+
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_TIMEOUT_MS = 15000;
 
 /**
  * Provider-neutral OpenAI-compatible gateway for AICIS Edge Functions.
@@ -52,7 +66,7 @@ export async function aiChat(request: AiChatRequest): Promise<AiChatResult> {
   const provider = Deno.env.get("AICIS_MODEL_PROVIDER")?.trim() || inferProvider(endpoint);
 
   if (!apiKey) {
-    throw new Error("AICIS_MODEL_API_KEY is not configured");
+    throw new AiProviderError("AICIS_MODEL_API_KEY is not configured", provider);
   }
 
   const model = request.model?.trim() || configuredModel;
@@ -65,24 +79,32 @@ export async function aiChat(request: AiChatRequest): Promise<AiChatResult> {
   if (request.temperature !== undefined) body.temperature = request.temperature;
   if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens;
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const timeoutMs = Math.max(1000, request.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AiProviderError(`AI provider request failed before response: ${message}`, provider);
+  }
 
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 1000);
-    throw new Error(`AI provider request failed (${response.status}): ${detail}`);
+    throw new AiProviderError(`AI provider request failed (${response.status}): ${detail}`, provider, response.status);
   }
 
   const raw = (await response.json()) as OpenAiCompatibleResponse;
   const content = raw.choices?.[0]?.message?.content;
   if (!content) {
-    throw new Error("AI provider returned no message content");
+    throw new AiProviderError("AI provider returned no message content", provider);
   }
 
   return {
