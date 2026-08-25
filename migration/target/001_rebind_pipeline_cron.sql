@@ -64,9 +64,38 @@ REVOKE ALL ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) FROM anon;
 REVOKE ALL ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) TO service_role;
 
--- Replace the known source-bound pipeline replay schedules. These names match
--- the current source jobs, so restored copies are unscheduled before target-safe
--- replacements are created.
+-- CRITICAL FAIL-CLOSED BARRIER
+-- A source snapshot can contain many generations of cron jobs. The live source
+-- currently contains far more source-bound jobs than the three pipeline-replay
+-- schedules below. Never allow any restored job that still contains the Lovable
+-- source project ref to execute on the independent target.
+--
+-- We intentionally DISABLE rather than delete these rows so the historical
+-- schedule/command inventory remains available for audit and controlled rebinding.
+UPDATE cron.job
+SET active = false
+WHERE command LIKE '%psonnnuhjjskrdazrakk%';
+
+DO $$
+DECLARE
+  leaked_jobs bigint;
+BEGIN
+  SELECT count(*)
+  INTO leaked_jobs
+  FROM cron.job
+  WHERE active
+    AND command LIKE '%psonnnuhjjskrdazrakk%';
+
+  IF leaked_jobs <> 0 THEN
+    RAISE EXCEPTION 'AICIS target cron isolation failed: % active source-bound jobs remain', leaked_jobs;
+  END IF;
+END;
+$$;
+
+-- Recreate only the small set of schedules that have already been explicitly
+-- audited for target-safe execution. Every other restored source-bound schedule
+-- remains disabled until it receives the same review and an explicit target-safe
+-- replacement. This avoids split-brain during staged restoration.
 SELECT cron.unschedule('pipeline-replay-drain-10min')
 WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pipeline-replay-drain-10min');
 
@@ -102,3 +131,19 @@ SELECT cron.schedule(
       '{"lane":"enrichment","limit":2000,"source":"pg_cron"}'::jsonb
     );$$
 );
+
+DO $$
+DECLARE
+  leaked_jobs bigint;
+BEGIN
+  SELECT count(*)
+  INTO leaked_jobs
+  FROM cron.job
+  WHERE active
+    AND command LIKE '%psonnnuhjjskrdazrakk%';
+
+  IF leaked_jobs <> 0 THEN
+    RAISE EXCEPTION 'AICIS target cron isolation regressed after rebinding: % active source-bound jobs remain', leaked_jobs;
+  END IF;
+END;
+$$;
