@@ -1,18 +1,59 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
 import { aiChat } from "../_shared/ai-gateway.ts";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const FN = "adi-conflict-scan";
 const WATCHLIST = ["UKR", "PSE", "TWN", "MLI", "SDN", "MMR", "PRK", "COD"];
+
 const clamp = (n: unknown, min: number, max: number, fallback = 0) => {
   const value = Number(n);
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 };
 
+type SignalEvidence = {
+  id: string;
+  title: string | null;
+  summary: string | null;
+  category: string | null;
+  geo_admin0_iso3: string | null;
+  affected_countries: string[] | null;
+  affected_regions: string[] | null;
+  impact_score: number | null;
+  urgency_score: number | null;
+  confidence_score: number | null;
+  corroboration_count: number | null;
+  source_name: string | null;
+  first_detected_at: string | null;
+};
+
+type VulnerabilityRow = {
+  country: string | null;
+  iso_code: string | null;
+  overall_score: number | null;
+};
+
+type ConflictResult = Record<string, unknown> & {
+  escalation_probability: number;
+};
+
+const stringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+const parsedString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value : null;
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
+
+  const auth = await requireAdminOrCron(req, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  });
+  if (auth.response) return auth.response;
+
   const start = Date.now();
 
   try {
@@ -48,41 +89,69 @@ serve(async (req) => {
         .limit(30),
     ]);
 
-    const byIso = new Map<string, any[]>();
-    for (const signal of recentSignals || []) {
+    const evidenceRows = (recentSignals ?? []) as SignalEvidence[];
+    const vulnerabilityRows = (vulnCountries ?? []) as VulnerabilityRow[];
+    const byIso = new Map<string, SignalEvidence[]>();
+
+    for (const signal of evidenceRows) {
       const isoCandidates = new Set<string>();
-      if (typeof signal.geo_admin0_iso3 === "string" && /^[A-Z]{3}$/.test(signal.geo_admin0_iso3)) isoCandidates.add(signal.geo_admin0_iso3);
+      if (typeof signal.geo_admin0_iso3 === "string" && /^[A-Z]{3}$/.test(signal.geo_admin0_iso3)) {
+        isoCandidates.add(signal.geo_admin0_iso3);
+      }
       if (Array.isArray(signal.affected_countries)) {
-        for (const iso of signal.affected_countries) if (typeof iso === "string" && /^[A-Z]{3}$/.test(iso)) isoCandidates.add(iso);
+        for (const iso of signal.affected_countries) {
+          if (typeof iso === "string" && /^[A-Z]{3}$/.test(iso)) isoCandidates.add(iso);
+        }
       }
       for (const iso of isoCandidates) {
-        const list = byIso.get(iso) || [];
+        const list = byIso.get(iso) ?? [];
         list.push(signal);
         byIso.set(iso, list);
       }
     }
 
-    const vulnMap = new Map((vulnCountries || []).filter((v: any) => /^[A-Z]{3}$/.test(v.iso_code || "")).map((v: any) => [v.iso_code, v]));
+    const vulnMap = new Map<string, VulnerabilityRow>();
+    for (const row of vulnerabilityRows) {
+      if (typeof row.iso_code === "string" && /^[A-Z]{3}$/.test(row.iso_code)) {
+        vulnMap.set(row.iso_code, row);
+      }
+    }
+
     const candidateISO3s = new Set<string>();
-    for (const iso of WATCHLIST) if ((byIso.get(iso)?.length || 0) > 0) candidateISO3s.add(iso);
+    for (const iso of WATCHLIST) {
+      if ((byIso.get(iso)?.length ?? 0) > 0) candidateISO3s.add(iso);
+    }
     for (const [iso, evidence] of byIso.entries()) {
-      const maxImpact = Math.max(...evidence.map((e) => Number(e.impact_score) || 0));
-      const maxUrgency = Math.max(...evidence.map((e) => Number(e.urgency_score) || 0));
-      if (evidence.length >= 2 || maxImpact >= 60 || maxUrgency >= 60 || (vulnMap.get(iso)?.overall_score || 0) >= 75) candidateISO3s.add(iso);
+      const maxImpact = Math.max(...evidence.map((item) => Number(item.impact_score) || 0));
+      const maxUrgency = Math.max(...evidence.map((item) => Number(item.urgency_score) || 0));
+      if (
+        evidence.length >= 2 ||
+        maxImpact >= 60 ||
+        maxUrgency >= 60 ||
+        (Number(vulnMap.get(iso)?.overall_score) || 0) >= 75
+      ) {
+        candidateISO3s.add(iso);
+      }
     }
 
     const candidates = [...candidateISO3s].slice(0, 12);
-    structuredLog("info", FN, `Evidence supports ${candidates.length} candidate countries`, { watchlist_supported: candidates.filter((i) => WATCHLIST.includes(i)).length });
+    structuredLog("info", FN, `Evidence supports ${candidates.length} candidate countries`, {
+      watchlist_supported: candidates.filter((iso) => WATCHLIST.includes(iso)).length,
+    });
 
-    const results: any[] = [];
+    const results: ConflictResult[] = [];
     for (const iso3 of candidates) {
-      const evidence = (byIso.get(iso3) || []).slice(0, 20);
+      const evidence = (byIso.get(iso3) ?? []).slice(0, 20);
       if (evidence.length === 0) continue;
 
-      const avg = (field: string) => evidence.reduce((sum, row) => sum + (Number(row[field]) || 0), 0) / evidence.length;
-      const impact = avg("impact_score");
-      const urgency = avg("urgency_score");
-      const corroboration = evidence.reduce((sum, row) => sum + (Number(row.corroboration_count) || 1), 0);
+      const average = (field: "impact_score" | "urgency_score") =>
+        evidence.reduce((sum, row) => sum + (Number(row[field]) || 0), 0) / evidence.length;
+      const impact = average("impact_score");
+      const urgency = average("urgency_score");
+      const corroboration = evidence.reduce(
+        (sum, row) => sum + (Number(row.corroboration_count) || 1),
+        0,
+      );
       const vulnerability = Number(vulnMap.get(iso3)?.overall_score) || 0;
       const baseEscalation = clamp(0.45 * impact + 0.35 * urgency + 0.2 * vulnerability, 0, 95, 0);
 
@@ -118,13 +187,22 @@ serve(async (req) => {
         });
       }, { maxRetries: 1, timeoutMs: 22000 });
 
-      let parsed: any;
-      try { parsed = JSON.parse(analysis.content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()); }
-      catch { structuredLog("warn", FN, `Parse failed for ${iso3}`); continue; }
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(
+          analysis.content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim(),
+        ) as Record<string, unknown>;
+      } catch {
+        structuredLog("warn", FN, `Parse failed for ${iso3}`);
+        continue;
+      }
 
       const escalationProbability = clamp(parsed.escalation_probability, 0, 95, baseEscalation);
       const confidence = Math.min(0.9, Math.max(0.2, clamp(parsed.confidence, 0, 100, 50) / 100));
-      const region = (evidence.find((e) => Array.isArray(e.affected_regions) && e.affected_regions.length)?.affected_regions?.[0]) || iso3;
+      const region = evidence.find(
+        (item) => Array.isArray(item.affected_regions) && item.affected_regions.length > 0,
+      )?.affected_regions?.[0] ?? iso3;
+      const assessment = parsedString(parsed.assessment) ?? "Evidence was insufficient for a narrative assessment.";
 
       const { data: signal, error } = await supabase.from("conflict_signals").insert({
         country_iso3: iso3,
@@ -136,18 +214,20 @@ serve(async (req) => {
         media_hostility_index: clamp(parsed.media_hostility_index, 0, 100, 0),
         escalation_probability: escalationProbability,
         time_to_conflict_days: null,
-        conflict_type: parsed.conflict_type || null,
-        involved_parties: Array.isArray(parsed.involved_parties) ? parsed.involved_parties.slice(0, 12) : [],
-        triggers: Array.isArray(parsed.triggers) ? parsed.triggers.slice(0, 12) : [],
+        conflict_type: parsedString(parsed.conflict_type),
+        involved_parties: stringArray(parsed.involved_parties).slice(0, 12),
+        triggers: stringArray(parsed.triggers).slice(0, 12),
         historical_parallels: [],
-        assessment_md: `${String(parsed.assessment || "").slice(0, 5000)}\n\n> SHADOW MODE: evidence-grounded analytical estimate; not validated intelligence or a prediction of certain conflict.`,
-        data_sources: [...new Set(evidence.map((e) => e.source_name).filter(Boolean))].slice(0, 20),
+        assessment_md: `${assessment.slice(0, 5000)}\n\n> SHADOW MODE: evidence-grounded analytical estimate; not validated intelligence or a prediction of certain conflict.`,
+        data_sources: [...new Set(evidence.map((item) => item.source_name).filter((item): item is string => Boolean(item)))].slice(0, 20),
         confidence,
         status: "active",
       }).select().single();
 
       if (error || !signal) continue;
-      results.push(signal);
+      const conflictResult = signal as unknown as ConflictResult;
+      conflictResult.escalation_probability = escalationProbability;
+      results.push(conflictResult);
 
       if (escalationProbability >= 60) {
         await supabase.from("adi_decisions").insert({
@@ -169,7 +249,7 @@ serve(async (req) => {
     await supabase.from("automation_logs").insert({
       job_name: FN,
       status: "success",
-      message: `Evidence scan produced ${results.length} conflict signals; ${results.filter((r) => r.escalation_probability >= 60).length} require analyst review`,
+      message: `Evidence scan produced ${results.length} conflict signals; ${results.filter((row) => row.escalation_probability >= 60).length} require analyst review`,
     });
 
     structuredLog("info", FN, `Complete: ${results.length} evidence-grounded signals`, undefined, start);
@@ -178,11 +258,11 @@ serve(async (req) => {
       signals: results,
       candidates_considered: candidates.length,
       watchlist_supported_by_recent_evidence: candidates.filter((iso) => WATCHLIST.includes(iso)),
-      recent_crises_observed: (recentCrises || []).length,
+      recent_crises_observed: (recentCrises ?? []).length,
       execution_time_ms: Date.now() - start,
     });
-  } catch (e) {
-    structuredLog("error", FN, (e as Error).message, undefined, start);
-    return errorResponse(e);
+  } catch (error) {
+    structuredLog("error", FN, error instanceof Error ? error.message : String(error), undefined, start);
+    return errorResponse(error);
   }
 });
