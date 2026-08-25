@@ -1,146 +1,68 @@
+// Synthetic settlement generation is intentionally disabled.
+// Historical versions fabricated names, coordinates and populations from
+// district centroids. Production AICIS must preserve missing geography as a
+// provider gap and populate settlements only from observed/authorized sources.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
-
 const FN = "generate-settlements-from-districts";
-const SETTLEMENTS_PER_DISTRICT = 3;
-const BATCH_SIZE = 50;
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
   try {
-    // Find districts/provinces without child settlements using RPC
-    const { data: uncoveredDistricts, error: rpcErr } = await supabase
-      .rpc("get_districts_needing_settlements", { _limit: BATCH_SIZE });
+    const [{ data: remainingData, error: remainingError }, syntheticResult] = await Promise.all([
+      supabase.rpc("count_districts_needing_settlements"),
+      supabase
+        .from("admin_regions")
+        .select("id", { count: "exact", head: true })
+        .eq("source", "district_derived"),
+    ]);
+    if (remainingError) throw remainingError;
+    if (syntheticResult.error) throw syntheticResult.error;
 
-    if (rpcErr) throw rpcErr;
-
-    if (!uncoveredDistricts || uncoveredDistricts.length === 0) {
-      // All done — trigger inference for new settlements
-      console.log(`[${FN}] All districts covered! Triggering inference.`);
-      fetch(`${supabaseUrl}/functions/v1/batch-village-inference`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-        body: "{}",
-      }).catch(() => {});
-
-      return new Response(JSON.stringify({
-        success: true, message: "All districts have settlements! Inference triggered.", remaining: 0,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const { data: remainingData } = await supabase.rpc("count_districts_needing_settlements");
-    const totalRemaining = remainingData || 0;
-
-    console.log(`[${FN}] Processing ${uncoveredDistricts.length} districts, ${totalRemaining} total remaining`);
-
-    let created = 0;
-    const errors: string[] = [];
-
-    for (const district of uncoveredDistricts) {
-      try {
-        const settlements = generateSettlements(district);
-        for (const s of settlements) {
-          const { error } = await supabase.from("admin_regions").insert(s);
-          if (!error) created++;
-          else if (!error.message?.includes("duplicate")) {
-            errors.push(`${s.name}: ${error.message}`);
-          }
-        }
-      } catch (e) {
-        errors.push(`${district.name}: ${(e as Error).message}`);
-      }
-    }
-
-    const remaining = totalRemaining - uncoveredDistricts.length;
+    const remaining = Number(remainingData ?? 0);
+    const historicalSyntheticRows = syntheticResult.count ?? 0;
 
     await supabase.from("automation_logs").insert({
       job_name: FN,
-      status: errors.length > 0 ? "partial" : "success",
-      message: `Created ${created} settlements from ${uncoveredDistricts.length} districts. Remaining: ${remaining}`,
+      status: "warning",
+      message: `Synthetic settlement generation disabled by truth floor. uncovered_districts=${Number.isFinite(remaining) ? remaining : 0} historical_district_derived_rows=${historicalSyntheticRows}`,
     });
 
-    // Self-chain if more work
-    if (remaining > 0) {
-      setTimeout(() => {
-        fetch(`${supabaseUrl}/functions/v1/${FN}`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-          body: "{}",
-        }).catch(() => {});
-      }, 2000);
-    } else {
-      // Done — trigger inference
-      setTimeout(() => {
-        fetch(`${supabaseUrl}/functions/v1/batch-village-inference`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-          body: "{}",
-        }).catch(() => {});
-      }, 2000);
-    }
-
-    return new Response(JSON.stringify({
-      success: true, created,
-      processed_districts: uncoveredDistricts.length,
-      remaining, errors: errors.slice(0, 5),
-      auto_continuing: remaining > 0,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e) {
-    console.error(`[${FN}] Error:`, e);
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return json({
+      success: true,
+      created: 0,
+      synthetic_generation_disabled: true,
+      uncovered_districts: Number.isFinite(remaining) ? remaining : null,
+      historical_synthetic_rows_detected: historicalSyntheticRows,
+      cleanup_performed: false,
+      reason: "AICIS does not fabricate settlement names, coordinates, populations, or urban/rural classifications.",
+      remediation: "Populate missing settlements from provider-backed geography such as OpenStreetMap/Overpass, official national sources, or another authorized observed dataset.",
+      authenticated_via: auth.via,
     });
+  } catch (error) {
+    console.error(`[${FN}]`, error);
+    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
-
-function generateSettlements(district: any) {
-  const { id, name, lat, lon, country_iso3, population_est } = district;
-  const settlements: any[] = [];
-  
-  const offsets = [
-    { dlat: 0.02, dlon: 0.015, suffix: "Central", urban: "urban" },
-    { dlat: -0.035, dlon: 0.04, suffix: "North", urban: "rural" },
-    { dlat: 0.04, dlon: -0.03, suffix: "South", urban: "rural" },
-  ];
-
-  const popBase = population_est || 15000;
-
-  for (let i = 0; i < SETTLEMENTS_PER_DISTRICT; i++) {
-    const o = offsets[i];
-    const jitterLat = Math.sin(lat * 1000 + i * 137) * 0.01;
-    const jitterLon = Math.cos(lon * 1000 + i * 251) * 0.01;
-    
-    const sLat = Math.round((lat + o.dlat + jitterLat) * 100000) / 100000;
-    const sLon = Math.round((lon + o.dlon + jitterLon) * 100000) / 100000;
-    const sPop = Math.round(popBase / (3 + i) * (0.8 + Math.abs(Math.sin(lat + lon + i)) * 0.4));
-
-    settlements.push({
-      name: `${name} ${o.suffix}`,
-      admin_level: 4,
-      parent_id: id,
-      country_iso3,
-      lat: sLat, lon: sLon,
-      population_est: sPop,
-      urban_rural: o.urban,
-      source: "district_derived",
-      metadata: { derived_from: id, offset_index: i },
-    });
-  }
-
-  return settlements;
-}

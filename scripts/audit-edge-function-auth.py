@@ -5,7 +5,8 @@ Supabase gateway JWT verification is not, by itself, authorization for a
 privileged worker: legacy anon keys are JWTs and can satisfy gateway signature
 verification. Therefore every Edge Function that can obtain
 SUPABASE_SERVICE_ROLE_KEY must establish an explicit trust boundary in-function
-(user/admin/tier auth, cron secret, webhook/signature verification, etc.).
+(user/admin/tier auth, cron secret, API-key validation, webhook/signature
+verification, etc.).
 """
 
 from __future__ import annotations
@@ -61,8 +62,41 @@ def parse_config(text: str) -> dict[str, bool]:
     return result
 
 
+def has_hashed_api_key_validation(source: str) -> bool:
+    """Recognize the repository's explicit external API-key trust boundary.
+
+    This intentionally requires the whole pattern rather than accepting a mere
+    x-api-key string: request-header extraction, SHA-256 hashing, lookup by the
+    stored key hash in api_keys, and a revocation check must all be present.
+    Rate limits/scopes/expiry are valuable policy controls but are not required
+    to prove caller identity for this privileged-auth gate.
+    """
+
+    has_header = bool(
+        re.search(r"req\.headers\.get\(\s*['\"]x-api-key['\"]\s*\)", source)
+    )
+    has_sha256 = "SHA-256" in source and bool(
+        re.search(r"\bkeyHash\b|\bkey_hash\b", source)
+    )
+    has_key_table_lookup = bool(
+        re.search(r"\.from\(\s*['\"]api_keys['\"]\s*\)", source)
+        and re.search(r"\.eq\(\s*['\"]key_hash['\"]\s*,", source)
+    )
+    has_revocation_check = bool(
+        re.search(r"\.eq\(\s*['\"]revoked['\"]\s*,\s*false\s*\)", source)
+        or (
+            "revoked_at" in source
+            and re.search(r"revoked_at\s*[!<>=]", source)
+        )
+    )
+    return has_header and has_sha256 and has_key_table_lookup and has_revocation_check
+
+
 def has_caller_validation(source: str) -> bool:
-    return any(marker in source for marker in AUTH_MARKERS + WEBHOOK_OR_SIGNATURE_MARKERS)
+    return (
+        any(marker in source for marker in AUTH_MARKERS + WEBHOOK_OR_SIGNATURE_MARKERS)
+        or has_hashed_api_key_validation(source)
+    )
 
 
 def main() -> int:
