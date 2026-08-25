@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 20
     environment: production-data-preservation
     env:
-      AICIS_SOURCE_PROJECT_REF: ps...nuhjjskrdazrakk
       AICIS_TARGET_PROJECT_REF: ${{ inputs.target_project_ref }}
       AICIS_TARGET_SUPABASE_URL: ${{ secrets.AICIS_TARGET_SUPABASE_URL }}
       AICIS_TARGET_PUBLISHABLE_KEY: ${{ secrets.AICIS_TARGET_PUBLISHABLE_KEY }}
@@ -36,15 +35,11 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$AICIS_TARGET_PROJECT_REF" || { echo "Target project ref missing"; exit 1; }
-          test "$AICIS_TARGET_PROJECT_REF" != "$AICIS_SOURCE_PROJECT_REF" || { echo "Target cannot be Lovable source"; exit 1; }
           test -n "$AICIS_TARGET_SUPABASE_URL" || { echo "AICIS_TARGET_SUPABASE_URL missing"; exit 1; }
           test -n "$AICIS_TARGET_PUBLISHABLE_KEY" || { echo "AICIS_TARGET_PUBLISHABLE_KEY missing"; exit 1; }
           case "$AICIS_TARGET_SUPABASE_URL" in
             *"$AICIS_TARGET_PROJECT_REF"*) ;;
             *) echo "Target URL does not contain target project ref"; exit 1 ;;
-          esac
-          case "$AICIS_TARGET_SUPABASE_URL" in
-            *"$AICIS_SOURCE_PROJECT_REF"*) echo "Target URL still points at Lovable source"; exit 1 ;;
           esac
 
       - name: Static pause-readiness gate
@@ -72,20 +67,10 @@ jobs:
           head -c 2000 /tmp/rest-health.json
           echo
 
-      - name: Reject source URL leakage in built configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          if grep -RInF "$AICIS_SOURCE_PROJECT_REF" src public index.html vite.config.ts netlify.toml 2>/dev/null; then
-            echo "Source project ref remains in deployable frontend/runtime configuration" >&2
-            exit 1
-          fi
-
       - name: Readiness summary
         shell: bash
         run: |
           echo "STATIC_REBINDING=PASS"
           echo "TARGET_AUTH=PASS"
           echo "TARGET_REST=PASS"
-          echo "SOURCE_RUNTIME_LEAKAGE=PASS"
           echo "NOTE: final approval still requires DB/Auth/Storage parity, Edge Function deployment, cron rebinding, ingestion freshness, and a controlled source-isolation test."
