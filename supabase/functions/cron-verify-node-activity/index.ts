@@ -1,20 +1,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+};
 
 serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const guard = await requireAdminOrCron(req, corsHeaders);
+  if (guard.response) return guard.response;
+
+  const supabaseClient = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    console.log('Running node activity verification...');
-
-    // Get all verified nodes
     const { data: nodes, error: nodesError } = await supabaseClient
-      .from('accountability_nodes')
-      .select('*')
-      .eq('verified', true);
+      .from("accountability_nodes")
+      .select("id,joined_at,org_name")
+      .eq("verified", true);
 
     if (nodesError) throw nodesError;
 
@@ -22,87 +30,86 @@ serve(async (req) => {
     let inactiveCount = 0;
 
     for (const node of nodes || []) {
-      // Check last activity from audit trail
       const { data: lastActivity } = await supabaseClient
-        .from('node_audit_trail')
-        .select('timestamp')
-        .eq('node_id', node.id)
-        .order('timestamp', { ascending: false })
+        .from("node_audit_trail")
+        .select("timestamp")
+        .eq("node_id", node.id)
+        .order("timestamp", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       const lastActiveAt = lastActivity?.timestamp || node.joined_at;
-      const hoursSinceActive = (Date.now() - new Date(lastActiveAt).getTime()) / (1000 * 60 * 60);
+      if (!lastActiveAt) {
+        inactiveCount += 1;
+        await supabaseClient.from("system_logs").insert({
+          division: "accountability",
+          action: "node_activity_unknown",
+          result: "warning",
+          log_level: "warn",
+          metadata: { node_id: node.id, org_name: node.org_name }
+        });
+        continue;
+      }
 
-      // Consider inactive if no activity in 72 hours
+      const parsedLastActive = new Date(lastActiveAt).getTime();
+      const hoursSinceActive = Number.isFinite(parsedLastActive)
+        ? (Date.now() - parsedLastActive) / (1000 * 60 * 60)
+        : Number.POSITIVE_INFINITY;
+
+      await supabaseClient
+        .from("accountability_nodes")
+        .update({ last_active_at: lastActiveAt })
+        .eq("id", node.id);
+
       if (hoursSinceActive > 72) {
-        inactiveCount++;
-        
-        // Update node
-        await supabaseClient
-          .from('accountability_nodes')
-          .update({ last_active_at: lastActiveAt })
-          .eq('id', node.id);
-
-        // Log warning
-        await supabaseClient.from('system_logs').insert({
-          division: 'accountability',
-          action: 'node_inactive_warning',
-          result: 'warning',
-          log_level: 'warn',
-          metadata: { 
+        inactiveCount += 1;
+        await supabaseClient.from("system_logs").insert({
+          division: "accountability",
+          action: "node_inactive_warning",
+          result: "warning",
+          log_level: "warn",
+          metadata: {
             node_id: node.id,
             org_name: node.org_name,
-            hours_inactive: Math.round(hoursSinceActive)
+            hours_inactive: Number.isFinite(hoursSinceActive) ? Math.round(hoursSinceActive) : null
           }
         });
       } else {
-        activeCount++;
-        await supabaseClient
-          .from('accountability_nodes')
-          .update({ last_active_at: lastActiveAt })
-          .eq('id', node.id);
+        activeCount += 1;
       }
     }
 
-    const summary = `Verified ${nodes?.length || 0} nodes: ${activeCount} active, ${inactiveCount} inactive`;
+    const totalNodes = nodes?.length || 0;
+    const summary = `Checked ${totalNodes} verified nodes: ${activeCount} active, ${inactiveCount} inactive or unknown`;
 
-    // Log automation
-    await supabaseClient.from('automation_logs').insert({
-      job_name: 'cron-verify-node-activity',
-      status: 'success',
+    await supabaseClient.from("automation_logs").insert({
+      job_name: "cron-verify-node-activity",
+      status: "success",
       message: summary,
       executed_at: new Date().toISOString()
     });
 
-    console.log(summary);
-
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       success: true,
-      total_nodes: nodes?.length || 0,
+      total_nodes: totalNodes,
       active_nodes: activeCount,
-      inactive_nodes: inactiveCount
+      inactive_or_unknown_nodes: inactiveCount
     }), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error('Error in cron-verify-node-activity:', error);
-    
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    
-    await supabaseClient.from('automation_logs').insert({
-      job_name: 'cron-verify-node-activity',
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Unknown error',
+    console.error("Error in cron-verify-node-activity:", error);
+
+    await supabaseClient.from("automation_logs").insert({
+      job_name: "cron-verify-node-activity",
+      status: "error",
+      message: error instanceof Error ? error.message : "Unknown error",
       executed_at: new Date().toISOString()
     });
 
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
