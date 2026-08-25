@@ -3,11 +3,15 @@
 -- DO NOT apply this file to the current Lovable-managed source project.
 -- Apply only to the independently owned aicis-production project after these
 -- Vault secrets exist in the destination project:
---   aicis_project_url  -> https://<destination-ref>.supabase.co
---   aicis_anon_key     -> destination publishable/anon key
+--   aicis_project_url      -> https://<destination-ref>.supabase.co
+--   aicis_publishable_key  -> destination sb_publishable_... key
+--   aicis_cron_secret      -> strong scheduler-only secret; must match the
+--                             Edge Function CRON_SECRET value
 --
 -- Purpose: prevent restored pg_cron jobs from posting back to the old Lovable
 -- project after a database migration. Missing target secrets fail closed.
+-- Publishable API keys belong only in the apikey header; scheduler authority is
+-- provided by the independent x-cron-secret credential, never by a browser key.
 
 CREATE OR REPLACE FUNCTION public.invoke_aicis_edge_function(
   function_name text,
@@ -20,7 +24,8 @@ SET search_path = pg_catalog, public, extensions, vault
 AS $$
 DECLARE
   project_url text;
-  anon_key text;
+  publishable_key text;
+  cron_secret text;
   request_id bigint;
 BEGIN
   SELECT decrypted_secret
@@ -31,9 +36,16 @@ BEGIN
   LIMIT 1;
 
   SELECT decrypted_secret
-    INTO anon_key
+    INTO publishable_key
   FROM vault.decrypted_secrets
-  WHERE name = 'aicis_anon_key'
+  WHERE name = 'aicis_publishable_key'
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  SELECT decrypted_secret
+    INTO cron_secret
+  FROM vault.decrypted_secrets
+  WHERE name = 'aicis_cron_secret'
   ORDER BY created_at DESC
   LIMIT 1;
 
@@ -41,16 +53,20 @@ BEGIN
     RAISE EXCEPTION 'AICIS destination Vault secret aicis_project_url is missing';
   END IF;
 
-  IF anon_key IS NULL OR btrim(anon_key) = '' THEN
-    RAISE EXCEPTION 'AICIS destination Vault secret aicis_anon_key is missing';
+  IF publishable_key IS NULL OR btrim(publishable_key) = '' THEN
+    RAISE EXCEPTION 'AICIS destination Vault secret aicis_publishable_key is missing';
+  END IF;
+
+  IF cron_secret IS NULL OR btrim(cron_secret) = '' THEN
+    RAISE EXCEPTION 'AICIS destination Vault secret aicis_cron_secret is missing';
   END IF;
 
   request_id := net.http_post(
     url := rtrim(project_url, '/') || '/functions/v1/' || function_name,
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'apikey', anon_key,
-      'Authorization', 'Bearer ' || anon_key
+      'apikey', publishable_key,
+      'x-cron-secret', cron_secret
     ),
     body := COALESCE(payload, '{}'::jsonb)
   );
