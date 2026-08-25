@@ -9,7 +9,7 @@
 // Detection cascade:
 //  1) Deterministic Unicode script ranges → fills script_detected
 //  2) Latin-script stopword heuristic for ~20 common langs (high precision when ≥2 hits)
-//  3) Lovable AI classification fallback ONLY if script is Latin AND heuristic was uncertain
+//  3) Provider-neutral AI classification fallback ONLY if script is Latin AND heuristic was uncertain
 //
 // Spending guard (sets translation_status):
 //  - 'not_needed'              → English source
@@ -19,6 +19,7 @@
 //
 // Idempotent. Logs to automation_logs.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { aiChat } from "../_shared/ai-gateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,8 +28,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-const MODEL = "google/gemini-3-flash-preview";
 
 const BATCH = 150;
 const AI_FALLBACK_MAX = 10;
@@ -61,15 +60,14 @@ function detectScript(text: string): string {
   if (/[\u1200-\u137F]/.test(t)) return "Ethi";
   if (/[\u3040-\u309F\u30A0-\u30FF]/.test(t)) return "Jpan";
   if (/[\uAC00-\uD7AF]/.test(t)) return "Kore";
-  if (/[\u4E00-\u9FFF]/.test(t)) return "Hans"; // CJK Unified — assume simplified by default
+  if (/[\u4E00-\u9FFF]/.test(t)) return "Hans";
   if (/[\u0400-\u04FF]/.test(t)) return "Cyrl";
   if (/[\u0E00-\u0E7F]/.test(t)) return "Thai";
   if (/[\u0370-\u03FF]/.test(t)) return "Grek";
   if (/[A-Za-z\u00C0-\u024F]/.test(t)) return "Latn";
-  return "Zzzz"; // unknown
+  return "Zzzz";
 }
 
-// Map non-Latin scripts → likely language (high precision)
 function langFromScript(script: string): { lang: string; conf: number } | null {
   switch (script) {
     case "Arab": return { lang: "ar", conf: 0.7 };
@@ -119,29 +117,22 @@ function detectLatinLang(text: string): { lang: string; conf: number } {
   return { lang: "und", conf: 0.0 };
 }
 
-async function aiDetect(text: string): Promise<{ lang: string; conf: number } | null> {
+async function aiDetect(text: string): Promise<{ lang: string; conf: number; provider: string; model: string } | null> {
   try {
-    const body = {
-      model: MODEL,
+    const result = await aiChat({
       messages: [
-        { role: "system", content: "You are a language identifier. Respond ONLY with a JSON object." },
-        { role: "user", content: `Identify the language of this text. Respond JSON {"lang":"<ISO 639-1 code, e.g. en, fr, sw>","conf":0..1}.\n\nTEXT: ${text.slice(0, 600)}` },
+        { role: "system", content: "You are a language identifier. Return only JSON. Do not translate or infer topic content." },
+        { role: "user", content: `Identify the language of this text. Return JSON {"lang":"<ISO 639-1 code>","conf":0..1}.\n\nTEXT: ${text.slice(0, 600)}` },
       ],
-      response_format: { type: "json_object" },
-    };
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      responseFormat: { type: "json_object" },
+      temperature: 0,
+      timeoutMs: 8000,
     });
-    if (!res.ok) return null;
-    const j = await res.json();
-    const content = j?.choices?.[0]?.message?.content;
-    if (!content) return null;
-    const parsed = JSON.parse(content);
-    const lang = String(parsed.lang || "").toLowerCase().slice(0, 5);
-    const conf = Math.max(0, Math.min(1, Number(parsed.conf) || 0.5));
-    return lang ? { lang, conf } : null;
+    const parsed = JSON.parse(result.content);
+    const lang = String(parsed.lang || "").toLowerCase().replace(/[^a-z-]/g, "").slice(0, 5);
+    const conf = Math.max(0, Math.min(1, Number(parsed.conf) || 0));
+    if (!/^[a-z]{2,3}(?:-[a-z]{2})?$/.test(lang)) return null;
+    return { lang, conf, provider: result.provider, model: result.model };
   } catch {
     return null;
   }
@@ -159,6 +150,7 @@ Deno.serve(async (req) => {
   const startedAt = Date.now();
   const supa = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   let processed = 0, pending = 0, notNeeded = 0, deferLowRes = 0, deferLowRel = 0, aiCalls = 0;
+  let lastAiProvider: string | null = null, lastAiModel: string | null = null;
 
   try {
     const { data: rows, error } = await supa
@@ -192,10 +184,15 @@ Deno.serve(async (req) => {
         if (latin.lang === "und" && aiCalls < AI_FALLBACK_MAX && text.length >= 30) {
           const ai = await aiDetect(text);
           aiCalls++;
-          if (ai) { lang = ai.lang; conf = ai.conf; detector = "llm"; }
+          if (ai && ai.conf >= 0.65) {
+            lang = ai.lang;
+            conf = ai.conf;
+            detector = "llm";
+            lastAiProvider = ai.provider;
+            lastAiModel = ai.model;
+          }
         }
       } else {
-        // Zzzz unknown script
         detector = "unknown";
       }
 
@@ -203,7 +200,6 @@ Deno.serve(async (req) => {
       const tier = tierOf(lang);
       const isLowRes = tier === "tier_3";
 
-      // Spending guard
       let translationStatus: string;
       let deferReason: string | null = null;
       if (lang === "en") {
@@ -230,7 +226,6 @@ Deno.serve(async (req) => {
         deferLowRes++;
       }
 
-      // Don't downgrade an already-translated row
       const finalTranslationStatus =
         sig.translation_status === "translated" || sig.translation_status === "not_needed"
           ? sig.translation_status
@@ -258,11 +253,12 @@ Deno.serve(async (req) => {
       job_name: "language-router",
       status: "success",
       message: `processed=${processed} pending=${pending} not_needed=${notNeeded} defer_low_res=${deferLowRes} defer_low_rel=${deferLowRel} ai_calls=${aiCalls} in ${Date.now() - startedAt}ms`,
+      metadata: { ai_provider: lastAiProvider, ai_model: lastAiModel },
     });
     return new Response(JSON.stringify({
       processed, pending, not_needed: notNeeded,
       deferred_low_resource: deferLowRes, deferred_low_relevance: deferLowRel,
-      ai_calls: aiCalls,
+      ai_calls: aiCalls, ai_provider: lastAiProvider, ai_model: lastAiModel,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     const msg = e?.message || String(e);
