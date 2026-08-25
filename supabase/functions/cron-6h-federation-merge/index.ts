@@ -1,15 +1,19 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const guard = await requireAdminOrCron(req, corsHeaders);
+  if (guard.response) return guard.response;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -24,7 +28,7 @@ serve(async (req) => {
 
     // Merge global prior
     const mergeResult = await supabase.functions.invoke("fed-merge-global-prior");
-    
+
     if (mergeResult.error) {
       throw new Error(`Merge failed: ${mergeResult.error.message}`);
     }
@@ -44,7 +48,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("Error in federation merge cron:", error);
 
     await supabase.from("automation_logs").insert({
