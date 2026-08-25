@@ -49,6 +49,11 @@ jobs:
           set -euo pipefail
           bash scripts/audit-source-project-bindings.sh --strict
 
+      - name: Privileged Edge Function auth
+        id: edge_auth
+        continue-on-error: true
+        run: python3 scripts/audit-edge-function-auth.py
+
       - name: Secret-name inventory
         id: secret_inventory
         continue-on-error: true
@@ -109,6 +114,7 @@ jobs:
         run: |
           echo "Lovable runtime gate: ${{ steps.lovable_runtime.outcome }}"
           echo "Source-project binding gate: ${{ steps.source_bindings.outcome }}"
+          echo "Privileged Edge Function auth: ${{ steps.edge_auth.outcome }}"
           echo "Secret-name inventory: ${{ steps.secret_inventory.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
@@ -118,6 +124,7 @@ jobs:
           FAILED=0
           [ "${{ steps.lovable_runtime.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.source_bindings.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.edge_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.secret_inventory.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
