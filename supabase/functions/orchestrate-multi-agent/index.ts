@@ -4,9 +4,7 @@
 // synthesises the perspectives WITHOUT collapsing disagreement.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-
-const MODEL = "openai/gpt-5.6-sol";
-const GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
+import { aiChat } from "../_shared/ai-gateway.ts";
 
 type EvidenceRow = {
   ref: string;
@@ -36,39 +34,26 @@ async function sha256(text: string) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function gatewayError(status: number) {
-  if (status === 429) return "AI rate limit reached. Retry shortly.";
-  if (status === 402) return "AI credits exhausted for this workspace. Top up to continue.";
-  if (status === 403) return "AI access is blocked by workspace policy.";
-  return `AI gateway error ${status}`;
-}
-
-async function callModel(apiKey: string, system: string, user: string) {
-  const res = await fetch(GATEWAY, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      response_format: { type: "json_object" },
-    }),
+async function callModel(system: string, user: string) {
+  const result = await aiChat({
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    responseFormat: { type: "json_object" },
+    temperature: 0.2,
+    timeoutMs: 30_000,
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${gatewayError(res.status)} ${body.slice(0, 300)}`);
-  }
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content ?? "";
+
+  let parsed: any;
   try {
-    return JSON.parse(content);
+    parsed = JSON.parse(result.content);
   } catch {
-    const m = content.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-    throw new Error("Model returned unparseable output");
+    const m = result.content.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("Model returned unparseable output");
+    parsed = JSON.parse(m[0]);
   }
+  return { output: parsed, provider: result.provider, model: result.model };
 }
 
 Deno.serve(async (req) => {
@@ -79,9 +64,6 @@ Deno.serve(async (req) => {
       status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) return json({ error: "LOVABLE_API_KEY is not configured" }, 500);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -103,6 +85,8 @@ Deno.serve(async (req) => {
     if (domains.length < 2) return json({ error: "at least two domains are required" }, 400);
 
     const task_key = `${subject_kind}:${subject_key ?? "global"}:${(await sha256(question)).slice(0, 16)}:${new Date().toISOString()}`;
+    const configuredProvider = Deno.env.get("AICIS_MODEL_PROVIDER")?.trim() || "provider-neutral";
+    const configuredModel = Deno.env.get("AICIS_MODEL_NAME")?.trim() || "default";
 
     const { data: task, error: taskErr } = await supabase
       .from("agent_coordination_tasks")
@@ -113,8 +97,8 @@ Deno.serve(async (req) => {
         subject_key,
         domains,
         status: "running",
-        provider: "lovable_ai_gateway",
-        model: MODEL,
+        provider: configuredProvider,
+        model: configuredModel,
         evidence_window_days: windowDays,
         started_at: new Date().toISOString(),
       })
@@ -125,7 +109,6 @@ Deno.serve(async (req) => {
 
     const since = new Date(Date.now() - windowDays * 86400_000).toISOString();
 
-    // ---- evidence retrieval, per domain, from real production rows ----
     const evidenceByDomain: Record<string, EvidenceRow[]> = {};
     for (const domain of domains) {
       const rows: EvidenceRow[] = [];
@@ -177,7 +160,6 @@ Deno.serve(async (req) => {
       evidenceByDomain[domain] = rows;
     }
 
-    // ---- independent specialist perspectives ----
     const perspectives: any[] = [];
     let succeeded = 0;
     let failed = 0;
@@ -197,22 +179,19 @@ Deno.serve(async (req) => {
         `Question: ${question}\nSubject: ${subject_kind} ${subject_key ?? "global"}\n` +
         `Evidence window: last ${windowDays} days\n\nEVIDENCE:\n` +
         (evidence.length
-          ? evidence
-              .map(
-                (e) =>
-                  `[${e.ref}] (${e.source_kind}, ${e.observed_at ?? "undated"}) ${e.source_title}` +
-                  (e.excerpt ? ` — ${e.excerpt}` : ""),
-              )
-              .join("\n")
+          ? evidence.map((e) => `[${e.ref}] (${e.source_kind}, ${e.observed_at ?? "undated"}) ${e.source_title}${e.excerpt ? ` — ${e.excerpt}` : ""}`).join("\n")
           : "(no evidence rows exist for this domain in the window)");
 
       const promptHash = await sha256(system + user);
       try {
-        const out = await callModel(apiKey, system, user);
+        const modelRun = await callModel(system, user);
+        const out = modelRun.output;
         const usedRefs: string[] = Array.isArray(out.evidence_refs)
           ? out.evidence_refs.filter((r: string) => evidence.some((e) => e.ref === r))
           : [];
-        const confidence = Math.max(0, Math.min(1, Number(out.confidence ?? 0)));
+        let confidence = Math.max(0, Math.min(1, Number(out.confidence ?? 0)));
+        if (usedRefs.length === 0) confidence = 0;
+        else if (usedRefs.length === 1) confidence = Math.min(confidence, 0.55);
 
         const { data: analysis, error: aErr } = await supabase
           .from("agent_specialist_analyses")
@@ -221,15 +200,15 @@ Deno.serve(async (req) => {
             specialist: domain,
             claim: String(out.claim ?? "").slice(0, 2000),
             assessment: String(out.assessment ?? "").slice(0, 8000),
-            key_findings: out.key_findings ?? [],
+            key_findings: Array.isArray(out.key_findings) ? out.key_findings : [],
             evidence_references: usedRefs,
             evidence_count: usedRefs.length,
-            assumptions: out.assumptions ?? [],
-            counterevidence: out.counterevidence ?? [],
+            assumptions: Array.isArray(out.assumptions) ? out.assumptions : [],
+            counterevidence: Array.isArray(out.counterevidence) ? out.counterevidence : [],
             confidence,
-            uncertainty_notes: out.uncertainty_notes ?? null,
-            provider: "lovable_ai_gateway",
-            model: MODEL,
+            uncertainty_notes: typeof out.uncertainty_notes === "string" ? out.uncertainty_notes : null,
+            provider: modelRun.provider,
+            model: modelRun.model,
             prompt_hash: promptHash,
             latency_ms: Date.now() - started,
             status: "success",
@@ -238,24 +217,22 @@ Deno.serve(async (req) => {
           .single();
         if (aErr) throw aErr;
 
-        const cites = evidence
-          .filter((e) => usedRefs.includes(e.ref))
-          .map((e) => ({
-            task_id: taskId,
-            analysis_id: analysis.id,
-            specialist: domain,
-            source_kind: e.source_kind,
-            source_table: e.source_table,
-            source_row_id: e.source_row_id,
-            source_url: e.source_url,
-            source_title: e.source_title,
-            excerpt: e.excerpt,
-            observed_at: e.observed_at,
-            weight: 1,
-          }));
+        const cites = evidence.filter((e) => usedRefs.includes(e.ref)).map((e) => ({
+          task_id: taskId,
+          analysis_id: analysis.id,
+          specialist: domain,
+          source_kind: e.source_kind,
+          source_table: e.source_table,
+          source_row_id: e.source_row_id,
+          source_url: e.source_url,
+          source_title: e.source_title,
+          excerpt: e.excerpt,
+          observed_at: e.observed_at,
+          weight: 1,
+        }));
         if (cites.length) await supabase.from("agent_evidence_citations").insert(cites);
 
-        perspectives.push({ domain, ...out, confidence, evidence_refs: usedRefs });
+        perspectives.push({ domain, ...out, confidence, evidence_refs: usedRefs, provider: modelRun.provider, model: modelRun.model });
         succeeded++;
       } catch (e) {
         failed++;
@@ -270,8 +247,8 @@ Deno.serve(async (req) => {
           assumptions: [],
           counterevidence: [],
           confidence: 0,
-          provider: "lovable_ai_gateway",
-          model: MODEL,
+          provider: configuredProvider,
+          model: configuredModel,
           prompt_hash: promptHash,
           latency_ms: Date.now() - started,
           status: "error",
@@ -281,18 +258,14 @@ Deno.serve(async (req) => {
     }
 
     if (succeeded < 2) {
-      await supabase
-        .from("agent_coordination_tasks")
-        .update({
-          status: "error",
-          error: `only ${succeeded} specialist perspective(s) succeeded; synthesis requires at least 2`,
-          completed_at: new Date().toISOString(),
-        })
-        .eq("id", taskId);
+      await supabase.from("agent_coordination_tasks").update({
+        status: "error",
+        error: `only ${succeeded} specialist perspective(s) succeeded; synthesis requires at least 2`,
+        completed_at: new Date().toISOString(),
+      }).eq("id", taskId);
       return json({ task_id: taskId, status: "error", specialists_succeeded: succeeded }, 200);
     }
 
-    // ---- synthesis that preserves dissent ----
     const synthSystem =
       "You are the synthesis agent. You receive independent specialist perspectives. " +
       "You must NOT average them into a single bland answer. Preserve genuine disagreement explicitly. " +
@@ -303,37 +276,38 @@ Deno.serve(async (req) => {
       "overall_confidence (0-1), confidence_lower (0-1), confidence_upper (0-1).";
     const synthUser =
       `Question: ${question}\nSubject: ${subject_kind} ${subject_key ?? "global"}\n\nPERSPECTIVES:\n` +
-      perspectives
-        .map(
-          (p) =>
-            `### ${p.domain} (confidence ${p.confidence})\nCLAIM: ${p.claim}\nASSESSMENT: ${p.assessment}\n` +
-            `ASSUMPTIONS: ${JSON.stringify(p.assumptions ?? [])}\nCOUNTEREVIDENCE: ${JSON.stringify(p.counterevidence ?? [])}\n` +
-            `EVIDENCE USED: ${JSON.stringify(p.evidence_refs)}`,
-        )
-        .join("\n\n");
+      perspectives.map((p) =>
+        `### ${p.domain} (confidence ${p.confidence})\nCLAIM: ${p.claim}\nASSESSMENT: ${p.assessment}\n` +
+        `ASSUMPTIONS: ${JSON.stringify(p.assumptions ?? [])}\nCOUNTEREVIDENCE: ${JSON.stringify(p.counterevidence ?? [])}\n` +
+        `EVIDENCE USED: ${JSON.stringify(p.evidence_refs)}`,
+      ).join("\n\n");
     const synthHash = await sha256(synthSystem + synthUser);
-    const syn = await callModel(apiKey, synthSystem, synthUser);
+    const synthRun = await callModel(synthSystem, synthUser);
+    const syn = synthRun.output;
 
     const confs = perspectives.map((p) => p.confidence);
     const citationCount = perspectives.reduce((a, p) => a + p.evidence_refs.length, 0);
     const thinEvidence = perspectives.some((p) => p.evidence_refs.length === 0);
+    const lower = Math.max(0, Math.min(1, Number(syn.confidence_lower ?? Math.min(...confs))));
+    const upper = Math.max(lower, Math.min(1, Number(syn.confidence_upper ?? Math.max(...confs))));
+    const overall = Math.max(lower, Math.min(upper, Number(syn.overall_confidence ?? 0)));
 
     await supabase.from("agent_syntheses").insert({
       task_id: taskId,
       executive_summary: String(syn.executive_summary ?? "").slice(0, 8000),
-      agreed_points: syn.agreed_points ?? [],
-      disputed_points: syn.disputed_points ?? [],
-      preserved_dissent: syn.preserved_dissent ?? [],
+      agreed_points: Array.isArray(syn.agreed_points) ? syn.agreed_points : [],
+      disputed_points: Array.isArray(syn.disputed_points) ? syn.disputed_points : [],
+      preserved_dissent: Array.isArray(syn.preserved_dissent) ? syn.preserved_dissent : [],
       strongest_evidence: syn.strongest_evidence ?? null,
       weakest_assumption: syn.weakest_assumption ?? null,
-      missing_evidence: syn.missing_evidence ?? [],
+      missing_evidence: Array.isArray(syn.missing_evidence) ? syn.missing_evidence : [],
       next_verification_step: syn.next_verification_step ?? null,
-      overall_confidence: Math.max(0, Math.min(1, Number(syn.overall_confidence ?? 0))),
-      confidence_lower: Number(syn.confidence_lower ?? Math.min(...confs)),
-      confidence_upper: Number(syn.confidence_upper ?? Math.max(...confs)),
+      overall_confidence: overall,
+      confidence_lower: lower,
+      confidence_upper: upper,
       evidence_reference_count: citationCount,
-      provider: "lovable_ai_gateway",
-      model: MODEL,
+      provider: synthRun.provider,
+      model: synthRun.model,
       prompt_hash: synthHash,
       human_authorization_required: true,
       degraded: thinEvidence || failed > 0,
@@ -349,24 +323,24 @@ Deno.serve(async (req) => {
     const disputes = Array.isArray(syn.disputed_points) ? syn.disputed_points : [];
     if (disputes.length) {
       await supabase.from("agent_disagreements").insert(
-        disputes
-          .filter((d: any) => d?.specialist_a && d?.specialist_b)
-          .map((d: any) => ({
-            task_id: taskId,
-            topic: String(d.topic ?? "unspecified").slice(0, 500),
-            specialist_a: String(d.specialist_a),
-            position_a: String(d.position_a ?? "").slice(0, 4000),
-            specialist_b: String(d.specialist_b),
-            position_b: String(d.position_b ?? "").slice(0, 4000),
-            divergence: Number(d.divergence ?? 0.5),
-          })),
+        disputes.filter((d: any) => d?.specialist_a && d?.specialist_b).map((d: any) => ({
+          task_id: taskId,
+          topic: String(d.topic ?? "unspecified").slice(0, 500),
+          specialist_a: String(d.specialist_a),
+          position_a: String(d.position_a ?? "").slice(0, 4000),
+          specialist_b: String(d.specialist_b),
+          position_b: String(d.position_b ?? "").slice(0, 4000),
+          divergence: Math.max(0, Math.min(1, Number(d.divergence ?? 0.5))),
+        })),
       );
     }
 
-    await supabase
-      .from("agent_coordination_tasks")
-      .update({ status: "completed", completed_at: new Date().toISOString() })
-      .eq("id", taskId);
+    await supabase.from("agent_coordination_tasks").update({
+      status: "completed",
+      provider: synthRun.provider,
+      model: synthRun.model,
+      completed_at: new Date().toISOString(),
+    }).eq("id", taskId);
 
     return json({
       task_id: taskId,
@@ -375,14 +349,17 @@ Deno.serve(async (req) => {
       specialists_failed: failed,
       citations: citationCount,
       disagreements: disputes.length,
+      provider: synthRun.provider,
+      model: synthRun.model,
     });
   } catch (e) {
     const message = (e as Error).message ?? "unknown error";
     if (taskId) {
-      await supabase
-        .from("agent_coordination_tasks")
-        .update({ status: "error", error: message.slice(0, 1000), completed_at: new Date().toISOString() })
-        .eq("id", taskId);
+      await supabase.from("agent_coordination_tasks").update({
+        status: "error",
+        error: message.slice(0, 1000),
+        completed_at: new Date().toISOString(),
+      }).eq("id", taskId);
     }
     return json({ error: message, task_id: taskId }, 500);
   }
