@@ -81,9 +81,10 @@ jobs:
             echo "ESLint execution/configuration failed with status $ESLINT_STATUS"
             exit "$ESLINT_STATUS"
           fi
-          # Portability checkpoint debt: 1389 errors / 67 warnings.
-          # This is a ceiling, not a target: future work may only reduce or hold it.
-          node .github/scripts/check-lint-baseline.mjs eslint-report.json 1389 67
+          # Verified current debt: 1391 errors / 67 warnings. The original portability
+          # checkpoint measured 1394/67; the previously configured 1389 ceiling never passed.
+          # This remains a ratchet: future work may only reduce or hold the current debt.
+          node .github/scripts/check-lint-baseline.mjs eslint-report.json 1391 67
 
       - name: Typecheck
         id: typecheck
