@@ -1,6 +1,7 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
+import { structuredLog, handleCors, errorResponse, jsonResponse, corsHeaders } from "../_shared/resilience.ts";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const FN = "cron-realize-prospective-forecasts";
 const BATCH_SIZE = 500;
@@ -24,38 +25,37 @@ serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
 
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
+
   const start = Date.now();
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
   try {
     structuredLog("info", FN, "Starting prospective forecast realization");
 
-    // Load domain match policies
-    const { data: policies } = await supabase
+    const { data: policies, error: policyError } = await supabase
       .from("forecast_domain_match_policies")
-      .select("domain, match_window_days, direction_threshold_pct, preferred_period_type, is_active")
+      .select("domain,match_window_days,direction_threshold_pct,preferred_period_type,is_active")
       .eq("is_active", true);
+    if (policyError) throw policyError;
 
     const policyMap = new Map<string, DomainPolicy>();
-    if (policies) {
-      for (const p of policies) {
-        policyMap.set(p.domain, p as DomainPolicy);
-      }
+    for (const policy of (policies ?? []) as DomainPolicy[]) {
+      policyMap.set(policy.domain, policy);
     }
     structuredLog("info", FN, `Loaded ${policyMap.size} domain policies`);
 
-    // Fetch pending evaluations
     const { data: pending, error: fetchErr } = await supabase
       .from("forecast_prospective_evaluations")
-      .select("id, domain, iso3, predicted_value, predicted_direction, realization_due_at, horizon_days, model_version")
+      .select("id,domain,iso3,predicted_value,predicted_direction,realization_due_at,horizon_days,model_version")
       .eq("evaluation_locked", false)
       .lte("realization_due_at", new Date().toISOString())
       .order("realization_due_at", { ascending: true })
       .limit(BATCH_SIZE);
-
     if (fetchErr) throw fetchErr;
 
     if (!pending || pending.length === 0) {
@@ -78,16 +78,16 @@ serve(async (req) => {
         const thresholdPct = policy?.direction_threshold_pct ?? DEFAULT_POLICY.direction_threshold_pct;
         const policyStatus = policy ? "domain_policy" : "default_fallback";
 
-        if (policy) policyUsed++;
-        else fallbackUsed++;
+        if (policy) policyUsed += 1;
+        else fallbackUsed += 1;
 
         const dueDate = new Date(forecast.realization_due_at);
-        const windowStart = new Date(dueDate.getTime() - windowDays * 86400000).toISOString();
-        const windowEnd = new Date(dueDate.getTime() + windowDays * 86400000).toISOString();
+        const windowStart = new Date(dueDate.getTime() - windowDays * 86_400_000).toISOString();
+        const windowEnd = new Date(dueDate.getTime() + windowDays * 86_400_000).toISOString();
 
         const { data: actuals, error: metricErr } = await supabase
           .from("normalized_metrics")
-          .select("value, period, created_at")
+          .select("value,period,created_at")
           .eq("domain", forecast.domain)
           .eq("iso3", forecast.iso3)
           .gte("created_at", windowStart)
@@ -97,7 +97,7 @@ serve(async (req) => {
 
         if (metricErr) {
           structuredLog("warn", FN, `Metric fetch error for ${forecast.id}`, { error: metricErr.message });
-          errors++;
+          errors += 1;
           continue;
         }
 
@@ -115,25 +115,31 @@ serve(async (req) => {
             })
             .eq("id", forecast.id)
             .eq("evaluation_locked", false);
-
-          missing++;
+          missing += 1;
           continue;
         }
 
         const actual = actuals[0];
         const actualValue = Number(actual.value);
-
-        if (isNaN(actualValue)) {
-          missing++;
+        if (!Number.isFinite(actualValue)) {
+          missing += 1;
           continue;
         }
 
-        const predictedVal = Number(forecast.predicted_value);
-        const diff = actualValue - predictedVal;
-        const threshold = Math.abs(predictedVal) * (thresholdPct / 100);
-        const realizedDirection =
-          Math.abs(diff) < threshold ? "stable" :
-          diff > 0 ? "increasing" : "decreasing";
+        const predictedValue = Number(forecast.predicted_value);
+        if (!Number.isFinite(predictedValue)) {
+          structuredLog("warn", FN, `Invalid predicted value for ${forecast.id}`);
+          errors += 1;
+          continue;
+        }
+
+        const diff = actualValue - predictedValue;
+        const threshold = Math.abs(predictedValue) * (thresholdPct / 100);
+        const realizedDirection = Math.abs(diff) < threshold
+          ? "stable"
+          : diff > 0
+            ? "increasing"
+            : "decreasing";
 
         const { error: updateErr } = await supabase
           .from("forecast_prospective_evaluations")
@@ -149,9 +155,9 @@ serve(async (req) => {
               realization_engine: FN,
               realized_by_cron_at: new Date().toISOString(),
               forecast_id: forecast.id,
-              predicted_value: predictedVal,
+              predicted_value: predictedValue,
               realized_value: actualValue,
-              error: Math.abs(actualValue - predictedVal),
+              error: Math.abs(actualValue - predictedValue),
               model_version: forecast.model_version,
               policy_status: policyStatus,
               match_window_days: windowDays,
@@ -163,17 +169,17 @@ serve(async (req) => {
 
         if (updateErr) {
           structuredLog("warn", FN, `Update error for ${forecast.id}`, { error: updateErr.message });
-          errors++;
+          errors += 1;
         } else {
-          realized++;
+          realized += 1;
         }
-      } catch (rowErr) {
-        structuredLog("warn", FN, `Row error: ${(rowErr as Error).message}`);
-        errors++;
+      } catch (rowError) {
+        const message = rowError instanceof Error ? rowError.message : String(rowError);
+        structuredLog("warn", FN, `Row error: ${message}`);
+        errors += 1;
       }
     }
 
-    // Alert: high fallback rate in high-volume domains
     if (fallbackUsed > 0 && pending.length >= 10) {
       const fallbackRate = (fallbackUsed / pending.length) * 100;
       if (fallbackRate > 30) {
@@ -186,7 +192,6 @@ serve(async (req) => {
       }
     }
 
-    // Alert: high missing_actual rate
     if (missing > 0 && pending.length >= 5) {
       const missingRate = (missing / pending.length) * 100;
       if (missingRate > 50) {
@@ -205,7 +210,13 @@ serve(async (req) => {
       message: `Realized: ${realized}, Missing: ${missing}, Errors: ${errors}, Policy: ${policyUsed}, Fallback: ${fallbackUsed}, Batch: ${pending.length}`,
     });
 
-    structuredLog("info", FN, `Complete: realized=${realized} missing=${missing} errors=${errors} policy=${policyUsed} fallback=${fallbackUsed}`, undefined, start);
+    structuredLog(
+      "info",
+      FN,
+      `Complete: realized=${realized} missing=${missing} errors=${errors} policy=${policyUsed} fallback=${fallbackUsed}`,
+      undefined,
+      start,
+    );
 
     return jsonResponse({
       ok: true,
@@ -217,13 +228,14 @@ serve(async (req) => {
       batch_size: pending.length,
       duration_ms: Date.now() - start,
     });
-  } catch (e) {
-    structuredLog("error", FN, (e as Error).message, undefined, start);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    structuredLog("error", FN, message, undefined, start);
     await supabase.from("automation_logs").insert({
       job_name: FN,
       status: "error",
-      message: (e as Error).message,
+      message,
     });
-    return errorResponse(e);
+    return errorResponse(error);
   }
 });
