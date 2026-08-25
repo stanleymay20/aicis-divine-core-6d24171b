@@ -1,11 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
+import { resilientCall, structuredLog, handleCors, corsHeaders, errorResponse, jsonResponse } from "../_shared/resilience.ts";
 import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const FN = "fetch-governance-global";
-const TIMEOUT_MS = 30000;
-const PER_PAGE = 20000;
+const TIMEOUT_MS = 30_000;
+const PER_PAGE = 20_000;
 const LOOKBACK_YEARS = 6;
 
 interface IndicatorSpec {
@@ -13,8 +14,24 @@ interface IndicatorSpec {
   name: string;
 }
 
-// Note: World Bank WGI series (GE.EST, RL.EST, etc.) was archived from the public API in 2024.
-// We now use CPIA governance proxies (source: WDI) which are actively maintained.
+type WorldBankRow = {
+  value?: unknown;
+  date?: unknown;
+  countryiso3code?: unknown;
+  country?: { value?: unknown };
+};
+
+type GovernanceRecord = {
+  country: string;
+  iso_code: string;
+  source: string;
+  indicator_name: string;
+  value: number;
+  category: string;
+  year: number;
+  metadata: { indicator_code: string };
+};
+
 const INDICATORS: IndicatorSpec[] = [
   { code: "IQ.CPA.PUBS.XQ", name: "quality_of_public_administration" },
   { code: "IQ.CPA.TRAN.XQ", name: "transparency_accountability_corruption" },
@@ -23,9 +40,23 @@ const INDICATORS: IndicatorSpec[] = [
   { code: "GC.TAX.TOTL.GD.ZS", name: "tax_revenue_pct_gdp" },
 ];
 
+const text = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+
+const numeric = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
+
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
 
   const start = Date.now();
   const supabase = createClient(
@@ -49,59 +80,70 @@ serve(async (req) => {
 
     for (const indicator of INDICATORS) {
       await resilientCall(`${FN}:${indicator.code}`, async () => {
-        const resp = await fetch(
+        const response = await fetch(
           `https://api.worldbank.org/v2/country/all/indicator/${indicator.code}?format=json&per_page=${PER_PAGE}`,
+          { signal: AbortSignal.timeout(TIMEOUT_MS) },
         );
-        if (!resp.ok) throw new Error(`World Bank ${indicator.code}: ${resp.status}`);
-        const data = await resp.json();
-        const rows = Array.isArray(data) && Array.isArray(data[1]) ? data[1] : [];
+        if (!response.ok) throw new Error(`World Bank ${indicator.code}: ${response.status}`);
+        const payload = await response.json() as unknown;
+        const rows = Array.isArray(payload) && Array.isArray(payload[1])
+          ? payload[1] as WorldBankRow[]
+          : [];
 
-        const records = rows
-          .filter((item: any) => item?.value !== null && item?.countryiso3code && item.countryiso3code !== "")
-          .filter((item: any) => Number(item.date) >= currentYear - LOOKBACK_YEARS)
-          .map((item: any) => ({
-            country: item.country.value,
-            iso_code: item.countryiso3code,
+        const records: GovernanceRecord[] = rows.flatMap((item) => {
+          const value = numeric(item.value);
+          const year = numeric(item.date);
+          const iso3 = text(item.countryiso3code);
+          const country = text(item.country?.value);
+          if (value == null || year == null || !iso3 || !country || year < currentYear - LOOKBACK_YEARS) {
+            return [];
+          }
+          return [{
+            country,
+            iso_code: iso3,
             source: "worldbank",
             indicator_name: indicator.name,
-            value: Number(item.value),
+            value,
             category: "governance",
-            year: Number(item.date),
+            year: Math.round(year),
             metadata: { indicator_code: indicator.code },
-          }));
+          }];
+        });
 
         if (records.length > 0) {
-          // Delete existing rows for this indicator+year set, then insert (idempotent)
-          const years = Array.from(new Set(records.map((r: any) => r.year)));
-          await supabase.from("governance_global")
+          const years = [...new Set(records.map((record) => record.year))];
+          const { error: deleteError } = await supabase
+            .from("governance_global")
             .delete()
             .eq("source", "worldbank")
             .eq("indicator_name", indicator.name)
             .in("year", years);
-          const { error } = await supabase.from("governance_global").insert(records);
-          if (error) throw new Error(`DB insert ${indicator.code}: ${error.message}`);
+          if (deleteError) throw new Error(`DB cleanup ${indicator.code}: ${deleteError.message}`);
+
+          const { error: insertError } = await supabase.from("governance_global").insert(records);
+          if (insertError) throw new Error(`DB insert ${indicator.code}: ${insertError.message}`);
         }
 
         results.indicators[indicator.name] = records.length;
         results.governance += records.length;
         structuredLog("info", FN, `${indicator.code}: ${records.length} records`);
-      }, { timeoutMs: TIMEOUT_MS }).catch((e) => {
-        const msg = `${indicator.code}: ${(e as Error).message}`;
-        results.errors.push(msg);
-        structuredLog("warn", FN, msg);
+      }, { timeoutMs: TIMEOUT_MS }).catch((error: unknown) => {
+        const message = `${indicator.code}: ${messageOf(error)}`;
+        results.errors.push(message);
+        structuredLog("warn", FN, message);
       });
     }
 
     await supabase.from("automation_logs").insert({
       job_name: FN,
-      status: results.errors.length === 0 ? "success" : (results.governance > 0 ? "partial" : "error"),
+      status: results.errors.length === 0 ? "success" : results.governance > 0 ? "partial" : "error",
       message: `Fetched ${results.governance} governance records. Errors: ${results.errors.length}`,
     });
 
     await supabase.rpc("register_pipeline_heartbeat", {
       _pipeline_name: FN,
       _success: results.governance > 0,
-      _error: results.governance > 0 ? null : (results.errors[0] ?? "No governance records inserted"),
+      _error: results.governance > 0 ? null : results.errors[0] ?? "No governance records inserted",
       _metadata: {
         inserted: results.governance,
         indicators: results.indicators,
@@ -116,16 +158,21 @@ serve(async (req) => {
       error_count: results.errors.length,
       error_summary: results.errors[0] ?? null,
     });
-    return jsonResponse({ ok: results.governance > 0, message: `Fetched ${results.governance} governance records`, data: results });
-  } catch (e) {
-    structuredLog("error", FN, (e as Error).message, undefined, start);
-    await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: (e as Error).message });
+    return jsonResponse({
+      ok: results.governance > 0,
+      message: `Fetched ${results.governance} governance records`,
+      data: results,
+    });
+  } catch (error) {
+    const message = messageOf(error);
+    structuredLog("error", FN, message, undefined, start);
+    await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message });
     await supabase.rpc("register_pipeline_heartbeat", {
       _pipeline_name: FN,
       _success: false,
-      _error: e instanceof Error ? e.message : String(e),
+      _error: message,
     });
-    await failProviderRun(supabase, run, e);
-    return errorResponse(e);
+    await failProviderRun(supabase, run, error);
+    return errorResponse(error);
   }
 });
