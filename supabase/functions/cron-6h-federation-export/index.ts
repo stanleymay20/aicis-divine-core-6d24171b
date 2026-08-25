@@ -1,15 +1,19 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const guard = await requireAdminOrCron(req, corsHeaders);
+  if (guard.response) return guard.response;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -24,14 +28,14 @@ serve(async (req) => {
 
     // Step 1: Make bundle
     const makeResult = await supabase.functions.invoke("fed-make-bundle");
-    
+
     if (makeResult.error) {
       throw new Error(`Make bundle failed: ${makeResult.error.message}`);
     }
 
     // Step 2: Send bundles
     const sendResult = await supabase.functions.invoke("fed-send-bundles");
-    
+
     if (sendResult.error) {
       throw new Error(`Send bundles failed: ${sendResult.error.message}`);
     }
@@ -51,7 +55,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("Error in federation export cron:", error);
 
     await supabase.from("automation_logs").insert({
