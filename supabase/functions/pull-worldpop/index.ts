@@ -1,86 +1,60 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
+import { startProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret, x-scheduler-source",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const DISABLED_REASON = "WorldPop live provider adapter is not configured; synthetic fallback is disabled";
+
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-  
-  try {
-    // Use service role for system operations (cron jobs)
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
 
-    console.log("Simulating WorldPop data (API requires authentication)...");
-    
-    // Note: WorldPop API requires authentication and specific dataset requests
-    // This is a simplified simulation with representative data structure
-    const countries = [
-      { name: 'Ghana', code: 'GHA', population: 33500000, density: 140.6, lat: 7.9465, lon: -1.0232 },
-      { name: 'Nigeria', code: 'NGA', population: 223800000, density: 242.4, lat: 9.0820, lon: 8.6753 },
-      { name: 'Kenya', code: 'KEN', population: 54000000, density: 94.2, lat: -0.0236, lon: 37.9062 },
-      { name: 'South Africa', code: 'ZAF', population: 60000000, density: 49.1, lat: -30.5595, lon: 22.9375 },
-      { name: 'Ethiopia', code: 'ETH', population: 123400000, density: 108.4, lat: 9.1450, lon: 40.4897 },
-      { name: 'Uganda', code: 'UGA', population: 47200000, density: 195.5, lat: 1.3733, lon: 32.2903 }
-    ];
+  const { response: authResponse } = await requireAdminOrCron(req, corsHeaders);
+  if (authResponse) return authResponse;
 
-    const year = new Date().getFullYear();
-    const records = countries.map(c => ({
-      country: c.name,
-      region: c.name,
-      latitude: c.lat,
-      longitude: c.lon,
-      population: c.population,
-      population_density: c.density,
-      year: year,
-      source: 'WorldPop',
-      metadata: {
-        country_code: c.code,
-        note: 'Simulated data - integrate WorldPop API for production'
-      }
-    }));
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+  const run = await startProviderRun(supabase, {
+    provider_name: "worldpop",
+    endpoint: "pull-worldpop",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+    run_mode: "disabled_pending_real_adapter",
+  });
 
-    const { error: insertError } = await supabase
-      .from('population_data')
-      .insert(records);
+  const error = new Error(DISABLED_REASON);
+  await failProviderRun(supabase, run, error);
 
-    if (insertError) throw insertError;
+  await supabase.from("system_logs").insert({
+    division: "population",
+    action: "worldpop_data_pull",
+    result: "blocked",
+    log_level: "warning",
+    metadata: {
+      reason: DISABLED_REASON,
+      synthetic_persistence_disabled: true,
+      records_written: 0,
+    },
+  });
 
-    // Log the operation
-    await supabase.from('compliance_audit').insert({
-      action: 'data_pull',
-      source: 'WorldPop',
-      status: 'success',
-      records_affected: records.length
-    });
-
-    await supabase.from('system_logs').insert({
-      division: 'population',
-      action: 'worldpop_data_pull',
-      result: 'success',
-      log_level: 'info',
-      metadata: { records_count: records.length }
-    });
-
-    return new Response(
-      JSON.stringify({ 
-        ok: true, 
-        message: `Populated ${records.length} population records`,
-        records_count: records.length,
-        note: 'Simulated data - integrate WorldPop API for production'
-      }), 
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (e) {
-    console.error("pull-worldpop error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : 'Unknown error' }), 
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
+  return json({
+    ok: false,
+    error: DISABLED_REASON,
+    records_written: 0,
+    synthetic_persistence_disabled: true,
+  }, 503);
 });
+
+function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, ...extraHeaders, "Content-Type": "application/json" },
+  });
+}
