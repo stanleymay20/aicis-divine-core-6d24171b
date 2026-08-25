@@ -24,28 +24,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      - name: Verify required secrets exist
+      - name: Verify required source secrets exist
         env:
-          AICIS_DATABASE_URL: ${{ secrets.AICIS_DATABASE_URL }}
+          AICIS_DATABASE_URL: ${{ secrets.AICIS_SOURCE_DATABASE_URL }}
           AICIS_BACKUP_PASSPHRASE: ${{ secrets.AICIS_BACKUP_PASSPHRASE }}
-          AICIS_SUPABASE_URL: ${{ secrets.AICIS_SUPABASE_URL }}
-          AICIS_SERVICE_ROLE_KEY: ${{ secrets.AICIS_SERVICE_ROLE_KEY }}
+          AICIS_SUPABASE_URL: ${{ secrets.AICIS_SOURCE_SUPABASE_URL }}
+          AICIS_SERVICE_ROLE_KEY: ${{ secrets.AICIS_SOURCE_SERVICE_ROLE_KEY }}
         run: |
-          test -n "$AICIS_DATABASE_URL" || { echo "AICIS_DATABASE_URL is not configured"; exit 1; }
+          test -n "$AICIS_DATABASE_URL" || { echo "AICIS_SOURCE_DATABASE_URL is not configured"; exit 1; }
           test -n "$AICIS_BACKUP_PASSPHRASE" || { echo "AICIS_BACKUP_PASSPHRASE is not configured"; exit 1; }
-          test -n "$AICIS_SUPABASE_URL" || { echo "AICIS_SUPABASE_URL is not configured"; exit 1; }
-          test -n "$AICIS_SERVICE_ROLE_KEY" || { echo "AICIS_SERVICE_ROLE_KEY is not configured"; exit 1; }
+          test -n "$AICIS_SUPABASE_URL" || { echo "AICIS_SOURCE_SUPABASE_URL is not configured"; exit 1; }
+          test -n "$AICIS_SERVICE_ROLE_KEY" || { echo "AICIS_SOURCE_SERVICE_ROLE_KEY is not configured"; exit 1; }
 
-      - name: Create and validate encrypted database snapshot
+      - name: Create and validate encrypted source database snapshot
         env:
-          AICIS_DATABASE_URL: ${{ secrets.AICIS_DATABASE_URL }}
+          AICIS_DATABASE_URL: ${{ secrets.AICIS_SOURCE_DATABASE_URL }}
           AICIS_BACKUP_PASSPHRASE: ${{ secrets.AICIS_BACKUP_PASSPHRASE }}
         run: bash scripts/aicis-backup.sh artifacts/aicis-backup
 
-      - name: Mirror Storage object bytes
+      - name: Mirror source Storage object bytes
         env:
-          AICIS_SUPABASE_URL: ${{ secrets.AICIS_SUPABASE_URL }}
-          AICIS_SERVICE_ROLE_KEY: ${{ secrets.AICIS_SERVICE_ROLE_KEY }}
+          AICIS_SUPABASE_URL: ${{ secrets.AICIS_SOURCE_SUPABASE_URL }}
+          AICIS_SERVICE_ROLE_KEY: ${{ secrets.AICIS_SOURCE_SERVICE_ROLE_KEY }}
         run: node scripts/aicis-storage-backup.mjs artifacts/aicis-storage
 
       - name: Encrypt Storage mirror
@@ -77,4 +77,4 @@ jobs:
             artifacts/aicis-storage.tar.gz.enc
             artifacts/aicis-storage.tar.gz.enc.sha256
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
