@@ -1,5 +1,5 @@
 // Public, no-auth, sanitized intelligence preview for landing page visitors.
-// Returns top risks, calibrated predictions, recent simulation summaries, and audit chain samples.
+// Database access is deliberately limited to the fixed public_intelligence_snapshot RPC.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -11,68 +11,36 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "GET" && req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json", Allow: "GET, POST, OPTIONS" },
+    });
+  }
 
   try {
     const sb = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
     );
 
-    // ── Parallel fetch — all sanitized aggregate views ──
-    const [topRisks, topPredictions, recentSims, auditSamples] = await Promise.all([
-      sb.from("risk_ranking_predictions")
-        .select("country_iso3, domain, risk_probability, confidence_lower, confidence_upper, generated_at, horizon_days, rank_position")
-        .order("risk_probability", { ascending: false })
-        .limit(8),
-      sb.from("risk_ml_predictions")
-        .select("country_iso3, domain, calibrated_score, raw_score, prediction_interval_lower, prediction_interval_upper, horizon_days, audit_hash, model_version")
-        .order("calibrated_score", { ascending: false })
-        .limit(8),
-      sb.from("simulation_runs")
-        .select("scenario_name, shock_domain, shock_magnitude, p10, p50, p90, n_iterations, cascade_depth, created_at")
-        .order("created_at", { ascending: false })
-        .limit(3),
-      sb.from("ml_inference_audit")
-        .select("model_version, weights_hash, combined_hash, previous_audit_hash, generated_at")
-        .order("generated_at", { ascending: false })
-        .limit(5),
-    ]);
+    const { data, error } = await sb.rpc("public_intelligence_snapshot");
+    if (error) {
+      console.error("public-intelligence snapshot error:", error.message);
+      return new Response(JSON.stringify({ error: "Public intelligence snapshot unavailable" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    // Counts for the "live stats" strip
-    const [{ count: snapshotCount }, { count: predictionCount }, { count: simCount }, { count: auditCount }] =
-      await Promise.all([
-        sb.from("country_performance_snapshots").select("*", { count: "exact", head: true }),
-        sb.from("risk_ml_predictions").select("*", { count: "exact", head: true }),
-        sb.from("simulation_runs").select("*", { count: "exact", head: true }),
-        sb.from("ml_inference_audit").select("*", { count: "exact", head: true }),
-      ]);
-
-    const { data: countryRows } = await sb
-      .from("country_performance_snapshots")
-      .select("iso3")
-      .limit(50000);
-    const distinctCountries = new Set((countryRows ?? []).map(r => r.iso3)).size;
-
-    return new Response(JSON.stringify({
-      generated_at: new Date().toISOString(),
-      stats: {
-        countries_tracked: distinctCountries,
-        snapshots: snapshotCount ?? 0,
-        ml_predictions: predictionCount ?? 0,
-        simulations_run: simCount ?? 0,
-        audit_records: auditCount ?? 0,
-      },
-      top_risks: topRisks.data ?? [],
-      top_predictions: topPredictions.data ?? [],
-      recent_simulations: recentSims.data ?? [],
-      audit_samples: auditSamples.data ?? [],
-    }), {
+    return new Response(JSON.stringify(data ?? {}), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
-    console.error("public-intelligence error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "unknown" }), {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("public-intelligence error:", message);
+    return new Response(JSON.stringify({ error: "Public intelligence snapshot unavailable" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
