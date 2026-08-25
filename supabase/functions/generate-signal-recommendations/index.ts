@@ -4,6 +4,7 @@
 // then queue notifications to users whose tracked markets overlap.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { aiChat } from "../_shared/ai-gateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,6 +25,13 @@ type Signal = {
   merged_source_count: number | null;
 };
 
+type ActionChoice = {
+  action: string;
+  rationale: string;
+  provider?: string;
+  model?: string;
+};
+
 const SEVERITY = (s: Signal): "low" | "medium" | "high" | "critical" => {
   const score = Math.max(s.urgency_score, s.impact_score);
   if (score >= 90) return "critical";
@@ -35,84 +43,94 @@ const SEVERITY = (s: Signal): "low" | "medium" | "high" | "critical" => {
 const TIME_TO_ACTION = (sev: string) =>
   sev === "critical" ? "24h" : sev === "high" ? "72h" : sev === "medium" ? "7d" : "30d";
 
-// Deterministic templates per category
+// Deterministic advisory templates. Rationales describe why a review is warranted
+// from the current AICIS signal, not unverified historical-frequency claims.
 const TEMPLATES: Record<string, { action: string; rationale: string }> = {
   climate_disaster: {
-    action: "Pre-position contingency stock and verify alternate logistics corridors for the affected market(s); brief operations on 72h disruption window.",
-    rationale: "Climate/disaster signals at this confidence typically trigger 3–14 day logistics and supply disruption windows.",
+    action: "Pre-position contingency stock and verify alternate logistics corridors for the affected market(s); brief operations on the current disruption risk.",
+    rationale: "The canonical climate/disaster signal has material urgency or impact and warrants continuity review.",
   },
   defense_conflict: {
-    action: "Freeze new exposure in the affected market(s); review counterparty and personnel safety; activate insurance/force-majeure review.",
-    rationale: "Defense/conflict events at this severity are associated with rapid liquidity, insurance and counterparty repricing.",
+    action: "Pause new exposure in the affected market(s) pending review; assess counterparty and personnel safety; verify insurance and force-majeure terms.",
+    rationale: "The canonical defense/conflict signal indicates elevated operational and counterparty risk in the affected market(s).",
   },
   public_health: {
-    action: "Activate health-screening protocols for affected market(s); review staff travel; engage local procurement for medical supplies if applicable.",
-    rationale: "Public-health canonical events historically precede 1–4 week mobility and workforce constraints.",
+    action: "Review health-screening protocols for affected market(s), staff travel, and continuity of relevant medical supplies.",
+    rationale: "The canonical public-health signal has material urgency or impact and warrants operational review.",
   },
   food_agriculture: {
-    action: "Lock alternative sourcing for impacted commodities and review price-hedging exposure for the affected market(s).",
-    rationale: "Food/agriculture shocks of this magnitude routinely propagate into 30–90 day price volatility.",
+    action: "Review alternate sourcing for impacted commodities and reassess price and inventory exposure in the affected market(s).",
+    rationale: "The canonical food/agriculture signal indicates a material supply or price-risk condition requiring review.",
   },
   economic_financial: {
-    action: "Recheck FX, credit and counterparty exposure to affected market(s); validate hedging coverage for the next 30 days.",
-    rationale: "Economic/financial canonical events at this confidence typically move pricing and credit conditions within days.",
+    action: "Recheck FX, credit and counterparty exposure to affected market(s) and validate existing hedge coverage.",
+    rationale: "The canonical economic/financial signal has material urgency or impact and warrants exposure review.",
   },
   financial_markets: {
-    action: "Recheck FX, credit and counterparty exposure to affected market(s); validate hedging coverage for the next 30 days.",
-    rationale: "Market-structure events at this severity propagate into pricing and counterparty risk quickly.",
+    action: "Recheck FX, credit, liquidity and counterparty exposure in affected market(s) and validate existing controls.",
+    rationale: "The canonical financial-market signal indicates a material market-risk condition requiring review.",
   },
   cybersecurity: {
-    action: "Trigger incident-response readiness for affected market(s); rotate relevant credentials and review third-party exposure.",
-    rationale: "Cyber events of this severity routinely cascade through supply-chain partners within 24–72 hours.",
+    action: "Increase incident-response readiness for affected market(s), review exposed credentials, and assess third-party dependencies.",
+    rationale: "The canonical cyber signal has material urgency or impact and warrants defensive readiness review.",
   },
   cyber_security: {
-    action: "Trigger incident-response readiness for affected market(s); rotate relevant credentials and review third-party exposure.",
-    rationale: "Cyber events of this severity routinely cascade through supply-chain partners within 24–72 hours.",
+    action: "Increase incident-response readiness for affected market(s), review exposed credentials, and assess third-party dependencies.",
+    rationale: "The canonical cyber signal has material urgency or impact and warrants defensive readiness review.",
   },
   migration_displacement: {
-    action: "Review staffing plans and humanitarian-corridor exposure in affected market(s); coordinate with local partners.",
-    rationale: "Displacement signals at this confidence are associated with 2–8 week labour and logistics distortion.",
+    action: "Review staffing, humanitarian-corridor and local-partner exposure in affected market(s).",
+    rationale: "The canonical displacement signal indicates a material operational or humanitarian condition requiring review.",
   },
   supply_chain: {
-    action: "Activate alternate-supplier shortlist and confirm 30-day buffer stock for impacted SKUs in affected market(s).",
-    rationale: "Supply-chain events at this confidence routinely produce multi-week lead-time slippage.",
+    action: "Review alternate suppliers and buffer-stock adequacy for impacted SKUs in affected market(s).",
+    rationale: "The canonical supply-chain signal indicates a material continuity risk requiring review.",
   },
   energy: {
-    action: "Confirm energy-supply continuity and short-term hedge coverage for operations in affected market(s).",
-    rationale: "Energy events at this severity historically produce 1–6 week price and supply volatility.",
+    action: "Verify energy-supply continuity, backup capacity and hedge coverage for operations in affected market(s).",
+    rationale: "The canonical energy signal indicates a material supply or price-risk condition requiring review.",
   },
 };
 
 const FALLBACK = {
   action: "Review exposure to the affected market(s) and validate continuity plans within the suggested action window.",
-  rationale: "Canonical event with high confidence and material urgency or impact warrants explicit review.",
+  rationale: "The canonical event has sufficient confidence and material urgency or impact to warrant explicit review.",
 };
 
-async function aiAction(signal: Signal): Promise<{ action: string; rationale: string } | null> {
-  const key = Deno.env.get("LOVABLE_API_KEY");
-  if (!key) return null;
+async function aiAction(signal: Signal): Promise<ActionChoice | null> {
   try {
-    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          { role: "system", content: "You write 1-sentence concrete supply-chain / risk actions and 1-sentence rationales. JSON only." },
-          { role: "user", content: `Signal: ${signal.title}\nCategory: ${signal.category}\nCountries: ${(signal.affected_countries||[]).join(",")}\nSummary: ${signal.summary?.slice(0,500)}\n\nReturn JSON {"action":"...","rationale":"..."}.` },
-        ],
-        temperature: 0.2,
-      }),
+    const result = await aiChat({
+      messages: [
+        {
+          role: "system",
+          content: "You refine an advisory action from one canonical AICIS signal. Use ONLY the supplied signal fields. Do not add external facts, statistics, actors, timelines, causal claims, or historical-frequency claims. Return strict JSON with keys action and rationale. Each must be one concise sentence and must remain advisory, not an autonomous command.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            title: signal.title,
+            category: signal.category,
+            countries: signal.affected_countries ?? [],
+            sectors: signal.affected_sectors ?? [],
+            summary: signal.summary?.slice(0, 700) ?? "",
+            confidence_score: signal.confidence_score,
+            urgency_score: signal.urgency_score,
+            impact_score: signal.impact_score,
+            evidence_count: Math.max(1, Number(signal.merged_source_count ?? signal.source_count ?? 1)),
+          }),
+        },
+      ],
+      responseFormat: { type: "json_object" },
+      temperature: 0.2,
+      timeoutMs: 12000,
     });
-    if (!r.ok) return null;
-    const j = await r.json();
-    const txt = j?.choices?.[0]?.message?.content ?? "";
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    const obj = JSON.parse(m[0]);
-    if (obj?.action && obj?.rationale) return { action: String(obj.action), rationale: String(obj.rationale) };
-    return null;
-  } catch {
+    const obj = JSON.parse(result.content);
+    const action = typeof obj?.action === "string" ? obj.action.trim().slice(0, 1000) : "";
+    const rationale = typeof obj?.rationale === "string" ? obj.rationale.trim().slice(0, 1000) : "";
+    if (!action || !rationale) return null;
+    return { action, rationale, provider: result.provider, model: result.model };
+  } catch (error) {
+    console.warn("AI recommendation refinement unavailable; using deterministic template:", error);
     return null;
   }
 }
@@ -127,11 +145,10 @@ Deno.serve(async (req) => {
 
   const started = Date.now();
   const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-  const limit = Math.min(Number(body.limit ?? 100), 300);
-  const aiBudget = Math.min(Number(body.ai_budget ?? 5), 20); // critical-only cap
+  const limit = Math.min(Math.max(Number(body.limit ?? 100), 1), 300);
+  const aiBudget = Math.min(Math.max(Number(body.ai_budget ?? 5), 0), 20);
 
   try {
-    // 1. Candidate canonical signals without an existing recommendation
     const { data: signals, error: sErr } = await sb
       .from("global_signals")
       .select("id,title,summary,category,confidence_score,urgency_score,impact_score,affected_countries,affected_sectors,source_count,merged_source_count")
@@ -160,13 +177,13 @@ Deno.serve(async (req) => {
 
     for (const sig of todo) {
       const sev = SEVERITY(sig);
-      let chosen = TEMPLATES[sig.category] ?? FALLBACK;
+      let chosen: ActionChoice = TEMPLATES[sig.category] ?? FALLBACK;
       let method = "template";
       if (sev === "critical" && aiUsed < aiBudget) {
         const ai = await aiAction(sig);
         if (ai) {
           chosen = ai;
-          method = "ai";
+          method = `ai:${ai.provider ?? "unknown"}:${ai.model ?? "unknown"}`.slice(0, 240);
           aiUsed++;
         }
       }
@@ -193,13 +210,9 @@ Deno.serve(async (req) => {
         })
         .select("id")
         .single();
-      if (rErr) {
-        // unique-violation = race; skip
-        continue;
-      }
+      if (rErr) continue;
       createdRecs++;
 
-      // 2. Subscriber matching via watchlist_items
       const countries = (sig.affected_countries ?? []).filter(Boolean);
       if (countries.length === 0) continue;
       const { data: watchers } = await sb
@@ -211,7 +224,6 @@ Deno.serve(async (req) => {
       const userSeen = new Set<string>();
       for (const w of watchers ?? []) {
         if (!w.user_id || userSeen.has(w.user_id)) continue;
-        // honour alert_threshold against signal severity score
         const threshold = Number(w.alert_threshold ?? 0);
         const score = Math.max(sig.urgency_score, sig.impact_score);
         if (threshold && score < threshold) continue;
@@ -232,6 +244,7 @@ Deno.serve(async (req) => {
               severity: sev,
               countries,
               action: chosen.action,
+              generation_method: method,
             },
           });
         if (!qErr) queued++;
@@ -241,7 +254,7 @@ Deno.serve(async (req) => {
     await sb.from("automation_logs").insert({
       job_name: "generate-signal-recommendations",
       status: "success",
-      message: `Created ${createdRecs} recs (${aiUsed} via AI), queued ${queued} notifications, scanned ${signals?.length ?? 0}`,
+      message: `Created ${createdRecs} recs (${aiUsed} AI refinements), queued ${queued} notifications, scanned ${signals?.length ?? 0}`,
     });
 
     return new Response(
