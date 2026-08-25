@@ -8,10 +8,11 @@
 // country-extractor, enrich-global-signals) re-run with the latest code,
 // then kicks those processors immediately.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -60,6 +61,13 @@ function fireAndForget(fn: string) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // This function performs privileged service-role mutations. It may only be
+  // invoked by an authenticated administrator or by the target scheduler using
+  // the independently configured CRON_SECRET. verify_jwt is intentionally off
+  // so scheduled calls using x-cron-secret can reach this in-function guard.
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
 
   const supa = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
