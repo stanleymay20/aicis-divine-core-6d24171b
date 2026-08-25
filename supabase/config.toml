@@ -319,6 +319,8 @@ verify_jwt = true
 [functions.publish-intel-event]
 verify_jwt = true
 
+[functions.pipeline-replay]
+verify_jwt = false
 
 [functions.record-usage]
 verify_jwt = true
