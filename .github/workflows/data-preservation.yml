@@ -1,0 +1,50 @@
+name: AICIS Data Preservation Snapshot
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aicis-data-preservation
+  cancel-in-progress: false
+
+jobs:
+  encrypted-db-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production-data-preservation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify required secrets exist
+        env:
+          AICIS_DATABASE_URL: ${{ secrets.AICIS_DATABASE_URL }}
+          AICIS_BACKUP_PASSPHRASE: ${{ secrets.AICIS_BACKUP_PASSPHRASE }}
+        run: |
+          test -n "$AICIS_DATABASE_URL" || { echo "AICIS_DATABASE_URL is not configured"; exit 1; }
+          test -n "$AICIS_BACKUP_PASSPHRASE" || { echo "AICIS_BACKUP_PASSPHRASE is not configured"; exit 1; }
+
+      - name: Create and validate encrypted database snapshot
+        env:
+          AICIS_DATABASE_URL: ${{ secrets.AICIS_DATABASE_URL }}
+          AICIS_BACKUP_PASSPHRASE: ${{ secrets.AICIS_BACKUP_PASSPHRASE }}
+        run: bash scripts/aicis-backup.sh artifacts/aicis-backup
+
+      - name: Upload encrypted snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: aicis-encrypted-production-backup-${{ github.run_id }}
+          path: |
+            artifacts/aicis-backup/*.enc
+            artifacts/aicis-backup/*-schema.sql
+            artifacts/aicis-backup/*-manifest.txt
+          if-no-files-found: error
+          retention-days: 7
