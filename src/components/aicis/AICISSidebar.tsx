@@ -17,6 +17,7 @@ import {
   FileSearch,
   FlaskConical,
   Gauge,
+  GitBranch,
   Globe2,
   HeartPulse,
   LayoutDashboard,
@@ -74,6 +75,7 @@ const groups: NavGroup[] = [
     items: [
       { id: "analyst", label: "Analyst Workspace", icon: BarChart3, path: "/analyst", match: ["/analyst", "/analyst-dashboard"] },
       { id: "causal", label: "Causal Intelligence", icon: Network, path: "/intelligence-engine" },
+      { id: "planetary-graph", label: "Planetary Graph", icon: GitBranch, path: "/planetary-graph" },
       { id: "risk-ranking", label: "Threat Matrix", icon: Target, path: "/risk-ranking" },
       { id: "country-explorer", label: "Country Explorer", icon: FileSearch, path: "/resolution", match: ["/resolution", "/deepdive"] },
     ],
