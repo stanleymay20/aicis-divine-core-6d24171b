@@ -36,6 +36,23 @@ jobs:
           test -n "$AICIS_SUPABASE_URL" || { echo "AICIS_SOURCE_SUPABASE_URL is not configured"; exit 1; }
           test -n "$AICIS_SERVICE_ROLE_KEY" || { echo "AICIS_SOURCE_SERVICE_ROLE_KEY is not configured"; exit 1; }
 
+      - name: Capture read-only source inventory
+        env:
+          AICIS_SOURCE_DATABASE_URL: ${{ secrets.AICIS_SOURCE_DATABASE_URL }}
+        run: bash scripts/aicis-source-inventory.sh artifacts/aicis-source-inventory
+
+      - name: Encrypt source inventory
+        env:
+          AICIS_BACKUP_PASSPHRASE: ${{ secrets.AICIS_BACKUP_PASSPHRASE }}
+        run: |
+          tar -C artifacts -czf artifacts/aicis-source-inventory.tar.gz aicis-source-inventory
+          openssl enc -aes-256-cbc -pbkdf2 -iter 250000 -salt \
+            -in artifacts/aicis-source-inventory.tar.gz \
+            -out artifacts/aicis-source-inventory.tar.gz.enc \
+            -pass env:AICIS_BACKUP_PASSPHRASE
+          sha256sum artifacts/aicis-source-inventory.tar.gz.enc > artifacts/aicis-source-inventory.tar.gz.enc.sha256
+          rm -rf artifacts/aicis-source-inventory artifacts/aicis-source-inventory.tar.gz
+
       - name: Create and validate encrypted source database snapshot
         env:
           AICIS_DATABASE_URL: ${{ secrets.AICIS_SOURCE_DATABASE_URL }}
@@ -62,7 +79,7 @@ jobs:
 
       - name: Assert no plaintext production payload remains
         run: |
-          if find artifacts -type f \( -name '*.dump' -o -name '*.sql' -o -name '*.tar.gz' \) | grep -q .; then
+          if find artifacts -type f \( -name '*.dump' -o -name '*.sql' -o -name '*.tar.gz' -o -name '*.tsv' -o -name '*.txt' \) | grep -q .; then
             echo "Plaintext production data remains in the artifact directory" >&2
             exit 1
           fi
@@ -72,6 +89,8 @@ jobs:
         with:
           name: aicis-encrypted-production-backup-${{ github.run_id }}
           path: |
+            artifacts/aicis-source-inventory.tar.gz.enc
+            artifacts/aicis-source-inventory.tar.gz.enc.sha256
             artifacts/aicis-backup/*.enc
             artifacts/aicis-backup/*-manifest.txt
             artifacts/aicis-storage.tar.gz.enc
