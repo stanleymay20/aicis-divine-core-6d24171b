@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat } from "../_shared/ai-gateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -123,14 +124,12 @@ function selectActions(
   return relevant.map(action => {
     let actionScore = riskScore;
 
-    // Static action modifiers
     if (action.type === "deploy_resources" && features.crisis_severity_avg > 5) actionScore += 8;
     if (action.type === "escalate_monitoring" && features.anomaly_count > 5) actionScore += 10;
     if (action.type === "early_warning_broadcast" && features.structural_break_count > 3) actionScore += 12;
     if (action.type === "diplomatic_engagement" && features.risk_pressure_score > 60) actionScore += 7;
     if (action.type === "supply_chain_intervention" && features.systemic_fragility_score > 50) actionScore += 9;
 
-    // Per-action learned adjustments
     const adj = actionAdjustments[action.type];
     let actionAdjusted = false;
     if (adj) {
@@ -143,7 +142,6 @@ function selectActions(
     }
 
     actionScore = Math.max(5, Math.min(95, actionScore));
-
     const featureRelevance = (features.risk_pressure_score + features.systemic_fragility_score) / 200;
     const impactEstimate = Math.round(Math.min(95, actionScore * 0.75 + featureRelevance * 20));
 
@@ -189,21 +187,18 @@ function applyGuardrails(
   domain: string
 ): Array<any> {
   return recommendations
-    // 1. Suppress low-confidence ACT for governance
     .map(rec => {
       if (domain === "governance" && rec.policy === "ACT" && rec.success_probability < 0.80) {
         return { ...rec, policy: "CONSIDER" as const, guardrail_applied: "governance_caution" };
       }
       return { ...rec, guardrail_applied: null };
     })
-    // 2. Require anomaly/crisis support for immediate urgency
     .map(rec => {
       if (rec.urgency === "immediate" && features.anomaly_count === 0 && features.crisis_severity_avg === 0) {
         return { ...rec, urgency: "24h", guardrail_applied: rec.guardrail_applied || "no_crisis_support" };
       }
       return rec;
     })
-    // 3. Cap confidence for weak signals
     .map(rec => {
       const signalDensity = features.anomaly_count + features.alert_count + features.crisis_severity_avg;
       if (signalDensity < 2 && rec.success_probability > 0.70) {
@@ -211,12 +206,10 @@ function applyGuardrails(
       }
       return rec;
     })
-    // 4. Deduplicate near-identical recommendations
     .filter((rec, i, arr) => {
       if (i === 0) return true;
       const prev = arr[i - 1];
-      return Math.abs(rec.success_probability - prev.success_probability) > 0.02 ||
-        rec.action_type !== prev.action_type;
+      return Math.abs(rec.success_probability - prev.success_probability) > 0.02 || rec.action_type !== prev.action_type;
     });
 }
 
@@ -231,7 +224,6 @@ serve(async (req) => {
 
     const { iso3, domain, explain, auto_capture } = await req.json().catch(() => ({}));
 
-    // 1. Load active model
     const { data: activeModel } = await supabase
       .from("decision_models")
       .select("*")
@@ -240,7 +232,6 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // Reject inference if no active model exists
     if (!activeModel) {
       return new Response(JSON.stringify({
         ok: false, recommendations: [], risk_score: 0,
@@ -258,7 +249,6 @@ serve(async (req) => {
     const trainingMode = activeModel.training_mode || "heuristic";
     const domainOverrideUsed = !!(domain && domainWeightsMap[domain]);
 
-    // 2. Pull signals
     let snapshotQuery = supabase
       .from("country_performance_snapshots")
       .select("iso3, domain, performance_index, momentum_score, risk_pressure_score, systemic_fragility_score, confidence_score, structural_break_count, forecast_stability_score")
@@ -282,7 +272,6 @@ serve(async (req) => {
     };
 
     const totalSignals = signalData.snapshots.length + signalData.anomalies.length + signalData.alerts.length + signalData.crises.length;
-
     if (totalSignals < 3) {
       return new Response(JSON.stringify({
         ok: true, recommendations: [], risk_score: 0,
@@ -292,12 +281,10 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // 3. Features + scoring
     const features = buildFeatures(signalData);
     const riskScore = computeRiskScore(features, weights as Record<string, number>);
     const featureContributions = computeFeatureContributions(features, weights as Record<string, number>);
 
-    // 4. Actions + policy + guardrails
     const targetDomain = domain || "all";
     const rawActions = selectActions(targetDomain, riskScore, features, actionAdjustments as Record<string, Record<string, number>>, weights as Record<string, number>);
     const withPolicy = rawActions.map(a => ({
@@ -307,37 +294,30 @@ serve(async (req) => {
     }));
     const recommendations = applyGuardrails(withPolicy, features, targetDomain);
 
-    // 5. Optional LLM explanation
     let explanation: string | null = null;
-    if (explain) {
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (LOVABLE_API_KEY) {
-        try {
-          const topRec = recommendations[0];
-          const topDrivers = featureContributions.slice(0, 3).map(c => `${c.feature}: ${c.contribution > 0 ? "+" : ""}${c.contribution}`).join(", ");
-          const explainPrompt = `You are explaining a statistical decision model's output. Be concise (2-3 sentences).
-Risk score: ${riskScore.toFixed(1)}/100 for ${iso3 || 'global'} / ${targetDomain}.
-Top recommendation: "${topRec?.label}" (${((topRec?.success_probability || 0) * 100).toFixed(0)}%).
-Top drivers: ${topDrivers}.
-Explain WHY based on features. Do NOT decide — only explain.`;
-
-          const llmResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
-              messages: [{ role: "user", content: explainPrompt }],
-            }),
-          });
-          if (llmResp.ok) {
-            const llmData = await llmResp.json();
-            explanation = llmData.choices?.[0]?.message?.content || null;
-          } else { await llmResp.text(); }
-        } catch (e) { console.error("LLM explain error (non-fatal):", e); }
+    let explanationProvider: string | null = null;
+    let explanationModel: string | null = null;
+    if (explain && recommendations.length > 0) {
+      try {
+        const topRec = recommendations[0];
+        const topDrivers = featureContributions.slice(0, 3).map(c => `${c.feature}: ${c.contribution > 0 ? "+" : ""}${c.contribution}`).join(", ");
+        const explainPrompt = `You are explaining a statistical decision model's output. Use only the model outputs below. Be concise (2-3 sentences). Do not add external facts and do not make a new decision.\nRisk score: ${riskScore.toFixed(1)}/100 for ${iso3 || "global"} / ${targetDomain}.\nTop recommendation: "${topRec.label}" (${(topRec.success_probability * 100).toFixed(0)} internal score).\nTop drivers: ${topDrivers}.\nExplain why the model produced this result based on these features.`;
+        const llm = await aiChat({
+          messages: [
+            { role: "system", content: "Explain only the supplied statistical model output. Never introduce outside facts, forecasts, or new recommendations." },
+            { role: "user", content: explainPrompt },
+          ],
+          temperature: 0.1,
+          timeoutMs: 15000,
+        });
+        explanation = llm.content || null;
+        explanationProvider = llm.provider;
+        explanationModel = llm.model;
+      } catch (e) {
+        console.error("LLM explain error (non-fatal):", e);
       }
     }
 
-    // 6. Inference hash
     const canonicalInput = JSON.stringify({ features, weights, modelVersion, trainingMode }, Object.keys({ features, weights, modelVersion, trainingMode }).sort());
     const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalInput));
     const inferenceHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -349,7 +329,6 @@ Explain WHY based on features. Do NOT decide — only explain.`;
       crises: signalData.crises.length,
     };
 
-    // 7. Audit log + auto-capture
     const auditOps: Promise<any>[] = [
       supabase.from("decision_inference_audit").insert({
         model_version: modelVersion, training_mode: trainingMode,
@@ -364,20 +343,29 @@ Explain WHY based on features. Do NOT decide — only explain.`;
       supabase.from("ai_decision_logs").insert({
         division_key: domain || "system",
         model_name: modelVersion,
-        input_summary: `Model inference for ${iso3 || 'global'} / ${targetDomain} | ${totalSignals} signals`,
-        output_summary: `Risk: ${riskScore.toFixed(1)} | Top: ${recommendations[0]?.label} (${((recommendations[0]?.success_probability || 0) * 100).toFixed(0)}%)`,
+        input_summary: `Model inference for ${iso3 || "global"} / ${targetDomain} | ${totalSignals} signals`,
+        output_summary: `Risk: ${riskScore.toFixed(1)} | Top: ${recommendations[0]?.label} (${((recommendations[0]?.success_probability || 0) * 100).toFixed(0)} internal score)`,
         confidence: (recommendations[0]?.success_probability || 0) * 100,
-        explanation: { features, risk_score: riskScore, model_version: modelVersion, training_mode: trainingMode, inference_hash: inferenceHash, feature_contributions: featureContributions.slice(0, 5) },
+        explanation: {
+          features,
+          risk_score: riskScore,
+          model_version: modelVersion,
+          training_mode: trainingMode,
+          inference_hash: inferenceHash,
+          feature_contributions: featureContributions.slice(0, 5),
+          narrative_provider: explanationProvider,
+          narrative_model: explanationModel,
+          score_semantics: trainingMode === "real" || trainingMode === "hybrid" ? "model_score_with_outcome_training" : "internal_decision_score_not_empirical_probability",
+        },
       }),
     ];
 
-    // Auto-capture: insert top recommendation into decision_outcome_log
     if (auto_capture && recommendations.length > 0) {
       const topRec = recommendations[0];
       const slaHours = topRec.policy === "ACT" ? 24 : topRec.policy === "CONSIDER" ? 72 : 168;
       const capturePayload = {
         signal_id: `infer-${Date.now()}`,
-        signal_title: `${topRec.label} — ${iso3 || 'Global'} / ${targetDomain}`,
+        signal_title: `${topRec.label} — ${iso3 || "Global"} / ${targetDomain}`,
         signal_date: new Date().toISOString().split("T")[0],
         domain: domain || "system",
         iso3: iso3 || null,
@@ -404,10 +392,13 @@ Explain WHY based on features. Do NOT decide — only explain.`;
       feature_contributions: featureContributions,
       recommendations,
       explanation,
+      explanation_provider: explanationProvider,
+      explanation_model: explanationModel,
       decision_basis: "statistical_model",
       model_version: modelVersion,
       training_mode: trainingMode,
       outcome_trained: trainingMode === "real" || trainingMode === "hybrid",
+      score_semantics: trainingMode === "real" || trainingMode === "hybrid" ? "model_score_with_outcome_training" : "internal_decision_score_not_empirical_probability",
       domain_override_used: domainOverrideUsed,
       action_adjustments_available: Object.keys(actionAdjustments).length,
       training_samples: activeModel?.training_sample_count || 0,
