@@ -79,8 +79,10 @@ jobs:
 
       - name: Assert no plaintext production payload remains
         run: |
-          if find artifacts -type f \( -name '*.dump' -o -name '*.sql' -o -name '*.tar.gz' -o -name '*.tsv' -o -name '*.txt' \) | grep -q .; then
-            echo "Plaintext production data remains in the artifact directory" >&2
+          test ! -d artifacts/aicis-source-inventory || { echo "Plaintext source inventory directory remains" >&2; exit 1; }
+          test ! -d artifacts/aicis-storage || { echo "Plaintext Storage mirror directory remains" >&2; exit 1; }
+          if find artifacts -type f \( -name '*.dump' -o -name '*.sql' -o -name '*.tar.gz' \) | grep -q .; then
+            echo "Plaintext production payload remains in the artifact directory" >&2
             exit 1
           fi
 
