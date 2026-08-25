@@ -1,15 +1,19 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const guard = await requireAdminOrCron(req, corsHeaders);
+  if (guard.response) return guard.response;
 
   try {
     const supabaseAdmin = createClient(
@@ -19,7 +23,6 @@ serve(async (req) => {
 
     console.log("Starting usage aggregation...");
 
-    // Get current period (yesterday)
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -30,42 +33,38 @@ serve(async (req) => {
     periodEnd.setHours(23, 59, 59, 999);
     const periodEndStr = periodEnd.toISOString();
 
-    // Get all organizations
     const { data: orgs, error: orgsError } = await supabaseAdmin
       .from("organizations")
-      .select("id, name, tier");
+      .select("id, name");
 
     if (orgsError) throw orgsError;
 
-    console.log(`Processing ${orgs.length} organizations...`);
+    let organizationsWithUsage = 0;
+    let usageRowsCreated = 0;
+    let queueRowsProcessed = 0;
 
-    for (const org of orgs) {
-      // Aggregate usage from billing_usage_queue
-      const { data: queueRecords } = await supabaseAdmin
+    for (const org of orgs ?? []) {
+      const { data: queueRecords, error: queueError } = await supabaseAdmin
         .from("billing_usage_queue")
-        .select("*")
+        .select("id,metric_key,quantity")
         .eq("org_id", org.id)
         .gte("recorded_at", periodStart)
         .lte("recorded_at", periodEndStr)
         .eq("processed", false);
 
-      if (!queueRecords || queueRecords.length === 0) {
-        console.log(`No usage for org ${org.name}`);
-        continue;
-      }
+      if (queueError) throw queueError;
+      if (!queueRecords || queueRecords.length === 0) continue;
 
-      // Group by metric_key
+      organizationsWithUsage += 1;
       const metrics: Record<string, number> = {};
       for (const record of queueRecords) {
-        if (!metrics[record.metric_key]) {
-          metrics[record.metric_key] = 0;
-        }
-        metrics[record.metric_key] += record.quantity;
+        const quantity = Number(record.quantity);
+        if (!record.metric_key || !Number.isFinite(quantity)) continue;
+        metrics[record.metric_key] = (metrics[record.metric_key] ?? 0) + quantity;
       }
 
-      // Create usage records
       for (const [metricKey, quantity] of Object.entries(metrics)) {
-        await supabaseAdmin.from("usage_records").insert({
+        const { error: usageError } = await supabaseAdmin.from("usage_records").insert({
           org_id: org.id,
           metric_key: metricKey,
           quantity,
@@ -73,86 +72,54 @@ serve(async (req) => {
           period_end: periodEndStr,
           billed: false,
         });
-
-        console.log(`Created usage record for ${org.name}: ${metricKey} = ${quantity}`);
+        if (usageError) throw usageError;
+        usageRowsCreated += 1;
       }
 
-      // Mark queue records as processed
-      const queueIds = queueRecords.map(r => r.id);
-      await supabaseAdmin
+      const queueIds = queueRecords.map((record) => record.id);
+      const { error: processedError } = await supabaseAdmin
         .from("billing_usage_queue")
         .update({ processed: true })
         .in("id", queueIds);
+      if (processedError) throw processedError;
+      queueRowsProcessed += queueIds.length;
     }
 
-    // Calculate revenue metrics
-    const { data: subscriptions } = await supabaseAdmin
-      .from("organizations")
-      .select("tier, billing_status")
-      .eq("billing_status", "active");
+    const period = yesterday.toISOString().split("T")[0];
 
-    const tierPricing: Record<string, number> = {
-      starter: 0,
-      pro: 99,
-      enterprise: 499,
-      global_node: 999,
-    };
-
-    let totalRevenue = 0;
-    let activeSubscriptions = 0;
-
-    if (subscriptions) {
-      for (const sub of subscriptions) {
-        if (sub.billing_status === "active") {
-          activeSubscriptions++;
-          totalRevenue += tierPricing[sub.tier] || 0;
-        }
-      }
-    }
-
-    const mrr = totalRevenue;
-    const arr = mrr * 12;
-    const avgRevenuePerAccount = activeSubscriptions > 0 ? totalRevenue / activeSubscriptions : 0;
-
-    // Insert revenue metrics
-    await supabaseAdmin.from("revenue_metrics").insert({
-      metric_date: yesterday.toISOString().split('T')[0],
-      total_revenue: totalRevenue,
-      mrr,
-      arr,
-      active_subscriptions: activeSubscriptions,
-      avg_revenue_per_account: avgRevenuePerAccount,
-    });
-
-    console.log(`Revenue metrics: MRR=${mrr}, ARR=${arr}, Active=${activeSubscriptions}`);
-
-    // Log action
     await supabaseAdmin.from("system_logs").insert({
       division: "system",
       action: "aggregate_usage",
       log_level: "info",
       result: "Usage aggregated successfully",
-      metadata: { 
-        period: yesterday.toISOString().split('T')[0],
-        organizations_processed: orgs.length,
-        mrr,
-        arr,
+      metadata: {
+        period,
+        organizations_scanned: orgs?.length ?? 0,
+        organizations_with_usage: organizationsWithUsage,
+        usage_rows_created: usageRowsCreated,
+        queue_rows_processed: queueRowsProcessed,
+        revenue_metrics_written: false,
+        revenue_reason: "Revenue must be derived from authoritative billing events/invoices, not tier labels",
+        executed_via: guard.via,
       },
     });
 
     return new Response(
-      JSON.stringify({ 
-        ok: true, 
-        period: yesterday.toISOString().split('T')[0],
-        organizations_processed: orgs.length,
-        revenue_metrics: { mrr, arr, active_subscriptions: activeSubscriptions }
+      JSON.stringify({
+        ok: true,
+        period,
+        organizations_scanned: orgs?.length ?? 0,
+        organizations_with_usage: organizationsWithUsage,
+        usage_rows_created: usageRowsCreated,
+        queue_rows_processed: queueRowsProcessed,
+        revenue_metrics_written: false,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (e) {
-    console.error("Error in aggregate-usage:", e);
+  } catch (error) {
+    console.error("Error in aggregate-usage:", error);
     return new Response(
-      JSON.stringify({ error: (e as Error).message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
