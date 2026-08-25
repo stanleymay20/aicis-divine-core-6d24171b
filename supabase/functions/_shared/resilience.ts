@@ -90,9 +90,10 @@ export async function resilientCall<T>(
   }
 
   try {
-    const result = await retryWithBackoff(
-      () => timeoutWrapper(fn, timeoutMs, key),
-      maxRetries,
+    const result = await timeoutWrapper(
+      () => retryWithBackoff(fn, maxRetries),
+      timeoutMs,
+      key,
     );
     recordSuccess(key);
     return result;
@@ -102,31 +103,22 @@ export async function resilientCall<T>(
   }
 }
 
-// ─── Structured Logger ──────────────────────────────────────────────
+// ─── Structured Logging ─────────────────────────────────────────────
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
-interface LogEntry {
-  level: LogLevel;
-  function: string;
-  message: string;
-  duration_ms?: number;
-  metadata?: Record<string, unknown>;
-  timestamp: string;
-}
-
 export function structuredLog(
   level: LogLevel,
-  functionName: string,
+  fnName: string,
   message: string,
   metadata?: Record<string, unknown>,
   startTime?: number,
 ): void {
-  const entry: LogEntry = {
-    level,
-    function: functionName,
-    message,
+  const entry: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
+    level,
+    function: fnName,
+    message,
   };
   if (startTime) entry.duration_ms = Date.now() - startTime;
   if (metadata) entry.metadata = metadata;
@@ -144,7 +136,7 @@ export function structuredLog(
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
 };
 
 export function handleCors(req: Request): Response | null {
