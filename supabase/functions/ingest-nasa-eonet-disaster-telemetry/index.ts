@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 import {
   startProviderRun,
   finishProviderRun,
@@ -7,127 +8,124 @@ import {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
-
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const CONNECTOR_KEY = "nasa_eonet_disaster_telemetry";
 const EONET_URL = "https://eonet.gsfc.nasa.gov/api/v3/events";
 
-type EonetCategory = {
+interface EonetCategory {
   id: string;
   title: string;
-};
+}
 
-type EonetGeometry = {
+interface EonetGeometry {
   magnitudeValue?: number | null;
   magnitudeUnit?: string | null;
   date?: string | null;
   type?: string | null;
   coordinates?: unknown;
-};
+}
 
-type EonetEvent = {
+interface EonetEvent {
   id: string;
   title: string;
   description?: string | null;
   link?: string | null;
   closed?: string | null;
   categories?: EonetCategory[];
-  sources?: { id: string; url?: string }[];
+  sources?: Array<{ id: string; url?: string }>;
   geometry?: EonetGeometry[];
-};
+}
 
-type EonetResponse = {
-  title?: string;
-  description?: string;
-  link?: string;
+interface EonetResponse {
   events?: EonetEvent[];
-};
+}
+
+interface TelemetryRow {
+  connector_key: string;
+  observation_type: string;
+  observed_entity: string;
+  observed_region: string;
+  observed_at: string;
+  observation_value: number | null;
+  observation_unit: string | null;
+  confidence_score: null;
+  anomaly_score: null;
+  raw_payload: Record<string, unknown> & { dedup_hash: string };
+}
+
+interface ExistingTelemetry {
+  raw_payload: unknown;
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 function primaryCategory(event: EonetEvent): string {
   return event.categories?.[0]?.id || event.categories?.[0]?.title || "natural_event";
 }
 
-function categoryRisk(category: string): number {
-  const c = category.toLowerCase();
-  if (c.includes("wildfire")) return 80;
-  if (c.includes("volcano")) return 78;
-  if (c.includes("severe") || c.includes("storm")) return 72;
-  if (c.includes("flood")) return 75;
-  if (c.includes("drought")) return 68;
-  if (c.includes("sea") || c.includes("lake") || c.includes("ice")) return 45;
-  if (c.includes("dust") || c.includes("haze") || c.includes("smoke")) return 50;
-  if (c.includes("temperature")) return 60;
-  return 40;
-}
-
-function anomalyScore(event: EonetEvent): number {
-  const cat = primaryCategory(event);
-  const base = categoryRisk(cat);
-  const openBoost = event.closed ? 0 : 8;
-  const sourceBoost = Math.min(12, (event.sources?.length ?? 0) * 3);
-  const magValues = (event.geometry ?? [])
-    .map((g) => typeof g.magnitudeValue === "number" ? g.magnitudeValue : 0)
-    .filter((n) => n > 0);
-  const magnitudeBoost = magValues.length > 0 ? Math.min(15, Math.max(...magValues) / 10) : 0;
-  return Math.max(0, Math.min(100, Math.round(base + openBoost + sourceBoost + magnitudeBoost)));
+function finiteOrNull(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function extractCoordinates(event: EonetEvent): { lat: number | null; lon: number | null } {
-  const geom = event.geometry?.[0];
-  const coords = geom?.coordinates;
-  if (!Array.isArray(coords)) return { lat: null, lon: null };
+  const coordinates = event.geometry?.[0]?.coordinates;
+  if (!Array.isArray(coordinates)) return { lat: null, lon: null };
 
-  // EONET point geometry usually: [lon, lat]
-  if (typeof coords[0] === "number" && typeof coords[1] === "number") {
-    return { lon: coords[0], lat: coords[1] };
-  }
-
-  // Polygon/multipoint fallback: find first numeric pair recursively.
-  const stack: unknown[] = [coords];
-  while (stack.length) {
-    const cur = stack.pop();
-    if (!Array.isArray(cur)) continue;
-    if (typeof cur[0] === "number" && typeof cur[1] === "number") {
-      return { lon: cur[0], lat: cur[1] };
-    }
-    for (const item of cur) stack.push(item);
+  const stack: unknown[] = [coordinates];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!Array.isArray(current)) continue;
+    const lon = finiteOrNull(current[0]);
+    const lat = finiteOrNull(current[1]);
+    if (lon !== null && lat !== null) return { lon, lat };
+    for (const item of current) stack.push(item);
   }
   return { lat: null, lon: null };
 }
 
 function regionFromEvent(event: EonetEvent): string {
   const title = event.title || "";
-  const parts = title.split(" - ");
-  if (parts.length > 1) return parts[parts.length - 1].trim() || "GLOBAL";
-  const comma = title.split(",");
-  if (comma.length > 1) return comma[comma.length - 1].trim() || "GLOBAL";
+  const dashParts = title.split(" - ");
+  if (dashParts.length > 1) return dashParts.at(-1)?.trim() || "GLOBAL";
+  const commaParts = title.split(",");
+  if (commaParts.length > 1) return commaParts.at(-1)?.trim() || "GLOBAL";
   return "GLOBAL";
 }
 
+function dedupHashFromPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const value = (payload as Record<string, unknown>).dedup_hash;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(hash))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 async function recordConnectorHealth(
   supabase: ReturnType<typeof createClient>,
   args: { success: boolean; inserted?: number; durationMs?: number; error?: string },
-) {
+): Promise<void> {
   const now = new Date().toISOString();
-  const { data: existing } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("telemetry_connectors")
     .select("consecutive_failures")
     .eq("connector_key", CONNECTOR_KEY)
     .maybeSingle();
+  if (lookupError) console.error("EONET connector lookup failed", lookupError.message);
 
-  const failures = args.success ? 0 : (existing?.consecutive_failures ?? 0) + 1;
-
-  await supabase.from("telemetry_connectors").upsert({
+  const row: Record<string, unknown> = {
     connector_key: CONNECTOR_KEY,
     connector_name: "NASA EONET Disaster Telemetry",
     connector_type: "natural-hazards",
@@ -137,9 +135,7 @@ async function recordConnectorHealth(
     auth_mode: "none",
     polling_interval_seconds: 1800,
     operational_status: args.success ? "active" : "degraded",
-    last_success_at: args.success ? now : undefined,
-    last_failure_at: args.success ? undefined : now,
-    consecutive_failures: failures,
+    consecutive_failures: args.success ? 0 : Number(existing?.consecutive_failures ?? 0) + 1,
     last_error_message: args.success ? null : (args.error ?? "unknown").slice(0, 500),
     trust_tier: "tier_1",
     cost_tier: "free-public",
@@ -148,143 +144,156 @@ async function recordConnectorHealth(
       source_url: EONET_URL,
       inserted: args.inserted ?? 0,
       duration_ms: args.durationMs ?? null,
-      purpose: "wildfire storm flood volcano drought dust smoke and other natural-hazard event monitoring",
+      analytical_scores: "not_assessed_at_ingestion",
     },
     updated_at: now,
-  }, { onConflict: "connector_key" });
+  };
+  if (args.success) row.last_success_at = now;
+  else row.last_failure_at = now;
+
+  const { error } = await supabase
+    .from("telemetry_connectors")
+    .upsert(row, { onConflict: "connector_key" });
+  if (error) console.error("EONET connector health upsert failed", error.message);
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
 
-  const started = Date.now();
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-  const __telemetryRun = await startProviderRun(supabase, {
+  const startedAt = Date.now();
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    { auth: { persistSession: false } },
+  );
+  const run = await startProviderRun(supabase, {
     provider_name: "nasa_eonet",
     endpoint: "ingest-nasa-eonet-disaster-telemetry",
-    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+    scheduler_source: auth.via === "cron" ? "cron" : "admin",
   });
 
   try {
-    const url = new URL(req.url);
-    const days = Math.max(1, Math.min(90, Number(url.searchParams.get("days") ?? 20)));
-    const status = url.searchParams.get("status") ?? "open";
-    const limit = Math.max(10, Math.min(500, Number(url.searchParams.get("limit") ?? 250)));
+    const requestUrl = new URL(req.url);
+    const requestedDays = Number(requestUrl.searchParams.get("days") ?? 20);
+    const requestedLimit = Number(requestUrl.searchParams.get("limit") ?? 250);
+    const days = Number.isFinite(requestedDays) ? Math.max(1, Math.min(90, Math.trunc(requestedDays))) : 20;
+    const limit = Number.isFinite(requestedLimit) ? Math.max(10, Math.min(500, Math.trunc(requestedLimit))) : 250;
+    const statusParam = requestUrl.searchParams.get("status") ?? "open";
+    const status = ["open", "closed", "all"].includes(statusParam) ? statusParam : "open";
 
-    const api = new URL(EONET_URL);
-    api.searchParams.set("days", String(days));
-    api.searchParams.set("status", status);
-    api.searchParams.set("limit", String(limit));
+    const apiUrl = new URL(EONET_URL);
+    apiUrl.searchParams.set("days", String(days));
+    apiUrl.searchParams.set("status", status);
+    apiUrl.searchParams.set("limit", String(limit));
 
-    const res = await fetch(api.toString(), {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "AICIS-Divine-Core/1.0 NASA EONET telemetry",
-      },
+    const response = await fetch(apiUrl, {
+      headers: { "Accept": "application/json", "User-Agent": "AICIS/1.0 NASA EONET telemetry" },
+      signal: AbortSignal.timeout(20_000),
     });
-    if (!res.ok) throw new Error(`NASA EONET failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
+    if (!response.ok) throw new Error(`NASA EONET failed: HTTP ${response.status}`);
 
-    const feed = (await res.json()) as EonetResponse;
+    const feed = await response.json() as EonetResponse;
     const events = Array.isArray(feed.events) ? feed.events : [];
-    const rows = [];
+    const rows: TelemetryRow[] = [];
 
     for (const event of events) {
-      const cat = primaryCategory(event);
-      const geom = event.geometry?.[0];
-      const observedAt = geom?.date ? new Date(geom.date).toISOString() : new Date().toISOString();
+      if (!event.id || !event.title) continue;
+      const category = primaryCategory(event);
+      const geometry = event.geometry?.[0];
+      if (!geometry?.date) continue;
+      const observedAtMs = Date.parse(geometry.date);
+      if (!Number.isFinite(observedAtMs)) continue;
+      const observedAt = new Date(observedAtMs).toISOString();
+      const magnitude = finiteOrNull(geometry.magnitudeValue);
       const { lat, lon } = extractCoordinates(event);
-      const anomaly = anomalyScore(event);
-      const region = regionFromEvent(event);
-      const dedup = await sha256Hex(`${CONNECTOR_KEY}|${event.id}|${observedAt}|${cat}`);
+      const dedupHash = await sha256Hex(`${CONNECTOR_KEY}|${event.id}|${observedAt}|${category}`);
 
       rows.push({
         connector_key: CONNECTOR_KEY,
-        observation_type: `natural_hazard_${cat.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+        observation_type: `natural_hazard_${category.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
         observed_entity: event.title,
-        observed_region: region,
+        observed_region: regionFromEvent(event),
         observed_at: observedAt,
-        observation_value: anomaly,
-        observation_unit: "risk_score",
-        confidence_score: event.sources?.length ? Math.min(95, 75 + event.sources.length * 5) : 75,
-        anomaly_score: anomaly,
+        observation_value: magnitude,
+        observation_unit: magnitude !== null ? geometry.magnitudeUnit ?? null : null,
+        confidence_score: null,
+        anomaly_score: null,
         raw_payload: {
           eonet_id: event.id,
-          dedup_hash: dedup,
+          dedup_hash: dedupHash,
           title: event.title,
-          description: event.description,
-          link: event.link,
-          category: cat,
+          description: event.description ?? null,
+          link: event.link ?? null,
+          category,
           categories: event.categories ?? [],
           sources: event.sources ?? [],
-          closed: event.closed,
-          magnitude_value: geom?.magnitudeValue ?? null,
-          magnitude_unit: geom?.magnitudeUnit ?? null,
-          geometry_type: geom?.type ?? null,
+          closed: event.closed ?? null,
+          magnitude_value: magnitude,
+          magnitude_unit: geometry.magnitudeUnit ?? null,
+          geometry_type: geometry.type ?? null,
           latitude: lat,
           longitude: lon,
           provider: "NASA EONET",
           feed: "events",
+          analytical_confidence: "not_assessed",
+          analytical_anomaly: "not_assessed",
         },
       });
     }
 
     let inserted = 0;
     if (rows.length > 0) {
-      const since = new Date(Date.now() - 45 * 24 * 3600_000).toISOString();
-      const { data: existing, error: existingErr } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from("telemetry_observations")
         .select("raw_payload")
         .eq("connector_key", CONNECTOR_KEY)
-        .gte("created_at", since);
-      if (existingErr) throw existingErr;
+        .gte("created_at", new Date(Date.now() - 45 * 86_400_000).toISOString());
+      if (existingError) throw existingError;
 
-      const existingHashes = new Set((existing ?? []).map((r: any) => r?.raw_payload?.dedup_hash).filter(Boolean));
-      const fresh = rows.filter((r: any) => !existingHashes.has(r.raw_payload.dedup_hash));
-      if (fresh.length > 0) {
-        const { error: insertErr } = await supabase.from("telemetry_observations").insert(fresh);
-        if (insertErr) throw insertErr;
-        inserted = fresh.length;
+      const existingHashes = new Set(
+        ((existing ?? []) as ExistingTelemetry[])
+          .map((row) => dedupHashFromPayload(row.raw_payload))
+          .filter((hash): hash is string => Boolean(hash)),
+      );
+      const freshRows = rows.filter((row) => !existingHashes.has(row.raw_payload.dedup_hash));
+      if (freshRows.length > 0) {
+        const { error } = await supabase.from("telemetry_observations").insert(freshRows);
+        if (error) throw error;
+        inserted = freshRows.length;
       }
     }
 
-    await recordConnectorHealth(supabase, { success: true, inserted, durationMs: Date.now() - started });
-
+    const durationMs = Date.now() - startedAt;
+    await recordConnectorHealth(supabase, { success: true, inserted, durationMs });
     await supabase.from("automation_logs").insert({
       job_name: "ingest-nasa-eonet-disaster-telemetry",
       status: "success",
-      message: `events=${events.length} inserted=${inserted} duration_ms=${Date.now() - started}`,
+      message: `events=${events.length} normalized=${rows.length} inserted=${inserted} duration_ms=${durationMs}`,
     });
 
-    try {
-      await supabase.rpc("generate_telemetry_health_summary");
-      await supabase.rpc("generate_strategic_digital_twins");
-      await supabase.rpc("generate_operational_risk_assessments");
-    } catch (e) {
-      console.warn("post EONET telemetry refresh skipped", e);
+    for (const rpcName of ["generate_telemetry_health_summary", "generate_strategic_digital_twins", "generate_operational_risk_assessments"]) {
+      const { error } = await supabase.rpc(rpcName);
+      if (error) console.warn(`${rpcName} refresh skipped`, error.message);
     }
-    await finishProviderRun(supabase, __telemetryRun);
 
-
-    return new Response(JSON.stringify({
-      status: "success",
-      connector_key: CONNECTOR_KEY,
-      events: events.length,
-      inserted,
-      duration_ms: Date.now() - started,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await recordConnectorHealth(supabase, { success: false, durationMs: Date.now() - started, error: msg });
+    await finishProviderRun(supabase, run, {
+      records_fetched: events.length,
+      records_inserted: inserted,
+      records_normalized: rows.length,
+    });
+    return json({ status: "success", connector_key: CONNECTOR_KEY, events: events.length, normalized: rows.length, inserted, duration_ms: durationMs });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const durationMs = Date.now() - startedAt;
+    await recordConnectorHealth(supabase, { success: false, durationMs, error: message });
     await supabase.from("automation_logs").insert({
       job_name: "ingest-nasa-eonet-disaster-telemetry",
       status: "error",
-      message: msg.slice(0, 500),
+      message: message.slice(0, 500),
     });
-    await failProviderRun(supabase, __telemetryRun, e);
-
-    return new Response(JSON.stringify({ status: "error", error: msg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    await failProviderRun(supabase, run, error);
+    return json({ status: "error", error: message }, 500);
   }
 });
