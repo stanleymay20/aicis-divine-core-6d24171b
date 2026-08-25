@@ -1,9 +1,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 const JOB_NAME = "cron-daily-mint";
@@ -13,6 +14,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const guard = await requireAdminOrCron(req, corsHeaders);
+  if (guard.response) return guard.response;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -44,16 +48,16 @@ serve(async (req) => {
       await supabase.from("automation_logs").update({
         status: "success",
         message: `SC minted: ${JSON.stringify(data)} [${durationMs}ms]`,
-      } as any).eq("id", logId);
+      }).eq("id", logId);
     }
 
     return new Response(
       JSON.stringify({ ok: true, data, duration_ms: durationMs }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (e) {
+  } catch (error) {
     const durationMs = Date.now() - startedAt;
-    const errMsg = (e as Error).message;
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
     const isTimeout = errMsg.includes("timed out");
     console.error(`Error in ${JOB_NAME}:`, errMsg);
 
@@ -61,7 +65,7 @@ serve(async (req) => {
       await supabase.from("automation_logs").update({
         status: isTimeout ? "timeout" : "error",
         message: `${errMsg} [${durationMs}ms]`,
-      } as any).eq("id", logId);
+      }).eq("id", logId);
     } else {
       await supabase.from("automation_logs").insert({
         job_name: JOB_NAME,
