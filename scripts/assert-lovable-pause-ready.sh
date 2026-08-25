@@ -53,7 +53,7 @@ required_files=(
   scripts/aicis-storage-backup.mjs
   scripts/aicis-migration-verify.sh
   scripts/aicis-source-inventory.sh
-  target-only-migrations/rebind-cron-to-target.sql
+  migration/target/001_rebind_pipeline_cron.sql
 )
 for file in "${required_files[@]}"; do
   [[ -f "$file" ]] || fail "Required migration control missing: $file"
