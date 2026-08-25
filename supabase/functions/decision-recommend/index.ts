@@ -1,12 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { aiChat } from "../_shared/ai-gateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/** Classify evidence density from signal counts */
 function classifySignalDensity(counts: { snapshots: number; anomalies: number; alerts: number; crises: number }): "strong" | "moderate" | "weak" | "insufficient" {
   const total = counts.snapshots + counts.anomalies + counts.alerts + counts.crises;
   const sources = [counts.snapshots > 0, counts.anomalies > 0, counts.alerts > 0, counts.crises > 0].filter(Boolean).length;
@@ -16,13 +16,13 @@ function classifySignalDensity(counts: { snapshots: number; anomalies: number; a
   return "insufficient";
 }
 
+const PRIORITIES = new Set(["critical", "high", "medium", "low"]);
+const URGENCIES = new Set(["immediate", "24h", "7d", "30d", "monitor"]);
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -30,7 +30,6 @@ serve(async (req) => {
 
     const { country_iso3, domain } = await req.json().catch(() => ({}));
 
-    // 1. Pull latest performance snapshots
     let snapshotQuery = supabase
       .from("country_performance_snapshots")
       .select("iso3, domain, performance_index, momentum_score, risk_pressure_score, systemic_fragility_score, forecast_direction, confidence_score, structural_break_count")
@@ -39,7 +38,6 @@ serve(async (req) => {
     if (country_iso3) snapshotQuery = snapshotQuery.eq("iso3", country_iso3);
     if (domain) snapshotQuery = snapshotQuery.eq("domain", domain);
 
-    // 2. Active anomalies
     const anomalyQuery = supabase
       .from("anomaly_detections")
       .select("division, anomaly_type, severity, description, deviation_percentage, detected_at")
@@ -47,7 +45,6 @@ serve(async (req) => {
       .order("detected_at", { ascending: false })
       .limit(20);
 
-    // 3. Critical alerts
     const alertQuery = supabase
       .from("critical_alerts")
       .select("headline, level, country, severity, event_type, triggered_at")
@@ -55,7 +52,6 @@ serve(async (req) => {
       .order("triggered_at", { ascending: false })
       .limit(15);
 
-    // 4. Active crises
     const crisisQuery = supabase
       .from("crisis_events")
       .select("region, kind, severity, status, details_md")
@@ -76,7 +72,6 @@ serve(async (req) => {
 
     const evidenceDensity = classifySignalDensity(signalCounts);
 
-    // WEAK SIGNAL FALLBACK: if insufficient evidence, return advisory-only response
     if (evidenceDensity === "insufficient") {
       return new Response(JSON.stringify({
         ok: true,
@@ -88,9 +83,7 @@ serve(async (req) => {
         generated_at: new Date().toISOString(),
         scope: { country_iso3: country_iso3 || "global", domain: domain || "all" },
         signal_counts: signalCounts,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const signalContext = {
@@ -101,146 +94,85 @@ serve(async (req) => {
       request_scope: { country_iso3: country_iso3 || "global", domain: domain || "all" },
     };
 
-    const systemPrompt = `You are the AICIS Decision Recommendation Engine — an AI-assisted advisory system for global risk management.
+    const systemPrompt = `You are the AICIS Decision Recommendation Engine, an AI-assisted advisory layer over AICIS evidence.
 
-IMPORTANT FRAMING:
-- You synthesize AICIS structured intelligence signals into advisory recommendations
-- Your recommendations are LLM-guided interpretations of system evidence, NOT autonomous decisions
-- Confidence scores are heuristic estimates, NOT statistically calibrated probabilities
-- You have NO access to historical outcome data — recommendations are NOT outcome-trained
+EVIDENCE DENSITY: ${evidenceDensity}
+${evidenceDensity === "weak" ? "Signal evidence is sparse. Be conservative and prefer monitor recommendations." : ""}
 
-EVIDENCE DENSITY for this request: ${evidenceDensity}
-${evidenceDensity === "weak" ? "WARNING: Signal evidence is sparse. Be conservative. Prefer 'monitor' recommendations over action recommendations. State uncertainty explicitly." : ""}
+Rules:
+- Use ONLY the supplied AICIS evidence.
+- Every recommendation must cite concrete evidence in signal_summary.
+- Separate observed evidence from AI interpretation.
+- Recommendations are advisory, not autonomous decisions.
+- Confidence is heuristic, not a calibrated probability.
+- Never invent countries, metrics, incidents, or outcomes.
+- If evidence is weak, prefer monitor.
+- Return STRICT JSON only in this shape:
+{"recommendations":[{"id":"REC-001","priority":"critical|high|medium|low","title":"...","domain":"...","affected_countries":["ISO3"],"signal_summary":"...","ai_reasoning":"...","recommended_action":"...","alternatives":["..."],"confidence":0,"urgency":"immediate|24h|7d|30d|monitor","expected_impact":"...","risk_if_ignored":"..."}],"global_assessment":"...","signal_quality":"strong|moderate|weak|insufficient"}`;
 
-RULES:
-- Every recommendation MUST cite specific AICIS metrics (e.g., "risk_pressure_score: 78.3 for NGA/security")
-- Clearly separate AICIS evidence (system signals) from AI reasoning (your interpretation)
-- If evidence is weak for a recommendation, explicitly say so
-- Prioritize by urgency and impact
-- Be specific about WHAT action, WHO should act, WHEN
-- Never fabricate data
-- When uncertain, recommend "monitor" rather than action
-- Cap confidence at 85 for weak evidence, 90 for moderate, 95 for strong`;
+    const userPrompt = `Analyze these AICIS signals and generate at most 8 recommendations.\n\n${JSON.stringify(signalContext, null, 2)}`;
 
-    const userPrompt = `Analyze these live AICIS intelligence signals and generate decision recommendations.
-
-Evidence density: ${evidenceDensity} (${signalCounts.snapshots} snapshots, ${signalCounts.anomalies} anomalies, ${signalCounts.alerts} alerts, ${signalCounts.crises} crises)
-
-${JSON.stringify(signalContext, null, 2)}
-
-Focus on:
-1. Highest-risk situations requiring immediate attention
-2. Emerging patterns suggesting upcoming crises
-3. Opportunities where intervention prevents escalation
-4. Resource allocation priorities`;
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "submit_recommendations",
-            description: "Submit structured decision recommendations based on intelligence signals.",
-            parameters: {
-              type: "object",
-              properties: {
-                recommendations: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      id: { type: "string", description: "Short unique ID like REC-001" },
-                      priority: { type: "string", enum: ["critical", "high", "medium", "low"] },
-                      title: { type: "string", description: "One-line recommendation title" },
-                      domain: { type: "string", description: "Primary domain" },
-                      affected_countries: { type: "array", items: { type: "string" }, description: "ISO3 codes" },
-                      signal_summary: { type: "string", description: "AICIS evidence driving this recommendation" },
-                      ai_reasoning: { type: "string", description: "AI interpretation and reasoning chain" },
-                      recommended_action: { type: "string", description: "Specific action to take" },
-                      alternatives: { type: "array", items: { type: "string" } },
-                      confidence: { type: "number", description: "0-95 heuristic confidence" },
-                      urgency: { type: "string", enum: ["immediate", "24h", "7d", "30d", "monitor"] },
-                      expected_impact: { type: "string" },
-                      risk_if_ignored: { type: "string" },
-                    },
-                    required: ["id", "priority", "title", "domain", "signal_summary", "ai_reasoning", "recommended_action", "confidence", "urgency"],
-                    additionalProperties: false,
-                  },
-                },
-                global_assessment: { type: "string" },
-                signal_quality: { type: "string", enum: ["strong", "moderate", "weak", "insufficient"] },
-              },
-              required: ["recommendations", "global_assessment", "signal_quality"],
-              additionalProperties: false,
-            },
-          },
-        }],
-        tool_choice: { type: "function", function: { name: "submit_recommendations" } },
-      }),
+    const ai = await aiChat({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.2,
+      responseFormat: { type: "json_object" },
+      timeoutMs: 25_000,
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited. Please try again shortly." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errText = await response.text();
-      console.error("AI gateway error:", response.status, errText);
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
+    let parsed: any;
+    try { parsed = JSON.parse(ai.content); }
+    catch { throw new Error("AI did not return valid structured recommendations"); }
 
-    const aiResult = await response.json();
-    const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) {
-      throw new Error("AI did not return structured recommendations");
-    }
+    const confidenceCap = evidenceDensity === "weak" ? 75 : evidenceDensity === "moderate" ? 85 : 92;
+    const cappedRecs = (Array.isArray(parsed.recommendations) ? parsed.recommendations : [])
+      .slice(0, 8)
+      .filter((r: any) => r && typeof r === "object" && typeof r.title === "string" && typeof r.signal_summary === "string" && typeof r.recommended_action === "string")
+      .map((r: any, index: number) => {
+        const rawConfidence = Number(r.confidence);
+        const confidence = Number.isFinite(rawConfidence) ? Math.max(0, Math.min(confidenceCap, rawConfidence)) : 0;
+        return {
+          id: typeof r.id === "string" && r.id ? r.id.slice(0, 40) : `REC-${String(index + 1).padStart(3, "0")}`,
+          priority: PRIORITIES.has(r.priority) ? r.priority : "medium",
+          title: r.title.slice(0, 300),
+          domain: typeof r.domain === "string" ? r.domain.slice(0, 80) : (domain || "system"),
+          affected_countries: Array.isArray(r.affected_countries) ? r.affected_countries.filter((c: any) => typeof c === "string" && /^[A-Z]{3}$/.test(c)).slice(0, 20) : [],
+          signal_summary: r.signal_summary.slice(0, 2000),
+          ai_reasoning: typeof r.ai_reasoning === "string" ? r.ai_reasoning.slice(0, 2000) : "",
+          recommended_action: r.recommended_action.slice(0, 2000),
+          alternatives: Array.isArray(r.alternatives) ? r.alternatives.filter((a: any) => typeof a === "string").slice(0, 5).map((a: string) => a.slice(0, 500)) : [],
+          confidence,
+          urgency: URGENCIES.has(r.urgency) ? r.urgency : "monitor",
+          expected_impact: typeof r.expected_impact === "string" ? r.expected_impact.slice(0, 1000) : "",
+          risk_if_ignored: typeof r.risk_if_ignored === "string" ? r.risk_if_ignored.slice(0, 1000) : "",
+        };
+      });
 
-    const recommendations = JSON.parse(toolCall.function.arguments);
+    const globalAssessment = typeof parsed.global_assessment === "string" ? parsed.global_assessment.slice(0, 4000) : "No global assessment returned.";
+    const signalQuality = ["strong", "moderate", "weak", "insufficient"].includes(parsed.signal_quality) ? parsed.signal_quality : evidenceDensity;
 
-    // Log to decision audit + recommendation runs table
     const runPayload = {
       scope_country_iso3: country_iso3 || "global",
       scope_domain: domain || "all",
       evidence_density: evidenceDensity,
       signal_counts: signalCounts,
-      model_used: "gemini-2.5-flash",
-      recommendation_count: recommendations.recommendations?.length || 0,
-      global_assessment: recommendations.global_assessment,
-      recommendations_payload: recommendations.recommendations,
+      model_used: ai.model,
+      recommendation_count: cappedRecs.length,
+      global_assessment: globalAssessment,
+      recommendations_payload: cappedRecs,
       outcome_trained: false,
     };
-
-    // Cap confidence based on evidence density
-    const confidenceCap = evidenceDensity === "weak" ? 75 : evidenceDensity === "moderate" ? 85 : 92;
-    const cappedRecs = (recommendations.recommendations || []).map((r: any) => ({
-      ...r,
-      confidence: Math.min(r.confidence, confidenceCap),
-    }));
 
     await Promise.all([
       supabase.from("ai_decision_logs").insert({
         division_key: domain || "system",
-        model_name: "gemini-2.5-flash",
-        input_summary: `Decision recommendation for ${country_iso3 || 'global'} / ${domain || 'all domains'}`,
-        output_summary: recommendations.global_assessment,
+        model_name: ai.model,
+        input_summary: `Decision recommendation for ${country_iso3 || "global"} / ${domain || "all domains"}`,
+        output_summary: globalAssessment,
         confidence: cappedRecs[0]?.confidence || 0,
-        explanation: { signal_counts: signalCounts, evidence_density: evidenceDensity },
+        explanation: { signal_counts: signalCounts, evidence_density: evidenceDensity, provider: ai.provider, model: ai.model, advisory_only: true },
       }),
       supabase.from("decision_recommendation_runs").insert(runPayload),
     ]);
@@ -248,22 +180,20 @@ Focus on:
     return new Response(JSON.stringify({
       ok: true,
       recommendations: cappedRecs,
-      global_assessment: recommendations.global_assessment,
-      signal_quality: recommendations.signal_quality,
+      global_assessment: globalAssessment,
+      signal_quality: signalQuality,
       evidence_density: evidenceDensity,
       outcome_trained: false,
+      provider: ai.provider,
+      model: ai.model,
       generated_at: new Date().toISOString(),
       scope: { country_iso3: country_iso3 || "global", domain: domain || "all" },
       signal_counts: signalCounts,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
     console.error("Decision recommend error:", error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Unknown error",
-    }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
