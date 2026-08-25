@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Fail when a verify_jwt=false Edge Function uses service role without caller validation."""
+"""Fail when any service-role Edge Function lacks explicit caller validation.
+
+Supabase gateway JWT verification is not, by itself, authorization for a
+privileged worker: legacy anon keys are JWTs and can satisfy gateway signature
+verification. Therefore every Edge Function that can obtain
+SUPABASE_SERVICE_ROLE_KEY must establish an explicit trust boundary in-function
+(user/admin/tier auth, cron secret, webhook/signature verification, etc.).
+"""
 
 from __future__ import annotations
 
@@ -58,47 +65,65 @@ def has_caller_validation(source: str) -> bool:
 
 def main() -> int:
     config = parse_config(CONFIG.read_text(encoding="utf-8"))
-    false_jwt = sorted(name for name, verify in config.items() if not verify)
-    high_risk: list[str] = []
-    missing_source: list[str] = []
-    custom_guarded: list[str] = []
-    public_or_nonprivileged: list[str] = []
+    function_paths = sorted(FUNCTIONS.glob("*/index.ts"))
 
-    for name in false_jwt:
-        path = FUNCTIONS / name / "index.ts"
-        if not path.exists():
-            missing_source.append(name)
-            continue
+    privileged_guarded: list[str] = []
+    privileged_unguarded: list[str] = []
+    nonprivileged_public_or_gateway: list[str] = []
+    verify_jwt_false_privileged: list[str] = []
+    verify_jwt_true_or_default_privileged: list[str] = []
+
+    for path in function_paths:
+        name = path.parent.name
         source = path.read_text(encoding="utf-8")
         uses_service_role = "SUPABASE_SERVICE_ROLE_KEY" in source
         guarded = has_caller_validation(source)
+        verify_jwt = config.get(name, True)
 
-        if uses_service_role and not guarded:
-            high_risk.append(name)
-        elif uses_service_role and guarded:
-            custom_guarded.append(name)
-        else:
-            public_or_nonprivileged.append(name)
+        if uses_service_role:
+            if verify_jwt:
+                verify_jwt_true_or_default_privileged.append(name)
+            else:
+                verify_jwt_false_privileged.append(name)
 
-    print("AICIS Edge Function auth audit")
-    print(f"verify_jwt_false={len(false_jwt)}")
-    print(f"privileged_custom_guarded={len(custom_guarded)}")
-    print(f"public_or_nonprivileged_review={len(public_or_nonprivileged)}")
-    print(f"missing_source={len(missing_source)}")
-    print(f"high_risk_privileged_unguarded={len(high_risk)}")
+            if guarded:
+                privileged_guarded.append(name)
+            else:
+                privileged_unguarded.append(name)
+        elif not verify_jwt:
+            nonprivileged_public_or_gateway.append(name)
 
-    if custom_guarded:
-        print("guarded=" + ",".join(custom_guarded))
-    if public_or_nonprivileged:
-        print("public_or_nonprivileged=" + ",".join(public_or_nonprivileged))
-    if missing_source:
-        print("missing_source=" + ",".join(missing_source))
-    if high_risk:
-        print("HIGH_RISK=" + ",".join(high_risk))
-        print("FAIL: verify_jwt=false service-role functions require explicit caller validation.")
+    configured_missing_source = sorted(
+        name for name in config
+        if not (FUNCTIONS / name / "index.ts").exists()
+    )
+
+    print("AICIS Edge Function privileged-auth audit")
+    print(f"functions_scanned={len(function_paths)}")
+    print(f"service_role_functions={len(privileged_guarded) + len(privileged_unguarded)}")
+    print(f"privileged_guarded={len(privileged_guarded)}")
+    print(f"privileged_unguarded={len(privileged_unguarded)}")
+    print(f"service_role_verify_jwt_false={len(verify_jwt_false_privileged)}")
+    print(f"service_role_verify_jwt_true_or_default={len(verify_jwt_true_or_default_privileged)}")
+    print(f"verify_jwt_false_nonprivileged_review={len(nonprivileged_public_or_gateway)}")
+    print(f"configured_missing_source={len(configured_missing_source)}")
+
+    if privileged_guarded:
+        print("guarded=" + ",".join(privileged_guarded))
+    if nonprivileged_public_or_gateway:
+        print("public_or_nonprivileged=" + ",".join(nonprivileged_public_or_gateway))
+    if configured_missing_source:
+        print("configured_missing_source=" + ",".join(configured_missing_source))
+
+    if privileged_unguarded:
+        print("HIGH_RISK_PRIVILEGED_UNGUARDED=" + ",".join(privileged_unguarded))
+        print(
+            "FAIL: service-role Edge Functions require explicit caller validation; "
+            "gateway verify_jwt alone is not a privileged authorization boundary."
+        )
         return 1
 
-    print("PASS: no verify_jwt=false service-role function is missing caller validation.")
+    print("PASS: every service-role Edge Function has an explicit caller trust boundary.")
     return 0
 
 
