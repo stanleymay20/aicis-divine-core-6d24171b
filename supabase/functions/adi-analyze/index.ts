@@ -89,19 +89,23 @@ serve(async (req) => {
         deviation_percentage: signal.deviation_percentage ?? null,
       };
 
-      const aiResult = await resilientCall(`${FN}:ai`, async () => aiChat({
-        messages: [{
-          role: "system",
-          content: `You are ADI, AICIS's decision advisory co-pilot operating strictly in SHADOW MODE. Generate decision hypotheses for human analyst review. Use only the supplied evidence envelope. Never present an option as a validated directive, observed fact, guaranteed outcome, or autonomous action. If evidence_class says user_supplied_unverified_premise, state that the premise is unverified and do not transform it into a fact. Return ONLY valid JSON with exactly three options: {"options":[{"rank":1,"action":"...","description":"...","effectiveness_pct":0,"risk_level":"low|medium|high","risk_assessment":"...","tradeoffs":"...","timeframe":"immediate|7_days|30_days|90_days","resources_required":"minimal|moderate|significant|massive"}],"reasoning":"...","confidence":0,"domain":"..."}. Effectiveness and confidence are model estimates, not measurements.`,
-        }, {
-          role: "user",
-          content: `Evidence envelope:\n${JSON.stringify(evidenceEnvelope, null, 2)}\n\nGenerate exactly three conservative decision hypotheses grounded only in this evidence.`,
-        }],
-        responseFormat: { type: "json_object" },
-        temperature: 0.2,
-        maxTokens: 1400,
-        timeoutMs: 20000,
-      })), { maxRetries: 1, timeoutMs: 25000 });
+      const aiResult = await resilientCall(
+        `${FN}:ai`,
+        async () => aiChat({
+          messages: [{
+            role: "system",
+            content: `You are ADI, AICIS's decision advisory co-pilot operating strictly in SHADOW MODE. Generate decision hypotheses for human analyst review. Use only the supplied evidence envelope. Never present an option as a validated directive, observed fact, guaranteed outcome, or autonomous action. If evidence_class says user_supplied_unverified_premise, state that the premise is unverified and do not transform it into a fact. Return ONLY valid JSON with exactly three options: {"options":[{"rank":1,"action":"...","description":"...","effectiveness_pct":0,"risk_level":"low|medium|high","risk_assessment":"...","tradeoffs":"...","timeframe":"immediate|7_days|30_days|90_days","resources_required":"minimal|moderate|significant|massive"}],"reasoning":"...","confidence":0,"domain":"..."}. Effectiveness and confidence are model estimates, not measurements.`,
+          }, {
+            role: "user",
+            content: `Evidence envelope:\n${JSON.stringify(evidenceEnvelope, null, 2)}\n\nGenerate exactly three conservative decision hypotheses grounded only in this evidence.`,
+          }],
+          responseFormat: { type: "json_object" },
+          temperature: 0.2,
+          maxTokens: 1400,
+          timeoutMs: 20000,
+        }),
+        { maxRetries: 1, timeoutMs: 25000 },
+      );
 
       let parsed: any;
       try {
@@ -153,23 +157,26 @@ serve(async (req) => {
       }
       decisions.push(decision);
 
-      // Do not simulate operational outcomes for an unverified premise.
       if (signal.type === "manual_query") continue;
 
       const topOption = options[0];
-      const scenarioAI = await resilientCall(`${FN}:scenarios`, async () => aiChat({
-        messages: [{
-          role: "system",
-          content: `Generate exactly three model-simulated counterfactuals: best_case, baseline, worst_case. These numbers are hypothetical sensitivity estimates, NOT observed forecasts. Use only the supplied evidence and decision hypothesis. Return ONLY valid JSON: {"scenarios":[{"type":"best_case|baseline|worst_case","name":"...","stability_delta_30d":0,"stability_delta_60d":0,"stability_delta_90d":0,"confidence":0,"reasoning":"..."}]}.`,
-        }, {
-          role: "user",
-          content: `Evidence: ${JSON.stringify(evidenceEnvelope)}\nDecision hypothesis: ${JSON.stringify(topOption)}`,
-        }],
-        responseFormat: { type: "json_object" },
-        temperature: 0.25,
-        maxTokens: 1000,
-        timeoutMs: 15000,
-      })), { maxRetries: 0, timeoutMs: 18000 }).catch(() => null);
+      const scenarioAI = await resilientCall(
+        `${FN}:scenarios`,
+        async () => aiChat({
+          messages: [{
+            role: "system",
+            content: `Generate exactly three model-simulated counterfactuals: best_case, baseline, worst_case. These numbers are hypothetical sensitivity estimates, NOT observed forecasts. Use only the supplied evidence and decision hypothesis. Return ONLY valid JSON: {"scenarios":[{"type":"best_case|baseline|worst_case","name":"...","stability_delta_30d":0,"stability_delta_60d":0,"stability_delta_90d":0,"confidence":0,"reasoning":"..."}]}.`,
+          }, {
+            role: "user",
+            content: `Evidence: ${JSON.stringify(evidenceEnvelope)}\nDecision hypothesis: ${JSON.stringify(topOption)}`,
+          }],
+          responseFormat: { type: "json_object" },
+          temperature: 0.25,
+          maxTokens: 1000,
+          timeoutMs: 15000,
+        }),
+        { maxRetries: 0, timeoutMs: 18000 },
+      ).catch(() => null);
 
       if (scenarioAI) {
         let scenarioParsed: any = null;
