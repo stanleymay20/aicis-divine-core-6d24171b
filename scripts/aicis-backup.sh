@@ -11,10 +11,11 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RAW_DUMP="$OUT_DIR/aicis-${STAMP}.dump"
 ENC_DUMP="$RAW_DUMP.enc"
 SCHEMA_SQL="$OUT_DIR/aicis-${STAMP}-schema.sql"
+ENC_SCHEMA="$SCHEMA_SQL.enc"
 MANIFEST="$OUT_DIR/aicis-${STAMP}-manifest.txt"
 
 cleanup() {
-  rm -f "$RAW_DUMP"
+  rm -f "$RAW_DUMP" "$SCHEMA_SQL"
 }
 trap cleanup EXIT
 
@@ -32,7 +33,7 @@ pg_dump \
   --no-acl \
   --file="$RAW_DUMP"
 
-# Keep a schema-only SQL copy for human inspection/recovery planning.
+# Schema-only copy is useful for recovery planning, but is encrypted before upload.
 pg_dump \
   --dbname="$AICIS_DATABASE_URL" \
   --schema-only \
@@ -43,32 +44,38 @@ pg_dump \
 # Validate the custom dump before encrypting it.
 pg_restore --list "$RAW_DUMP" >/dev/null
 
-# Encrypt before anything can leave the runner/workstation.
-openssl enc \
-  -aes-256-cbc \
-  -pbkdf2 \
-  -iter 250000 \
-  -salt \
-  -in "$RAW_DUMP" \
-  -out "$ENC_DUMP" \
-  -pass env:AICIS_BACKUP_PASSPHRASE
+encrypt_file() {
+  local input="$1"
+  local output="$2"
+  openssl enc \
+    -aes-256-cbc \
+    -pbkdf2 \
+    -iter 250000 \
+    -salt \
+    -in "$input" \
+    -out "$output" \
+    -pass env:AICIS_BACKUP_PASSPHRASE
+}
+
+encrypt_file "$RAW_DUMP" "$ENC_DUMP"
+encrypt_file "$SCHEMA_SQL" "$ENC_SCHEMA"
 
 {
   echo "created_utc=$STAMP"
   echo "project_ref=psonnnuhjjskrdazrakk"
   echo "encrypted_dump=$(basename "$ENC_DUMP")"
-  echo "schema_file=$(basename "$SCHEMA_SQL")"
+  echo "encrypted_schema=$(basename "$ENC_SCHEMA")"
   echo "encrypted_dump_sha256=$(sha256sum "$ENC_DUMP" | awk '{print $1}')"
-  echo "schema_sha256=$(sha256sum "$SCHEMA_SQL" | awk '{print $1}')"
+  echo "encrypted_schema_sha256=$(sha256sum "$ENC_SCHEMA" | awk '{print $1}')"
   echo "encrypted_dump_bytes=$(wc -c < "$ENC_DUMP" | tr -d ' ')"
-  echo "schema_bytes=$(wc -c < "$SCHEMA_SQL" | tr -d ' ')"
+  echo "encrypted_schema_bytes=$(wc -c < "$ENC_SCHEMA" | tr -d ' ')"
   echo "pg_restore_validation=passed"
 } > "$MANIFEST"
 
-chmod 600 "$ENC_DUMP" "$SCHEMA_SQL" "$MANIFEST"
+chmod 600 "$ENC_DUMP" "$ENC_SCHEMA" "$MANIFEST"
 
 echo "AICIS encrypted backup created successfully:"
 echo "  $ENC_DUMP"
-echo "  $SCHEMA_SQL"
+echo "  $ENC_SCHEMA"
 echo "  $MANIFEST"
-echo "NOTE: database dumps include storage metadata, not Storage object bytes themselves."
+echo "NOTE: database dumps include Storage metadata, not Storage object bytes themselves."
