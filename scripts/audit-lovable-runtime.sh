@@ -4,19 +4,28 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-STRICT=false
-if [[ "${1:-}" == "--strict" ]]; then
-  STRICT=true
-fi
+MODE="report"
+case "${1:-}" in
+  --strict) MODE="strict" ;;
+  --migration-gate) MODE="migration_gate" ;;
+  "") ;;
+  *) echo "Usage: $0 [--strict|--migration-gate]" >&2; exit 2 ;;
+esac
 
 PATTERN='ai\.gateway\.lovable\.dev|LOVABLE_API_KEY|@lovable\.dev/cloud-auth-js|createLovableAuth|lovable-tagger'
-
-# Runtime-bearing paths only. Historical planning/memory/docs are intentionally
-# excluded because they do not make the deployed application depend on Lovable.
 RUNTIME_PATHS=(src supabase/functions vite.config.ts package.json)
 
+# Temporary migration allowlist. These are the only runtime files still permitted
+# to contain direct Lovable references. Remove each path as it is converted. When
+# this list becomes empty, CI should switch to --strict.
+MIGRATION_ALLOWLIST=(
+  "supabase/functions/aicis-intelligence/index.ts"
+  "supabase/functions/decision-infer/index.ts"
+)
+
 TMP="$(mktemp)"
-trap 'rm -f "$TMP"' EXIT
+UNEXPECTED="$(mktemp)"
+trap 'rm -f "$TMP" "$UNEXPECTED"' EXIT
 
 for path in "${RUNTIME_PATHS[@]}"; do
   [[ -e "$path" ]] || continue
@@ -27,7 +36,7 @@ for path in "${RUNTIME_PATHS[@]}"; do
       --exclude='*.map' \
       "$PATTERN" "$path" >> "$TMP" || true
   else
-    grep -nE "$PATTERN" "$path" >> "$TMP" || true
+    grep -nHE "$PATTERN" "$path" >> "$TMP" || true
   fi
 done
 
@@ -37,14 +46,46 @@ COUNT="$(wc -l < "$TMP" | tr -d ' ')"
 echo "AICIS Lovable runtime dependency audit"
 echo "runtime_matches=$COUNT"
 
-if [[ "$COUNT" -gt 0 ]]; then
-  echo
-  cat "$TMP"
-  echo
-  echo "AICIS is NOT yet Lovable-runtime-independent."
-  if [[ "$STRICT" == "true" ]]; then
+if [[ "$COUNT" -eq 0 ]]; then
+  echo "No direct Lovable runtime dependencies found."
+  exit 0
+fi
+
+cat "$TMP"
+echo
+
+if [[ "$MODE" == "strict" ]]; then
+  echo "AICIS is NOT Lovable-runtime-independent."
+  exit 1
+fi
+
+if [[ "$MODE" == "migration_gate" ]]; then
+  while IFS= read -r match; do
+    [[ -z "$match" ]] && continue
+    file="${match%%:*}"
+    allowed=false
+    for exception in "${MIGRATION_ALLOWLIST[@]}"; do
+      if [[ "$file" == "$exception" ]]; then
+        allowed=true
+        break
+      fi
+    done
+    if [[ "$allowed" != "true" ]]; then
+      printf '%s\n' "$match" >> "$UNEXPECTED"
+    fi
+  done < "$TMP"
+
+  if [[ -s "$UNEXPECTED" ]]; then
+    echo "Unexpected Lovable runtime dependency outside migration allowlist:"
+    cat "$UNEXPECTED"
     exit 1
   fi
-else
-  echo "No direct Lovable runtime dependencies found."
+
+  echo "Migration gate passed: all remaining runtime matches are confined to the explicit allowlist."
+  printf 'Allowed files remaining:\n'
+  printf ' - %s\n' "${MIGRATION_ALLOWLIST[@]}"
+  exit 0
 fi
+
+# Report-only mode.
+echo "AICIS is NOT yet Lovable-runtime-independent."
