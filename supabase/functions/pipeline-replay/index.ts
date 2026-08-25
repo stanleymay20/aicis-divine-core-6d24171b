@@ -20,6 +20,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 type Lane = "geocode" | "translation" | "country" | "enrichment" | "all";
+type ReplayRequestBody = Record<string, unknown>;
 
 const LANES: Record<Exclude<Lane, "all">, { rpc: string; args: (limit: number, force: boolean) => Record<string, unknown>; processor: string }> = {
   geocode: {
@@ -43,6 +44,16 @@ const LANES: Record<Exclude<Lane, "all">, { rpc: string; args: (limit: number, f
     processor: "enrich-global-signals",
   },
 };
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error) || String(error);
+  } catch {
+    return String(error);
+  }
+}
 
 function fireAndForget(fn: string) {
   try {
@@ -71,8 +82,13 @@ Deno.serve(async (req) => {
 
   const supa = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-  let body: any = {};
-  try { body = await req.json(); } catch { /* GET / empty body = summary only */ }
+  let body: ReplayRequestBody = {};
+  try {
+    const parsed: unknown = await req.json();
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      body = parsed as ReplayRequestBody;
+    }
+  } catch { /* GET / empty body = summary only */ }
 
   const lane = (body.lane ?? "all") as Lane;
   const limit = Math.min(Math.max(Number(body.limit ?? 2000), 1), 20000);
@@ -127,14 +143,14 @@ Deno.serve(async (req) => {
         }
 
         if (count > 0) fireAndForget(cfg.processor);
-      } catch (e: any) {
-        const msg = e?.message || JSON.stringify(e);
+      } catch (error: unknown) {
+        const msg = errorMessage(error);
         results[l] = -1;
         if (run?.id) {
           await supa.from("pipeline_replay_runs").update({
             status: "error",
             finished_at: new Date().toISOString(),
-            notes: String(msg).slice(0, 500),
+            notes: msg.slice(0, 500),
           }).eq("id", run.id);
         }
       }
@@ -151,11 +167,11 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true, requeued: results, backlog: after }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e: any) {
-    const msg = e?.message || JSON.stringify(e);
+  } catch (error: unknown) {
+    const msg = errorMessage(error);
     console.error("pipeline-replay error:", msg);
     await supa.from("automation_logs").insert({
-      job_name: "pipeline-replay", status: "error", message: String(msg).slice(0, 500),
+      job_name: "pipeline-replay", status: "error", message: msg.slice(0, 500),
     });
     return new Response(JSON.stringify({ error: msg }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
