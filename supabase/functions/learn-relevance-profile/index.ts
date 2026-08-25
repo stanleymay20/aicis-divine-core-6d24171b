@@ -3,14 +3,16 @@
 // Deterministic, bounded, and safe: never lets one feedback event radically change a profile.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 const DEFAULT_WEIGHTS: Record<string, number> = {
   domain_match: 0.20,
@@ -39,25 +41,33 @@ type Profile = {
   weights: Record<string, number> | null;
 };
 
+type SignalSummary = {
+  title: string;
+  summary: string | null;
+  category: string | null;
+  affected_countries: string[] | null;
+  affected_sectors: string[] | null;
+  affected_stakeholders: string[] | null;
+  impact_score: number | null;
+  urgency_score: number | null;
+  confidence_score: number | null;
+  novelty_score: number | null;
+};
+
 type FeedbackRow = {
   id: string;
   user_id: string;
   signal_id: string;
   feedback_type: "important" | "not_relevant" | "save" | "dismiss" | "escalate";
-  feedback_context: any;
+  feedback_context: Record<string, unknown> | null;
   created_at: string;
-  signal?: {
-    title: string;
-    summary: string | null;
-    category: string | null;
-    affected_countries: string[] | null;
-    affected_sectors: string[] | null;
-    affected_stakeholders: string[] | null;
-    impact_score: number | null;
-    urgency_score: number | null;
-    confidence_score: number | null;
-    novelty_score: number | null;
-  };
+  signal?: SignalSummary | null;
+};
+
+type LearningSummary = {
+  user_id: string;
+  feedback_rows: number;
+  weights: Record<string, number>;
 };
 
 function clamp(n: number, lo = MIN_WEIGHT, hi = MAX_WEIGHT) {
@@ -68,9 +78,9 @@ function normalizeWeights(weights: Record<string, number>) {
   const next: Record<string, number> = {};
   let sum = 0;
   for (const key of Object.keys(DEFAULT_WEIGHTS)) {
-    const v = clamp(Number(weights[key] ?? DEFAULT_WEIGHTS[key]));
-    next[key] = v;
-    sum += v;
+    const value = clamp(Number(weights[key] ?? DEFAULT_WEIGHTS[key]));
+    next[key] = value;
+    sum += value;
   }
   if (sum <= 0) return { ...DEFAULT_WEIGHTS };
   for (const key of Object.keys(next)) next[key] = Number((next[key] / sum).toFixed(4));
@@ -82,56 +92,57 @@ function textTerms(text: string) {
     text.toLowerCase()
       .replace(/[^a-z0-9\s-]/g, " ")
       .split(/\s+/)
-      .filter((w) => w.length >= 4)
+      .filter((word) => word.length >= 4)
       .slice(0, 50),
   ));
 }
 
 function hasOverlap(a?: string[] | null, b?: string[] | null) {
-  const A = new Set((a ?? []).map((x) => String(x).toLowerCase()));
-  return (b ?? []).some((x) => A.has(String(x).toLowerCase()));
+  const values = new Set((a ?? []).map((item) => String(item).toLowerCase()));
+  return (b ?? []).some((item) => values.has(String(item).toLowerCase()));
 }
 
 function nudgeWeights(profile: Profile, rows: FeedbackRow[]) {
-  let weights = normalizeWeights({ ...DEFAULT_WEIGHTS, ...(profile.weights ?? {}) });
+  const weights = normalizeWeights({ ...DEFAULT_WEIGHTS, ...(profile.weights ?? {}) });
   const addTopics = new Set<string>();
   const addCountries = new Set<string>();
   const addSectors = new Set<string>();
   const excludeTopics = new Set<string>();
 
   for (const row of rows) {
-    const sig = row.signal;
-    if (!sig) continue;
+    const signal = row.signal;
+    if (!signal) continue;
     const positive = row.feedback_type === "important" || row.feedback_type === "save" || row.feedback_type === "escalate";
     const negative = row.feedback_type === "not_relevant" || row.feedback_type === "dismiss";
     const multiplier = row.feedback_type === "escalate" ? 2 : 1;
     const delta = STEP * multiplier;
 
-    const titleSummary = `${sig.title || ""} ${sig.summary || ""} ${sig.category || ""}`;
-    const topicCandidates = [sig.category, ...textTerms(titleSummary).slice(0, 8)].filter(Boolean) as string[];
-    const signalCountries = sig.affected_countries ?? [];
-    const signalSectors = sig.affected_sectors ?? [];
-    const entityCandidates = sig.affected_stakeholders ?? [];
+    const titleSummary = `${signal.title || ""} ${signal.summary || ""} ${signal.category || ""}`;
+    const topicCandidates = [signal.category, ...textTerms(titleSummary).slice(0, 8)]
+      .filter((item): item is string => Boolean(item));
+    const signalCountries = signal.affected_countries ?? [];
+    const signalSectors = signal.affected_sectors ?? [];
+    const entityCandidates = signal.affected_stakeholders ?? [];
 
     if (positive) {
       if (signalCountries.length > 0) weights.geo_match = clamp(weights.geo_match + delta);
       if (signalSectors.length > 0) weights.sector_match = clamp(weights.sector_match + delta);
       if (topicCandidates.length > 0) weights.domain_match = clamp(weights.domain_match + delta);
       if (entityCandidates.length > 0) weights.entity_match = clamp(weights.entity_match + delta);
-      if ((sig.impact_score ?? 0) >= 65) weights.impact = clamp(weights.impact + delta);
-      if ((sig.urgency_score ?? 0) >= 65 || row.feedback_type === "escalate") weights.urgency = clamp(weights.urgency + delta);
-      if ((sig.novelty_score ?? 0) >= 70) weights.novelty_anomaly = clamp(weights.novelty_anomaly + delta);
-      for (const c of signalCountries.slice(0, 5)) addCountries.add(c);
-      for (const s of signalSectors.slice(0, 5)) addSectors.add(s);
-      for (const t of topicCandidates.slice(0, 5)) addTopics.add(t);
+      if ((signal.impact_score ?? 0) >= 65) weights.impact = clamp(weights.impact + delta);
+      if ((signal.urgency_score ?? 0) >= 65 || row.feedback_type === "escalate") weights.urgency = clamp(weights.urgency + delta);
+      if ((signal.novelty_score ?? 0) >= 70) weights.novelty_anomaly = clamp(weights.novelty_anomaly + delta);
+      for (const country of signalCountries.slice(0, 5)) addCountries.add(country);
+      for (const sector of signalSectors.slice(0, 5)) addSectors.add(sector);
+      for (const topic of topicCandidates.slice(0, 5)) addTopics.add(topic);
     }
 
     if (negative) {
       if (hasOverlap(profile.watched_countries, signalCountries)) weights.geo_match = clamp(weights.geo_match - delta);
       if (hasOverlap(profile.watched_sectors, signalSectors)) weights.sector_match = clamp(weights.sector_match - delta);
       weights.domain_match = clamp(weights.domain_match - delta / 2);
-      if ((sig.confidence_score ?? 0) < 50) weights.confidence = clamp(weights.confidence + delta / 2);
-      for (const t of topicCandidates.slice(0, 3)) excludeTopics.add(t);
+      if ((signal.confidence_score ?? 0) < 50) weights.confidence = clamp(weights.confidence + delta / 2);
+      for (const topic of topicCandidates.slice(0, 3)) excludeTopics.add(topic);
     }
   }
 
@@ -145,7 +156,7 @@ function nudgeWeights(profile: Profile, rows: FeedbackRow[]) {
 }
 
 function mergeLimited(existing: string[] | null, additions: string[], limit = 80) {
-  const out = new Set((existing ?? []).map((x) => String(x).toLowerCase()));
+  const out = new Set((existing ?? []).map((item) => String(item).toLowerCase()));
   for (const item of additions) {
     if (!item) continue;
     out.add(String(item).toLowerCase());
@@ -156,28 +167,38 @@ function mergeLimited(existing: string[] | null, additions: string[], limit = 80
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") {
+    return json({ ok: false, error: "Method not allowed" }, 405, { Allow: "POST" });
+  }
+
+  const { response: authResponse } = await requireAdminOrCron(req, corsHeaders);
+  if (authResponse) return authResponse;
+
   const started = Date.now();
-  const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   try {
-    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    const userId = body.user_id ? String(body.user_id) : null;
-    const lookbackHours = Math.min(Number(body.lookback_hours ?? 168), 720);
-    const since = new Date(Date.now() - lookbackHours * 3600_000).toISOString();
+    const rawBody: unknown = await req.json().catch(() => ({}));
+    const body = isRecord(rawBody) ? rawBody : {};
+    const userId = typeof body.user_id === "string" && body.user_id.trim() ? body.user_id.trim() : null;
+    const requestedLookback = Number(body.lookback_hours ?? 168);
+    const lookbackHours = Math.min(Math.max(Number.isFinite(requestedLookback) ? requestedLookback : 168, 1), 720);
+    const since = new Date(Date.now() - lookbackHours * 3_600_000).toISOString();
 
-    let profileQuery = sb
+    let profileQuery = supabase
       .from("user_relevance_profiles")
       .select("id,user_id,workspace_id,watched_countries,watched_sectors,watched_topics,watched_entities,excluded_topics,weights")
       .limit(200);
     if (userId) profileQuery = profileQuery.eq("user_id", userId);
-    const { data: profiles, error: pErr } = await profileQuery;
-    if (pErr) throw pErr;
+    const { data: profilesData, error: profileError } = await profileQuery;
+    if (profileError) throw profileError;
 
+    const profiles = (profilesData ?? []) as Profile[];
     let updated = 0;
-    const summaries: any[] = [];
+    const summaries: LearningSummary[] = [];
 
-    for (const profile of (profiles ?? []) as Profile[]) {
-      const { data: feedback, error: fErr } = await sb
+    for (const profile of profiles) {
+      const { data: feedbackData, error: feedbackError } = await supabase
         .from("user_signal_feedback")
         .select(`
           id,user_id,signal_id,feedback_type,feedback_context,created_at,
@@ -187,9 +208,9 @@ Deno.serve(async (req) => {
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(200);
-      if (fErr) throw fErr;
+      if (feedbackError) throw feedbackError;
 
-      const rows = (feedback ?? []) as FeedbackRow[];
+      const rows = (feedbackData ?? []) as FeedbackRow[];
       if (rows.length === 0) continue;
 
       const learned = nudgeWeights(profile, rows);
@@ -202,35 +223,41 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString(),
       };
 
-      const { error: uErr } = await sb
+      const { error: updateError } = await supabase
         .from("user_relevance_profiles")
         .update(patch)
         .eq("id", profile.id);
-      if (uErr) throw uErr;
+      if (updateError) throw updateError;
 
-      updated++;
+      updated += 1;
       summaries.push({ user_id: profile.user_id, feedback_rows: rows.length, weights: learned.weights });
     }
 
-    await sb.from("automation_logs").insert({
+    await supabase.from("automation_logs").insert({
       job_name: "learn-relevance-profile",
       status: "success",
       message: `updated=${updated} lookback_hours=${lookbackHours} in ${Date.now() - started}ms`,
     });
 
-    return new Response(JSON.stringify({ ok: true, updated, summaries, elapsed_ms: Date.now() - started }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e: any) {
-    const msg = e?.message || String(e);
-    await sb.from("automation_logs").insert({
+    return json({ ok: true, updated, summaries, elapsed_ms: Date.now() - started });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await supabase.from("automation_logs").insert({
       job_name: "learn-relevance-profile",
       status: "error",
-      message: msg.slice(0, 500),
+      message: message.slice(0, 500),
     });
-    return new Response(JSON.stringify({ ok: false, error: msg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ ok: false, error: message }, 500);
   }
 });
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, ...extraHeaders, "Content-Type": "application/json" },
+  });
+}
