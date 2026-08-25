@@ -1,139 +1,163 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "https://esm.sh/stripe@14.21.0";
+import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
+interface UsageRecord {
+  id: string;
+  org_id: string | null;
+  metric_key: string;
+  quantity: number | string | null;
+  recorded_at: string;
+}
+
+interface BillingError {
+  group: string;
+  reason: string;
+}
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { ...corsHeaders, "Content-Type": "application/json" },
+});
+
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const auth = await requireAdminOrCron(req, corsHeaders);
+  if (auth.response) return auth.response;
+
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeKey) return json({ error: "Stripe is not configured" }, 503);
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  );
+  const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
   try {
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeKey) throw new Error("Stripe not configured");
-
-    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
-
-    // Get unprocessed usage records
-    const { data: usageRecords, error: fetchError } = await supabase
+    const { data: rawUsage, error: fetchError } = await supabase
       .from("billing_usage_queue")
-      .select("*")
+      .select("id,org_id,metric_key,quantity,recorded_at")
       .eq("processed", false)
+      .order("recorded_at", { ascending: true })
       .limit(1000);
-
     if (fetchError) throw fetchError;
 
-    if (!usageRecords || usageRecords.length === 0) {
-      return new Response(
-        JSON.stringify({ ok: true, processed: 0, message: "No usage to report" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const usageRecords = (rawUsage ?? []) as UsageRecord[];
+    if (usageRecords.length === 0) return json({ ok: true, processed: 0, skipped: 0, errors: [] });
 
-    // Map metric keys to Stripe price IDs
     const metricPriceMap: Record<string, string> = {
-      api_calls: Deno.env.get("STRIPE_PRICE_API_CALLS") || "",
-      scrollcoin_tx: Deno.env.get("STRIPE_PRICE_SCROLLCOIN_TX") || "",
+      api_calls: Deno.env.get("STRIPE_PRICE_API_CALLS") ?? "",
+      scrollcoin_tx: Deno.env.get("STRIPE_PRICE_SCROLLCOIN_TX") ?? "",
     };
 
-    let processed = 0;
-    const errors: any[] = [];
-
-    // Group by org_id and metric_key
-    const grouped = usageRecords.reduce((acc, record) => {
+    const grouped = new Map<string, UsageRecord[]>();
+    for (const record of usageRecords) {
+      if (!record.org_id || !record.metric_key) continue;
       const key = `${record.org_id}:${record.metric_key}`;
-      if (!acc[key]) {
-        acc[key] = [];
-      }
-      acc[key].push(record);
-      return acc;
-    }, {} as Record<string, typeof usageRecords>);
+      grouped.set(key, [...(grouped.get(key) ?? []), record]);
+    }
 
-    // Process each group
-    for (const [key, records] of Object.entries(grouped)) {
-      const [org_id, metric_key] = key.split(":");
-      
-      // Get organization subscription
-      const { data: org } = await supabase
+    let processed = 0;
+    let skipped = usageRecords.length - [...grouped.values()].reduce((sum, records) => sum + records.length, 0);
+    const errors: BillingError[] = [];
+
+    for (const [groupKey, records] of grouped) {
+      const separator = groupKey.lastIndexOf(":");
+      const orgId = groupKey.slice(0, separator);
+      const metricKey = groupKey.slice(separator + 1);
+      const priceId = metricPriceMap[metricKey];
+
+      if (!priceId) {
+        skipped += records.length;
+        errors.push({ group: metricKey, reason: "metric_price_not_configured" });
+        continue;
+      }
+
+      const { data: org, error: orgError } = await supabase
         .from("organizations")
         .select("stripe_subscription_id")
-        .eq("id", org_id)
-        .single();
-
+        .eq("id", orgId)
+        .maybeSingle();
+      if (orgError) {
+        errors.push({ group: metricKey, reason: `organization_lookup_failed:${orgError.message}` });
+        continue;
+      }
       if (!org?.stripe_subscription_id) {
-        console.log(`No subscription for org ${org_id}, skipping`);
+        skipped += records.length;
+        errors.push({ group: metricKey, reason: "organization_has_no_subscription" });
         continue;
       }
-
-      // Get subscription items
-      const subscription = await stripe.subscriptions.retrieve(org.stripe_subscription_id);
-      const priceId = metricPriceMap[metric_key];
-      
-      if (!priceId) {
-        console.log(`No price configured for metric ${metric_key}, skipping`);
-        continue;
-      }
-
-      // Find subscription item for this metric
-      const subscriptionItem = subscription.items.data.find((item: any) => item.price.id === priceId);
-      
-      if (!subscriptionItem) {
-        console.log(`No subscription item for metric ${metric_key} in org ${org_id}, skipping`);
-        continue;
-      }
-
-      // Sum quantities and report to Stripe
-      const totalQuantity = (records as any[]).reduce((sum: number, r: any) => sum + Number(r.quantity), 0);
-      const timestamp = Math.floor(new Date((records as any[])[0].recorded_at).getTime() / 1000);
 
       try {
+        const subscription = await stripe.subscriptions.retrieve(org.stripe_subscription_id);
+        const subscriptionItem = subscription.items.data.find((item) => item.price.id === priceId);
+        if (!subscriptionItem) {
+          skipped += records.length;
+          errors.push({ group: metricKey, reason: "subscription_item_not_found" });
+          continue;
+        }
+
+        const quantities = records.map((record) => Number(record.quantity));
+        if (quantities.some((quantity) => !Number.isFinite(quantity) || quantity < 0)) {
+          errors.push({ group: metricKey, reason: "invalid_usage_quantity" });
+          continue;
+        }
+        const totalQuantity = quantities.reduce((sum, quantity) => sum + quantity, 0);
+        if (!Number.isSafeInteger(totalQuantity) || totalQuantity <= 0) {
+          errors.push({ group: metricKey, reason: "usage_quantity_must_be_positive_integer" });
+          continue;
+        }
+
+        const timestamps = records
+          .map((record) => Math.floor(new Date(record.recorded_at).getTime() / 1000))
+          .filter((timestamp) => Number.isFinite(timestamp));
+        const usageTimestamp = timestamps.length > 0
+          ? Math.min(Math.max(...timestamps), Math.floor(Date.now() / 1000))
+          : Math.floor(Date.now() / 1000);
+
         await stripe.subscriptionItems.createUsageRecord(subscriptionItem.id, {
           quantity: totalQuantity,
-          timestamp,
+          timestamp: usageTimestamp,
           action: "increment",
         });
 
-        // Mark as processed
-        const recordIds = (records as any[]).map((r: any) => r.id);
-        await supabase
+        const recordIds = records.map((record) => record.id);
+        const { error: updateError } = await supabase
           .from("billing_usage_queue")
           .update({ processed: true })
           .in("id", recordIds);
-
-        processed += (records as any[]).length;
+        if (updateError) {
+          // Stripe accepted the usage. Do not retry blindly: the queue state now
+          // needs operator reconciliation to avoid double-reporting.
+          errors.push({ group: metricKey, reason: `stripe_reported_queue_update_failed:${updateError.message}` });
+          continue;
+        }
+        processed += records.length;
       } catch (error) {
-        console.error(`Error reporting usage for ${key}:`, error);
-        errors.push({ key, error: (error as Error).message });
+        errors.push({ group: metricKey, reason: error instanceof Error ? error.message : String(error) });
       }
     }
 
-    // Log
-    await supabase.from("system_logs").insert({
+    const { error: logError } = await supabase.from("system_logs").insert({
       division: "system",
       action: "billing_report_usage",
-      log_level: "info",
-      result: `Processed ${processed} usage records`,
-      metadata: { processed, errors },
+      log_level: errors.length > 0 ? "warn" : "info",
+      result: `Billing usage report processed=${processed} skipped=${skipped} errors=${errors.length}`,
+      metadata: { processed, skipped, error_count: errors.length, invoked_via: auth.via },
     });
+    if (logError) console.error("billing-report-usage audit log failed", logError.message);
 
-    return new Response(
-      JSON.stringify({ ok: true, processed, errors }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (e) {
-    console.error("Error in billing-report-usage:", e);
-    return new Response(
-      JSON.stringify({ error: (e as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ ok: errors.length === 0, processed, skipped, errors });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("billing-report-usage error", message);
+    return json({ error: message }, 500);
   }
 });

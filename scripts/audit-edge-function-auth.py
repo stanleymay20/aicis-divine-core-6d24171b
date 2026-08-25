@@ -25,6 +25,8 @@ AUTH_MARKERS = (
     "requireTier(",
     ".auth.getUser(",
     "auth.getUser(",
+    ".auth.getClaims(",
+    "auth.getClaims(",
 )
 
 WEBHOOK_OR_SIGNATURE_MARKERS = (
