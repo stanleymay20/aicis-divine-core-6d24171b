@@ -14,16 +14,17 @@ interface Rec {
   country_iso3: string;
   domain: string;
   risk_probability: number;
-  rank_position: number;
+  rank_position: number | null;
   intervention_type: string;
   intervention_title: string;
   rationale_md: string;
   responsible_domain: string;
   urgency_window: string;
   urgency_hours: number;
-  estimated_roi_eur: number;
-  estimated_cost_eur: number;
-  confidence: number;
+  estimated_roi_eur: number | null;
+  estimated_cost_eur: number | null;
+  confidence: number | null;
+  economics_status: "not_estimated" | "legacy_unverified" | "evidence_backed" | string;
   status: string;
   generated_at: string;
 }
@@ -40,8 +41,19 @@ const statusClass = (s: string) =>
   s === "dismissed" ? "bg-muted text-muted-foreground border-border" :
                       "bg-amber-500/10 text-amber-600 border-amber-500/30";
 
-const fmtEur = (n: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);
+const fmtEur = (value: number | null | undefined) => {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(Number(value));
+};
+
+const finitePercent = (value: number | null | undefined) =>
+  value !== null && value !== undefined && Number.isFinite(Number(value))
+    ? `${Math.round(Number(value) * 100)}%`
+    : null;
 
 interface Props {
   compact?: boolean;
@@ -72,11 +84,11 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
       if (error) throw error;
       return data;
     },
-    onSuccess: (d) => {
-      toast.success(`Generated ${d?.generated ?? 0} recommended actions`);
+    onSuccess: (data) => {
+      toast.success(`Generated ${data?.generated ?? 0} review candidates`);
       qc.invalidateQueries({ queryKey: ["risk-action-recs"] });
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (error) => toast.error(String(error)),
   });
 
   const update = useMutation({
@@ -87,18 +99,24 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, vars) => {
-      toast.success(`Action ${vars.status}`);
+    onSuccess: (_, variables) => {
+      toast.success(`Action ${variables.status}`);
       qc.invalidateQueries({ queryKey: ["risk-action-recs"] });
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (error) => toast.error(String(error)),
   });
 
   const rows = list.data?.rows ?? [];
-  const totalRoi = rows.filter(r => r.status === "proposed" || r.status === "accepted")
-    .reduce((s, r) => s + Number(r.estimated_roi_eur || 0), 0);
+  const evidenceBackedFinancialRows = rows.filter((row) =>
+    row.economics_status === "evidence_backed" &&
+    Number.isFinite(Number(row.estimated_roi_eur)),
+  );
+  const totalEvidenceBackedRoi = evidenceBackedFinancialRows
+    .filter((row) => row.status === "proposed" || row.status === "accepted")
+    .reduce((sum, row) => sum + Number(row.estimated_roi_eur), 0);
 
-  const visibleIds = rows.slice(0, compact ? 5 : rows.length).map(r => r.id);
+  const visibleRows = rows.slice(0, compact ? 5 : rows.length);
+  const visibleIds = visibleRows.map((row) => row.id);
   const citationsQ = useSubjectCitations("risk_action_recommendations", visibleIds);
 
   return (
@@ -109,9 +127,9 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
             <Target className="h-4 w-4 text-primary shrink-0" />
             <h3 className="text-sm font-semibold truncate">Recommended Actions</h3>
             <Badge variant="outline" className="text-[10px] font-mono">{rows.length}</Badge>
-            {totalRoi > 0 && (
+            {totalEvidenceBackedRoi > 0 && (
               <Badge variant="outline" className="text-[10px] font-mono gap-1 bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                <Coins className="h-3 w-3" /> {fmtEur(totalRoi)} potential
+                <Coins className="h-3 w-3" /> {fmtEur(totalEvidenceBackedRoi)} evidence-backed potential
               </Badge>
             )}
           </div>
@@ -119,7 +137,7 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
             {!compact && (
               <select
                 value={filter}
-                onChange={(e) => setFilter(e.target.value)}
+                onChange={(event) => setFilter(event.target.value)}
                 className="h-7 text-[11px] rounded-md border border-border bg-background px-2"
               >
                 <option value="all">All</option>
@@ -148,62 +166,79 @@ export const RecommendedActionsPanel = ({ compact = false, topN = 50 }: Props) =
           </div>
         ) : rows.length === 0 ? (
           <div className="text-center py-8 text-xs text-muted-foreground">
-            No actions yet. Click <span className="font-mono">Generate</span> to create recommendations from the latest risk ranking.
+            No actions yet. Click <span className="font-mono">Generate</span> to create review candidates from the latest risk ranking.
           </div>
         ) : (
           <div className="space-y-2">
-            {rows.slice(0, compact ? 5 : rows.length).map((r) => (
-              <div key={r.id} className="rounded-md border border-border p-3 hover:bg-muted/30 transition">
-                <div className="flex items-start justify-between gap-2 flex-wrap">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono text-muted-foreground">#{r.rank_position}</span>
-                      <span className="text-xs font-mono font-semibold">{r.country_iso3}</span>
-                      <Badge variant="outline" className="text-[10px] capitalize">{r.domain}</Badge>
-                      <Badge variant="outline" className={`text-[10px] font-mono gap-1 ${urgencyClass(r.urgency_window)}`}>
-                        <Clock className="h-2.5 w-2.5" /> {r.urgency_window}
-                      </Badge>
-                      <Badge variant="outline" className={`text-[10px] capitalize ${statusClass(r.status)}`}>
-                        {r.status}
-                      </Badge>
+            {visibleRows.map((row) => {
+              const evidenceBacked = row.economics_status === "evidence_backed";
+              const roi = evidenceBacked ? fmtEur(row.estimated_roi_eur) : null;
+              const cost = evidenceBacked ? fmtEur(row.estimated_cost_eur) : null;
+              const confidence = evidenceBacked ? finitePercent(row.confidence) : null;
+
+              return (
+                <div key={row.id} className="rounded-md border border-border p-3 hover:bg-muted/30 transition">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {row.rank_position !== null && (
+                          <span className="text-[10px] font-mono text-muted-foreground">#{row.rank_position}</span>
+                        )}
+                        <span className="text-xs font-mono font-semibold">{row.country_iso3}</span>
+                        <Badge variant="outline" className="text-[10px] capitalize">{row.domain}</Badge>
+                        <Badge variant="outline" className={`text-[10px] font-mono gap-1 ${urgencyClass(row.urgency_window)}`}>
+                          <Clock className="h-2.5 w-2.5" /> {row.urgency_window}
+                        </Badge>
+                        <Badge variant="outline" className={`text-[10px] capitalize ${statusClass(row.status)}`}>
+                          {row.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm font-medium mt-1.5">{row.intervention_title}</p>
+                      <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
+                        <span title="Risk-model probability">Risk model {Math.round(Number(row.risk_probability) * 100)}%</span>
+                        {confidence && <span title="Evidence-backed recommendation confidence">Recommendation confidence {confidence}</span>}
+                        {roi && <span className="text-emerald-600" title="Evidence-backed estimated ROI">+{roi}</span>}
+                        {cost && <span title="Evidence-backed intervention cost">−{cost}</span>}
+                        {!evidenceBacked && (
+                          <span className="inline-flex items-center gap-1" title="No evidence-backed cost or ROI estimate is available">
+                            <Coins className="h-3 w-3" />
+                            {row.economics_status === "legacy_unverified"
+                              ? "Legacy economics unverified"
+                              : "Economics not estimated"}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-sm font-medium mt-1.5">{r.intervention_title}</p>
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
-                      <span title="Risk probability">Risk {Math.round(Number(r.risk_probability) * 100)}%</span>
-                      <span title="Confidence">Conf {Math.round(Number(r.confidence) * 100)}%</span>
-                      <span className="text-emerald-600" title="Estimated ROI">+{fmtEur(Number(r.estimated_roi_eur))}</span>
-                      <span className="text-muted-foreground" title="Intervention cost">−{fmtEur(Number(r.estimated_cost_eur))}</span>
-                    </div>
+                    {row.status === "proposed" && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                          onClick={() => update.mutate({ id: row.id, status: "accepted" })}
+                          disabled={update.isPending}
+                        ><Check className="h-3 w-3" /> Accept</Button>
+                        <Button
+                          size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                          onClick={() => update.mutate({ id: row.id, status: "dismissed" })}
+                          disabled={update.isPending}
+                        ><X className="h-3 w-3" /></Button>
+                      </div>
+                    )}
+                    {row.status === "accepted" && (
+                      <Button
+                        size="sm" variant="default" className="h-7 text-[11px] gap-1 shrink-0"
+                        onClick={() => update.mutate({ id: row.id, status: "executed" })}
+                        disabled={update.isPending}
+                      ><PlayCircle className="h-3 w-3" /> Execute</Button>
+                    )}
                   </div>
-                  {r.status === "proposed" && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        size="sm" variant="outline" className="h-7 text-[11px] gap-1"
-                        onClick={() => update.mutate({ id: r.id, status: "accepted" })}
-                        disabled={update.isPending}
-                      ><Check className="h-3 w-3" /> Accept</Button>
-                      <Button
-                        size="sm" variant="outline" className="h-7 text-[11px] gap-1"
-                        onClick={() => update.mutate({ id: r.id, status: "dismissed" })}
-                        disabled={update.isPending}
-                      ><X className="h-3 w-3" /></Button>
-                    </div>
-                  )}
-                  {r.status === "accepted" && (
-                    <Button
-                      size="sm" variant="default" className="h-7 text-[11px] gap-1 shrink-0"
-                      onClick={() => update.mutate({ id: r.id, status: "executed" })}
-                      disabled={update.isPending}
-                    ><PlayCircle className="h-3 w-3" /> Execute</Button>
-                  )}
+                  <TrustEvidence
+                    citations={citationsQ.data?.get(row.id)}
+                    loading={citationsQ.isLoading}
+                    compact
+                  />
                 </div>
-                <TrustEvidence
-                  citations={citationsQ.data?.get(r.id)}
-                  loading={citationsQ.isLoading}
-                  compact
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>
