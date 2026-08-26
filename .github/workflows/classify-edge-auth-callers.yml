@@ -1,0 +1,86 @@
+name: One-off Edge auth caller inventory
+
+on:
+  push:
+    paths:
+      - '.github/workflows/classify-edge-auth-callers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Classify unguarded privileged function callers
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          functions = root / 'supabase/functions'
+          config_text = (root / 'supabase/config.toml').read_text(errors='ignore')
+
+          auth_markers = (
+              'requireAdminOrCron(', 'requireCronSecret(', 'requireAdminUser(',
+              'requireUser(', 'requireTier(', '.auth.getUser(', 'auth.getUser(',
+              '.auth.getClaims(', 'auth.getClaims(', 'stripe-signature',
+              'webhooks.constructEvent', 'WEBHOOK_SECRET', 'webhook_secret',
+              'createHmac(', 'crypto.subtle.verify', 'x-signature',
+              'x-webhook-signature', 'verifySignature(', 'verifyHmac('
+          )
+
+          unguarded = []
+          for path in sorted(functions.glob('*/index.ts')):
+              source = path.read_text(errors='ignore')
+              if 'SUPABASE_SERVICE_ROLE_KEY' not in source:
+                  continue
+              if any(marker in source for marker in auth_markers):
+                  continue
+              unguarded.append(path.parent.name)
+
+          def refs_for(name, base):
+              refs = []
+              for path in base.rglob('*'):
+                  if not path.is_file() or path.suffix not in {'.ts','.tsx','.sql','.toml','.md'}:
+                      continue
+                  if path.as_posix() == f'supabase/functions/{name}/index.ts':
+                      continue
+                  try:
+                      text = path.read_text(errors='ignore')
+                  except Exception:
+                      continue
+                  # Deliberately require the literal function name to avoid fuzzy classification.
+                  if name in text:
+                      refs.append(path.as_posix())
+              return refs
+
+          def verify_jwt(name):
+              pattern = re.compile(rf'\[functions\.{re.escape(name)}\](.*?)(?=\n\[functions\.|\Z)', re.S)
+              match = pattern.search(config_text)
+              if not match:
+                  return 'default_true'
+              jwt = re.search(r'verify_jwt\s*=\s*(true|false)', match.group(1), re.I)
+              return jwt.group(1).lower() if jwt else 'default_true'
+
+          print(f'UNGUARDED_COUNT={len(unguarded)}')
+          print('name|verify_jwt|frontend_refs|function_refs|sql_refs')
+          for name in unguarded:
+              frontend = refs_for(name, root / 'src')
+              fnrefs = refs_for(name, functions)
+              sqlrefs = []
+              for path in (root / 'supabase').rglob('*.sql'):
+                  text = path.read_text(errors='ignore')
+                  if name in text:
+                      sqlrefs.append(path.as_posix())
+              print('|'.join([
+                  name,
+                  verify_jwt(name),
+                  ';'.join(frontend) or '-',
+                  ';'.join(fnrefs) or '-',
+                  ';'.join(sqlrefs) or '-',
+              ]))
+          PY
