@@ -103,10 +103,10 @@ jobs:
             echo "ESLint execution/configuration failed with status $ESLINT_STATUS"
             exit "$ESLINT_STATUS"
           fi
-          # Verified current debt: 1391 errors / 67 warnings. The original portability
-          # checkpoint measured 1394/67; the previously configured 1389 ceiling never passed.
-          # This remains a ratchet: future work may only reduce or hold the current debt.
-          node .github/scripts/check-lint-baseline.mjs eslint-report.json 1391 67
+          # Tightened to the verified 2026-08-26 debt after privileged-auth hardening.
+          # Future work may only reduce or hold these counts; never raise this ceiling
+          # to make a change pass.
+          node .github/scripts/check-lint-baseline.mjs eslint-report.json 1227 66
 
       - name: Typecheck
         id: typecheck
@@ -146,6 +146,11 @@ jobs:
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.build.outcome }}" = "success" ] || FAILED=1
+
+          if [ "${{ steps.edge_auth.outcome }}" != "success" ] && [ "${{ steps.deferred_auth.outcome }}" = "success" ]; then
+            echo "Known pre-cutover blocker: the exact deferred privileged-auth manifest still contains unguarded functions."
+            echo "CI intentionally remains red until those caller paths are proven and the unguarded count reaches zero."
+          fi
 
           if [ "$FAILED" -ne 0 ]; then
             echo "One or more verification gates failed."
