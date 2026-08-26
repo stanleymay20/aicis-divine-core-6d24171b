@@ -16,6 +16,28 @@ const CLUSTERING_METHOD = "keyword_overlap_v1";
 const CLUSTERING_EPISTEMIC_STATUS = "unverified_semantic_cluster";
 const MATCH_THRESHOLD = 0.35;
 
+type Signal = {
+  id: string;
+  title: string | null;
+  translated_title: string | null;
+  category: string | null;
+  affected_countries: string[] | null;
+  urgency_score: number | null;
+  impact_score: number | null;
+  created_at: string | null;
+};
+
+type NarrativeMetadata = Record<string, unknown> & { keywords?: string[] };
+
+type Narrative = {
+  id: string;
+  narrative_title: string | null;
+  canonical_countries: string[] | null;
+  canonical_sectors: string[] | null;
+  metadata: NarrativeMetadata | null;
+  signal_count: number | null;
+};
+
 function normalize(text?: string | null) {
   return (text || "")
     .toLowerCase()
@@ -24,18 +46,18 @@ function normalize(text?: string | null) {
     .trim();
 }
 
-function extractKeywords(signal: any): string[] {
+function extractKeywords(signal: Signal): string[] {
   const text = normalize([
     signal.translated_title,
     signal.title,
     signal.category,
     ...(signal.affected_countries || []),
-  ].join(" "));
+  ].filter((value): value is string => typeof value === "string").join(" "));
 
   const words = text
     .split(" ")
-    .filter((w: string) => w.length >= 4)
-    .filter((w: string) => !STOPWORDS.has(w));
+    .filter((w) => w.length >= 4)
+    .filter((w) => !STOPWORDS.has(w));
 
   return [...new Set(words)].slice(0, 12);
 }
@@ -47,7 +69,7 @@ function lexicalSimilarity(a: string[], b: string[]) {
   return overlap / Math.max(sa.size, sb.size, 1);
 }
 
-function observedEscalationScore(signal: any): number | null {
+function observedEscalationScore(signal: Signal): number | null {
   const values = [signal.urgency_score, signal.impact_score]
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   return values.length ? Math.max(...values) : null;
@@ -65,7 +87,7 @@ serve(async (req) => {
   }
 
   try {
-    const { data: signals, error } = await supabase
+    const { data: signalRows, error } = await supabase
       .from("global_signals")
       .select("id,title,translated_title,category,affected_countries,urgency_score,impact_score,created_at")
       .is("narrative_clustered_at", null)
@@ -74,26 +96,30 @@ serve(async (req) => {
 
     if (error) throw error;
 
-    const { data: narratives } = await supabase
+    const { data: narrativeRows } = await supabase
       .from("signal_narratives")
       .select("id,narrative_title,canonical_countries,canonical_sectors,metadata,signal_count");
 
+    const signals = (signalRows ?? []) as Signal[];
+    const narratives = (narrativeRows ?? []) as Narrative[];
     let clustered = 0;
     let created = 0;
 
-    for (const signal of signals || []) {
+    for (const signal of signals) {
       const keywords = extractKeywords(signal);
 
-      let bestNarrative: any = null;
+      let bestNarrative: Narrative | null = null;
       let bestScore = 0;
 
-      for (const n of narratives || []) {
-        const existingKeywords = (n.metadata?.keywords || []) as string[];
+      for (const narrative of narratives) {
+        const existingKeywords = Array.isArray(narrative.metadata?.keywords)
+          ? narrative.metadata.keywords.filter((word): word is string => typeof word === "string")
+          : [];
         const score = lexicalSimilarity(keywords, existingKeywords);
 
         if (score > bestScore) {
           bestScore = score;
-          bestNarrative = n;
+          bestNarrative = narrative;
         }
       }
 
@@ -104,8 +130,6 @@ serve(async (req) => {
         await supabase.from("signal_narrative_members").upsert({
           narrative_id: bestNarrative.id,
           signal_id: signal.id,
-          // Existing schema calls this membership_strength. Semantically it is
-          // keyword-overlap similarity only; it is not causal confidence or truth.
           membership_strength: Math.round(bestScore * 100),
           narrative_role: bestScore >= 0.7 ? "core" : "supporting",
           matched_features: keywords,
@@ -137,8 +161,7 @@ serve(async (req) => {
           .from("signal_narratives")
           .insert({
             narrative_key: narrativeKey,
-            narrative_title:
-              signal.translated_title || signal.title || "Emerging Narrative",
+            narrative_title: signal.translated_title || signal.title || "Emerging Narrative",
             narrative_type: signal.category || "emerging",
             canonical_countries: signal.affected_countries || [],
             signal_count: 1,
@@ -163,7 +186,6 @@ serve(async (req) => {
           await supabase.from("signal_narrative_members").insert({
             narrative_id: inserted.id,
             signal_id: signal.id,
-            // 100 means "seed member of the generated cluster", not certainty.
             membership_strength: 100,
             narrative_role: "seed",
             matched_features: keywords,
@@ -197,29 +219,19 @@ serve(async (req) => {
         causal_inference: false,
         verification_status: "not_verified",
       }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-  } catch (e: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     await supabase.from("automation_logs").insert({
       job_name: "narrative-clustering",
       status: "error",
-      message: e.message?.slice(0, 500) || "unknown",
+      message: message.slice(0, 500) || "unknown",
     });
 
     return new Response(
-      JSON.stringify({ error: e.message }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+      JSON.stringify({ error: message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
