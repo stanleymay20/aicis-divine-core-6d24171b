@@ -10,7 +10,8 @@ const EDGE_SOURCE_ID = "aicis-network-edges";
 const EDGE_LAYER_ID = "aicis-network-edges-line";
 const TARGET_SOURCE_ID = "aicis-network-targets";
 const TARGET_LAYER_ID = "aicis-network-targets-circle";
-const MAX_NETWORK_EDGES = 240;
+const RELATION_TYPES = ["borders", "trades_in", "member_of", "headquartered_in", "parent"] as const;
+const MAX_EDGES_PER_RELATION = 50;
 const ENTITY_CHUNK_SIZE = 100;
 const EMPTY_FEATURE_COLLECTION = { type: "FeatureCollection" as const, features: [] };
 
@@ -218,6 +219,50 @@ function makePopupContent(properties: Record<string, string | number>) {
   return root;
 }
 
+async function loadMeasuredRelationshipSample() {
+  const countQuery = graphClient
+    .from("graph_relationship_current")
+    .select("id", { count: "exact", head: true })
+    .eq("evidence_status", "measured")
+    .eq("subject_kind", "entity")
+    .eq("object_kind", "entity")
+    .not("decayed_weight", "is", null)
+    .not("confidence", "is", null);
+
+  const relationQueries = RELATION_TYPES.map((relationType) =>
+    graphClient
+      .from("graph_relationship_current")
+      .select(
+        "id,subject_key,object_key,relation_type,direction,evidence_strength,sample_size,method,confidence,observed_to,decayed_weight",
+      )
+      .eq("evidence_status", "measured")
+      .eq("subject_kind", "entity")
+      .eq("object_kind", "entity")
+      .eq("relation_type", relationType)
+      .not("decayed_weight", "is", null)
+      .not("confidence", "is", null)
+      .order("decayed_weight", { ascending: false })
+      .limit(MAX_EDGES_PER_RELATION),
+  );
+
+  const [countResponse, ...relationResponses] = await Promise.all([countQuery, ...relationQueries]);
+  if (countResponse.error) throw countResponse.error;
+  const failedRelation = relationResponses.find((response) => response.error);
+  if (failedRelation?.error) throw failedRelation.error;
+
+  const byId = new Map<string, GraphRelationship>();
+  for (const response of relationResponses) {
+    for (const row of (response.data ?? []) as unknown as GraphRelationship[]) {
+      byId.set(row.id, row);
+    }
+  }
+
+  return {
+    relationships: [...byId.values()],
+    totalMeasuredEdges: countResponse.count ?? byId.size,
+  };
+}
+
 export function useNetworkMapLayer({
   map,
   isMapLoaded,
@@ -239,57 +284,39 @@ export function useNetworkMapLayer({
       setLoading(true);
       setError(null);
 
-      const { data, error: relationshipError, count } = await graphClient
-        .from("graph_relationship_current")
-        .select(
-          "id,subject_key,object_key,relation_type,direction,evidence_strength,sample_size,method,confidence,observed_to,decayed_weight",
-          { count: "exact" },
-        )
-        .eq("evidence_status", "measured")
-        .eq("subject_kind", "entity")
-        .eq("object_kind", "entity")
-        .not("decayed_weight", "is", null)
-        .not("confidence", "is", null)
-        .order("decayed_weight", { ascending: false })
-        .limit(MAX_NETWORK_EDGES);
+      try {
+        const sample = await loadMeasuredRelationshipSample();
+        if (cancelled) return;
 
-      if (cancelled) return;
-      if (relationshipError) {
-        setError("Measured entity-network evidence could not be loaded.");
+        const entityIds = [
+          ...new Set(sample.relationships.flatMap((edge) => [edge.subject_key, edge.object_key])),
+        ];
+        const entityChunks = chunkValues(entityIds, ENTITY_CHUNK_SIZE);
+        const entityResponses = await Promise.all(
+          entityChunks.map((chunk) =>
+            graphClient
+              .from("canonical_entities")
+              .select("id,canonical_name,display_name,entity_type,iso3,lat,lon")
+              .in("id", chunk),
+          ),
+        );
+
+        if (cancelled) return;
+        const failedEntityQuery = entityResponses.find((response) => response.error);
+        if (failedEntityQuery?.error) throw failedEntityQuery.error;
+
+        const loadedEntities = entityResponses.flatMap(
+          (response) => (response.data ?? []) as unknown as CanonicalEntity[],
+        );
+        setRelationships(sample.relationships);
+        setEntities(loadedEntities);
+        setTotalMeasuredEdges(sample.totalMeasuredEdges);
         setLoading(false);
-        return;
-      }
-
-      const loadedRelationships = (data ?? []) as unknown as GraphRelationship[];
-      const entityIds = [
-        ...new Set(loadedRelationships.flatMap((edge) => [edge.subject_key, edge.object_key])),
-      ];
-
-      const entityChunks = chunkValues(entityIds, ENTITY_CHUNK_SIZE);
-      const entityResponses = await Promise.all(
-        entityChunks.map((chunk) =>
-          graphClient
-            .from("canonical_entities")
-            .select("id,canonical_name,display_name,entity_type,iso3,lat,lon")
-            .in("id", chunk),
-        ),
-      );
-
-      if (cancelled) return;
-      const failedEntityQuery = entityResponses.find((response) => response.error);
-      if (failedEntityQuery) {
-        setError("Network relationships loaded, but their canonical entity geography could not be resolved.");
+      } catch {
+        if (cancelled) return;
+        setError("Measured entity-network evidence or its canonical geography could not be loaded.");
         setLoading(false);
-        return;
       }
-
-      const loadedEntities = entityResponses.flatMap(
-        (response) => (response.data ?? []) as unknown as CanonicalEntity[],
-      );
-      setRelationships(loadedRelationships);
-      setEntities(loadedEntities);
-      setTotalMeasuredEdges(count ?? loadedRelationships.length);
-      setLoading(false);
     };
 
     void load();
