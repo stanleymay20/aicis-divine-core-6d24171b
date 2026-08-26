@@ -169,3 +169,13 @@
 .atlas-popup .leaflet-popup-close-button {
   color: #94a3b8 !important;
 }
+
+/* Command-center map: keep the country detail card inside narrow phone viewports. */
+@media (max-width: 767px) {
+  .maplibregl-map ~ .absolute.top-4.right-4.w-72 {
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+    max-width: none;
+  }
+}
