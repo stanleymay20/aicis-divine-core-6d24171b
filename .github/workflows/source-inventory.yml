@@ -2,6 +2,13 @@ name: AICIS Lovable Source Inventory
 
 on:
   workflow_dispatch:
+  # Temporary one-shot trigger for the emergency migration evidence pass.
+  # Delete this push stanza immediately after the run is captured.
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/source-inventory.yml'
 
 permissions:
   contents: read
