@@ -3,12 +3,23 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ZoomIn, ZoomOut, RotateCcw, Layers, Globe, Loader2, Crosshair, Satellite } from "lucide-react";
+import {
+  Crosshair,
+  Globe,
+  Layers,
+  Loader2,
+  Network,
+  RotateCcw,
+  Satellite,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ALL_COUNTRIES, getCountryCoordinates, type Country } from "@/lib/geo/all-countries";
 import { cn } from "@/lib/utils";
 import { useIncidentMarkers } from "./IncidentMarkers";
 import { QuickActions } from "./QuickActions";
+import { useNetworkMapLayer } from "./useNetworkMapLayer";
 
 interface CountryData {
   country: string;
@@ -41,9 +52,8 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
     const [selectedCountry, setSelectedCountry] = useState<CountryData | null>(null);
     const [activeLayer, setActiveLayer] = useState("vulnerability");
     const [showSatellite, setShowSatellite] = useState(true);
-    const spinIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const spinIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Incident markers hook
     const { incidentCount } = useIncidentMarkers({
       map: map.current,
       isMapLoaded: mapLoaded,
@@ -58,7 +68,13 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
       },
     });
 
-    // Fetch vulnerability data
+    const networkLayer = useNetworkMapLayer({
+      map: map.current,
+      isMapLoaded: mapLoaded,
+      enabled: activeLayer === "networks",
+      selectedIso3: selectedCountry?.iso3,
+    });
+
     useEffect(() => {
       const fetchData = async () => {
         const { data } = await supabase
@@ -66,26 +82,29 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           .select("country, iso_code, latitude, longitude, overall_score")
           .order("calculated_at", { ascending: false });
 
-        if (data) {
-          const latestByCountry = data.reduce((acc: Record<string, CountryData>, curr) => {
-            if (!acc[curr.country]) {
-              acc[curr.country] = {
-                country: curr.country,
-                iso3: curr.iso_code || '',
-                latitude: curr.latitude || 0,
-                longitude: curr.longitude || 0,
-                overall_score: curr.overall_score || undefined,
-              };
-            }
-            return acc;
-          }, {});
-          setCountryData(Object.values(latestByCountry));
-        }
+        if (!data) return;
+
+        const latestByCountry = data.reduce((acc: Record<string, CountryData>, curr) => {
+          if (
+            !acc[curr.country] &&
+            Number.isFinite(curr.latitude) &&
+            Number.isFinite(curr.longitude)
+          ) {
+            acc[curr.country] = {
+              country: curr.country,
+              iso3: curr.iso_code || "",
+              latitude: Number(curr.latitude),
+              longitude: Number(curr.longitude),
+              overall_score: curr.overall_score ?? undefined,
+            };
+          }
+          return acc;
+        }, {});
+        setCountryData(Object.values(latestByCountry));
       };
-      fetchData();
+      void fetchData();
     }, []);
 
-    // Initialize map
     useEffect(() => {
       if (!mapContainer.current || map.current) return;
 
@@ -97,7 +116,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
             satellite: {
               type: "raster",
               tiles: [
-                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
               ],
               tileSize: 256,
               attribution: "Esri, Maxar, Earthstar Geographics",
@@ -133,19 +152,28 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
       };
     }, []);
 
-    // Add markers
+    useEffect(() => {
+      if (!map.current || !mapLoaded || !map.current.getLayer("satellite")) return;
+      map.current.setLayoutProperty("satellite", "visibility", showSatellite ? "visible" : "none");
+    }, [mapLoaded, showSatellite]);
+
     useEffect(() => {
       if (!map.current || !mapLoaded || countryData.length === 0) return;
 
-      document.querySelectorAll(".country-marker").forEach(m => m.remove());
+      document.querySelectorAll(".country-marker").forEach((marker) => marker.remove());
 
-      countryData.forEach(data => {
-        if (!data.latitude || !data.longitude) return;
+      countryData.forEach((data) => {
+        if (!Number.isFinite(data.latitude) || !Number.isFinite(data.longitude)) return;
 
-        const score = data.overall_score || 0;
-        const color = score >= 80 ? "hsl(0 84% 60%)" :
-                      score >= 60 ? "hsl(38 92% 50%)" :
-                      score >= 40 ? "hsl(142 76% 55%)" : "hsl(142 76% 45%)";
+        const score = data.overall_score ?? 0;
+        const color =
+          score >= 71
+            ? "hsl(0 84% 60%)"
+            : score >= 51
+              ? "hsl(38 92% 50%)"
+              : score >= 31
+                ? "hsl(45 93% 58%)"
+                : "hsl(142 76% 45%)";
 
         const el = document.createElement("div");
         el.className = "country-marker";
@@ -195,7 +223,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
 
     const spinGlobe = useCallback(() => {
       if (!map.current || isSpinning) return;
-      
+
       setIsSpinning(true);
       map.current.flyTo({ center: [0, 20], zoom: 1.5, duration: 1000 });
 
@@ -226,14 +254,16 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
       setSelectedCountry(null);
     }, []);
 
-    const flyToCountry = useCallback((country: Country) => {
-      const coords = getCountryCoordinates(country.iso2);
-      if (coords) {
+    const flyToCountry = useCallback(
+      (country: Country) => {
+        const coords = getCountryCoordinates(country.iso2);
+        if (!coords) return;
+
         spinGlobe();
         setTimeout(() => {
           flyToLocation(coords.lng, coords.lat, 5);
-          const vulnData = countryData.find(c =>
-            c.country.toLowerCase().includes(country.name.toLowerCase())
+          const vulnData = countryData.find((candidate) =>
+            candidate.country.toLowerCase().includes(country.name.toLowerCase()),
           );
           const data: CountryData = {
             country: country.name,
@@ -245,8 +275,9 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           setSelectedCountry(data);
           onCountrySelect?.(data);
         }, 2500);
-      }
-    }, [countryData, flyToLocation, onCountrySelect, spinGlobe]);
+      },
+      [countryData, flyToLocation, onCountrySelect, spinGlobe],
+    );
 
     useImperativeHandle(ref, () => ({
       flyToCountry,
@@ -259,11 +290,13 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
       <div className={cn("relative w-full h-full", className)}>
         <div ref={mapContainer} className="absolute inset-0" />
 
-        {/* Spinning overlay */}
         {isSpinning && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/40 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-4">
-              <Globe className="w-16 h-16 text-primary animate-spin" style={{ animationDuration: "0.8s" }} />
+              <Globe
+                className="w-16 h-16 text-primary animate-spin"
+                style={{ animationDuration: "0.8s" }}
+              />
               <span className="text-sm font-orbitron text-primary animate-pulse">
                 Scanning globe...
               </span>
@@ -271,16 +304,18 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           </div>
         )}
 
-        {/* Map controls - repositioned for mobile */}
-        <div className={cn(
-          "absolute flex flex-col gap-1 z-20",
-          isMobile ? "bottom-24 right-2" : "bottom-28 left-4"
-        )}>
+        <div
+          className={cn(
+            "absolute flex flex-col gap-1 z-20",
+            isMobile ? "bottom-24 right-2" : "bottom-28 left-4",
+          )}
+        >
           <Button
             variant="secondary"
             size="icon"
             className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
             onClick={() => map.current?.zoomIn()}
+            aria-label="Zoom in"
           >
             <ZoomIn className="h-4 w-4" />
           </Button>
@@ -289,6 +324,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
             size="icon"
             className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
             onClick={() => map.current?.zoomOut()}
+            aria-label="Zoom out"
           >
             <ZoomOut className="h-4 w-4" />
           </Button>
@@ -297,6 +333,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
             size="icon"
             className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
             onClick={resetView}
+            aria-label="Reset map view"
           >
             <RotateCcw className="h-4 w-4" />
           </Button>
@@ -307,7 +344,8 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                 variant={showSatellite ? "default" : "secondary"}
                 size="icon"
                 className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
-                onClick={() => setShowSatellite(!showSatellite)}
+                onClick={() => setShowSatellite((visible) => !visible)}
+                aria-label="Toggle satellite imagery"
               >
                 <Satellite className="h-4 w-4" />
               </Button>
@@ -315,9 +353,8 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           )}
         </div>
 
-        {/* Quick actions - hidden on mobile */}
         {!isMobile && (
-          <div className="absolute top-20 left-4 z-20 bg-card/90 backdrop-blur-sm rounded-lg border border-primary/20 p-2">
+          <div className="absolute top-20 left-4 z-20 bg-card/90 backdrop-blur-sm rounded-lg border border-primary/20 p-2 max-w-[340px]">
             <QuickActions
               activeLayer={activeLayer}
               onAction={(action) => {
@@ -331,37 +368,87 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           </div>
         )}
 
-        {/* Legend - hidden on mobile */}
         {!isMobile && (
-          <div className="absolute bottom-28 right-4 p-3 bg-card/90 backdrop-blur-sm rounded-lg border border-primary/20 z-20">
+          <div className="absolute bottom-28 right-4 p-3 bg-card/90 backdrop-blur-sm rounded-lg border border-primary/20 z-20 w-56">
             <div className="text-xs font-semibold mb-2 flex items-center gap-1.5">
               <Layers className="h-3 w-3 text-primary" />
-              Data Layers
+              {activeLayer === "networks" ? "Network Layer" : "Data Layers"}
             </div>
-            <div className="space-y-1.5">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Risk Level</div>
-              {[
-                { color: "hsl(142 76% 45%)", label: "Low (0-30)" },
-                { color: "hsl(45 93% 58%)", label: "Medium (31-50)" },
-                { color: "hsl(38 92% 50%)", label: "High (51-70)" },
-                { color: "hsl(0 84% 60%)", label: "Critical (71+)" },
-              ].map(({ color, label }) => (
-                <div key={label} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ background: color }} />
-                  <span className="text-[10px] text-muted-foreground">{label}</span>
+
+            {activeLayer === "networks" ? (
+              <div className="space-y-2 text-[10px] text-muted-foreground">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5">
+                    <Network className="h-3 w-3 text-primary" />
+                    Measured graph links
+                  </span>
+                  {networkLayer.loading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <span className="font-mono text-foreground">{networkLayer.projectedEdges}</span>
+                  )}
                 </div>
-              ))}
-              <div className="w-full h-px bg-border my-2" />
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Incidents</div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
-                <span className="text-[10px] text-muted-foreground">Live ({incidentCount})</span>
+                {networkLayer.error && (
+                  <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">
+                    {networkLayer.error}
+                  </div>
+                )}
+                {!networkLayer.error && !networkLayer.loading && networkLayer.projectedEdges === 0 && (
+                  <div className="rounded border border-border p-2">
+                    No measured country-to-country graph relationships are currently projectable.
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <div className="h-0.5 w-8 bg-violet-400" />
+                  <span>Measured relationship</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-0.5 w-8 bg-cyan-400" />
+                  <span>Selected-country connection</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-violet-300 border border-white" />
+                  <span>Relationship destination</span>
+                </div>
+                {selectedCountry?.iso3 && (
+                  <div className="pt-1 border-t border-border flex justify-between gap-2">
+                    <span>{selectedCountry.country} connections</span>
+                    <span className="font-mono text-foreground">{networkLayer.selectedConnections}</span>
+                  </div>
+                )}
+                <p className="leading-relaxed">
+                  Width reflects current decayed weight; opacity reflects recorded confidence. Click a line for evidence. Relationship does not imply causation.
+                </p>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                  Risk Level
+                </div>
+                {[
+                  { color: "hsl(142 76% 45%)", label: "Low (0-30)" },
+                  { color: "hsl(45 93% 58%)", label: "Medium (31-50)" },
+                  { color: "hsl(38 92% 50%)", label: "High (51-70)" },
+                  { color: "hsl(0 84% 60%)", label: "Critical (71+)" },
+                ].map(({ color, label }) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ background: color }} />
+                    <span className="text-[10px] text-muted-foreground">{label}</span>
+                  </div>
+                ))}
+                <div className="w-full h-px bg-border my-2" />
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                  Incidents
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
+                  <span className="text-[10px] text-muted-foreground">Live ({incidentCount})</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Selected country popup */}
         {selectedCountry && !isSpinning && (
           <div className="absolute top-4 right-4 w-72 p-4 bg-card/95 backdrop-blur-sm rounded-lg border border-primary/20 z-20 animate-fade-in">
             <div className="flex items-center justify-between mb-3">
@@ -383,6 +470,12 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                   </Badge>
                 </div>
               )}
+              {activeLayer === "networks" && selectedCountry.iso3 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Measured connections</span>
+                  <Badge variant="secondary">{networkLayer.selectedConnections}</Badge>
+                </div>
+              )}
             </div>
             <Button
               variant="ghost"
@@ -395,10 +488,12 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           </div>
         )}
 
-        {/* Stats badge - hidden on mobile */}
         {!isMobile && (
           <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20">
-            <Badge variant="secondary" className="bg-card/90 backdrop-blur-sm border-primary/20 py-1.5 px-3">
+            <Badge
+              variant="secondary"
+              className="bg-card/90 backdrop-blur-sm border-primary/20 py-1.5 px-3"
+            >
               <Globe className="h-3 w-3 mr-1.5" />
               <span className="font-orbitron">{ALL_COUNTRIES.length}</span>
               <span className="text-muted-foreground mx-1">countries</span>
@@ -406,12 +501,20 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
               <Crosshair className="h-3 w-3 mr-1.5 text-success" />
               <span className="font-orbitron">{countryData.length}</span>
               <span className="text-muted-foreground ml-1">monitored</span>
+              {activeLayer === "networks" && (
+                <>
+                  <span className="w-px h-3 bg-border mx-2" />
+                  <Network className="h-3 w-3 mr-1.5 text-primary" />
+                  <span className="font-orbitron">{networkLayer.projectedEdges}</span>
+                  <span className="text-muted-foreground ml-1">links</span>
+                </>
+              )}
             </Badge>
           </div>
         )}
       </div>
     );
-  }
+  },
 );
 
 GlobalMap.displayName = "GlobalMap";
