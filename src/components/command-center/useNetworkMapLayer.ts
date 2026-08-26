@@ -11,6 +11,7 @@ const EDGE_LAYER_ID = "aicis-network-edges-line";
 const TARGET_SOURCE_ID = "aicis-network-targets";
 const TARGET_LAYER_ID = "aicis-network-targets-circle";
 const MAX_NETWORK_EDGES = 160;
+const EMPTY_FEATURE_COLLECTION = { type: "FeatureCollection" as const, features: [] };
 
 interface GraphRelationship {
   id: string;
@@ -177,6 +178,7 @@ export function useNetworkMapLayer({
   const [relationships, setRelationships] = useState<GraphRelationship[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const normalizedSelected = selectedIso3?.toUpperCase() ?? null;
 
   useEffect(() => {
     if (!enabled || relationships.length > 0) return;
@@ -248,11 +250,14 @@ export function useNetworkMapLayer({
           method: edge.method || "Not recorded",
           observed_to: formatObservationDate(edge.observed_to),
           selected:
-            selectedIso3 && (source.iso3 === selectedIso3 || target.iso3 === selectedIso3) ? 1 : 0,
+            normalizedSelected &&
+            (source.iso3 === normalizedSelected || target.iso3 === normalizedSelected)
+              ? 1
+              : 0,
         },
       })),
     }),
-    [projected, selectedIso3],
+    [normalizedSelected, projected],
   );
 
   const targetData = useMemo(
@@ -265,25 +270,28 @@ export function useNetworkMapLayer({
           id: edge.id,
           target_iso3: target.iso3,
           selected:
-            selectedIso3 && (source.iso3 === selectedIso3 || target.iso3 === selectedIso3) ? 1 : 0,
+            normalizedSelected &&
+            (source.iso3 === normalizedSelected || target.iso3 === normalizedSelected)
+              ? 1
+              : 0,
         },
       })),
     }),
-    [projected, selectedIso3],
+    [normalizedSelected, projected],
   );
 
   useEffect(() => {
     if (!map || !isMapLoaded) return;
 
     if (!map.getSource(EDGE_SOURCE_ID)) {
-      map.addSource(EDGE_SOURCE_ID, { type: "geojson", data: edgeData });
+      map.addSource(EDGE_SOURCE_ID, { type: "geojson", data: EMPTY_FEATURE_COLLECTION });
     }
     if (!map.getLayer(EDGE_LAYER_ID)) {
       map.addLayer({
         id: EDGE_LAYER_ID,
         type: "line",
         source: EDGE_SOURCE_ID,
-        layout: { visibility: enabled ? "visible" : "none" },
+        layout: { visibility: "none" },
         paint: {
           "line-color": ["case", ["==", ["get", "selected"], 1], "#22d3ee", "#a78bfa"],
           "line-opacity": [
@@ -303,14 +311,14 @@ export function useNetworkMapLayer({
     }
 
     if (!map.getSource(TARGET_SOURCE_ID)) {
-      map.addSource(TARGET_SOURCE_ID, { type: "geojson", data: targetData });
+      map.addSource(TARGET_SOURCE_ID, { type: "geojson", data: EMPTY_FEATURE_COLLECTION });
     }
     if (!map.getLayer(TARGET_LAYER_ID)) {
       map.addLayer({
         id: TARGET_LAYER_ID,
         type: "circle",
         source: TARGET_SOURCE_ID,
-        layout: { visibility: enabled ? "visible" : "none" },
+        layout: { visibility: "none" },
         paint: {
           "circle-radius": ["case", ["==", ["get", "selected"], 1], 5, 3],
           "circle-color": ["case", ["==", ["get", "selected"], 1], "#22d3ee", "#c4b5fd"],
@@ -321,7 +329,7 @@ export function useNetworkMapLayer({
       });
     }
 
-    const onClick = (event: maplibregl.MapMouseEvent) => {
+    const onClick = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = map.queryRenderedFeatures(event.point, { layers: [EDGE_LAYER_ID] })[0];
       if (!feature?.properties) return;
       const properties = feature.properties as Record<string, string | number>;
@@ -350,7 +358,7 @@ export function useNetworkMapLayer({
       if (map.getLayer(EDGE_LAYER_ID)) map.removeLayer(EDGE_LAYER_ID);
       if (map.getSource(EDGE_SOURCE_ID)) map.removeSource(EDGE_SOURCE_ID);
     };
-  }, [map, isMapLoaded]);
+  }, [isMapLoaded, map]);
 
   useEffect(() => {
     if (!map || !isMapLoaded) return;
@@ -367,10 +375,10 @@ export function useNetworkMapLayer({
     }
   }, [edgeData, enabled, isMapLoaded, map, targetData]);
 
-  const normalizedSelected = selectedIso3?.toUpperCase() ?? null;
   const selectedConnections = normalizedSelected
     ? projected.filter(
-        ({ source, target }) => source.iso3 === normalizedSelected || target.iso3 === normalizedSelected,
+        ({ source, target }) =>
+          source.iso3 === normalizedSelected || target.iso3 === normalizedSelected,
       ).length
     : 0;
 
