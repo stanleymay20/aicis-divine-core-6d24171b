@@ -81,29 +81,64 @@ REVOKE ALL ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) FROM authe
 GRANT EXECUTE ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) TO service_role;
 
 -- CRITICAL FAIL-CLOSED BARRIER
--- A source snapshot can contain many generations of cron jobs. The live source
--- currently contains far more source-bound jobs than the three pipeline-replay
--- schedules below. Never allow any restored job that still contains the Lovable
--- source project ref to execute on the independent target.
+-- A source snapshot can contain many generations of cron jobs. Never allow a
+-- restored target job to call the Lovable source either directly in cron.job or
+-- indirectly through a PostgreSQL wrapper whose stored function body contains
+-- the source project ref.
 --
--- We intentionally DISABLE rather than delete these rows so the historical
+-- We intentionally DISABLE rather than delete these rows so historical
 -- schedule/command inventory remains available for audit and controlled rebinding.
 UPDATE cron.job
 SET active = false
 WHERE command LIKE '%psonnnuhjjskrdazrakk%';
 
+-- Indirect escape protection. Historical migrations include wrappers such as
+-- trigger_wb_ingest()/trigger_village_unify() whose cron command is innocent
+-- looking while pg_proc.prosrc still posts to the old project. Disable any cron
+-- command that names such a source-bound stored function.
+WITH source_bound_functions AS (
+  SELECT DISTINCT p.proname
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+    AND p.prosrc LIKE '%psonnnuhjjskrdazrakk%'
+)
+UPDATE cron.job j
+SET active = false
+FROM source_bound_functions f
+WHERE j.active
+  AND j.command ILIKE '%' || f.proname || '%';
+
 DO $$
 DECLARE
-  leaked_jobs bigint;
+  direct_leaks bigint;
+  indirect_leaks bigint;
 BEGIN
   SELECT count(*)
-  INTO leaked_jobs
+  INTO direct_leaks
   FROM cron.job
   WHERE active
     AND command LIKE '%psonnnuhjjskrdazrakk%';
 
-  IF leaked_jobs <> 0 THEN
-    RAISE EXCEPTION 'AICIS target cron isolation failed: % active source-bound jobs remain', leaked_jobs;
+  WITH source_bound_functions AS (
+    SELECT DISTINCT p.proname
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND p.prosrc LIKE '%psonnnuhjjskrdazrakk%'
+  )
+  SELECT count(DISTINCT j.jobid)
+  INTO indirect_leaks
+  FROM cron.job j
+  JOIN source_bound_functions f
+    ON j.command ILIKE '%' || f.proname || '%'
+  WHERE j.active;
+
+  IF direct_leaks <> 0 OR indirect_leaks <> 0 THEN
+    RAISE EXCEPTION
+      'AICIS target cron isolation failed: direct=% indirect=% source-bound active jobs remain',
+      direct_leaks,
+      indirect_leaks;
   END IF;
 END;
 $$;
@@ -150,16 +185,34 @@ SELECT cron.schedule(
 
 DO $$
 DECLARE
-  leaked_jobs bigint;
+  direct_leaks bigint;
+  indirect_leaks bigint;
 BEGIN
   SELECT count(*)
-  INTO leaked_jobs
+  INTO direct_leaks
   FROM cron.job
   WHERE active
     AND command LIKE '%psonnnuhjjskrdazrakk%';
 
-  IF leaked_jobs <> 0 THEN
-    RAISE EXCEPTION 'AICIS target cron isolation regressed after rebinding: % active source-bound jobs remain', leaked_jobs;
+  WITH source_bound_functions AS (
+    SELECT DISTINCT p.proname
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND p.prosrc LIKE '%psonnnuhjjskrdazrakk%'
+  )
+  SELECT count(DISTINCT j.jobid)
+  INTO indirect_leaks
+  FROM cron.job j
+  JOIN source_bound_functions f
+    ON j.command ILIKE '%' || f.proname || '%'
+  WHERE j.active;
+
+  IF direct_leaks <> 0 OR indirect_leaks <> 0 THEN
+    RAISE EXCEPTION
+      'AICIS target cron isolation regressed after rebinding: direct=% indirect=%',
+      direct_leaks,
+      indirect_leaks;
   END IF;
 END;
 $$;
