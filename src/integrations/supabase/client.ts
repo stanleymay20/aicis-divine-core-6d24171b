@@ -3,16 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
-// Migration bridge: the Lovable-backed Supabase project remains the authoritative
-// AICIS source until the zero-data-loss cutover is proven. Vite/Netlify variables
-// always win, so switching to the independently owned target remains a controlled
-// configuration change. The fallback values below are public browser credentials
-// (URL + anon/publishable key), never service-role credentials.
-const MIGRATION_SOURCE_SUPABASE_URL = 'https://psonnnuhjjskrdazrakk.supabase.co';
-const MIGRATION_SOURCE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzb25ubnVoampza3JkYXpyYWtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk2OTU0NzAsImV4cCI6MjA3NTI3MTQ3MH0.7ZqxEzVc9mVLJrbI5HgesAmKaHWlNt9oB4lZta_in6o';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim();
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || MIGRATION_SOURCE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || MIGRATION_SOURCE_PUBLISHABLE_KEY;
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  throw new Error(
+    'AICIS frontend authentication is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY for this deployment.',
+  );
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
@@ -22,5 +20,6 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: brokeredPreviewStorage(),
     persistSession: true,
     autoRefreshToken: true,
-  }
+    detectSessionInUrl: true,
+  },
 });
