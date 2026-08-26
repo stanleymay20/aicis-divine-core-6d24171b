@@ -1,0 +1,48 @@
+name: One-off migration runbook cron architecture patch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-migration-runbook-cron.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch runbook exact text
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/AICIS_ZERO_DATA_LOSS_MIGRATION.md')
+          text = path.read_text()
+
+          old = "The target-only migration disables restored cron commands that still contain the source ref and fails closed if an active source-bound cron job remains. Only explicitly audited schedules should be re-enabled."
+          new = "The restore-phase target migration is a **quarantine barrier**: it creates the target-safe invocation helper and disables **every restored cron job**, including jobs whose commands look harmless but call stored PostgreSQL wrappers that still contain the source ref. It intentionally activates zero schedules. During restore, shadow validation and parity, `cron.job` must have zero active writers. Audited schedules are enabled only after the final cutover gate by the explicitly separated `migration/target/cutover/001_activate_audited_cron.sql` file."
+          if old not in text:
+              raise SystemExit('Phase 5 replacement anchor not found')
+          text = text.replace(old, new, 1)
+
+          old2 = "7. enable target writers;\n8. switch frontend/runtime to target;"
+          new2 = "7. execute the cutover-only scheduler activation (`migration/target/cutover/001_activate_audited_cron.sql`) and enable target writers;\n8. switch frontend/runtime to target;"
+          if old2 not in text:
+              raise SystemExit('Phase 7 replacement anchor not found')
+          text = text.replace(old2, new2, 1)
+
+          path.write_text(text)
+          PY
+
+          git diff --check
+          git diff -- docs/AICIS_ZERO_DATA_LOSS_MIGRATION.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/AICIS_ZERO_DATA_LOSS_MIGRATION.md
+          git commit -m "document target cron quarantine and cutover activation"
+          git push origin HEAD:main
