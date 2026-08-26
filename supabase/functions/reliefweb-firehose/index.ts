@@ -36,6 +36,12 @@ async function sha256Hex(input: string) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+function parseProviderTimestamp(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
 interface ApiResult {
   items: any[];
   httpStatus: number;
@@ -123,7 +129,8 @@ async function fetchRssFallback(): Promise<ApiResult> {
           if (!title) continue;
           const link = pick("link");
           const pub = pick("pubDate");
-          const created = pub && !isNaN(Date.parse(pub)) ? new Date(pub).toISOString() : new Date().toISOString();
+          // Missing/invalid report dates remain unknown. Ingestion time is not report time.
+          const created = parseProviderTimestamp(pub);
           parsed.push({ id: link, fields: { title, url: link, date: { created }, country: [] } });
         }
         if (parsed.length > 0) {
@@ -251,7 +258,7 @@ serve(async (req) => {
     if (f.primary_country?.iso3 && !iso3s.includes(f.primary_country.iso3.toUpperCase())) {
       iso3s.unshift(f.primary_country.iso3.toUpperCase());
     }
-    const occurredAt = f.date?.created ?? new Date().toISOString();
+    const occurredAt = parseProviderTimestamp(f.date?.created);
     const link = f.url ?? `https://reliefweb.int/report/${it.id}`;
 
     let category = "migration_displacement";
@@ -275,8 +282,11 @@ serve(async (req) => {
   const nowMs = Date.now();
   for (const c of candidates) {
     if (existing.has(c.dedup)) continue;
-    const detectionLatencySec = Math.max(0, Math.round((nowMs - new Date(c.occurredAt).getTime()) / 1000));
-    const evidenceHash = await sha256Hex(`${c.title}|${c.link}|${c.occurredAt}`);
+    const occurredAtMs = c.occurredAt ? Date.parse(c.occurredAt) : Number.NaN;
+    const detectionLatencySec = Number.isFinite(occurredAtMs)
+      ? Math.max(0, Math.round((nowMs - occurredAtMs) / 1000))
+      : null;
+    const evidenceHash = await sha256Hex(`${c.title}|${c.link}|${c.occurredAt ?? "unknown-report-time"}`);
     toInsert.push({
       detection_latency_seconds: detectionLatencySec,
       last_pipeline_stage: "ingested",
