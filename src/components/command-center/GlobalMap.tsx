@@ -337,6 +337,17 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           >
             <RotateCcw className="h-4 w-4" />
           </Button>
+          <Button
+            variant={activeLayer === "networks" ? "default" : "secondary"}
+            size="icon"
+            className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
+            onClick={() =>
+              setActiveLayer((layer) => (layer === "networks" ? "vulnerability" : "networks"))
+            }
+            aria-label="Toggle measured network layer"
+          >
+            <Network className="h-4 w-4" />
+          </Button>
           {!isMobile && (
             <>
               <div className="w-full h-px bg-border my-1" />
@@ -368,8 +379,23 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           </div>
         )}
 
+        {isMobile && activeLayer === "networks" && !selectedCountry && (
+          <div className="absolute top-3 left-3 z-20">
+            <Badge variant="secondary" className="bg-card/90 backdrop-blur-sm border-primary/20 gap-1.5">
+              {networkLayer.loading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Network className="h-3 w-3 text-primary" />
+              )}
+              {networkLayer.error
+                ? "Network unavailable"
+                : `${networkLayer.projectedEdges} measured links`}
+            </Badge>
+          </div>
+        )}
+
         {!isMobile && (
-          <div className="absolute bottom-28 right-4 p-3 bg-card/90 backdrop-blur-sm rounded-lg border border-primary/20 z-20 w-56">
+          <div className="absolute bottom-28 right-4 p-3 bg-card/90 backdrop-blur-sm rounded-lg border border-primary/20 z-20 w-64">
             <div className="text-xs font-semibold mb-2 flex items-center gap-1.5">
               <Layers className="h-3 w-3 text-primary" />
               {activeLayer === "networks" ? "Network Layer" : "Data Layers"}
@@ -380,12 +406,14 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-1.5">
                     <Network className="h-3 w-3 text-primary" />
-                    Measured graph links
+                    Displayed network sample
                   </span>
                   {networkLayer.loading ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
-                    <span className="font-mono text-foreground">{networkLayer.projectedEdges}</span>
+                    <span className="font-mono text-foreground">
+                      {networkLayer.projectedEdges}/{networkLayer.totalMeasuredEdges}
+                    </span>
                   )}
                 </div>
                 {networkLayer.error && (
@@ -395,20 +423,29 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                 )}
                 {!networkLayer.error && !networkLayer.loading && networkLayer.projectedEdges === 0 && (
                   <div className="rounded border border-border p-2">
-                    No measured country-to-country graph relationships are currently projectable.
+                    No sampled measured entity relationships are currently projectable geographically.
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <div className="h-0.5 w-8 bg-violet-400" />
-                  <span>Measured relationship</span>
+
+                <div className="pt-1 border-t border-border space-y-1.5">
+                  {[
+                    { color: "bg-amber-500", label: "Borders" },
+                    { color: "bg-violet-400", label: "Trade" },
+                    { color: "bg-sky-400", label: "Membership" },
+                    { color: "bg-emerald-400", label: "Headquarters" },
+                    { color: "bg-slate-400", label: "Parent" },
+                    { color: "bg-cyan-400", label: "Selected-country connection" },
+                  ].map(({ color, label }) => (
+                    <div key={label} className="flex items-center gap-2">
+                      <div className={cn("h-0.5 w-8", color)} />
+                      <span>{label}</span>
+                    </div>
+                  ))}
                 </div>
+
                 <div className="flex items-center gap-2">
-                  <div className="h-0.5 w-8 bg-cyan-400" />
-                  <span>Selected-country connection</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-violet-300 border border-white" />
-                  <span>Relationship destination</span>
+                  <div className="h-2 w-2 rounded-full bg-slate-100 border border-slate-900" />
+                  <span>Destination; faded = country-level placement</span>
                 </div>
                 {selectedCountry?.iso3 && (
                   <div className="pt-1 border-t border-border flex justify-between gap-2">
@@ -417,7 +454,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                   </div>
                 )}
                 <p className="leading-relaxed">
-                  Width reflects current decayed weight; opacity reflects recorded confidence. Click a line for evidence. Relationship does not imply causation.
+                  A balanced visual sample is shown so one relationship family cannot dominate the map. Width reflects current decayed weight; opacity reflects recorded confidence. Click a line for evidence. Relationship does not imply causation.
                 </p>
               </div>
             ) : (
@@ -450,7 +487,10 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
         )}
 
         {selectedCountry && !isSpinning && (
-          <div className="absolute top-4 right-4 w-72 p-4 bg-card/95 backdrop-blur-sm rounded-lg border border-primary/20 z-20 animate-fade-in">
+          <div className={cn(
+            "absolute top-4 right-4 w-72 p-4 bg-card/95 backdrop-blur-sm rounded-lg border border-primary/20 z-20 animate-fade-in",
+            isMobile && "max-w-[calc(100%-2rem)]",
+          )}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-orbitron font-bold">{selectedCountry.country}</h3>
               <Badge>{selectedCountry.iso3}</Badge>
@@ -506,7 +546,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                   <span className="w-px h-3 bg-border mx-2" />
                   <Network className="h-3 w-3 mr-1.5 text-primary" />
                   <span className="font-orbitron">{networkLayer.projectedEdges}</span>
-                  <span className="text-muted-foreground ml-1">links</span>
+                  <span className="text-muted-foreground ml-1">displayed links</span>
                 </>
               )}
             </Badge>
