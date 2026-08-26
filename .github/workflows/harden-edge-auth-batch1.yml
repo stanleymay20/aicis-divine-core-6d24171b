@@ -221,6 +221,11 @@ jobs:
           grep -q 'reliefweb-firehose' /tmp/auth-audit.txt
           echo "Expected 10 SQL-scheduled functions remain for batch 2."
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Typecheck and strict lint touched functions
         shell: bash
         run: |
