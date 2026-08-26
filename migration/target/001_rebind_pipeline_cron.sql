@@ -1,17 +1,22 @@
--- AICIS TARGET-ONLY MIGRATION
+-- AICIS TARGET-ONLY CRON QUARANTINE
 --
 -- DO NOT apply this file to the current Lovable-managed source project.
--- Apply only to the independently owned aicis-production project after these
--- Vault secrets exist in the destination project:
+-- Apply to the independently owned aicis-production project after the database
+-- restore has recreated pg_cron state and before any target writers are allowed.
+--
+-- This file intentionally activates ZERO schedules. The target must remain
+-- isolated from production writers throughout T0 restore, verification, shadow
+-- reads and final parity checks. Audited schedules are enabled only by an
+-- explicit file under migration/target/cutover/ after the cutover gate passes.
+--
+-- Before cutover, create these target Vault secrets:
 --   aicis_project_url      -> https://<destination-ref>.supabase.co
 --   aicis_publishable_key  -> destination sb_publishable_... key
 --   aicis_cron_secret      -> strong scheduler-only secret; must match the
---                             Edge Function CRON_SECRET value
+--                             target Edge Function CRON_SECRET value
 --
--- Purpose: prevent restored pg_cron jobs from posting back to the old Lovable
--- project after a database migration. Missing target secrets fail closed.
--- Publishable API keys belong only in the apikey header; scheduler authority is
--- provided by the independent x-cron-secret credential, never by a browser key.
+-- Publishable API keys belong only in the apikey header. Scheduler authority is
+-- provided by x-cron-secret; a browser/anon key is never authorization.
 
 CREATE OR REPLACE FUNCTION public.invoke_aicis_edge_function(
   function_name text,
@@ -53,6 +58,10 @@ BEGIN
     RAISE EXCEPTION 'AICIS destination Vault secret aicis_project_url is missing';
   END IF;
 
+  IF project_url LIKE '%psonnnuhjjskrdazrakk%' THEN
+    RAISE EXCEPTION 'AICIS destination URL still resolves to the Lovable source project';
+  END IF;
+
   IF publishable_key IS NULL OR btrim(publishable_key) = '' THEN
     RAISE EXCEPTION 'AICIS destination Vault secret aicis_publishable_key is missing';
   END IF;
@@ -81,41 +90,28 @@ REVOKE ALL ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) FROM authe
 GRANT EXECUTE ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) TO service_role;
 
 -- CRITICAL FAIL-CLOSED BARRIER
--- A source snapshot can contain many generations of cron jobs. Never allow a
--- restored target job to call the Lovable source either directly in cron.job or
--- indirectly through a PostgreSQL wrapper whose stored function body contains
--- the source project ref.
---
--- We intentionally DISABLE rather than delete these rows so historical
--- schedule/command inventory remains available for audit and controlled rebinding.
+-- Disable EVERY restored schedule, not just commands that visibly contain the
+-- source project ref. Historical AICIS jobs can call stored PostgreSQL wrappers
+-- whose pg_proc body contains the Lovable URL even when cron.job.command does
+-- not. A blanket quarantine also prevents ordinary target-side ingestion from
+-- creating drift before parity is complete.
 UPDATE cron.job
 SET active = false
-WHERE command LIKE '%psonnnuhjjskrdazrakk%';
-
--- Indirect escape protection. Historical migrations include wrappers such as
--- trigger_wb_ingest()/trigger_village_unify() whose cron command is innocent
--- looking while pg_proc.prosrc still posts to the old project. Disable any cron
--- command that names such a source-bound stored function.
-WITH source_bound_functions AS (
-  SELECT DISTINCT p.proname
-  FROM pg_proc p
-  JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-    AND p.prosrc LIKE '%psonnnuhjjskrdazrakk%'
-)
-UPDATE cron.job j
-SET active = false
-FROM source_bound_functions f
-WHERE j.active
-  AND j.command ILIKE '%' || f.proname || '%';
+WHERE active;
 
 DO $$
 DECLARE
-  direct_leaks bigint;
-  indirect_leaks bigint;
+  active_jobs bigint;
+  direct_source_jobs bigint;
+  indirect_source_jobs bigint;
 BEGIN
   SELECT count(*)
-  INTO direct_leaks
+  INTO active_jobs
+  FROM cron.job
+  WHERE active;
+
+  SELECT count(*)
+  INTO direct_source_jobs
   FROM cron.job
   WHERE active
     AND command LIKE '%psonnnuhjjskrdazrakk%';
@@ -128,91 +124,25 @@ BEGIN
       AND p.prosrc LIKE '%psonnnuhjjskrdazrakk%'
   )
   SELECT count(DISTINCT j.jobid)
-  INTO indirect_leaks
+  INTO indirect_source_jobs
   FROM cron.job j
   JOIN source_bound_functions f
     ON j.command ILIKE '%' || f.proname || '%'
   WHERE j.active;
 
-  IF direct_leaks <> 0 OR indirect_leaks <> 0 THEN
+  IF active_jobs <> 0 THEN
+    RAISE EXCEPTION 'AICIS target cron quarantine failed: % active restored job(s) remain', active_jobs;
+  END IF;
+
+  IF direct_source_jobs <> 0 OR indirect_source_jobs <> 0 THEN
     RAISE EXCEPTION
-      'AICIS target cron isolation failed: direct=% indirect=% source-bound active jobs remain',
-      direct_leaks,
-      indirect_leaks;
+      'AICIS target source isolation failed: direct=% indirect=% active source-bound jobs remain',
+      direct_source_jobs,
+      indirect_source_jobs;
   END IF;
 END;
 $$;
 
--- Recreate only the small set of schedules that have already been explicitly
--- audited for target-safe execution. Every other restored source-bound schedule
--- remains disabled until it receives the same review and an explicit target-safe
--- replacement. This avoids split-brain during staged restoration.
-SELECT cron.unschedule('pipeline-replay-drain-10min')
-WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pipeline-replay-drain-10min');
-
-SELECT cron.schedule(
-  'pipeline-replay-drain-10min',
-  '3,13,23,33,43,53 * * * *',
-  $$SELECT public.invoke_aicis_edge_function(
-      'pipeline-replay',
-      '{"lane":"country","limit":5000,"source":"pg_cron"}'::jsonb
-    );$$
-);
-
-SELECT cron.unschedule('pipeline-replay-translation-20min')
-WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pipeline-replay-translation-20min');
-
-SELECT cron.schedule(
-  'pipeline-replay-translation-20min',
-  '8,28,48 * * * *',
-  $$SELECT public.invoke_aicis_edge_function(
-      'pipeline-replay',
-      '{"lane":"translation","limit":3000,"source":"pg_cron"}'::jsonb
-    );$$
-);
-
-SELECT cron.unschedule('pipeline-replay-enrichment-hourly')
-WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pipeline-replay-enrichment-hourly');
-
-SELECT cron.schedule(
-  'pipeline-replay-enrichment-hourly',
-  '38 * * * *',
-  $$SELECT public.invoke_aicis_edge_function(
-      'pipeline-replay',
-      '{"lane":"enrichment","limit":2000,"source":"pg_cron"}'::jsonb
-    );$$
-);
-
-DO $$
-DECLARE
-  direct_leaks bigint;
-  indirect_leaks bigint;
-BEGIN
-  SELECT count(*)
-  INTO direct_leaks
-  FROM cron.job
-  WHERE active
-    AND command LIKE '%psonnnuhjjskrdazrakk%';
-
-  WITH source_bound_functions AS (
-    SELECT DISTINCT p.proname
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-      AND p.prosrc LIKE '%psonnnuhjjskrdazrakk%'
-  )
-  SELECT count(DISTINCT j.jobid)
-  INTO indirect_leaks
-  FROM cron.job j
-  JOIN source_bound_functions f
-    ON j.command ILIKE '%' || f.proname || '%'
-  WHERE j.active;
-
-  IF direct_leaks <> 0 OR indirect_leaks <> 0 THEN
-    RAISE EXCEPTION
-      'AICIS target cron isolation regressed after rebinding: direct=% indirect=%',
-      direct_leaks,
-      indirect_leaks;
-  END IF;
-END;
-$$;
+-- Intentionally no cron.schedule() calls below this point.
+-- Target writers stay OFF until an explicit migration/target/cutover activation
+-- is executed after the final parity/write-freeze gate.
