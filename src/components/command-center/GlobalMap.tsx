@@ -202,7 +202,12 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
         el.addEventListener("click", () => {
           setSelectedCountry(data);
           onCountrySelect?.(data);
-          flyToLocation(data.longitude, data.latitude, 5);
+          map.current?.flyTo({
+  center: [data.longitude, data.latitude],
+  zoom: 5,
+  duration: 2000,
+  essential: true,
+});
         });
 
         new maplibregl.Marker({ element: el })
