@@ -4,11 +4,8 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  # Pre-cutover browser configuration. These values are public by design.
-  # Replace both atomically with the independently owned AICIS Supabase project
-  # only after database/auth/storage/function parity has been proven.
-  VITE_SUPABASE_URL = "https://psonnnuhjjskrdazrakk.supabase.co"
-  VITE_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzb25ubnVoampza3JkYXpyYWtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk2OTU0NzAsImV4cCI6MjA3NTI3MTQ3MH0.7ZqxEzVc9mVLJrbI5HgesAmKaHWlNt9oB4lZta_in6o"
+  # Supabase browser configuration must be supplied through Netlify environment
+  # variables at cutover. Never hardcode the Lovable source project here.
   VITE_ENABLE_GOOGLE_OAUTH = "false"
 
 # React Router SPA fallback. Static assets are served before this rule.
