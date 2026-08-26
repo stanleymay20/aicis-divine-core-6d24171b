@@ -12,6 +12,10 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
+const CLUSTERING_METHOD = "keyword_overlap_v1";
+const CLUSTERING_EPISTEMIC_STATUS = "unverified_semantic_cluster";
+const MATCH_THRESHOLD = 0.35;
+
 function normalize(text?: string | null) {
   return (text || "")
     .toLowerCase()
@@ -36,11 +40,17 @@ function extractKeywords(signal: any): string[] {
   return [...new Set(words)].slice(0, 12);
 }
 
-function similarity(a: string[], b: string[]) {
+function lexicalSimilarity(a: string[], b: string[]) {
   const sa = new Set(a);
   const sb = new Set(b);
   const overlap = [...sa].filter((x) => sb.has(x)).length;
   return overlap / Math.max(sa.size, sb.size, 1);
+}
+
+function observedEscalationScore(signal: any): number | null {
+  const values = [signal.urgency_score, signal.impact_score]
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  return values.length ? Math.max(...values) : null;
 }
 
 const STOPWORDS = new Set([
@@ -79,7 +89,7 @@ serve(async (req) => {
 
       for (const n of narratives || []) {
         const existingKeywords = (n.metadata?.keywords || []) as string[];
-        const score = similarity(keywords, existingKeywords);
+        const score = lexicalSimilarity(keywords, existingKeywords);
 
         if (score > bestScore) {
           bestScore = score;
@@ -87,10 +97,15 @@ serve(async (req) => {
         }
       }
 
-      if (bestNarrative && bestScore >= 0.35) {
+      const escalationScore = observedEscalationScore(signal);
+      const signalTime = signal.created_at ?? null;
+
+      if (bestNarrative && bestScore >= MATCH_THRESHOLD) {
         await supabase.from("signal_narrative_members").upsert({
           narrative_id: bestNarrative.id,
           signal_id: signal.id,
+          // Existing schema calls this membership_strength. Semantically it is
+          // keyword-overlap similarity only; it is not causal confidence or truth.
           membership_strength: Math.round(bestScore * 100),
           narrative_role: bestScore >= 0.7 ? "core" : "supporting",
           matched_features: keywords,
@@ -100,11 +115,17 @@ serve(async (req) => {
           .from("signal_narratives")
           .update({
             signal_count: (bestNarrative.signal_count || 0) + 1,
-            last_signal_at: new Date().toISOString(),
-            escalation_score: Math.max(
-              signal.urgency_score || 0,
-              signal.impact_score || 0
-            ),
+            last_signal_at: signalTime,
+            escalation_score: escalationScore,
+            metadata: {
+              ...(bestNarrative.metadata || {}),
+              clustering_method: CLUSTERING_METHOD,
+              epistemic_status: CLUSTERING_EPISTEMIC_STATUS,
+              similarity_semantics: "lexical_keyword_overlap_not_causality",
+              causal_inference: false,
+              verification_status: "not_verified",
+              match_threshold: MATCH_THRESHOLD,
+            },
           })
           .eq("id", bestNarrative.id);
 
@@ -121,15 +142,18 @@ serve(async (req) => {
             narrative_type: signal.category || "emerging",
             canonical_countries: signal.affected_countries || [],
             signal_count: 1,
-            first_signal_at: new Date().toISOString(),
-            last_signal_at: new Date().toISOString(),
-            escalation_score: Math.max(
-              signal.urgency_score || 0,
-              signal.impact_score || 0
-            ),
+            first_signal_at: signalTime,
+            last_signal_at: signalTime,
+            escalation_score: escalationScore,
             metadata: {
               keywords,
               origin: "auto_cluster_v1",
+              clustering_method: CLUSTERING_METHOD,
+              epistemic_status: CLUSTERING_EPISTEMIC_STATUS,
+              similarity_semantics: "lexical_keyword_overlap_not_causality",
+              causal_inference: false,
+              verification_status: "not_verified",
+              match_threshold: MATCH_THRESHOLD,
             },
           })
           .select()
@@ -139,6 +163,7 @@ serve(async (req) => {
           await supabase.from("signal_narrative_members").insert({
             narrative_id: inserted.id,
             signal_id: signal.id,
+            // 100 means "seed member of the generated cluster", not certainty.
             membership_strength: 100,
             narrative_role: "seed",
             matched_features: keywords,
@@ -160,11 +185,18 @@ serve(async (req) => {
     await supabase.from("automation_logs").insert({
       job_name: "narrative-clustering",
       status: "success",
-      message: `clustered=${clustered} created=${created}`,
+      message: `clustered=${clustered} created=${created} method=${CLUSTERING_METHOD} epistemic=${CLUSTERING_EPISTEMIC_STATUS}`,
     });
 
     return new Response(
-      JSON.stringify({ clustered, created }),
+      JSON.stringify({
+        clustered,
+        created,
+        clustering_method: CLUSTERING_METHOD,
+        epistemic_status: CLUSTERING_EPISTEMIC_STATUS,
+        causal_inference: false,
+        verification_status: "not_verified",
+      }),
       {
         headers: {
           ...corsHeaders,
