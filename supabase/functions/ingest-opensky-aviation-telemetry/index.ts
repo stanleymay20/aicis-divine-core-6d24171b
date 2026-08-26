@@ -85,7 +85,8 @@ function parseState(row: unknown[]): FlightState | null {
   };
 }
 
-function emergencyScore(state: FlightState): number {
+function emergencyRuleScore(state: FlightState): number {
+  // Deterministic triage heuristic, not an observed or verified emergency probability.
   // Common emergency squawks: 7500 hijack, 7600 radio failure, 7700 emergency.
   if (state.squawk === "7700") return 100;
   if (state.squawk === "7500") return 100;
@@ -96,7 +97,8 @@ function emergencyScore(state: FlightState): number {
   return 5;
 }
 
-function congestionScore(flightCount: number): number {
+function congestionRuleScore(flightCount: number): number {
+  // Deterministic density threshold heuristic, not measured congestion probability.
   if (flightCount >= 2500) return 90;
   if (flightCount >= 1500) return 75;
   if (flightCount >= 800) return 55;
@@ -196,18 +198,24 @@ Deno.serve(async (req) => {
 
     for (const box of boxes) {
       const feed = await fetchBox(box);
-      const observedAt = feed.time ? new Date(feed.time * 1000).toISOString() : new Date().toISOString();
+      const observedAt = feed.time ? new Date(feed.time * 1000).toISOString() : null;
       const states = (feed.states ?? []).map(parseState).filter(Boolean) as FlightState[];
       totalFlights += states.length;
 
-      const emergencyStates = states.filter((s) => emergencyScore(s) >= 70);
-      const avgAltitude = states.length
-        ? states.reduce((acc, s) => acc + (s.geoAltitude ?? s.baroAltitude ?? 0), 0) / states.length
-        : 0;
-      const avgVelocity = states.length
-        ? states.reduce((acc, s) => acc + (s.velocity ?? 0), 0) / states.length
-        : 0;
-      const congestion = congestionScore(states.length);
+      const ruleFlaggedEmergencyStates = states.filter((s) => emergencyRuleScore(s) >= 70);
+      const altitudeSamples = states
+        .map((s) => s.geoAltitude ?? s.baroAltitude)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+      const velocitySamples = states
+        .map((s) => s.velocity)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+      const avgAltitude = altitudeSamples.length
+        ? altitudeSamples.reduce((acc, value) => acc + value, 0) / altitudeSamples.length
+        : null;
+      const avgVelocity = velocitySamples.length
+        ? velocitySamples.reduce((acc, value) => acc + value, 0) / velocitySamples.length
+        : null;
+      const congestion = congestionRuleScore(states.length);
 
       rows.push({
         connector_key: CONNECTOR_KEY,
@@ -217,17 +225,22 @@ Deno.serve(async (req) => {
         observed_at: observedAt,
         observation_value: states.length,
         observation_unit: "aircraft_count",
-        confidence_score: 80,
+        confidence_score: null,
         anomaly_score: congestion,
         raw_payload: {
           box_key: box.key,
           box_name: box.name,
           bounds: box,
-          emergency_count: emergencyStates.length,
-          avg_altitude_m: Math.round(avgAltitude),
-          avg_velocity_ms: Math.round(avgVelocity),
+          rule_flagged_emergency_count: ruleFlaggedEmergencyStates.length,
+          avg_altitude_m: avgAltitude == null ? null : Math.round(avgAltitude),
+          avg_velocity_ms: avgVelocity == null ? null : Math.round(avgVelocity),
           provider: "OpenSky Network",
           feed: "states/all",
+          observation_provenance: "provider_observed_aircraft_count",
+          provider_timestamp_status: observedAt ? "provider_supplied" : "unknown",
+          analytical_confidence: null,
+          anomaly_score_semantics: "deterministic_rule_heuristic_not_probability",
+          congestion_rule: "aircraft_count_thresholds_v1",
         },
       });
 
@@ -237,13 +250,13 @@ Deno.serve(async (req) => {
         observed_entity: box.name,
         observed_region: box.iso3,
         observed_at: observedAt,
-        observation_value: emergencyStates.length,
-        observation_unit: "emergency_aircraft_count",
-        confidence_score: 82,
-        anomaly_score: emergencyStates.length > 0 ? 95 : 5,
+        observation_value: ruleFlaggedEmergencyStates.length,
+        observation_unit: "rule_flagged_aircraft_count",
+        confidence_score: null,
+        anomaly_score: ruleFlaggedEmergencyStates.length > 0 ? 95 : 5,
         raw_payload: {
           box_key: box.key,
-          emergency_aircraft: emergencyStates.slice(0, 20).map((s) => ({
+          rule_flagged_aircraft: ruleFlaggedEmergencyStates.slice(0, 20).map((s) => ({
             icao24: s.icao24,
             callsign: s.callsign,
             squawk: s.squawk,
@@ -251,15 +264,22 @@ Deno.serve(async (req) => {
             latitude: s.latitude,
             longitude: s.longitude,
             origin_country: s.originCountry,
+            emergency_rule_score: emergencyRuleScore(s),
           })),
           provider: "OpenSky Network",
           feed: "states/all",
+          observation_provenance: "rule_derived_from_provider_state_vectors",
+          provider_timestamp_status: observedAt ? "provider_supplied" : "unknown",
+          analytical_confidence: null,
+          verification_status: "not_verified_as_emergency",
+          anomaly_score_semantics: "deterministic_rule_heuristic_not_probability",
+          emergency_rule: "squawk_spi_vertical_rate_thresholds_v1",
         },
       });
     }
 
     for (const row of rows as any[]) {
-      row.raw_payload.dedup_hash = await sha256Hex(`${row.connector_key}|${row.observation_type}|${row.observed_region}|${row.observed_at}`);
+      row.raw_payload.dedup_hash = await sha256Hex(`${row.connector_key}|${row.observation_type}|${row.observed_region}|${row.observed_at ?? "unknown-provider-time"}`);
     }
 
     let inserted = 0;
@@ -297,7 +317,6 @@ Deno.serve(async (req) => {
       console.warn("post aviation telemetry refresh skipped", e);
     }
     await finishProviderRun(supabase, __telemetryRun);
-
 
     return new Response(JSON.stringify({
       status: "success",
