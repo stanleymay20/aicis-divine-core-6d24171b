@@ -1,14 +1,6 @@
 /**
- * graph-recovery-tick — Restores compounding across all stalled graph layers.
- *
- * Runs every 10 min. Each tick advances multiple offsets idempotently:
- *  1. entity_event_links: link recent normalized_events to canonical entities by iso3
- *  2. metric link expansion: continue link_gen_offset via batch_generate_links()
- *  3. canonical_entities: promote next batch of admin_regions
- *  4. legacy_signals: drain global_signals into normalized_events
- *  5. seed non-geo entities (orgs/commodities/sectors) once if missing
- *
- * All operations are idempotent (ON CONFLICT DO NOTHING / unique constraints).
+ * graph-recovery-tick — Restores compounding across stalled graph layers.
+ * All operations are idempotent.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -17,7 +9,69 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function jsonRes(data: any, status = 200) {
+type SupabaseClient = ReturnType<typeof createClient>;
+type EventLinkResult = { scanned: number; created: number; inferred_iso3: number };
+type SignalDrainResult = { offset: number; migrated: number; has_more: boolean };
+type EntitySeedResult = { skipped: boolean; created: number };
+type MetricLinkResult = { inserted?: number };
+type CanonicalExpansionResult = { inserted?: number; updated?: number; remaining?: number | null; phase?: string | null };
+type TickResult = {
+  started_at: string;
+  event_links?: EventLinkResult;
+  metric_links?: MetricLinkResult | null;
+  canonical_entities?: { promoted: number; updated: number; remaining: number | null; phase: string | null };
+  signal_drain?: SignalDrainResult;
+  entity_seed?: EntitySeedResult;
+  duration_ms?: number;
+};
+type NormalizedEvent = {
+  id: string;
+  iso3: string | null;
+  entity_id: string | null;
+  location_entity_id: string | null;
+  title: string | null;
+  description: string | null;
+  event_type: string | null;
+};
+type CanonicalCountry = { id: string; iso3: string | null };
+type ExistingEventLink = { event_id: string; entity_id: string; link_role: string };
+type EventLinkInsert = { event_id: string; entity_id: string; link_role: string; confidence: number };
+type LegacySignal = Record<string, unknown> & {
+  id: string;
+  confidence_score?: number | null;
+  confidence?: number | null;
+  freshness_score?: number | null;
+  last_verified_at?: string | null;
+  category?: string | null;
+  event_type?: string | null;
+  title?: string | null;
+  headline?: string | null;
+  summary?: string | null;
+  description?: string | null;
+  affected_regions?: string[] | null;
+  iso3?: string | null;
+  country_iso3?: string | null;
+  detected_at?: string | null;
+  created_at?: string | null;
+  impact_score?: number | null;
+  severity?: number | null;
+  urgency_score?: number | null;
+  source_tier?: string | null;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function jsonRes(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -27,15 +81,10 @@ function jsonRes(data: any, status = 200) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const startedAt = Date.now();
-  const result: Record<string, any> = { started_at: new Date().toISOString() };
+  const result: TickResult = { started_at: new Date().toISOString() };
 
-  // Log start
   const { data: logRow } = await supabase
     .from("automation_logs")
     .insert({ job_name: "graph-recovery-tick", status: "running", message: "tick start" })
@@ -43,34 +92,37 @@ Deno.serve(async (req) => {
     .single();
 
   try {
-    // ─── Step 1: entity_event_links from recent events ───────────────────
     result.event_links = await linkRecentEvents(supabase);
 
-    // ─── Step 2: continue metric link expansion ──────────────────────────
-    const { data: linkRes } = await supabase.rpc("batch_generate_links", { _batch_size: 5000 });
-    result.metric_links = linkRes;
+    const { data: rawLinkRes } = await supabase.rpc("batch_generate_links", { _batch_size: 5000 });
+    const linkRecord = asRecord(rawLinkRes);
+    const metricLinks: MetricLinkResult = { inserted: optionalNumber(linkRecord.inserted) };
+    result.metric_links = metricLinks;
 
-    // ─── Step 3: promote next batch of admin_regions to canonical_entities
-    const { data: expandRes, error: expandErr } = await supabase.rpc("batch_expand_entities", { _batch_size: 1000 });
+    const { data: rawExpandRes, error: expandErr } = await supabase.rpc("batch_expand_entities", { _batch_size: 1000 });
     if (expandErr) throw expandErr;
+    const expandRecord = asRecord(rawExpandRes);
+    const expandRes: CanonicalExpansionResult = {
+      inserted: optionalNumber(expandRecord.inserted),
+      updated: optionalNumber(expandRecord.updated),
+      remaining: expandRecord.remaining === null ? null : optionalNumber(expandRecord.remaining),
+      phase: expandRecord.phase === null ? null : optionalString(expandRecord.phase),
+    };
     result.canonical_entities = {
-      promoted: expandRes?.inserted ?? 0,
-      updated: expandRes?.updated ?? 0,
-      remaining: expandRes?.remaining ?? null,
-      phase: expandRes?.phase ?? null,
+      promoted: expandRes.inserted ?? 0,
+      updated: expandRes.updated ?? 0,
+      remaining: expandRes.remaining ?? null,
+      phase: expandRes.phase ?? null,
     };
 
-    // ─── Step 4: drain global_signals into normalized_events ─────────────
     result.signal_drain = await drainGlobalSignals(supabase);
-
-    // ─── Step 5: seed non-geo entities once (idempotent) ─────────────────
     result.entity_seed = await seedNonGeoEntitiesIfMissing(supabase);
 
     const ms = Date.now() - startedAt;
     if (logRow?.id) {
       await supabase.from("automation_logs").update({
         status: "success",
-        message: `tick ok in ${ms}ms — ev_links:${result.event_links?.created || 0} (inferred:${result.event_links?.inferred_iso3 || 0}), m_links:${(linkRes as any)?.inserted || 0}, regions:${result.canonical_entities?.promoted || 0}, signals:${result.signal_drain?.migrated || 0}`,
+        message: `tick ok in ${ms}ms — ev_links:${result.event_links?.created ?? 0} (inferred:${result.event_links?.inferred_iso3 ?? 0}), m_links:${metricLinks.inserted ?? 0}, regions:${result.canonical_entities?.promoted ?? 0}, signals:${result.signal_drain?.migrated ?? 0}`,
       }).eq("id", logRow.id);
     }
     result.duration_ms = ms;
@@ -78,16 +130,16 @@ Deno.serve(async (req) => {
       _pipeline_name: "graph-recovery-tick",
       _success: true,
       _metadata: {
-        event_links: result.event_links?.created || 0,
-        metric_links: (linkRes as any)?.inserted || 0,
-        regions: result.canonical_entities?.promoted || 0,
-        signals: result.signal_drain?.migrated || 0,
+        event_links: result.event_links?.created ?? 0,
+        metric_links: metricLinks.inserted ?? 0,
+        regions: result.canonical_entities?.promoted ?? 0,
+        signals: result.signal_drain?.migrated ?? 0,
         duration_ms: ms,
       },
     });
     return jsonRes({ ok: true, ...result });
-  } catch (e) {
-    const msg = (e as Error).message;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     if (logRow?.id) {
       await supabase.from("automation_logs").update({ status: "error", message: msg }).eq("id", logRow.id);
     }
@@ -96,102 +148,89 @@ Deno.serve(async (req) => {
       _success: false,
       _error: msg,
     });
-    console.error("graph-recovery-tick error:", e);
+    console.error("graph-recovery-tick error:", error);
     return jsonRes({ ok: false, error: msg, partial: result }, 500);
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════
-// Step 1: Link recent normalized_events → canonical_entities by iso3
-// ═══════════════════════════════════════════════════════════════════════
-async function linkRecentEvents(supabase: any): Promise<{ scanned: number; created: number; inferred_iso3: number }> {
-  // Fetch recent events that lack any entity_event_links
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // last 30 days
-
-  const { data: events } = await supabase
+async function linkRecentEvents(supabase: SupabaseClient): Promise<EventLinkResult> {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: eventRows } = await supabase
     .from("normalized_events")
     .select("id, iso3, entity_id, location_entity_id, title, description, event_type")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(2000);
 
-  if (!events || events.length === 0) return { scanned: 0, created: 0, inferred_iso3: 0 };
+  const events = (eventRows ?? []) as NormalizedEvent[];
+  if (events.length === 0) return { scanned: 0, created: 0, inferred_iso3: 0 };
 
-  // Infer iso3 from title/description for events lacking it
   let inferredCount = 0;
-  for (const ev of events) {
-    if (!ev.iso3) {
-      const inferred = inferIso3FromText(`${ev.title || ""} ${ev.description || ""}`);
+  for (const event of events) {
+    if (!event.iso3) {
+      const inferred = inferIso3FromText(`${event.title || ""} ${event.description || ""}`);
       if (inferred) {
-        ev.iso3 = inferred;
+        event.iso3 = inferred;
         inferredCount++;
       }
     }
   }
 
-  // Build country entity map
-  const isoSet = new Set<string>(events.map((e: any) => e.iso3).filter(Boolean));
-  const { data: countries } = await supabase
+  const isoSet = new Set(events.map((event) => event.iso3).filter((iso): iso is string => typeof iso === "string"));
+  const { data: countryRows } = await supabase
     .from("canonical_entities")
     .select("id, iso3")
     .in("entity_type", ["country", "territory"])
     .in("iso3", Array.from(isoSet));
+  const countries = (countryRows ?? []) as CanonicalCountry[];
+  const isoMap = new Map(countries.filter((country) => country.iso3).map((country) => [country.iso3 as string, country.id]));
 
-  const isoMap = new Map((countries || []).map((c: any) => [c.iso3, c.id]));
-
-  // Filter out already-linked events to reduce noise
-  const eventIds = events.map((e: any) => e.id);
-  const { data: existing } = await supabase
+  const eventIds = events.map((event) => event.id);
+  const { data: existingRows } = await supabase
     .from("entity_event_links")
     .select("event_id, entity_id, link_role")
     .in("event_id", eventIds);
-  const existingKey = new Set((existing || []).map((r: any) => `${r.event_id}|${r.entity_id}|${r.link_role}`));
+  const existing = (existingRows ?? []) as ExistingEventLink[];
+  const existingKey = new Set(existing.map((row) => `${row.event_id}|${row.entity_id}|${row.link_role}`));
 
-  const rows: any[] = [];
-  for (const ev of events) {
-    // Country link by iso3
-    const countryId = ev.iso3 ? isoMap.get(ev.iso3) : null;
+  const rows: EventLinkInsert[] = [];
+  for (const event of events) {
+    const countryId = event.iso3 ? isoMap.get(event.iso3) : null;
     if (countryId) {
-      const k = `${ev.id}|${countryId}|location`;
-      if (!existingKey.has(k)) {
-        rows.push({ event_id: ev.id, entity_id: countryId, link_role: "location", confidence: 0.9 });
-        existingKey.add(k);
+      const key = `${event.id}|${countryId}|location`;
+      if (!existingKey.has(key)) {
+        rows.push({ event_id: event.id, entity_id: countryId, link_role: "location", confidence: 0.9 });
+        existingKey.add(key);
       }
     }
-    // Subject entity link
-    if (ev.entity_id) {
-      const k = `${ev.id}|${ev.entity_id}|subject`;
-      if (!existingKey.has(k)) {
-        rows.push({ event_id: ev.id, entity_id: ev.entity_id, link_role: "subject", confidence: 1.0 });
-        existingKey.add(k);
+    if (event.entity_id) {
+      const key = `${event.id}|${event.entity_id}|subject`;
+      if (!existingKey.has(key)) {
+        rows.push({ event_id: event.id, entity_id: event.entity_id, link_role: "subject", confidence: 1.0 });
+        existingKey.add(key);
       }
     }
-    // Location entity link
-    if (ev.location_entity_id && ev.location_entity_id !== ev.entity_id) {
-      const k = `${ev.id}|${ev.location_entity_id}|location`;
-      if (!existingKey.has(k)) {
-        rows.push({ event_id: ev.id, entity_id: ev.location_entity_id, link_role: "location", confidence: 0.95 });
-        existingKey.add(k);
+    if (event.location_entity_id && event.location_entity_id !== event.entity_id) {
+      const key = `${event.id}|${event.location_entity_id}|location`;
+      if (!existingKey.has(key)) {
+        rows.push({ event_id: event.id, entity_id: event.location_entity_id, link_role: "location", confidence: 0.95 });
+        existingKey.add(key);
       }
     }
   }
 
-  // Final defensive dedup of the full row set by composite key (the existingKey
-  // map can be incomplete when Postgres' implicit 1000-row select cap truncates
-  // the existing-link lookup, which previously caused
-  // "ON CONFLICT DO UPDATE command cannot affect row a second time" errors).
   const sliceSeen = new Set<string>();
-  const dedupedRows = rows.filter((r: any) => {
-    const k = `${r.event_id}|${r.entity_id}|${r.link_role}`;
-    if (sliceSeen.has(k)) return false;
-    sliceSeen.add(k);
+  const dedupedRows = rows.filter((row) => {
+    const key = `${row.event_id}|${row.entity_id}|${row.link_role}`;
+    if (sliceSeen.has(key)) return false;
+    sliceSeen.add(key);
     return true;
   });
 
   let created = 0;
   for (let i = 0; i < dedupedRows.length; i += 500) {
     const slice = dedupedRows.slice(i, i + 500);
-    const { data: ins, error } = await supabase
+    const { data: insertedRows, error } = await supabase
       .from("entity_event_links")
       .upsert(slice, { onConflict: "event_id,entity_id,link_role", ignoreDuplicates: true })
       .select("id");
@@ -199,12 +238,11 @@ async function linkRecentEvents(supabase: any): Promise<{ scanned: number; creat
       console.error("entity_event_links upsert error:", error.message);
       continue;
     }
-    created += ins?.length ?? 0;
+    created += insertedRows?.length ?? 0;
   }
   return { scanned: events.length, created, inferred_iso3: inferredCount };
 }
 
-// Lightweight iso3 inference from event text (covers ~80% of news headlines)
 const COUNTRY_HINTS: Array<[RegExp, string]> = [
   [/\b(united states|u\.s\.a?|america|usa)\b/i, "USA"],
   [/\b(united kingdom|u\.k\.|britain|england)\b/i, "GBR"],
@@ -233,69 +271,61 @@ const COUNTRY_HINTS: Array<[RegExp, string]> = [
   [/\b(kenya|kenyan)\b/i, "KEN"], [/\bchicago|new york|los angeles|texas|california|florida\b/i, "USA"],
   [/\b(myanmar|burma)\b/i, "MMR"], [/\b(taiwan|taiwanese)\b/i, "TWN"],
 ];
+
 function inferIso3FromText(text: string): string | null {
   if (!text) return null;
-  for (const [re, iso] of COUNTRY_HINTS) if (re.test(text)) return iso;
+  for (const [pattern, iso] of COUNTRY_HINTS) if (pattern.test(text)) return iso;
   return null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Step 4: Drain global_signals into normalized_events (idempotent)
-// ═══════════════════════════════════════════════════════════════════════
-async function drainGlobalSignals(supabase: any): Promise<{ offset: number; migrated: number; has_more: boolean }> {
-  const { data: state } = await supabase
-    .from("backfill_state").select("value_int").eq("key", "legacy_signals_offset").maybeSingle();
+async function drainGlobalSignals(supabase: SupabaseClient): Promise<SignalDrainResult> {
+  const { data: state } = await supabase.from("backfill_state").select("value_int").eq("key", "legacy_signals_offset").maybeSingle();
   const offset = state?.value_int ?? 0;
   const limit = 1000;
 
-  const { data: signals, error: sigErr } = await supabase
+  const { data: signalRows, error: sigErr } = await supabase
     .from("global_signals")
     .select("*")
     .order("id")
     .range(offset, offset + limit - 1);
 
-  if (sigErr) {
-    // Table may have a different shape; tolerate gracefully.
-    return { offset, migrated: 0, has_more: false };
-  }
-  if (!signals || signals.length === 0) {
-    return { offset, migrated: 0, has_more: false };
-  }
+  if (sigErr) return { offset, migrated: 0, has_more: false };
+  const signals = (signalRows ?? []) as LegacySignal[];
+  if (signals.length === 0) return { offset, migrated: 0, has_more: false };
 
   const seen = new Set<string>();
   const rows = signals
-    .map((s: any) => {
-      const confidence = s.confidence_score ?? s.confidence ?? null;
-      const freshness = s.freshness_score ?? null;
-      const lastVerifiedAt = s.last_verified_at ?? null;
+    .map((signal) => {
+      const confidence = signal.confidence_score ?? signal.confidence ?? null;
+      const freshness = signal.freshness_score ?? null;
+      const lastVerifiedAt = signal.last_verified_at ?? null;
+      const firstAffectedRegion = Array.isArray(signal.affected_regions) ? signal.affected_regions[0] : null;
       return {
         provider_name: "aicis_signals",
-        event_type: s.category || s.event_type || "signal",
-        title: s.title || s.headline || "Signal",
-        description: s.summary || s.description || "",
-        iso3: Array.isArray(s.affected_regions) ? s.affected_regions[0] : (s.iso3 || s.country_iso3 || null),
-        started_at: s.detected_at || s.created_at,
-        severity: s.impact_score ?? s.severity ?? null,
-        // Unknown remains null. No neutral-looking numeric fallback is fabricated.
+        event_type: signal.category || signal.event_type || "signal",
+        title: signal.title || signal.headline || "Signal",
+        description: signal.summary || signal.description || "",
+        iso3: firstAffectedRegion || signal.iso3 || signal.country_iso3 || null,
+        started_at: signal.detected_at || signal.created_at || null,
+        severity: signal.impact_score ?? signal.severity ?? null,
         confidence,
         provenance_source: "global_signals",
-        dedup_key: `e:signals:${s.id}`,
-        // Freshness must be measured/upstream-supplied; creation time is not verification.
+        dedup_key: `e:signals:${signal.id}`,
         freshness_score: freshness,
         last_verified_at: lastVerifiedAt,
         metadata: {
-          category: s.category,
-          urgency: s.urgency_score,
-          source_tier: s.source_tier,
+          category: signal.category,
+          urgency: signal.urgency_score,
+          source_tier: signal.source_tier,
           confidence_status: confidence == null ? "unknown" : "upstream_supplied",
           freshness_status: freshness == null ? "unknown" : "upstream_supplied",
           verification_status: lastVerifiedAt == null ? "not_verified" : "upstream_timestamp_supplied",
         },
       };
     })
-    .filter((r: any) => {
-      if (seen.has(r.dedup_key)) return false;
-      seen.add(r.dedup_key);
+    .filter((row) => {
+      if (seen.has(row.dedup_key)) return false;
+      seen.add(row.dedup_key);
       return true;
     });
 
@@ -316,21 +346,15 @@ async function drainGlobalSignals(supabase: any): Promise<{ offset: number; migr
   return { offset, migrated, has_more: signals.length === limit };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Step 5: Seed orgs/commodities/sectors once if missing
-// ═══════════════════════════════════════════════════════════════════════
-async function seedNonGeoEntitiesIfMissing(supabase: any): Promise<{ skipped: boolean; created: number }> {
+async function seedNonGeoEntitiesIfMissing(supabase: SupabaseClient): Promise<EntitySeedResult> {
   const { count: orgCount } = await supabase
     .from("canonical_entities")
     .select("*", { count: "exact", head: true })
     .eq("entity_type", "company");
 
-  // Already seeded — skip
   if ((orgCount ?? 0) >= 50) return { skipped: true, created: 0 };
 
-  // Delegate to planetary-backfill which already has the curated list.
-  // Auth hardening of this executable caller is deferred until the live source
-  // scheduler/caller contract is proven; do not break the authoritative source.
+  // Executable service-role caller retained until source scheduler/caller contract is proven.
   const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/planetary-backfill`;
   const resp = await fetch(url, {
     method: "POST",
@@ -340,6 +364,6 @@ async function seedNonGeoEntitiesIfMissing(supabase: any): Promise<{ skipped: bo
     },
     body: JSON.stringify({ action: "seed_entities", entity_class: "all" }),
   });
-  const out = await resp.json().catch(() => ({}));
-  return { skipped: false, created: out?.entities_created ?? 0 };
+  const out = asRecord(await resp.json().catch(() => ({})));
+  return { skipped: false, created: optionalNumber(out.entities_created) ?? 0 };
 }
