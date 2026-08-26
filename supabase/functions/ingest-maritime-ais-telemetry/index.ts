@@ -12,7 +12,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
 const CONNECTOR_KEY = "maritime_ais_telemetry";
 
 type MaritimeObservation = {
@@ -46,6 +45,19 @@ type PortWatchZone = {
   maxLon: number;
 };
 
+type TelemetryRow = {
+  connector_key: string;
+  observation_type: string;
+  observed_entity: string;
+  observed_region: string;
+  observed_at: string | null;
+  observation_value: number | null;
+  observation_unit: string;
+  confidence_score: number | null;
+  anomaly_score: number;
+  raw_payload: Record<string, unknown> & { dedup_hash: string };
+};
+
 const PORT_ZONES: PortWatchZone[] = [
   { key: "singapore", name: "Singapore Strait", region: "SGP", iso3: "SGP", minLat: 0.8, maxLat: 1.6, minLon: 103.4, maxLon: 104.3 },
   { key: "suez", name: "Suez Canal", region: "EGY", iso3: "EGY", minLat: 29.7, maxLat: 31.4, minLon: 32.2, maxLon: 33.0 },
@@ -57,13 +69,21 @@ const PORT_ZONES: PortWatchZone[] = [
   { key: "lagos", name: "Lagos Port", region: "NGA", iso3: "NGA", minLat: 6.2, maxLat: 6.7, minLon: 3.1, maxLon: 3.8 },
 ];
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function asOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
 function normalizePostedPayload(payload: unknown): MaritimeObservation[] {
-  if (Array.isArray(payload)) return payload.map(normalizeOne).filter(Boolean) as MaritimeObservation[];
+  if (Array.isArray(payload)) return payload.map(normalizeOne).filter((item): item is MaritimeObservation => item !== null);
   if (payload && typeof payload === "object") {
-    const obj = payload as Record<string, unknown>;
-    if (Array.isArray(obj.observations)) return obj.observations.map(normalizeOne).filter(Boolean) as MaritimeObservation[];
-    if (Array.isArray(obj.vessels)) return obj.vessels.map(normalizeOne).filter(Boolean) as MaritimeObservation[];
-    if (Array.isArray(obj.messages)) return obj.messages.map(normalizeOne).filter(Boolean) as MaritimeObservation[];
+    const obj = asRecord(payload);
+    if (Array.isArray(obj.observations)) return obj.observations.map(normalizeOne).filter((item): item is MaritimeObservation => item !== null);
+    if (Array.isArray(obj.vessels)) return obj.vessels.map(normalizeOne).filter((item): item is MaritimeObservation => item !== null);
+    if (Array.isArray(obj.messages)) return obj.messages.map(normalizeOne).filter((item): item is MaritimeObservation => item !== null);
     const one = normalizeOne(obj);
     return one ? [one] : [];
   }
@@ -72,37 +92,41 @@ function normalizePostedPayload(payload: unknown): MaritimeObservation[] {
 
 function normalizeOne(input: unknown): MaritimeObservation | null {
   if (!input || typeof input !== "object") return null;
-  const obj = input as Record<string, any>;
-  const msg = obj.Message ?? obj.message ?? obj;
-  const position = msg.PositionReport ?? msg.positionReport ?? msg.Position ?? msg.position ?? msg;
-  const metadata = msg.MetaData ?? msg.metadata ?? obj.MetaData ?? obj.metadata ?? {};
+  const obj = asRecord(input);
+  const msg = asRecord(obj.Message ?? obj.message ?? obj);
+  const position = asRecord(msg.PositionReport ?? msg.positionReport ?? msg.Position ?? msg.position ?? msg);
+  const metadata = asRecord(msg.MetaData ?? msg.metadata ?? obj.MetaData ?? obj.metadata);
 
   const lat = num(position.Latitude ?? position.latitude ?? obj.latitude ?? obj.lat);
   const lon = num(position.Longitude ?? position.longitude ?? obj.longitude ?? obj.lon ?? obj.lng);
   const mmsi = obj.MMSI ?? obj.mmsi ?? position.UserID ?? position.mmsi ?? metadata.MMSI ?? metadata.mmsi;
-
   if (lat == null || lon == null || mmsi == null) return null;
 
   return {
-    mmsi,
-    imo: obj.IMO ?? obj.imo ?? metadata.IMO ?? metadata.imo,
-    vessel_name: obj.ShipName ?? obj.vessel_name ?? obj.name ?? metadata.ShipName ?? metadata.ship_name,
-    callsign: obj.CallSign ?? obj.callsign ?? metadata.CallSign ?? metadata.callsign,
-    ship_type: obj.ShipType ?? obj.ship_type ?? metadata.ShipType ?? metadata.ship_type,
+    mmsi: typeof mmsi === "number" || typeof mmsi === "string" ? mmsi : String(mmsi),
+    imo: typeof (obj.IMO ?? obj.imo ?? metadata.IMO ?? metadata.imo) === "number"
+      ? obj.IMO ?? obj.imo ?? metadata.IMO ?? metadata.imo as number
+      : asOptionalString(obj.IMO ?? obj.imo ?? metadata.IMO ?? metadata.imo),
+    vessel_name: asOptionalString(obj.ShipName ?? obj.vessel_name ?? obj.name ?? metadata.ShipName ?? metadata.ship_name),
+    callsign: asOptionalString(obj.CallSign ?? obj.callsign ?? metadata.CallSign ?? metadata.callsign),
+    ship_type: asOptionalString(obj.ShipType ?? obj.ship_type ?? metadata.ShipType ?? metadata.ship_type),
     latitude: lat,
     longitude: lon,
     speed_over_ground: num(position.Sog ?? position.SOG ?? position.speed_over_ground ?? obj.speed_over_ground ?? obj.sog),
     course_over_ground: num(position.Cog ?? position.COG ?? position.course_over_ground ?? obj.course_over_ground ?? obj.cog),
     heading: num(position.TrueHeading ?? position.heading ?? obj.heading),
     navigational_status: String(position.NavigationalStatus ?? position.nav_status ?? obj.navigational_status ?? obj.status ?? "unknown"),
-    destination: obj.Destination ?? obj.destination ?? metadata.Destination ?? metadata.destination,
-    eta: obj.ETA ?? obj.eta ?? metadata.ETA ?? metadata.eta,
-    // Missing provider time remains unknown. Request receipt time is not vessel observation time.
-    timestamp: obj.Timestamp ?? obj.timestamp ?? metadata.time_utc ?? metadata.timestamp ?? null,
-    region: obj.region ?? metadata.region,
-    provider: obj.provider ?? metadata.provider ?? null,
+    destination: asOptionalString(obj.Destination ?? obj.destination ?? metadata.Destination ?? metadata.destination),
+    eta: asOptionalString(obj.ETA ?? obj.eta ?? metadata.ETA ?? metadata.eta),
+    timestamp: normalizeTimestampValue(obj.Timestamp ?? obj.timestamp ?? metadata.time_utc ?? metadata.timestamp),
+    region: asOptionalString(obj.region ?? metadata.region),
+    provider: asOptionalString(obj.provider ?? metadata.provider),
     raw: obj,
   };
+}
+
+function normalizeTimestampValue(value: unknown): string | number | null {
+  return typeof value === "string" || typeof value === "number" ? value : null;
 }
 
 function num(v: unknown): number | null {
@@ -151,17 +175,17 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function dedupHashFromPayload(value: unknown): string | null {
+  const payload = asRecord(value);
+  return typeof payload.dedup_hash === "string" ? payload.dedup_hash : null;
+}
+
 async function recordConnectorHealth(
   supabase: ReturnType<typeof createClient>,
   args: { success: boolean; inserted?: number; durationMs?: number; error?: string },
 ) {
   const now = new Date().toISOString();
-  const { data: existing } = await supabase
-    .from("telemetry_connectors")
-    .select("consecutive_failures")
-    .eq("connector_key", CONNECTOR_KEY)
-    .maybeSingle();
-
+  const { data: existing } = await supabase.from("telemetry_connectors").select("consecutive_failures").eq("connector_key", CONNECTOR_KEY).maybeSingle();
   const failures = args.success ? 0 : (existing?.consecutive_failures ?? 0) + 1;
 
   await supabase.from("telemetry_connectors").upsert({
@@ -178,7 +202,6 @@ async function recordConnectorHealth(
     last_failure_at: args.success ? undefined : now,
     consecutive_failures: failures,
     last_error_message: args.success ? null : (args.error ?? "unknown").slice(0, 500),
-    // This connector accepts multiple possible providers; quality is not calibrated globally.
     trust_tier: "unrated",
     cost_tier: "provider-dependent",
     metadata: {
@@ -200,7 +223,7 @@ Deno.serve(async (req) => {
   const started = Date.now();
   const requestReceivedAt = new Date().toISOString();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-  const __telemetryRun = await startProviderRun(supabase, {
+  const telemetryRun = await startProviderRun(supabase, {
     provider_name: "maritime_ais",
     endpoint: "ingest-maritime-ais-telemetry",
     scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
@@ -216,9 +239,9 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const payload = await req.json();
+    const payload: unknown = await req.json();
     const observations = normalizePostedPayload(payload);
-    const rows = [];
+    const rows: TelemetryRow[] = [];
 
     for (const obs of observations) {
       const zone = zoneFor(obs);
@@ -235,9 +258,7 @@ Deno.serve(async (req) => {
         observed_at: observedAt,
         observation_value: obs.speed_over_ground ?? null,
         observation_unit: "knots",
-        // No measured/calibrated analytical confidence is available here.
         confidence_score: null,
-        // Numeric anomaly remains useful but is explicitly deterministic below.
         anomaly_score: anomaly,
         raw_payload: {
           dedup_hash: dedup,
@@ -276,7 +297,6 @@ Deno.serve(async (req) => {
       if (zone) zoneCounts.set(zone.key, (zoneCounts.get(zone.key) ?? 0) + 1);
     }
 
-    // This timestamp is valid as derivation time for the payload aggregate, not vessel observation time.
     const derivedAt = new Date().toISOString();
     for (const [zoneKey, count] of zoneCounts.entries()) {
       const zone = PORT_ZONES.find((z) => z.key === zoneKey)!;
@@ -320,8 +340,12 @@ Deno.serve(async (req) => {
         .gte("created_at", since);
       if (existingErr) throw existingErr;
 
-      const existingHashes = new Set((existing ?? []).map((r: any) => r?.raw_payload?.dedup_hash).filter(Boolean));
-      const fresh = rows.filter((r: any) => !existingHashes.has(r.raw_payload.dedup_hash));
+      const existingHashes = new Set(
+        (existing ?? [])
+          .map((row) => dedupHashFromPayload(row.raw_payload))
+          .filter((hash): hash is string => hash !== null),
+      );
+      const fresh = rows.filter((row) => !existingHashes.has(row.raw_payload.dedup_hash));
 
       if (fresh.length > 0) {
         const { error: insertErr } = await supabase.from("telemetry_observations").insert(fresh);
@@ -331,7 +355,6 @@ Deno.serve(async (req) => {
     }
 
     await recordConnectorHealth(supabase, { success: true, inserted, durationMs: Date.now() - started });
-
     await supabase.from("automation_logs").insert({
       job_name: "ingest-maritime-ais-telemetry",
       status: "success",
@@ -342,10 +365,10 @@ Deno.serve(async (req) => {
       await supabase.rpc("generate_telemetry_health_summary");
       await supabase.rpc("generate_strategic_digital_twins");
       await supabase.rpc("generate_operational_risk_assessments");
-    } catch (e) {
-      console.warn("post maritime telemetry refresh skipped", e);
+    } catch (error) {
+      console.warn("post maritime telemetry refresh skipped", error);
     }
-    await finishProviderRun(supabase, __telemetryRun);
+    await finishProviderRun(supabase, telemetryRun);
 
     return new Response(JSON.stringify({
       status: "success",
@@ -355,15 +378,15 @@ Deno.serve(async (req) => {
       inserted,
       duration_ms: Date.now() - started,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     await recordConnectorHealth(supabase, { success: false, durationMs: Date.now() - started, error: msg });
     await supabase.from("automation_logs").insert({
       job_name: "ingest-maritime-ais-telemetry",
       status: "error",
       message: msg.slice(0, 500),
     });
-    await failProviderRun(supabase, __telemetryRun, e);
+    await failProviderRun(supabase, telemetryRun, error);
 
     return new Response(JSON.stringify({ status: "error", error: msg }), {
       status: 500,
