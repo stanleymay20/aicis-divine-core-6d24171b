@@ -152,7 +152,7 @@ Use `migration/target/001_rebind_pipeline_cron.sql` only on the independent targ
 
 `aicis_cron_secret` must match the target Edge Function secret `CRON_SECRET`. The publishable key is an API key and belongs in the `apikey` header; it must not be treated as a Bearer JWT.
 
-The target-only migration disables restored cron commands that still contain the source ref and fails closed if an active source-bound cron job remains. Only explicitly audited schedules should be re-enabled.
+The restore-phase target migration is a **quarantine barrier**: it creates the target-safe invocation helper and disables **every restored cron job**, including jobs whose commands look harmless but call stored PostgreSQL wrappers that still contain the source ref. It intentionally activates zero schedules. During restore, shadow validation and parity, `cron.job` must have zero active writers. Audited schedules are enabled only after the final cutover gate by the explicitly separated `migration/target/cutover/001_activate_audited_cron.sql` file.
 
 ## Phase 6 — Verification gate
 
@@ -217,7 +217,7 @@ Because Lovable limits full exports to once per 24 hours, the preferred final cu
 4. request/download the final permissible export or capture a proven incremental delta through supported data-export/API mechanisms;
 5. apply the final delta to target;
 6. prove parity at the cutover checkpoint;
-7. enable target writers;
+7. execute the cutover-only scheduler activation (`migration/target/cutover/001_activate_audited_cron.sql`) and enable target writers;
 8. switch frontend/runtime to target;
 9. prove no new source writes occur.
 
