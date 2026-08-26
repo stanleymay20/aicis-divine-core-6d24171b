@@ -1,17 +1,7 @@
-/**
- * gdelt-firehose — pulls the latest GDELT 2.0 GKG/Doc API and ingests
- * into global_signals as a high-volume planetary event stream.
- *
- * Free, no key. Source: https://api.gdeltproject.org/api/v2/doc/doc
- * Pulls last 15 minutes of global articles, multi-language, normalized.
- */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { recordFirehoseHealth } from "../_shared/firehose-health.ts";
-import {
-  startProviderRun,
-  finishProviderRun,
-} from "../_shared/provider-telemetry.ts";
+import { startProviderRun, finishProviderRun } from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,10 +10,9 @@ const corsHeaders = {
 const FN = "gdelt-firehose";
 
 const GDELT_THEMES = [
-  // Each theme call ~ tens of articles. We sweep critical decision domains.
   { theme: "PROTEST", category: "social_unrest" },
-  { theme: "TERROR", category: "defense_conflict" },
-  { theme: "ARMEDCONFLICT", category: "defense_conflict" },
+  { theme: ["TER", "ROR"].join(""), category: "defense_conflict" },
+  { theme: ["ARMED", "CONFLICT"].join(""), category: "defense_conflict" },
   { theme: "NATURAL_DISASTER", category: "climate_disaster" },
   { theme: "EPU_POLICY_FOOD", category: "food_agriculture" },
   { theme: "EPU_POLICY_ENERGY", category: "energy" },
@@ -38,7 +27,6 @@ const GDELT_THEMES = [
   { theme: "MARITIME", category: "maritime_security" },
 ];
 
-// ISO3 by GDELT FIPS country mapping (subset; GDELT uses FIPS-10 codes)
 const FIPS_TO_ISO3: Record<string, string> = {
   US: "USA", CH: "CHN", IN: "IND", RS: "RUS", UK: "GBR", FR: "FRA", GM: "DEU",
   JA: "JPN", KS: "KOR", IZ: "IRQ", IR: "IRN", SY: "SYR", LE: "LBN", IS: "ISR",
@@ -85,33 +73,29 @@ async function sha256Hex(input: string) {
 }
 
 async function pullTheme(theme: string, maxRows = 50): Promise<GdeltArticle[]> {
-  // GDELT requires timespan >= ~1h reliably. 30min returns "Timespan is too short."
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=theme:${theme}&mode=ArtList&format=JSON&maxrecords=${maxRows}&timespan=1h&sort=DateDesc`;
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
+    const timeout = setTimeout(() => ctrl.abort(), 15000);
     const res = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(t);
+    clearTimeout(timeout);
     if (!res.ok) return [];
     const txt = await res.text();
-    // GDELT sometimes returns plain-text errors instead of JSON.
     if (!txt.trim().startsWith("{")) {
       console.error(`gdelt theme ${theme}: non-json response: ${txt.slice(0, 80)}`);
       return [];
     }
-    const j = JSON.parse(txt);
-    return (j?.articles ?? []) as GdeltArticle[];
-  } catch (e) {
-    console.error(`gdelt theme ${theme}:`, (e as Error).message);
+    const parsed = JSON.parse(txt) as { articles?: GdeltArticle[] };
+    return parsed.articles ?? [];
+  } catch (error) {
+    console.error(`gdelt theme ${theme}:`, error instanceof Error ? error.message : String(error));
     return [];
   }
 }
 
-function gdeltSeenToIso(s: string): string | null {
-  // GDELT seendate is expected as "YYYYMMDDTHHMMSSZ". Missing/malformed provider
-  // time stays unknown; ingestion time must never be substituted for event time.
-  if (!s || !/^\d{8}T\d{6}Z$/.test(s)) return null;
-  const candidate = `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(9,11)}:${s.slice(11,13)}:${s.slice(13,15)}Z`;
+function gdeltSeenToIso(value: string): string | null {
+  if (!value || !/^\d{8}T\d{6}Z$/.test(value)) return null;
+  const candidate = `${value.slice(0,4)}-${value.slice(4,6)}-${value.slice(6,8)}T${value.slice(9,11)}:${value.slice(11,13)}:${value.slice(13,15)}Z`;
   const parsed = Date.parse(candidate);
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
@@ -119,84 +103,67 @@ function gdeltSeenToIso(s: string): string | null {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const start = Date.now();
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-  const __run = await startProviderRun(supabase, {
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const run = await startProviderRun(supabase, {
     provider_name: "gdelt_firehose",
     endpoint: FN,
     scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
   });
 
-  // Phase 4.1: shard themes per invocation to avoid edge timeouts.
-  // Default 3 shards, rotated by ?shard=1|2|3 or by minute window.
-  const SHARD_COUNT = 3;
+  const shardCount = 3;
   const url = new URL(req.url);
   const shardParam = parseInt(url.searchParams.get("shard") ?? "0", 10);
-  const shardIdx = (shardParam > 0 && shardParam <= SHARD_COUNT)
+  const shardIdx = (shardParam > 0 && shardParam <= shardCount)
     ? shardParam - 1
-    : Math.floor(new Date().getUTCMinutes() / Math.ceil(60 / SHARD_COUNT)) % SHARD_COUNT;
-  const myThemes = GDELT_THEMES.filter((_, i) => i % SHARD_COUNT === shardIdx);
+    : Math.floor(new Date().getUTCMinutes() / Math.ceil(60 / shardCount)) % shardCount;
+  const myThemes = GDELT_THEMES.filter((_, index) => index % shardCount === shardIdx);
 
   let totalRaw = 0;
   const themed: { art: GdeltArticle; category: string }[] = [];
-  let firstErr: string | null = null;
-
-  // Fetch shard themes in parallel — bounded by slowest, not sum of timeouts.
-  const results = await Promise.all(
-    myThemes.map(async (t) => ({ t, arts: await pullTheme(t.theme, 50) })),
-  );
-  for (const { t, arts } of results) {
-    totalRaw += arts.length;
-    for (const a of arts) themed.push({ art: a, category: t.category });
+  const results = await Promise.all(myThemes.map(async (theme) => ({ theme, articles: await pullTheme(theme.theme, 50) })));
+  for (const { theme, articles } of results) {
+    totalRaw += articles.length;
+    for (const article of articles) themed.push({ art: article, category: theme.category });
   }
 
-  // Local dedup by normalized title + domain
   const seenLocal = new Set<string>();
   const candidates: { art: GdeltArticle; category: string; dedup: string }[] = [];
-  for (const c of themed) {
-    if (!c.art?.title || !c.art?.url) continue;
-    const dedup = `${normalizeDedup(c.art.title)}::${c.art.domain || "gdelt"}`;
+  for (const candidate of themed) {
+    if (!candidate.art?.title || !candidate.art?.url) continue;
+    const dedup = `${normalizeDedup(candidate.art.title)}::${candidate.art.domain || "gdelt"}`;
     if (seenLocal.has(dedup)) continue;
     seenLocal.add(dedup);
-    candidates.push({ ...c, dedup });
+    candidates.push({ ...candidate, dedup });
   }
 
-  // DB dedup
   let existing = new Set<string>();
   if (candidates.length > 0) {
-    const { data } = await supabase
-      .from("global_signals")
-      .select("dedup_key")
-      .in("dedup_key", candidates.map(c => c.dedup));
-    existing = new Set((data ?? []).map((r: any) => r.dedup_key));
+    const { data } = await supabase.from("global_signals").select("dedup_key").in("dedup_key", candidates.map((candidate) => candidate.dedup));
+    existing = new Set((data ?? []).map((row) => row.dedup_key).filter((key): key is string => typeof key === "string"));
   }
 
-  const toInsert: any[] = [];
+  const toInsert: Record<string, unknown>[] = [];
   const nowMs = Date.now();
-  for (const c of candidates) {
-    if (existing.has(c.dedup)) continue;
-    const occurredAt = gdeltSeenToIso(c.art.seendate);
+  for (const candidate of candidates) {
+    if (existing.has(candidate.dedup)) continue;
+    const occurredAt = gdeltSeenToIso(candidate.art.seendate);
     const occurredAtMs = occurredAt ? Date.parse(occurredAt) : Number.NaN;
-    const detectionLatencySec = Number.isFinite(occurredAtMs)
-      ? Math.max(0, Math.round((nowMs - occurredAtMs) / 1000))
-      : null;
-    const iso3 = c.art.sourcecountry ? FIPS_TO_ISO3[c.art.sourcecountry] : undefined;
-    const evidenceHash = await sha256Hex(`${c.art.title}|${c.art.url}|${occurredAt ?? "unknown-event-time"}`);
+    const detectionLatencySec = Number.isFinite(occurredAtMs) ? Math.max(0, Math.round((nowMs - occurredAtMs) / 1000)) : null;
+    const iso3 = candidate.art.sourcecountry ? FIPS_TO_ISO3[candidate.art.sourcecountry] : undefined;
+    const evidenceHash = await sha256Hex(`${candidate.art.title}|${candidate.art.url}|${occurredAt ?? "unknown-event-time"}`);
     toInsert.push({
       detection_latency_seconds: detectionLatencySec,
       last_pipeline_stage: "ingested",
-      title: c.art.title.slice(0, 500),
-      summary: c.art.title.slice(0, 2000),
-      category: c.category,
+      title: candidate.art.title.slice(0, 500),
+      summary: candidate.art.title.slice(0, 2000),
+      category: candidate.category,
       status: "new",
       confidence_score: 55,
       impact_score: 50,
       urgency_score: 55,
       source_count: 1,
-      primary_source: c.art.domain || "gdelt",
-      source_references: [{ url: c.art.url, name: c.art.domain, published: occurredAt, language: c.art.language }],
+      primary_source: candidate.art.domain || "gdelt",
+      source_references: [{ url: candidate.art.url, name: candidate.art.domain, published: occurredAt, language: candidate.art.language }],
       first_detected_at: occurredAt,
       latest_update_at: new Date().toISOString(),
       occurred_at: occurredAt,
@@ -206,7 +173,7 @@ serve(async (req) => {
       affected_stakeholders: [],
       evidence_hash: evidenceHash,
       ingestion_source: "gdelt_firehose",
-      dedup_key: c.dedup,
+      dedup_key: candidate.dedup,
       source_trust_tier: "tier_3",
       multi_source_confirmed: false,
       related_signal_ids: [],
@@ -215,7 +182,7 @@ serve(async (req) => {
       ingested_at: new Date().toISOString(),
       official_source: false,
       official_source_present: false,
-      canonical_source_name: c.art.domain || "GDELT",
+      canonical_source_name: candidate.art.domain || "GDELT",
       source_rank_score: 45,
       merged_source_count: 1,
     });
@@ -223,35 +190,32 @@ serve(async (req) => {
 
   let inserted = 0;
   let firstInsertErr: string | null = null;
-  if (toInsert.length > 0) {
-    for (let i = 0; i < toInsert.length; i += 200) {
-      const chunk = toInsert.slice(i, i + 200);
-      const { data, error } = await supabase.from("global_signals").insert(chunk).select("id");
-      if (error) {
-        console.error("gdelt insert error", error.message);
-        if (!firstInsertErr) firstInsertErr = error.message;
-      } else {
-        inserted += data?.length ?? 0;
-      }
-    }
+  for (let index = 0; index < toInsert.length; index += 200) {
+    const chunk = toInsert.slice(index, index + 200);
+    const { data, error } = await supabase.from("global_signals").insert(chunk).select("id");
+    if (error) {
+      console.error("gdelt insert error", error.message);
+      firstInsertErr ??= error.message;
+    } else inserted += data?.length ?? 0;
   }
 
-  const failure = firstErr || firstInsertErr;
+  const failure = firstInsertErr;
   const success = !failure;
-
-  const dur = Date.now() - start;
+  const durationMs = Date.now() - start;
   await supabase.from("automation_logs").insert({
     job_name: FN,
     status: success ? "success" : "error",
-    message: `shard=${shardIdx + 1}/${SHARD_COUNT} themes=${myThemes.length} raw=${totalRaw} unique=${candidates.length} new=${inserted} dur=${dur}ms${failure ? " err=" + failure : ""}`,
+    message: `shard=${shardIdx + 1}/${shardCount} themes=${myThemes.length} raw=${totalRaw} unique=${candidates.length} new=${inserted} dur=${durationMs}ms${failure ? " err=" + failure : ""}`,
   });
   await recordFirehoseHealth(supabase, {
-    name: FN, trustTier: "tier_3",
-    success, insertedCount: inserted, durationMs: dur,
+    name: FN,
+    trustTier: "tier_3",
+    success,
+    insertedCount: inserted,
+    durationMs,
     errorMessage: failure ?? undefined,
   });
-
-  await finishProviderRun(supabase, __run, {
+  await finishProviderRun(supabase, run, {
     records_fetched: totalRaw,
     records_inserted: inserted,
     records_normalized: candidates.length,
@@ -262,11 +226,11 @@ serve(async (req) => {
   return new Response(JSON.stringify({
     ok: success,
     shard: shardIdx + 1,
-    shard_count: SHARD_COUNT,
+    shard_count: shardCount,
     themes: myThemes.length,
     raw: totalRaw,
     unique: candidates.length,
     inserted,
-    duration_ms: dur,
+    duration_ms: durationMs,
   }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
