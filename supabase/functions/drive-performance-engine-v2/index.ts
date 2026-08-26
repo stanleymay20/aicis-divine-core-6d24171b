@@ -1,8 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -14,18 +15,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
 
+  // This endpoint fans out a global production workload. Preserve the existing
+  // service-role-only trust path while also supporting the independently
+  // configured CRON_SECRET and authenticated administrators.
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceKey) {
     return json({ success: false, error: "Server configuration incomplete" }, 500);
-  }
-
-  // This endpoint can fan out a global production workload. Require the
-  // service-role token at the handler boundary even if platform JWT
-  // verification is relaxed for internal schedulers.
-  const authHeader = req.headers.get("authorization") ?? "";
-  if (authHeader !== `Bearer ${serviceKey}`) {
-    return json({ success: false, error: "Unauthorized" }, 401);
   }
 
   const supabase = createClient(supabaseUrl, serviceKey, {
