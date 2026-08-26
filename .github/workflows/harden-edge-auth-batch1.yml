@@ -1,0 +1,291 @@
+name: One-off Edge auth hardening batch 1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/harden-edge-auth-batch1.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Add trusted caller boundaries to non-SQL-scheduled privileged functions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          auth_path = root / 'supabase/functions/_shared/auth.ts'
+          audit_path = root / 'scripts/audit-edge-function-auth.py'
+
+          user_or_worker = {
+              'decision-infer',
+              'entity-resolve',
+              'generate-signal-recommendations',
+              'prospective-lifecycle-test',
+              'run-ml-inference',
+              'run-simulation',
+              'score-relevance',
+          }
+
+          admin_or_worker = {
+              'alert-coherence-engine',
+              'auto-escalate-decisions',
+              'auto-learn-cycle',
+              'batch-seed-regions',
+              'bootstrap-training-data',
+              'build-training-dataset',
+              'calculate-vulnerability',
+              'calibrate-decision-weights',
+              'compute-graph-propagation',
+              'coverage-equity-enforcer',
+              'decision-recommend',
+              'detect-global-anomalies',
+              'detection-audit',
+              'deterministic-execution-loop',
+              'enrich-global-signals',
+              'evaluate-decision-models',
+              'evaluate-impact',
+              'evidence-enforcement-scan',
+              'fed-fanout-down',
+              'fed-make-bundle',
+              'fed-merge-global-prior',
+              'fed-rollup-tiers',
+              'fed-send-bundles',
+              'gdelt-ingest',
+              'geo-ner-events',
+              'governance-alerts',
+              'hierarchical-link-builder',
+              'ingest-global-signals',
+              'ingest-microdata',
+              'ingest-resilient-events',
+              'language-router',
+              'learn-from-outcomes',
+              'learn-policy-weights',
+              'lril-country-sweep',
+              'lril-ingest',
+              'lril-proxy',
+              'orchestrate-multi-agent',
+              'phase-c-firecrawl-source-ingestion',
+              'phase-c-official-source-ingestion',
+              'phase-c-tiered-source-ingestion',
+              'populate-global-profiles',
+              'realize-due-prospective-forecasts',
+              'reconcile-forecasts',
+              'run-performance-engine-v2',
+              'seed-community-metrics',
+              'seed-retry-zero-result',
+              'signal-canonicalizer',
+              'signal-country-extractor',
+              'signal-geocoder',
+              'signal-hygiene',
+              'signal-translator',
+              'subnational-hybrid-inference',
+              'trigger-daily-inference',
+              'validate-data-truth',
+              'validate-forecast-accuracy',
+              'village-inference-engine',
+              'watchlist-scan',
+              'web-search-sweep',
+              'weekly-decision-learning',
+          }
+
+          held_for_cron_rebind = {
+              'autonomous-accumulator',
+              'drive-performance-engine-v2',
+              'gdelt-firehose',
+              'graph-recovery-tick',
+              'ingest-maritime-ais-telemetry',
+              'ingest-opensky-aviation-telemetry',
+              'lril-process',
+              'narrative-clustering',
+              'planetary-backfill',
+              'reliefweb-firehose',
+          }
+
+          if len(user_or_worker) != 7 or len(admin_or_worker) != 59 or len(held_for_cron_rebind) != 10:
+              raise SystemExit('unexpected hardening set cardinality')
+          if (user_or_worker | admin_or_worker) & held_for_cron_rebind:
+              raise SystemExit('hardening and hold sets overlap')
+
+          # Add shared helpers after requireTier and before enforceRateLimit.
+          auth = auth_path.read_text()
+          if 'requireAdminOrTrustedWorker(' not in auth:
+              anchor = 'export async function enforceRateLimit(options: {'
+              if anchor not in auth:
+                  raise SystemExit('auth helper insertion anchor not found')
+              helper = r'''
+/**
+ * Global privileged workers accept only an authenticated administrator, the
+ * independently configured CRON_SECRET, or an exact service-role Bearer token.
+ * The service-role path preserves trusted Edge-to-Edge SDK calls without
+ * treating an anon JWT as authorization.
+ */
+function hasServiceRoleBearer(req: Request): boolean {
+  const expected = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const provided = bearerToken(req);
+  return Boolean(expected && provided && provided === expected);
+}
+
+export async function requireAdminOrTrustedWorker(
+  req: Request,
+  extraHeaders: Record<string, string> = {},
+): Promise<{
+  user: any | null;
+  via: "admin" | "cron" | "service_role" | null;
+  response: Response | null;
+}> {
+  if (req.method === "OPTIONS") return { user: null, via: null, response: null };
+
+  const expectedCron = Deno.env.get("CRON_SECRET");
+  const providedCron = req.headers.get("x-cron-secret");
+  if (expectedCron && providedCron && providedCron === expectedCron) {
+    return { user: null, via: "cron", response: null };
+  }
+
+  if (hasServiceRoleBearer(req)) {
+    return { user: null, via: "service_role", response: null };
+  }
+
+  const { user, response } = await requireAdminUser(req, extraHeaders);
+  if (response) return { user, via: null, response };
+  return { user, via: "admin", response: null };
+}
+
+/**
+ * User-facing analytical workers may be called by an authenticated user or by
+ * the same trusted scheduler/service-role paths used for internal orchestration.
+ */
+export async function requireUserOrTrustedWorker(
+  req: Request,
+  extraHeaders: Record<string, string> = {},
+): Promise<{
+  ctx: UserAuthContext | null;
+  via: "user" | "cron" | "service_role" | null;
+  response: Response | null;
+}> {
+  if (req.method === "OPTIONS") return { ctx: null, via: null, response: null };
+
+  const expectedCron = Deno.env.get("CRON_SECRET");
+  const providedCron = req.headers.get("x-cron-secret");
+  if (expectedCron && providedCron && providedCron === expectedCron) {
+    return { ctx: null, via: "cron", response: null };
+  }
+
+  if (hasServiceRoleBearer(req)) {
+    return { ctx: null, via: "service_role", response: null };
+  }
+
+  const { ctx, response } = await requireUser(req, extraHeaders);
+  if (response) return { ctx: null, via: null, response };
+  return { ctx, via: "user", response: null };
+}
+
+'''
+              auth = auth.replace(anchor, helper + anchor, 1)
+              auth_path.write_text(auth)
+
+          # Teach the security audit to recognize the two concrete shared boundaries.
+          audit = audit_path.read_text()
+          if '"requireAdminOrTrustedWorker("' not in audit:
+              needle = '    "requireAdminOrCron(",\n'
+              if needle not in audit:
+                  raise SystemExit('audit marker insertion anchor not found')
+              audit = audit.replace(
+                  needle,
+                  needle + '    "requireAdminOrTrustedWorker(",\n    "requireUserOrTrustedWorker(",\n',
+                  1,
+              )
+              audit_path.write_text(audit)
+
+          def add_import(text: str, guard: str) -> str:
+              if re.search(rf'\b{re.escape(guard)}\b', text.split('serve', 1)[0]):
+                  return text
+              pattern = re.compile(r'import\s*\{([^}]*)\}\s*from\s*["\']\.\./_shared/auth\.ts["\'];', re.S)
+              match = pattern.search(text)
+              if match:
+                  names = match.group(1).strip()
+                  replacement = f'import {{ {names}, {guard} }} from "../_shared/auth.ts";'
+                  return text[:match.start()] + replacement + text[match.end():]
+              return f'import {{ {guard} }} from "../_shared/auth.ts";\n' + text
+
+          serve_pattern = re.compile(r'(?m)^(?P<indent>\s*)(?:Deno\.)?serve\(async \((?P<req>[A-Za-z_$][\w$]*)(?::[^)]*)?\) => \{')
+
+          changed = []
+          for name in sorted(user_or_worker | admin_or_worker):
+              path = root / f'supabase/functions/{name}/index.ts'
+              if not path.exists():
+                  raise SystemExit(f'missing target: {name}')
+              text = path.read_text()
+              if 'SUPABASE_SERVICE_ROLE_KEY' not in text:
+                  raise SystemExit(f'target no longer privileged: {name}')
+
+              guard = 'requireUserOrTrustedWorker' if name in user_or_worker else 'requireAdminOrTrustedWorker'
+              if f'{guard}(' in text:
+                  continue
+
+              text = add_import(text, guard)
+              match = serve_pattern.search(text)
+              if not match:
+                  raise SystemExit(f'could not find async serve entrypoint: {name}')
+
+              req = match.group('req')
+              cors_arg = ''
+              if re.search(r'\bcorsHeaders\b', text):
+                  cors_arg = ', corsHeaders'
+              elif re.search(r'\bCORS_HEADERS\b', text):
+                  cors_arg = ', CORS_HEADERS'
+
+              injection = (
+                  f'\n  const callerAuth = await {guard}({req}{cors_arg});'
+                  f'\n  if (callerAuth.response) return callerAuth.response;\n'
+              )
+              text = text[:match.end()] + injection + text[match.end():]
+              path.write_text(text)
+              changed.append(name)
+
+          print(f'hardened={len(changed)}')
+          print('user_or_worker=' + ','.join(sorted(user_or_worker)))
+          print('admin_or_worker=' + ','.join(sorted(admin_or_worker)))
+          print('held_for_cron_rebind=' + ','.join(sorted(held_for_cron_rebind)))
+          PY
+
+      - name: Verify security audit delta
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/audit-edge-function-auth.py | tee /tmp/auth-audit.txt
+          status=$?
+          set -e
+          grep -q 'privileged_unguarded=10' /tmp/auth-audit.txt
+          grep -q 'autonomous-accumulator' /tmp/auth-audit.txt
+          grep -q 'reliefweb-firehose' /tmp/auth-audit.txt
+          echo "Expected 10 SQL-scheduled functions remain for batch 2."
+
+      - name: Typecheck and strict lint touched functions
+        shell: bash
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          mapfile -t files < <(git diff --name-only HEAD -- 'supabase/functions/**/*.ts' 'scripts/*.py')
+          if [ ${#files[@]} -gt 0 ]; then
+            bunx eslint "${files[@]}" --max-warnings 0
+          fi
+
+      - name: Commit batch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/functions scripts/audit-edge-function-auth.py
+          git diff --cached --stat
+          git commit -m "harden privileged Edge Function caller boundaries"
+          git push origin HEAD:main
