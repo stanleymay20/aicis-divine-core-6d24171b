@@ -264,21 +264,35 @@ async function drainGlobalSignals(supabase: any): Promise<{ offset: number; migr
 
   const seen = new Set<string>();
   const rows = signals
-    .map((s: any) => ({
-      provider_name: "aicis_signals",
-      event_type: s.category || s.event_type || "signal",
-      title: s.title || s.headline || "Signal",
-      description: s.summary || s.description || "",
-      iso3: Array.isArray(s.affected_regions) ? s.affected_regions[0] : (s.iso3 || s.country_iso3 || null),
-      started_at: s.detected_at || s.created_at,
-      severity: s.impact_score ?? s.severity ?? null,
-      confidence: s.confidence_score ?? s.confidence ?? 0.5,
-      provenance_source: "global_signals",
-      dedup_key: `e:signals:${s.id}`,
-      freshness_score: 0.8,
-      last_verified_at: s.created_at,
-      metadata: { category: s.category, urgency: s.urgency_score, source_tier: s.source_tier },
-    }))
+    .map((s: any) => {
+      const confidence = s.confidence_score ?? s.confidence ?? null;
+      const freshness = s.freshness_score ?? null;
+      const lastVerifiedAt = s.last_verified_at ?? null;
+      return {
+        provider_name: "aicis_signals",
+        event_type: s.category || s.event_type || "signal",
+        title: s.title || s.headline || "Signal",
+        description: s.summary || s.description || "",
+        iso3: Array.isArray(s.affected_regions) ? s.affected_regions[0] : (s.iso3 || s.country_iso3 || null),
+        started_at: s.detected_at || s.created_at,
+        severity: s.impact_score ?? s.severity ?? null,
+        // Unknown remains null. No neutral-looking numeric fallback is fabricated.
+        confidence,
+        provenance_source: "global_signals",
+        dedup_key: `e:signals:${s.id}`,
+        // Freshness must be measured/upstream-supplied; creation time is not verification.
+        freshness_score: freshness,
+        last_verified_at: lastVerifiedAt,
+        metadata: {
+          category: s.category,
+          urgency: s.urgency_score,
+          source_tier: s.source_tier,
+          confidence_status: confidence == null ? "unknown" : "upstream_supplied",
+          freshness_status: freshness == null ? "unknown" : "upstream_supplied",
+          verification_status: lastVerifiedAt == null ? "not_verified" : "upstream_timestamp_supplied",
+        },
+      };
+    })
     .filter((r: any) => {
       if (seen.has(r.dedup_key)) return false;
       seen.add(r.dedup_key);
@@ -314,7 +328,9 @@ async function seedNonGeoEntitiesIfMissing(supabase: any): Promise<{ skipped: bo
   // Already seeded — skip
   if ((orgCount ?? 0) >= 50) return { skipped: true, created: 0 };
 
-  // Delegate to planetary-backfill which already has the curated list
+  // Delegate to planetary-backfill which already has the curated list.
+  // Auth hardening of this executable caller is deferred until the live source
+  // scheduler/caller contract is proven; do not break the authoritative source.
   const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/planetary-backfill`;
   const resp = await fetch(url, {
     method: "POST",
