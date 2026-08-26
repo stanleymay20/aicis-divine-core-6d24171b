@@ -1,9 +1,11 @@
 {
-  "schema_version": 1,
-  "purpose": "Exact privileged Edge Function set intentionally deferred until source caller semantics are preserved or final cutover makes the independent target authoritative.",
+  "schema_version": 2,
+  "purpose": "Exact privileged Edge Function set intentionally deferred until executable source caller semantics are preserved or final cutover makes the independent target authoritative.",
   "approved_target_ref": "qpphncfgbhizvnovzivw",
   "source_ref": "psonnnuhjjskrdazrakk",
   "policy": {
+    "caller_evidence_rule": "Count only executable call paths such as cron.schedule/net.http_post, direct fetch, Supabase functions.invoke, or a dynamic dispatcher whose resolved target is proven. UI labels, health rows, registries, comments, scripts and string mentions are not callers by themselves.",
+    "historical_vs_live_rule": "A committed executable migration proves a historical caller definition, not that the corresponding job or trigger is currently active in the live Lovable source. Live activation remains unresolved until source database/runtime inventory is obtained.",
     "pre_cutover": "Do not weaken authorization and do not add a new handler guard on main when an unobservable Lovable/platform caller could be broken.",
     "cutover": "Every entry must receive an explicit caller trust boundary before Lovable-pause readiness can pass.",
     "forbidden_shortcut": "A Supabase anon/publishable key or gateway verify_jwt alone is not privileged authorization."
@@ -11,66 +13,66 @@
   "functions": [
     {
       "name": "autonomous-accumulator",
-      "source_caller_state": "unresolved",
-      "evidence": "Repository comments/migrations describe scheduled accumulation, but no conclusive direct Edge Function HTTP scheduler was found. Historical database-side accumulation scheduling exists.",
+      "source_caller_state": "historical_direct_cron_http_proven_live_activation_unknown",
+      "evidence": "supabase/migrations/20260420090029_26274051-0f0a-41da-8c7b-8efa9126bc13.sql contains an executable cron.schedule -> net.http_post call to /functions/v1/autonomous-accumulator using a legacy anon JWT. This proves a historical direct caller definition, not current live activation.",
       "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Inventory restored/live scheduler state, replace any source/runtime caller with target invoke_aicis_edge_function + x-cron-secret, then add requireAdminOrTrustedWorker."
+      "cutover_requirement": "Inventory the live/restored scheduler state. Keep restored jobs disabled, replace any required source-style caller with target invoke_aicis_edge_function + x-cron-secret, then enforce requireAdminOrTrustedWorker."
     },
     {
       "name": "gdelt-firehose",
-      "source_caller_state": "unresolved",
-      "evidence": "Firehose health/schema references exist, but no committed direct /functions/v1/gdelt-firehose scheduler call site was found.",
+      "source_caller_state": "no_committed_executable_caller_found_live_activation_unknown",
+      "evidence": "Exact /functions/v1/gdelt-firehose and internal-dispatch searches found health/schema/manifest references but no committed executable scheduler, fetch, functions.invoke or proven dynamic-dispatch target. This does not prove the live Lovable source has no scheduler.",
       "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Resolve actual scheduler/provider trigger, preserve cadence on target, then enforce requireAdminOrTrustedWorker."
+      "cutover_requirement": "Resolve the actual live scheduler/provider trigger and cadence, preserve it only in the audited target cutover phase, then enforce requireAdminOrTrustedWorker."
     },
     {
       "name": "graph-recovery-tick",
-      "source_caller_state": "unresolved",
-      "evidence": "Handler comments describe a 10-minute recovery tick and it invokes planetary-backfill with service-role Bearer, but the external scheduler is not conclusively committed in the repository.",
+      "source_caller_state": "current_dynamic_internal_caller_proven_external_schedule_unknown",
+      "evidence": "pipeline-watchdog reads pipeline_heartbeats.target_function and invokes the resolved function through invokeInternalFunction; migration 20260420015726_0867a83b-0520-487b-8bd8-cd24db27d7eb.sql seeds graph-recovery-tick as a target_function. invokeInternalFunction sends x-cron-secret. The external schedule that starts this path is not proven active in the live source.",
       "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Recreate the proven target scheduler with x-cron-secret, then enforce requireAdminOrTrustedWorker."
+      "cutover_requirement": "Preserve the proven x-cron-secret dynamic-worker path, resolve any additional live direct scheduler, then enforce requireAdminOrTrustedWorker only when callers are compatible."
     },
     {
       "name": "ingest-maritime-ais-telemetry",
-      "source_caller_state": "registry_only_webhook",
-      "evidence": "Enterprise registry labels this connector as a webhook; no committed executable dispatcher or webhook-signature contract was found.",
+      "source_caller_state": "registry_only_no_committed_executable_caller_found_live_delivery_unknown",
+      "evidence": "The enterprise registry labels this connector as a webhook, but no code was found that executes job_metadata.function and no committed exact function URL, functions.invoke or proven dynamic dispatcher targets ingest-maritime-ais-telemetry. Registry presence is configuration, not caller evidence.",
       "target_auth_intent": "signed_webhook_or_trusted_worker",
       "cutover_requirement": "Determine the actual AIS delivery mode. If push, require a dedicated webhook signature/HMAC secret with replay protection; if pull/internal, use trusted-worker auth. Never substitute anon JWT authorization."
     },
     {
       "name": "ingest-opensky-aviation-telemetry",
-      "source_caller_state": "registry_only_edge_function",
-      "evidence": "Enterprise registry references the Edge Function, while no committed executable scheduler/dispatcher call site was found. Handler polls OpenSky itself.",
+      "source_caller_state": "registry_only_no_committed_executable_caller_found_live_schedule_unknown",
+      "evidence": "The enterprise registry references this Edge Function, but no code was found that executes job_metadata.function and no committed exact function URL, functions.invoke or proven dynamic dispatcher targets ingest-opensky-aviation-telemetry. The handler itself polls OpenSky.",
       "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Resolve polling scheduler and preserve provider rate/cadence constraints, then enforce requireAdminOrTrustedWorker."
+      "cutover_requirement": "Resolve the live polling scheduler and provider rate/cadence constraints, preserve it only at audited target cutover, then enforce requireAdminOrTrustedWorker."
     },
     {
       "name": "lril-process",
-      "source_caller_state": "unresolved",
-      "evidence": "LRIL pipeline code references processing responsibilities but no conclusive direct Edge Function caller was found in the committed repository.",
+      "source_caller_state": "no_committed_executable_caller_found_live_activation_unknown",
+      "evidence": "Exact-name, exact function-URL, functions.invoke and cron.schedule searches found the worker, LRIL support schema/memory and audit references but no committed executable caller to lril-process. Related LRIL workers do not by themselves prove invocation of this function.",
       "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Trace the restored LRIL scheduler/orchestration path, rebind it to target trusted-worker invocation, then enforce requireAdminOrTrustedWorker."
+      "cutover_requirement": "Trace the live/restored LRIL scheduler or orchestration path, rebind any required caller to target trusted-worker invocation, then enforce requireAdminOrTrustedWorker."
     },
     {
       "name": "narrative-clustering",
-      "source_caller_state": "unresolved",
-      "evidence": "Privileged clustering worker has no conclusive committed executable scheduler call site.",
+      "source_caller_state": "no_committed_executable_caller_found_live_activation_unknown",
+      "evidence": "Exact function-URL and dynamic-dispatch searches found clustering schema/logic and audit references but no committed executable HTTP/Supabase invocation of the narrative-clustering Edge Function. Database-native clustering definitions are not Edge Function callers.",
       "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Resolve production trigger/cadence from restored scheduler/runtime evidence, rebind target caller, then enforce requireAdminOrTrustedWorker."
+      "cutover_requirement": "Resolve the production trigger/cadence from live/restored runtime evidence, rebind any required target caller, then enforce requireAdminOrTrustedWorker."
     },
     {
       "name": "planetary-backfill",
-      "source_caller_state": "mixed_legacy_source_wrappers_and_internal_service_role",
-      "evidence": "Historical PostgreSQL trigger wrappers post to the Lovable source with anon JWT, while graph-recovery-tick also calls this function internally with service-role Bearer.",
+      "source_caller_state": "mixed_current_internal_and_historical_database_http_callers_live_activation_partially_unknown",
+      "evidence": "Current graph-recovery-tick directly fetches /functions/v1/planetary-backfill with a service-role Bearer. pipeline-watchdog can also resolve planetary-backfill through target_function and invokeInternalFunction with x-cron-secret. Historical migrations 20260413114431_7dfd2577-1e0c-4c94-8ff9-49b773850234.sql and 20260413114900_c155eccf-ce46-44f7-bacc-40895b228609.sql define database HTTP wrappers posting to the Lovable source with a legacy anon JWT. Historical wrapper activation in the live source is unresolved.",
       "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Keep historical source wrappers quarantined on target, replace required schedules with target helper/x-cron-secret, preserve internal service-role path, then enforce requireAdminOrTrustedWorker."
+      "cutover_requirement": "Keep historical source wrappers quarantined on target, preserve the current service-role and x-cron-secret trusted-worker paths or atomically rebind them, resolve live wrapper usage, then enforce requireAdminOrTrustedWorker."
     },
     {
       "name": "reliefweb-firehose",
-      "source_caller_state": "unresolved",
-      "evidence": "Provider health/schema references exist, but no committed direct /functions/v1/reliefweb-firehose scheduler call site was found.",
+      "source_caller_state": "no_committed_executable_caller_found_live_activation_unknown",
+      "evidence": "Exact /functions/v1/reliefweb-firehose and internal-dispatch searches found provider health/schema/manifest references but no committed executable scheduler, fetch, functions.invoke or proven dynamic-dispatch target. This does not prove the live Lovable source has no scheduler.",
       "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Resolve actual scheduler and ReliefWeb cadence/identity requirements, rebind the target caller, then enforce requireAdminOrTrustedWorker."
+      "cutover_requirement": "Resolve the actual live scheduler and ReliefWeb cadence/identity requirements, preserve it only in the audited target cutover phase, then enforce requireAdminOrTrustedWorker."
     }
   ]
 }
