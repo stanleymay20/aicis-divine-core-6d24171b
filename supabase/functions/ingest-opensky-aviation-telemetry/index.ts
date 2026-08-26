@@ -26,21 +26,7 @@ type WatchBox = {
   lomax: number;
 };
 
-const WATCH_BOXES: WatchBox[] = [
-  { key: "central_europe", name: "Central Europe", iso3: "EUR", lamin: 45, lomin: 5, lamax: 55, lomax: 20 },
-  { key: "west_africa", name: "West Africa", iso3: "WAF", lamin: 3, lomin: -20, lamax: 18, lomax: 15 },
-  { key: "east_africa", name: "East Africa", iso3: "EAF", lamin: -12, lomin: 25, lamax: 15, lomax: 52 },
-  { key: "middle_east", name: "Middle East", iso3: "MEA", lamin: 12, lomin: 30, lamax: 38, lomax: 62 },
-  { key: "south_asia", name: "South Asia", iso3: "SAS", lamin: 5, lomin: 60, lamax: 35, lomax: 95 },
-  { key: "southeast_asia", name: "Southeast Asia", iso3: "SEA", lamin: -12, lomin: 95, lamax: 25, lomax: 130 },
-  { key: "north_america_east", name: "North America East", iso3: "NAE", lamin: 25, lomin: -90, lamax: 50, lomax: -60 },
-  { key: "south_america_east", name: "South America East", iso3: "SAE", lamin: -35, lomin: -65, lamax: 8, lomax: -30 },
-];
-
-type OpenSkyResponse = {
-  time: number;
-  states: unknown[][] | null;
-};
+type OpenSkyResponse = { time: number; states: unknown[][] | null };
 
 type FlightState = {
   icao24: string;
@@ -60,6 +46,30 @@ type FlightState = {
   spi: boolean;
   positionSource: number | null;
 };
+
+type TelemetryRow = {
+  connector_key: string;
+  observation_type: string;
+  observed_entity: string;
+  observed_region: string;
+  observed_at: string | null;
+  observation_value: number;
+  observation_unit: string;
+  confidence_score: number | null;
+  anomaly_score: number;
+  raw_payload: Record<string, unknown> & { dedup_hash?: string };
+};
+
+const WATCH_BOXES: WatchBox[] = [
+  { key: "central_europe", name: "Central Europe", iso3: "EUR", lamin: 45, lomin: 5, lamax: 55, lomax: 20 },
+  { key: "west_africa", name: "West Africa", iso3: "WAF", lamin: 3, lomin: -20, lamax: 18, lomax: 15 },
+  { key: "east_africa", name: "East Africa", iso3: "EAF", lamin: -12, lomin: 25, lamax: 15, lomax: 52 },
+  { key: "middle_east", name: "Middle East", iso3: "MEA", lamin: 12, lomin: 30, lamax: 38, lomax: 62 },
+  { key: "south_asia", name: "South Asia", iso3: "SAS", lamin: 5, lomin: 60, lamax: 35, lomax: 95 },
+  { key: "southeast_asia", name: "Southeast Asia", iso3: "SEA", lamin: -12, lomin: 95, lamax: 25, lomax: 130 },
+  { key: "north_america_east", name: "North America East", iso3: "NAE", lamin: 25, lomin: -90, lamax: 50, lomax: -60 },
+  { key: "south_america_east", name: "South America East", iso3: "SAE", lamin: -35, lomin: -65, lamax: 8, lomax: -30 },
+];
 
 function parseState(row: unknown[]): FlightState | null {
   if (!Array.isArray(row) || row.length < 17) return null;
@@ -86,19 +96,14 @@ function parseState(row: unknown[]): FlightState | null {
 }
 
 function emergencyRuleScore(state: FlightState): number {
-  // Deterministic triage heuristic, not an observed or verified emergency probability.
-  // Common emergency squawks: 7500 hijack, 7600 radio failure, 7700 emergency.
-  if (state.squawk === "7700") return 100;
-  if (state.squawk === "7500") return 100;
+  if (state.squawk === "7700" || state.squawk === "7500") return 100;
   if (state.squawk === "7600") return 85;
   if (state.spi) return 70;
-  const verticalRate = Math.abs(state.verticalRate ?? 0);
-  if (verticalRate > 30) return 55;
+  if (Math.abs(state.verticalRate ?? 0) > 30) return 55;
   return 5;
 }
 
 function congestionRuleScore(flightCount: number): number {
-  // Deterministic density threshold heuristic, not measured congestion probability.
   if (flightCount >= 2500) return 90;
   if (flightCount >= 1500) return 75;
   if (flightCount >= 800) return 55;
@@ -110,6 +115,12 @@ async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const hash = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function dedupHashFromPayload(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const hash = (value as Record<string, unknown>).dedup_hash;
+  return typeof hash === "string" ? hash : null;
 }
 
 async function recordConnectorHealth(
@@ -165,16 +176,14 @@ async function fetchBox(box: WatchBox): Promise<OpenSkyResponse> {
     Accept: "application/json",
     "User-Agent": "AICIS-Divine-Core/1.0 aviation telemetry",
   };
-  if (username && password) {
-    headers.Authorization = "Basic " + btoa(`${username}:${password}`);
-  }
+  if (username && password) headers.Authorization = "Basic " + btoa(`${username}:${password}`);
 
   const res = await fetch(url.toString(), { headers });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`OpenSky failed for ${box.key}: ${res.status} ${body.slice(0, 300)}`);
   }
-  return await res.json();
+  return await res.json() as OpenSkyResponse;
 }
 
 Deno.serve(async (req) => {
@@ -182,7 +191,7 @@ Deno.serve(async (req) => {
 
   const started = Date.now();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-  const __telemetryRun = await startProviderRun(supabase, {
+  const telemetryRun = await startProviderRun(supabase, {
     provider_name: "opensky",
     endpoint: "ingest-opensky-aviation-telemetry",
     scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
@@ -193,13 +202,13 @@ Deno.serve(async (req) => {
     const boxParam = url.searchParams.get("box");
     const boxes = boxParam ? WATCH_BOXES.filter((b) => b.key === boxParam) : WATCH_BOXES.slice(0, 4);
 
-    const rows = [];
+    const rows: TelemetryRow[] = [];
     let totalFlights = 0;
 
     for (const box of boxes) {
       const feed = await fetchBox(box);
       const observedAt = feed.time ? new Date(feed.time * 1000).toISOString() : null;
-      const states = (feed.states ?? []).map(parseState).filter(Boolean) as FlightState[];
+      const states = (feed.states ?? []).map(parseState).filter((state): state is FlightState => state !== null);
       totalFlights += states.length;
 
       const ruleFlaggedEmergencyStates = states.filter((s) => emergencyRuleScore(s) >= 70);
@@ -209,12 +218,8 @@ Deno.serve(async (req) => {
       const velocitySamples = states
         .map((s) => s.velocity)
         .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-      const avgAltitude = altitudeSamples.length
-        ? altitudeSamples.reduce((acc, value) => acc + value, 0) / altitudeSamples.length
-        : null;
-      const avgVelocity = velocitySamples.length
-        ? velocitySamples.reduce((acc, value) => acc + value, 0) / velocitySamples.length
-        : null;
+      const avgAltitude = altitudeSamples.length ? altitudeSamples.reduce((a, v) => a + v, 0) / altitudeSamples.length : null;
+      const avgVelocity = velocitySamples.length ? velocitySamples.reduce((a, v) => a + v, 0) / velocitySamples.length : null;
       const congestion = congestionRuleScore(states.length);
 
       rows.push({
@@ -278,8 +283,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    for (const row of rows as any[]) {
-      row.raw_payload.dedup_hash = await sha256Hex(`${row.connector_key}|${row.observation_type}|${row.observed_region}|${row.observed_at ?? "unknown-provider-time"}`);
+    for (const row of rows) {
+      row.raw_payload.dedup_hash = await sha256Hex(
+        `${row.connector_key}|${row.observation_type}|${row.observed_region}|${row.observed_at ?? "unknown-provider-time"}`,
+      );
     }
 
     let inserted = 0;
@@ -292,8 +299,15 @@ Deno.serve(async (req) => {
         .gte("created_at", since);
       if (existingErr) throw existingErr;
 
-      const existingHashes = new Set((existing ?? []).map((r: any) => r?.raw_payload?.dedup_hash).filter(Boolean));
-      const fresh = rows.filter((r: any) => !existingHashes.has(r.raw_payload.dedup_hash));
+      const existingHashes = new Set(
+        (existing ?? [])
+          .map((row) => dedupHashFromPayload(row.raw_payload))
+          .filter((hash): hash is string => hash !== null),
+      );
+      const fresh = rows.filter((row) => {
+        const hash = row.raw_payload.dedup_hash;
+        return typeof hash === "string" && !existingHashes.has(hash);
+      });
 
       if (fresh.length > 0) {
         const { error: insertErr } = await supabase.from("telemetry_observations").insert(fresh);
@@ -303,7 +317,6 @@ Deno.serve(async (req) => {
     }
 
     await recordConnectorHealth(supabase, { success: true, inserted, durationMs: Date.now() - started });
-
     await supabase.from("automation_logs").insert({
       job_name: "ingest-opensky-aviation-telemetry",
       status: "success",
@@ -313,10 +326,10 @@ Deno.serve(async (req) => {
     try {
       await supabase.rpc("generate_telemetry_health_summary");
       await supabase.rpc("generate_strategic_digital_twins");
-    } catch (e) {
-      console.warn("post aviation telemetry refresh skipped", e);
+    } catch (error) {
+      console.warn("post aviation telemetry refresh skipped", error);
     }
-    await finishProviderRun(supabase, __telemetryRun);
+    await finishProviderRun(supabase, telemetryRun);
 
     return new Response(JSON.stringify({
       status: "success",
@@ -327,15 +340,15 @@ Deno.serve(async (req) => {
       inserted,
       duration_ms: Date.now() - started,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     await recordConnectorHealth(supabase, { success: false, durationMs: Date.now() - started, error: msg });
     await supabase.from("automation_logs").insert({
       job_name: "ingest-opensky-aviation-telemetry",
       status: "error",
       message: msg.slice(0, 500),
     });
-    await failProviderRun(supabase, __telemetryRun, e);
+    await failProviderRun(supabase, telemetryRun, error);
 
     return new Response(JSON.stringify({ status: "error", error: msg }), {
       status: 500,
