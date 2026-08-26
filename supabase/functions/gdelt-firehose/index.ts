@@ -107,10 +107,13 @@ async function pullTheme(theme: string, maxRows = 50): Promise<GdeltArticle[]> {
   }
 }
 
-function gdeltSeenToIso(s: string): string {
-  // "20260505T103000Z" -> "2026-05-05T10:30:00Z"
-  if (!s || s.length < 15) return new Date().toISOString();
-  return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(9,11)}:${s.slice(11,13)}:${s.slice(13,15)}Z`;
+function gdeltSeenToIso(s: string): string | null {
+  // GDELT seendate is expected as "YYYYMMDDTHHMMSSZ". Missing/malformed provider
+  // time stays unknown; ingestion time must never be substituted for event time.
+  if (!s || !/^\d{8}T\d{6}Z$/.test(s)) return null;
+  const candidate = `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(9,11)}:${s.slice(11,13)}:${s.slice(13,15)}Z`;
+  const parsed = Date.parse(candidate);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
 serve(async (req) => {
@@ -175,9 +178,12 @@ serve(async (req) => {
   for (const c of candidates) {
     if (existing.has(c.dedup)) continue;
     const occurredAt = gdeltSeenToIso(c.art.seendate);
-    const detectionLatencySec = Math.max(0, Math.round((nowMs - new Date(occurredAt).getTime()) / 1000));
+    const occurredAtMs = occurredAt ? Date.parse(occurredAt) : Number.NaN;
+    const detectionLatencySec = Number.isFinite(occurredAtMs)
+      ? Math.max(0, Math.round((nowMs - occurredAtMs) / 1000))
+      : null;
     const iso3 = c.art.sourcecountry ? FIPS_TO_ISO3[c.art.sourcecountry] : undefined;
-    const evidenceHash = await sha256Hex(`${c.art.title}|${c.art.url}|${occurredAt}`);
+    const evidenceHash = await sha256Hex(`${c.art.title}|${c.art.url}|${occurredAt ?? "unknown-event-time"}`);
     toInsert.push({
       detection_latency_seconds: detectionLatencySec,
       last_pipeline_stage: "ingested",
