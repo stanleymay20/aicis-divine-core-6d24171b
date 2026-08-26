@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { relative } from "node:path";
 import { ESLint } from "eslint";
 
 const [baseSha, ...files] = process.argv.slice(2);
@@ -28,16 +30,14 @@ function messageCounts(result) {
   return counts;
 }
 
-function hasNewLintDebt(currentResult, baselineResult) {
+function newLintDebt(currentResult, baselineResult) {
   const current = messageCounts(currentResult);
   const baseline = messageCounts(baselineResult);
   const increases = [];
 
   for (const [key, count] of current) {
     const inherited = baseline.get(key) ?? 0;
-    if (count > inherited) {
-      increases.push(`${key}: ${inherited} -> ${count}`);
-    }
+    if (count > inherited) increases.push(`${key}: ${inherited} -> ${count}`);
   }
   return increases;
 }
@@ -58,18 +58,18 @@ let failed = false;
 const currentResults = await eslint.lintFiles(files);
 
 for (const result of currentResults) {
-  const relativePath = result.filePath.replace(`${process.cwd()}/`, "");
+  const relativePath = relative(process.cwd(), result.filePath).replaceAll("\\", "/");
   const findingCount = result.errorCount + result.warningCount;
   if (findingCount === 0) {
     console.log(`PASS strict: ${relativePath}`);
     continue;
   }
 
-  let currentText;
+  let currentText = "";
   try {
-    currentText = await Bun.file(result.filePath).text();
+    currentText = readFileSync(result.filePath, "utf8");
   } catch {
-    currentText = "";
+    // A missing changed file is not eligible for inherited-debt treatment.
   }
 
   const isStandardizedAuthHardening = authBoundaryMarkers.some((marker) => currentText.includes(marker));
@@ -92,7 +92,7 @@ for (const result of currentResults) {
   }
 
   const [baselineResult] = await eslint.lintText(inheritedText, { filePath: relativePath });
-  const increases = hasNewLintDebt(result, baselineResult);
+  const increases = newLintDebt(result, baselineResult);
   if (increases.length > 0) {
     console.error(`FAIL auth-debt: ${relativePath} introduces new lint debt:`);
     for (const increase of increases) console.error(`  ${increase}`);
