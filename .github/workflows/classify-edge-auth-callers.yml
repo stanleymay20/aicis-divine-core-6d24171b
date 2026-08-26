@@ -42,22 +42,6 @@ jobs:
                   continue
               unguarded.append(path.parent.name)
 
-          def refs_for(name, base):
-              refs = []
-              for path in base.rglob('*'):
-                  if not path.is_file() or path.suffix not in {'.ts','.tsx','.sql','.toml','.md'}:
-                      continue
-                  if path.as_posix() == f'supabase/functions/{name}/index.ts':
-                      continue
-                  try:
-                      text = path.read_text(errors='ignore')
-                  except Exception:
-                      continue
-                  # Deliberately require the literal function name to avoid fuzzy classification.
-                  if name in text:
-                      refs.append(path.as_posix())
-              return refs
-
           def verify_jwt(name):
               pattern = re.compile(rf'\[functions\.{re.escape(name)}\](.*?)(?=\n\[functions\.|\Z)', re.S)
               match = pattern.search(config_text)
@@ -66,21 +50,56 @@ jobs:
               jwt = re.search(r'verify_jwt\s*=\s*(true|false)', match.group(1), re.I)
               return jwt.group(1).lower() if jwt else 'default_true'
 
-          print(f'UNGUARDED_COUNT={len(unguarded)}')
-          print('name|verify_jwt|frontend_refs|function_refs|sql_refs')
-          for name in unguarded:
-              frontend = refs_for(name, root / 'src')
-              fnrefs = refs_for(name, functions)
-              sqlrefs = []
-              for path in (root / 'supabase').rglob('*.sql'):
+          def frontend_refs(name):
+              refs = []
+              for path in (root / 'src').rglob('*'):
+                  if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
+                      continue
                   text = path.read_text(errors='ignore')
                   if name in text:
-                      sqlrefs.append(path.as_posix())
+                      refs.append(path.as_posix())
+              return refs
+
+          def function_callers(name):
+              refs = []
+              escaped = re.escape(name)
+              for path in functions.glob('*/index.ts'):
+                  if path.parent.name == name:
+                      continue
+                  text = path.read_text(errors='ignore')
+                  if name not in text:
+                      continue
+                  style = 'literal_ref'
+                  if re.search(rf'invokeInternalFunction(?:<[^>]+>)?\(\s*["\']{escaped}["\']', text):
+                      style = 'invokeInternalFunction'
+                  elif re.search(rf'\.functions\.invoke\(\s*["\']{escaped}["\']', text):
+                      style = 'supabase.functions.invoke'
+                  elif re.search(rf'/functions/v1/(?:\$\{{[^}}]+\}}|){escaped}', text):
+                      style = 'raw_fetch'
+                  elif '/functions/v1/' in text and name in text:
+                      style = 'raw_fetch_or_dynamic'
+                  refs.append(f'{path.as_posix()}[{style}]')
+              return refs
+
+          def sql_refs(name):
+              refs = []
+              for path in (root / 'supabase').rglob('*.sql'):
+                  text = path.read_text(errors='ignore')
+                  if name not in text:
+                      continue
+                  has_cron_secret = 'x-cron-secret' in text.lower() or 'aicis_cron_secret' in text.lower()
+                  style = 'cron_secret' if has_cron_secret else 'no_cron_secret_seen'
+                  refs.append(f'{path.as_posix()}[{style}]')
+              return refs
+
+          print(f'UNGUARDED_COUNT={len(unguarded)}')
+          print('name|verify_jwt|frontend_refs|function_callers|sql_refs')
+          for name in unguarded:
               print('|'.join([
                   name,
                   verify_jwt(name),
-                  ';'.join(frontend) or '-',
-                  ';'.join(fnrefs) or '-',
-                  ';'.join(sqlrefs) or '-',
+                  ';'.join(frontend_refs(name)) or '-',
+                  ';'.join(function_callers(name)) or '-',
+                  ';'.join(sql_refs(name)) or '-',
               ]))
           PY
