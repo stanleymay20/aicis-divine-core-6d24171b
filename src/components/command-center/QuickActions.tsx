@@ -1,8 +1,14 @@
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
-  Globe, AlertTriangle, BarChart3, Radio, Satellite,
-  Shield, Heart, Zap, Utensils, Building2, Users
+  AlertTriangle,
+  BarChart3,
+  Globe,
+  Heart,
+  Network,
+  Radio,
+  Shield,
+  Utensils,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +24,7 @@ export const QuickActions = ({ onAction, activeLayer }: QuickActionsProps) => {
     { id: "food", icon: Utensils, label: "Food", color: "text-warning" },
     { id: "energy", icon: Zap, label: "Energy", color: "text-warning" },
     { id: "incidents", icon: AlertTriangle, label: "Incidents", color: "text-warning" },
+    { id: "networks", icon: Network, label: "Networks", color: "text-primary" },
   ];
 
   const actions = [
@@ -28,7 +35,6 @@ export const QuickActions = ({ onAction, activeLayer }: QuickActionsProps) => {
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Layer toggles */}
       <div className="flex flex-wrap gap-1">
         {layers.map((layer) => {
           const Icon = layer.icon;
@@ -40,7 +46,7 @@ export const QuickActions = ({ onAction, activeLayer }: QuickActionsProps) => {
               size="sm"
               className={cn(
                 "h-8 gap-1.5 text-xs",
-                isActive && "bg-primary/20 border-primary"
+                isActive && "bg-primary/20 border-primary",
               )}
               onClick={() => onAction(`layer:${layer.id}`)}
             >
@@ -51,7 +57,6 @@ export const QuickActions = ({ onAction, activeLayer }: QuickActionsProps) => {
         })}
       </div>
 
-      {/* Quick actions */}
       <div className="flex gap-1">
         {actions.map((action) => {
           const Icon = action.icon;
