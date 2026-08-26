@@ -97,9 +97,10 @@ function normalizeOne(input: unknown): MaritimeObservation | null {
     navigational_status: String(position.NavigationalStatus ?? position.nav_status ?? obj.navigational_status ?? obj.status ?? "unknown"),
     destination: obj.Destination ?? obj.destination ?? metadata.Destination ?? metadata.destination,
     eta: obj.ETA ?? obj.eta ?? metadata.ETA ?? metadata.eta,
-    timestamp: obj.Timestamp ?? obj.timestamp ?? metadata.time_utc ?? metadata.timestamp ?? Date.now(),
+    // Missing provider time remains unknown. Request receipt time is not vessel observation time.
+    timestamp: obj.Timestamp ?? obj.timestamp ?? metadata.time_utc ?? metadata.timestamp ?? null,
     region: obj.region ?? metadata.region,
-    provider: obj.provider ?? "posted-ais-provider",
+    provider: obj.provider ?? metadata.provider ?? null,
     raw: obj,
   };
 }
@@ -110,6 +111,19 @@ function num(v: unknown): number | null {
   return null;
 }
 
+function parseObservedAt(value: string | number | null | undefined): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value > 10_000_000_000 ? value : value * 1000;
+    const date = new Date(ms);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+  }
+  return null;
+}
+
 function zoneFor(obs: MaritimeObservation): PortWatchZone | null {
   const lat = obs.latitude;
   const lon = obs.longitude;
@@ -117,14 +131,18 @@ function zoneFor(obs: MaritimeObservation): PortWatchZone | null {
   return PORT_ZONES.find((z) => lat >= z.minLat && lat <= z.maxLat && lon >= z.minLon && lon <= z.maxLon) ?? null;
 }
 
-function anomalyScore(obs: MaritimeObservation, zone: PortWatchZone | null): number {
-  const speed = obs.speed_over_ground ?? 0;
+function deterministicAnomalyScore(obs: MaritimeObservation, zone: PortWatchZone | null): number {
+  const speed = obs.speed_over_ground;
   const status = (obs.navigational_status ?? "").toLowerCase();
-  const stoppedRisk = speed < 0.5 && zone ? 55 : 0;
+  const stoppedRisk = speed != null && speed < 0.5 && zone ? 55 : 0;
   const restrictedRisk = status.includes("restricted") || status.includes("not under command") ? 75 : 0;
   const agroundRisk = status.includes("aground") ? 95 : 0;
   const chokepointBoost = zone && ["suez", "panama", "singapore"].includes(zone.key) ? 15 : 0;
   return Math.max(5, Math.min(100, Math.round(Math.max(stoppedRisk, restrictedRisk, agroundRisk) + chokepointBoost)));
+}
+
+function deterministicCongestionScore(count: number): number {
+  return count >= 250 ? 90 : count >= 100 ? 70 : count >= 40 ? 50 : 25;
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -160,14 +178,17 @@ async function recordConnectorHealth(
     last_failure_at: args.success ? undefined : now,
     consecutive_failures: failures,
     last_error_message: args.success ? null : (args.error ?? "unknown").slice(0, 500),
-    trust_tier: "tier_2",
+    // This connector accepts multiple possible providers; quality is not calibrated globally.
+    trust_tier: "unrated",
     cost_tier: "provider-dependent",
     metadata: {
       supported_payloads: ["AISStream-style", "generic vessels[]", "generic observations[]", "single vessel object"],
       watched_zones: PORT_ZONES.map((z) => z.key),
       inserted: args.inserted ?? 0,
       duration_ms: args.durationMs ?? null,
-      note: "Most real AIS feeds require a provider API key or webhook. This endpoint normalizes any approved provider payload into AICIS telemetry_observations.",
+      provider_quality_status: "unmeasured_provider_specific",
+      analytical_confidence_status: "unmeasured",
+      note: "Most real AIS feeds require a provider API key or webhook. This endpoint normalizes approved provider payloads; provider quality and analytical confidence must be supplied or measured separately.",
     },
     updated_at: now,
   }, { onConflict: "connector_key" });
@@ -177,6 +198,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const started = Date.now();
+  const requestReceivedAt = new Date().toISOString();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   const __telemetryRun = await startProviderRun(supabase, {
     provider_name: "maritime_ais",
@@ -200,12 +222,10 @@ Deno.serve(async (req) => {
 
     for (const obs of observations) {
       const zone = zoneFor(obs);
-      const observedAt = typeof obs.timestamp === "number"
-        ? new Date(obs.timestamp > 10_000_000_000 ? obs.timestamp : obs.timestamp * 1000).toISOString()
-        : obs.timestamp ? new Date(obs.timestamp).toISOString() : new Date().toISOString();
+      const observedAt = parseObservedAt(obs.timestamp);
       const region = obs.region || zone?.iso3 || "GLOBAL_MARITIME";
-      const anomaly = anomalyScore(obs, zone);
-      const dedup = await sha256Hex(`${CONNECTOR_KEY}|${obs.mmsi}|${observedAt}|${obs.latitude}|${obs.longitude}`);
+      const anomaly = deterministicAnomalyScore(obs, zone);
+      const dedup = await sha256Hex(`${CONNECTOR_KEY}|${obs.mmsi}|${observedAt ?? "unknown-provider-time"}|${obs.latitude}|${obs.longitude}`);
 
       rows.push({
         connector_key: CONNECTOR_KEY,
@@ -213,9 +233,11 @@ Deno.serve(async (req) => {
         observed_entity: obs.vessel_name || String(obs.mmsi),
         observed_region: region,
         observed_at: observedAt,
-        observation_value: obs.speed_over_ground ?? 0,
+        observation_value: obs.speed_over_ground ?? null,
         observation_unit: "knots",
-        confidence_score: 82,
+        // No measured/calibrated analytical confidence is available here.
+        confidence_score: null,
+        // Numeric anomaly remains useful but is explicitly deterministic below.
         anomaly_score: anomaly,
         raw_payload: {
           dedup_hash: dedup,
@@ -235,6 +257,15 @@ Deno.serve(async (req) => {
           port_zone: zone,
           provider: obs.provider,
           raw: obs.raw,
+          observed_data_semantics: "provider_supplied_vessel_fields",
+          provider_timestamp_status: observedAt ? "provider_supplied" : "unknown",
+          request_received_at: requestReceivedAt,
+          provider_quality: null,
+          provider_quality_status: "unmeasured",
+          analytical_confidence: null,
+          analytical_confidence_status: "unmeasured",
+          anomaly_score_semantics: "deterministic_rule_heuristic_not_probability",
+          anomaly_rule: "speed_navigation_status_chokepoint_v1",
         },
       });
     }
@@ -245,26 +276,36 @@ Deno.serve(async (req) => {
       if (zone) zoneCounts.set(zone.key, (zoneCounts.get(zone.key) ?? 0) + 1);
     }
 
-    const now = new Date().toISOString();
+    // This timestamp is valid as derivation time for the payload aggregate, not vessel observation time.
+    const derivedAt = new Date().toISOString();
     for (const [zoneKey, count] of zoneCounts.entries()) {
       const zone = PORT_ZONES.find((z) => z.key === zoneKey)!;
-      const congestion = count >= 250 ? 90 : count >= 100 ? 70 : count >= 40 ? 50 : 25;
-      const dedup = await sha256Hex(`${CONNECTOR_KEY}|zone|${zone.key}|${now.slice(0, 13)}`);
+      const congestion = deterministicCongestionScore(count);
+      const dedup = await sha256Hex(`${CONNECTOR_KEY}|zone|${zone.key}|${derivedAt.slice(0, 13)}`);
       rows.push({
         connector_key: CONNECTOR_KEY,
         observation_type: "maritime_port_zone_density",
         observed_entity: zone.name,
         observed_region: zone.iso3,
-        observed_at: now,
+        observed_at: derivedAt,
         observation_value: count,
-        observation_unit: "vessel_count",
-        confidence_score: 78,
+        observation_unit: "vessel_count_in_posted_payload",
+        confidence_score: null,
         anomaly_score: congestion,
         raw_payload: {
           dedup_hash: dedup,
           zone,
           vessel_count: count,
-          provider: "derived-from-ais-payload",
+          provider: "derived-from-current-ais-payload",
+          observed_data_semantics: "deterministic_count_of_payload_records_inside_watch_box",
+          coverage_scope: "posted_payload_only_not_complete_zone_population",
+          derivation_time: derivedAt,
+          provider_quality: null,
+          provider_quality_status: "unmeasured",
+          analytical_confidence: null,
+          analytical_confidence_status: "unmeasured",
+          anomaly_score_semantics: "deterministic_rule_heuristic_not_probability",
+          congestion_rule: "payload_vessel_count_thresholds_v1",
         },
       });
     }
@@ -305,7 +346,6 @@ Deno.serve(async (req) => {
       console.warn("post maritime telemetry refresh skipped", e);
     }
     await finishProviderRun(supabase, __telemetryRun);
-
 
     return new Response(JSON.stringify({
       status: "success",
