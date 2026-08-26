@@ -49,6 +49,11 @@ jobs:
           set -euo pipefail
           bash scripts/audit-source-project-bindings.sh --strict
 
+      - name: Target cron quarantine
+        id: target_cron
+        continue-on-error: true
+        run: python3 scripts/audit-target-cron-quarantine.py
+
       - name: Privileged Edge Function auth
         id: edge_auth
         continue-on-error: true
@@ -116,6 +121,7 @@ jobs:
         run: |
           echo "Lovable runtime gate: ${{ steps.lovable_runtime.outcome }}"
           echo "Source-project binding gate: ${{ steps.source_bindings.outcome }}"
+          echo "Target cron quarantine: ${{ steps.target_cron.outcome }}"
           echo "Privileged Edge Function auth: ${{ steps.edge_auth.outcome }}"
           echo "Secret-name inventory: ${{ steps.secret_inventory.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
@@ -126,6 +132,7 @@ jobs:
           FAILED=0
           [ "${{ steps.lovable_runtime.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.source_bindings.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.target_cron.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.edge_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.secret_inventory.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
