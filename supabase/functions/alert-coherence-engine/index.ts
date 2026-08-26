@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Alert Coherence Engine — deterministic, no AI credits required.
 // 1. Escalates fresh high/critical `alerts` into `critical_alerts` (powers map + notifications).
 // 2. Synthesizes `intelligence_signals` from cross-domain correlation patterns.
@@ -38,6 +39,9 @@ function toIso3(country: string | null): string | null {
 }
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   const supabase = createClient(

@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Multi-agent cognition orchestrator.
 // Fans a scoped question out to independent domain-specialist agents, each of which
 // must ground its claim in real evidence rows pulled from production tables, then
@@ -57,6 +58,9 @@ async function callModel(system: string, user: string) {
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const json = (body: unknown, status = 200) =>

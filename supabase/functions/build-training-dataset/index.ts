@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // AICIS Training Dataset Builder — Sweep #16 modernized
 // Incremental, chunked, resumable, self-continuing training pipeline.
 //
@@ -168,6 +169,9 @@ async function processCountryBatch(
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

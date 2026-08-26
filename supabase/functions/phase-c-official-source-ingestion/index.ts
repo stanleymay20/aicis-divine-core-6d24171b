@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Phase C — Lane 1: Official Source Ingestion
 // Pulls RSS/Atom feeds from doctrine-strict T1 publishers (WHO, IMF, World Bank,
 // ECB, OECD, BIS, ReliefWeb) and writes each item as:
@@ -188,6 +189,9 @@ async function ingestFeed(
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const supabase = createClient(

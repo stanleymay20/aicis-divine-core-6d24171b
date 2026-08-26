@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Sprint α — Truth Floor: daily retry of zero-village countries with backoff.
 // Picks countries from village_seed_attempts where next_retry_at <= now() and best_villages_found=0,
 // re-invokes village-inference-engine for each, lets that function update retry schedule.
@@ -13,6 +14,9 @@ const FN = "seed-retry-zero-result";
 const MAX_PER_RUN = 25; // do not stampede external APIs
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const supabase = createClient(

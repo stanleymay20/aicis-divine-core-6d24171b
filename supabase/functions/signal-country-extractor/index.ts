@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // signal-country-extractor (v2 — Phase 3.6)
 // Extract ISO3 country codes from signal title/summary/translated_*.
 //
@@ -400,6 +401,9 @@ function urlsFromSignal(sig: any): string[] {
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const startedAt = Date.now();
   const supa = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });

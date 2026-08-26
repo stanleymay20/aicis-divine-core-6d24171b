@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 /**
  * run-performance-engine-v2 — Production Pipeline
  * 
@@ -376,6 +377,9 @@ function computeDomainPerformance(
 // ─── Main Handler ───────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const startMs = Date.now();

@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 /**
  * detection-audit — daily "what did we miss" scoring.
  *
@@ -113,6 +114,9 @@ async function fcSearch(apiKey: string, query: string, limit = 5): Promise<any[]
 }
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const start = Date.now();

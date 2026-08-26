@@ -1,3 +1,4 @@
+import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
 // Phase 5 — Decision-loop generator.
 // For every canonical signal meeting confidence/urgency/impact thresholds,
 // create a signal_action_recommendation (template-first, AI only for critical),
@@ -136,6 +137,9 @@ async function aiAction(signal: Signal): Promise<ActionChoice | null> {
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireUserOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const sb = createClient(

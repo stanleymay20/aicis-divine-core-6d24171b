@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Sub-National Hybrid Inference Worker
 // Downscales national metrics to admin1/admin2/village rows using:
 //   1. Population weights (deterministic, transparent)
@@ -15,6 +16,9 @@ const LEVEL_CONFIDENCE: Record<number, number> = { 1: 0.7, 2: 0.55, 3: 0.4 };
 const BATCH_REGIONS = 250;
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const start = Date.now();

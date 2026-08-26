@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 /**
  * seed-community-metrics — bootstraps the L0/L1 sub-national tier of the
  * nested federation by deriving baseline community indicators from each
@@ -87,6 +88,9 @@ async function bootstrapAdminRegions(supabase: any): Promise<number> {
 }
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const supabase = createClient(

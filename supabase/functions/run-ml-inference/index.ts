@@ -1,3 +1,4 @@
+import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
 // ML inference with raw + isotonic-calibrated scores, prediction intervals,
 // and SHA-256 audit hash chain into ml_inference_audit.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -31,6 +32,9 @@ function sigmoid(x: number) { return 1 / (1 + Math.exp(-x)); }
 function clip01(x: number) { return Math.max(0, Math.min(1, x)); }
 
 serve(async (req) => {
+  const callerAuth = await requireUserOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {

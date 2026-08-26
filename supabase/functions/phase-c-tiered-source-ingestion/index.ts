@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Phase C — Lanes 2 & 3: Tiered Source Ingestion (T2 wires/broadcasters + T3 specialist research)
 //
 // Pulls RSS/Atom feeds from publishers seeded in source_authority_registry at
@@ -196,6 +197,9 @@ async function ingestFeed(
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const supabase = createClient(

@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
@@ -5,6 +6,9 @@ import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse }
 const FN = "evaluate-impact";
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req);
+  if (callerAuth.response) return callerAuth.response;
+
   const cors = handleCors(req);
   if (cors) return cors;
 

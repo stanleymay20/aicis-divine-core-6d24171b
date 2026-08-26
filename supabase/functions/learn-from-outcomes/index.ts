@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // AICIS Phase 4 — Learning Loop
 // Modes:
 //   - "realize"     → run realize_risk_predictions(horizon_days)
@@ -14,6 +15,9 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

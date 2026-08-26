@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 /**
  * lril-ingest — Local Reality Ingestion Layer: raw signal intake
  *
@@ -643,6 +644,9 @@ async function pullGoogleNewsAllCountries(): Promise<RawSignal[]> {
 }
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const supabase = createClient(

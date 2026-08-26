@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Hierarchical Entity-Link Builder v2
 // For each admin region in the batch:
 //   1. Ensure a canonical_entities row exists (entity_type='territory'), keyed by metadata.region_id
@@ -15,6 +16,9 @@ const corsHeaders = {
 const BATCH = 500;
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const start = Date.now();

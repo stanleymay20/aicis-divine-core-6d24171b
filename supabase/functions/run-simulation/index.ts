@@ -1,3 +1,4 @@
+import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
 // Monte Carlo simulation engine — N iterations with p10/p50/p90 distributions.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -36,6 +37,9 @@ function quantile(sortedAsc: number[], q: number): number {
 }
 
 serve(async (req) => {
+  const callerAuth = await requireUserOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {

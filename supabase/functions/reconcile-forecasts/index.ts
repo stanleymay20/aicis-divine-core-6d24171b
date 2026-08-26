@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
@@ -12,6 +13,9 @@ async function sha256(data: string): Promise<string> {
 }
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req);
+  if (callerAuth.response) return callerAuth.response;
+
   const cors = handleCors(req);
   if (cors) return cors;
 

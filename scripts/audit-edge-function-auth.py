@@ -20,6 +20,8 @@ FUNCTIONS = ROOT / "supabase" / "functions"
 
 AUTH_MARKERS = (
     "requireAdminOrCron(",
+    "requireAdminOrTrustedWorker(",
+    "requireUserOrTrustedWorker(",
     "requireCronSecret(",
     "requireAdminUser(",
     "requireUser(",

@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 /**
  * web-search-sweep — Firecrawl-powered planetary web search.
  *
@@ -115,6 +116,9 @@ async function firecrawlSearch(apiKey: string, q: SweepQuery): Promise<Firecrawl
 }
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const start = Date.now();

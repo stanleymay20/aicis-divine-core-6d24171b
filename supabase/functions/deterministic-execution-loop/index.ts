@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 /**
  * deterministic-execution-loop — closes the decision-loop targets that were
  * permanently sitting at 0 (executions, outcomes, measured_outcomes).
@@ -22,6 +23,9 @@ const corsHeaders = {
 const FN = "deterministic-execution-loop";
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,

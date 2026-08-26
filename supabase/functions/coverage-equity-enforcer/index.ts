@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // coverage-equity-enforcer
 // Phase 3 — Coverage Equity.
 //
@@ -99,6 +100,9 @@ function buildQueries(country: string, iso3: string): { query: string; language:
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const startedAt = Date.now();
   const supa = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });

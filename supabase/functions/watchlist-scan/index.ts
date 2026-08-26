@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
@@ -58,6 +59,9 @@ function deriveStatus(avgRisk: number | null, delta: number | null): string {
 }
 
 Deno.serve(async (req: Request) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }

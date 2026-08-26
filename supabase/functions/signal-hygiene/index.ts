@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Signal hygiene: auto-acknowledge expired & stale intelligence_signals.
 // Keeps the Escalation Banner clean and bounded.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -9,6 +10,9 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,

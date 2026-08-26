@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Phase C — Lane 1b: Firecrawl-Backed Official Source Ingestion
 // Bypasses Cloudflare on IMF / OECD / World Bank press pages by routing
 // through Firecrawl, then writes each press item as a T1 publication +
@@ -183,6 +184,9 @@ async function ingestSource(
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const apiKey = Deno.env.get("FIRECRAWL_API_KEY");

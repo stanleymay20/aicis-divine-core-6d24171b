@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Geo-NER for orphan normalized_events.
 // Infers geography only when source text clearly identifies a country and records
 // the inference provenance so model-derived geography is never confused with
@@ -16,6 +17,9 @@ const MAX_BATCHES = 6;
 const AUTO_WRITE_CONFIDENCE = 0.8;
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
   const supabase = createClient(

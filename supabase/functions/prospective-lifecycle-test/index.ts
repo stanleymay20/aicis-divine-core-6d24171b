@@ -1,3 +1,4 @@
+import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
@@ -5,6 +6,9 @@ import { structuredLog, handleCors, errorResponse, jsonResponse } from "../_shar
 const FN = "prospective-lifecycle-test";
 
 serve(async (req) => {
+  const callerAuth = await requireUserOrTrustedWorker(req);
+  if (callerAuth.response) return callerAuth.response;
+
   const cors = handleCors(req);
   if (cors) return cors;
 

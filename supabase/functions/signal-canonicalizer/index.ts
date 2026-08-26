@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // signal-canonicalizer
 // Phase 2.6 — Hardened Signal Constitution Layer.
 //
@@ -134,6 +135,9 @@ function computeConfidence(opts: {
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const startedAt = Date.now();

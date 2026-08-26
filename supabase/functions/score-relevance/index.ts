@@ -1,3 +1,4 @@
+import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
 // AICIS Relevance Engine v1 — score-relevance
 // Scores a global signal's relevance to an organization using either an
 // OpenAI-compatible model endpoint OR a deterministic fallback rule engine.
@@ -222,6 +223,9 @@ async function modelScore(
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireUserOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   const started = Date.now();
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 

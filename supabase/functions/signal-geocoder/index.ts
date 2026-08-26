@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // signal-geocoder
 // Phase 3 — Geo resolution layer.
 //
@@ -63,6 +64,9 @@ function findPlaceMatch(text: string, entities: GeoEntity[]): GeoEntity | null {
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const startedAt = Date.now();
   const supa = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });

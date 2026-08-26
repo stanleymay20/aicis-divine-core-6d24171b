@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // language-router
 // Phase 3.1 — Tiered language detection + translation spending guard.
 //
@@ -146,6 +147,9 @@ function tierOf(lang: string): "tier_1" | "tier_2" | "tier_3" | "unknown" {
 }
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const startedAt = Date.now();
   const supa = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });

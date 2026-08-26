@@ -267,6 +267,72 @@ export async function requireTier(
   return { ctx, response: null };
 }
 
+/**
+ * Global privileged workers accept only an authenticated administrator, the
+ * independently configured CRON_SECRET, or an exact service-role Bearer token.
+ * The service-role path preserves trusted Edge-to-Edge SDK calls without
+ * treating an anon JWT as authorization.
+ */
+function hasServiceRoleBearer(req: Request): boolean {
+  const expected = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const provided = bearerToken(req);
+  return Boolean(expected && provided && provided === expected);
+}
+
+export async function requireAdminOrTrustedWorker(
+  req: Request,
+  extraHeaders: Record<string, string> = {},
+): Promise<{
+  user: unknown | null;
+  via: "admin" | "cron" | "service_role" | null;
+  response: Response | null;
+}> {
+  if (req.method === "OPTIONS") return { user: null, via: null, response: null };
+
+  const expectedCron = Deno.env.get("CRON_SECRET");
+  const providedCron = req.headers.get("x-cron-secret");
+  if (expectedCron && providedCron && providedCron === expectedCron) {
+    return { user: null, via: "cron", response: null };
+  }
+
+  if (hasServiceRoleBearer(req)) {
+    return { user: null, via: "service_role", response: null };
+  }
+
+  const { user, response } = await requireAdminUser(req, extraHeaders);
+  if (response) return { user, via: null, response };
+  return { user, via: "admin", response: null };
+}
+
+/**
+ * User-facing analytical workers may be called by an authenticated user or by
+ * the same trusted scheduler/service-role paths used for internal orchestration.
+ */
+export async function requireUserOrTrustedWorker(
+  req: Request,
+  extraHeaders: Record<string, string> = {},
+): Promise<{
+  ctx: UserAuthContext | null;
+  via: "user" | "cron" | "service_role" | null;
+  response: Response | null;
+}> {
+  if (req.method === "OPTIONS") return { ctx: null, via: null, response: null };
+
+  const expectedCron = Deno.env.get("CRON_SECRET");
+  const providedCron = req.headers.get("x-cron-secret");
+  if (expectedCron && providedCron && providedCron === expectedCron) {
+    return { ctx: null, via: "cron", response: null };
+  }
+
+  if (hasServiceRoleBearer(req)) {
+    return { ctx: null, via: "service_role", response: null };
+  }
+
+  const { ctx, response } = await requireUser(req, extraHeaders);
+  if (response) return { ctx: null, via: null, response };
+  return { ctx, via: "user", response: null };
+}
+
 export async function enforceRateLimit(options: {
   supabase: ReturnType<typeof createClient>;
   req: Request;

@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // Forecast realization — invoked by daily cron at 02:00 UTC.
 // Calls public.realize_due_prospective_forecasts(limit) which only
 // touches forecasts whose realization_due_at <= now() and locks them.
@@ -10,6 +11,9 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }

@@ -1,3 +1,4 @@
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 /**
  * lril-proxy — Proxy signal anomaly detector for low-signal regions
  *
@@ -23,6 +24,9 @@ const PROXY_BOOST_MAX = 0.2;
 const COOCCURRENCE_WINDOW_H = 24;
 
 serve(async (req) => {
+  const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (callerAuth.response) return callerAuth.response;
+
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const supabase = createClient(
