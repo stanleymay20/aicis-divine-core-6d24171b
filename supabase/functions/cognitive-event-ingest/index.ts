@@ -45,6 +45,8 @@ const eventType = z.enum([
   "action.executed",
   "outcome.observed",
   "model.degraded",
+  "model.promoted",
+  "model.promotion_evaluated",
   "sensor.degraded",
 ]);
 
