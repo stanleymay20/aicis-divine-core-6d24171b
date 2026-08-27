@@ -1,6 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAdminUser } from "../_shared/auth.ts";
 
+const FN = "cognitive-model-promote";
+const PROMOTION_POLICY = "baseline-gate-v2-direct-metrics-explicit-confirmation";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -15,6 +17,7 @@ type PromotionRequest = {
   high_consequence?: boolean;
   minimum_relative_brier_improvement?: number;
   maximum_calibration_regression?: number;
+  confirm_promotion?: boolean;
 };
 
 type RegistryRow = {
@@ -29,10 +32,11 @@ type CompetencyRow = {
   model_id: string;
   sample_size: number;
   brier_score: number | string | null;
+  brier_score_semantics: string | null;
   ece: number | string | null;
-  competence: number | string;
-  calibration: number | string;
-  reliability: number | string;
+  ece_semantics: string | null;
+  evaluation_status: string | null;
+  evaluation_method: string | null;
 };
 
 Deno.serve(async (req) => {
@@ -48,6 +52,7 @@ Deno.serve(async (req) => {
     if (body.challenger_model_id === body.baseline_model_id) {
       throw new Error("challenger and baseline must be different models");
     }
+    validatePolicyThresholds(body);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -71,7 +76,7 @@ Deno.serve(async (req) => {
 
     const { data: competencyData, error: competencyError } = await supabase
       .from("aicis_model_competency")
-      .select("model_id,sample_size,brier_score,ece,competence,calibration,reliability")
+      .select("model_id,sample_size,brier_score,brier_score_semantics,ece,ece_semantics,evaluation_status,evaluation_method")
       .in("model_id", [challenger.id, baseline.id])
       .eq("domain", domain)
       .eq("modality", body.modality)
@@ -93,24 +98,39 @@ Deno.serve(async (req) => {
     if (challengerMetric.sample_size < minimumSamples) {
       reasons.push(`insufficient challenger sample size ${challengerMetric.sample_size}/${minimumSamples}`);
     }
+    if (baselineMetric.sample_size < minimumSamples) {
+      reasons.push(`insufficient baseline sample size ${baselineMetric.sample_size}/${minimumSamples}`);
+    }
+    if (!hasUsableEvaluation(challengerMetric) || !hasUsableEvaluation(baselineMetric)) {
+      reasons.push("challenger and baseline require non-legacy direct-metric evaluation semantics");
+    }
+    if (
+      challengerMetric.evaluation_method !== baselineMetric.evaluation_method ||
+      challengerMetric.brier_score_semantics !== baselineMetric.brier_score_semantics ||
+      challengerMetric.ece_semantics !== baselineMetric.ece_semantics
+    ) {
+      reasons.push("challenger and baseline metrics are not method/semantics comparable");
+    }
 
-    const baselineBrier = numericOrNull(baselineMetric.brier_score);
-    const challengerBrier = numericOrNull(challengerMetric.brier_score);
+    const baselineBrier = numericNonNegativeOrNull(baselineMetric.brier_score);
+    const challengerBrier = numericNonNegativeOrNull(challengerMetric.brier_score);
     let relativeBrierImprovement: number | null = null;
     if (baselineBrier === null || challengerBrier === null || baselineBrier <= 0) {
       reasons.push("comparable Brier evidence is unavailable");
     } else {
       relativeBrierImprovement = (baselineBrier - challengerBrier) / baselineBrier;
       if (relativeBrierImprovement < minimumBrierImprovement) {
-        reasons.push(`Brier improvement ${(relativeBrierImprovement * 100).toFixed(1)}% is below required ${(minimumBrierImprovement * 100).toFixed(1)}%`);
+        reasons.push(
+          `Brier improvement ${(relativeBrierImprovement * 100).toFixed(1)}% is below policy threshold ${(minimumBrierImprovement * 100).toFixed(1)}%`,
+        );
       }
     }
 
-    const baselineEce = numericOrNull(baselineMetric.ece);
-    const challengerEce = numericOrNull(challengerMetric.ece);
+    const baselineEce = numericUnitOrNull(baselineMetric.ece);
+    const challengerEce = numericUnitOrNull(challengerMetric.ece);
     let calibrationImprovement: number | null = null;
     if (baselineEce === null || challengerEce === null) {
-      reasons.push("comparable calibration evidence is unavailable");
+      reasons.push("comparable ECE evidence is unavailable");
     } else {
       calibrationImprovement = baselineEce - challengerEce;
       if (calibrationImprovement < -maximumCalibrationRegression) {
@@ -119,32 +139,43 @@ Deno.serve(async (req) => {
     }
 
     const eligible = reasons.length === 0;
-    if (eligible && !challenger.production_approved) {
+    const confirmationRequested = body.confirm_promotion === true;
+    const promoted = eligible && confirmationRequested;
+
+    if (promoted && !challenger.production_approved) {
+      const now = new Date().toISOString();
       const { error: updateError } = await supabase
         .from("aicis_model_registry")
         .update({
           production_approved: true,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
           metadata: {
             ...(challenger.metadata ?? {}),
             promoted_against: baseline.model_key,
             promoted_domain: domain,
             promoted_modality: body.modality,
             promoted_task: body.task,
-            promoted_at: new Date().toISOString(),
-            promotion_policy: "baseline-gate-v1",
+            promoted_at: now,
+            promotion_policy: PROMOTION_POLICY,
+            explicit_admin_confirmation: true,
+            minimum_relative_brier_improvement_policy: minimumBrierImprovement,
+            maximum_calibration_regression_policy: maximumCalibrationRegression,
           },
         })
         .eq("id", challenger.id);
       if (updateError) throw updateError;
     }
 
+    const now = new Date().toISOString();
     await supabase.from("aicis_cognitive_events").insert({
-      event_type: eligible ? "model.promoted" : "model.promotion_rejected",
+      event_type: promoted ? "model.promoted" : "model.promotion_evaluated",
       epistemic_status: "derived",
-      confidence: eligible ? 0.95 : 0.9,
-      severity: body.high_consequence ? 0.7 : 0.4,
-      source_system: "cognitive-model-promote",
+      confidence: null,
+      confidence_semantics: "not_issued_promotion_policy_decision_is_not_epistemic_confidence",
+      occurred_at: now,
+      observed_at: now,
+      time_semantics: "promotion_evaluation_time",
+      producer: FN,
       payload: {
         challenger_model_id: challenger.id,
         challenger_model_key: challenger.model_key,
@@ -157,17 +188,26 @@ Deno.serve(async (req) => {
         relative_brier_improvement: relativeBrierImprovement,
         calibration_improvement: calibrationImprovement,
         eligible,
+        confirmation_requested: confirmationRequested,
+        promoted,
+        promotion_policy: PROMOTION_POLICY,
+        threshold_semantics: "operator_policy_thresholds_not_statistical_significance",
         reasons,
       },
+      provenance: [],
     });
 
     return new Response(JSON.stringify({
       eligible,
-      promoted: eligible,
+      confirmation_required: eligible && !confirmationRequested,
+      confirmation_requested: confirmationRequested,
+      promoted,
       challenger: `${challenger.model_key}@${challenger.version}`,
       baseline: `${baseline.model_key}@${baseline.version}`,
       relative_brier_improvement: relativeBrierImprovement,
       calibration_improvement: calibrationImprovement,
+      promotion_policy: PROMOTION_POLICY,
+      threshold_semantics: "operator_policy_thresholds_not_statistical_significance",
       reasons,
     }), { headers: { ...cors, "content-type": "application/json" } });
   } catch (error) {
@@ -178,8 +218,45 @@ Deno.serve(async (req) => {
   }
 });
 
-function numericOrNull(value: number | string | null): number | null {
+function validatePolicyThresholds(body: PromotionRequest): void {
+  if (
+    body.minimum_relative_brier_improvement !== undefined &&
+    (!Number.isFinite(body.minimum_relative_brier_improvement) || body.minimum_relative_brier_improvement < -1 || body.minimum_relative_brier_improvement > 1)
+  ) {
+    throw new Error("minimum_relative_brier_improvement must be finite between -1 and 1");
+  }
+  if (
+    body.maximum_calibration_regression !== undefined &&
+    (!Number.isFinite(body.maximum_calibration_regression) || body.maximum_calibration_regression < 0 || body.maximum_calibration_regression > 1)
+  ) {
+    throw new Error("maximum_calibration_regression must be finite between 0 and 1");
+  }
+}
+
+function hasUsableEvaluation(row: CompetencyRow): boolean {
+  return hasUsableSemantics(row.brier_score_semantics) &&
+    hasUsableSemantics(row.ece_semantics) &&
+    hasUsableSemantics(row.evaluation_method) &&
+    hasUsableSemantics(row.evaluation_status);
+}
+
+function hasUsableSemantics(value: string | null): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return !normalized.includes("legacy") &&
+    !normalized.includes("unknown") &&
+    !normalized.includes("unverified") &&
+    !normalized.includes("unspecified") &&
+    !normalized.includes("pending");
+}
+
+function numericNonNegativeOrNull(value: number | string | null): number | null {
   if (value === null) return null;
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function numericUnitOrNull(value: number | string | null): number | null {
+  const numeric = numericNonNegativeOrNull(value);
+  return numeric !== null && numeric <= 1 ? numeric : null;
 }
