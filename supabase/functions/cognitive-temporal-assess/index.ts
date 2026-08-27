@@ -14,8 +14,9 @@ const CONFIDENCE_SEMANTICS = "not_applicable_deterministic_timestamp_ordering";
 
 type EventRow = {
   id: string;
-  occurred_at: string;
+  occurred_at: string | null;
   observed_at: string;
+  time_semantics: string | null;
   confidence: number | null;
   confidence_semantics: string | null;
   epistemic_status: string;
@@ -60,7 +61,7 @@ serve(async (req) => {
 
   const { data: rows, error } = await supabase
     .from("aicis_cognitive_events")
-    .select("id,occurred_at,observed_at,confidence,confidence_semantics,epistemic_status,event_type")
+    .select("id,occurred_at,observed_at,time_semantics,confidence,confidence_semantics,epistemic_status,event_type")
     .in("id", [body.cause_event_id, body.effect_event_id]);
   if (error) return json({ error: "Failed to load events" }, 500);
   if (!rows || rows.length !== 2) return json({ error: "One or both events were not found" }, 404);
@@ -99,6 +100,7 @@ serve(async (req) => {
       confidence_semantics: "not_quantified_temporal_order_contradiction_record",
       occurred_at: assessedAt,
       observed_at: assessedAt,
+      time_semantics: "assessment_event_time_not_source_event_time",
       producer: FN,
       payload: {
         contradiction_type: "temporal-order",
@@ -131,6 +133,8 @@ serve(async (req) => {
     metadata: {
       cause_event_id: cause.id,
       effect_event_id: effect.id,
+      cause_time_semantics: cause.time_semantics,
+      effect_time_semantics: effect.time_semantics,
       cause_epistemic_status: cause.epistemic_status,
       effect_epistemic_status: effect.epistemic_status,
       cause_confidence: cause.confidence,
@@ -155,20 +159,38 @@ serve(async (req) => {
         status: cause.epistemic_status,
         confidence: cause.confidence,
         confidence_semantics: cause.confidence_semantics,
+        occurred_at: cause.occurred_at,
+        observed_at: cause.observed_at,
+        time_semantics: cause.time_semantics,
       },
       effect: {
         status: effect.epistemic_status,
         confidence: effect.confidence,
         confidence_semantics: effect.confidence_semantics,
+        occurred_at: effect.occurred_at,
+        observed_at: effect.observed_at,
+        time_semantics: effect.time_semantics,
       },
     },
   });
 });
 
 function assess(cause: EventRow, effect: EventRow, toleranceMs: number): TemporalAssessment {
+  if (!cause.occurred_at || !effect.occurred_at) {
+    return {
+      relation: "unknown",
+      plausible_forward_causation: false,
+      confidence: null,
+      confidence_semantics: CONFIDENCE_SEMANTICS,
+      relation_semantics: RELATION_SEMANTICS,
+      lag_ms: null,
+      tolerance_ms: toleranceMs,
+      reasons: ["One or both source event occurrence times are unknown; observation/ingestion time is not substituted"],
+    };
+  }
+
   const causeTime = Date.parse(cause.occurred_at);
   const effectTime = Date.parse(effect.occurred_at);
-
   if (!Number.isFinite(causeTime) || !Number.isFinite(effectTime)) {
     return {
       relation: "unknown",
@@ -178,7 +200,7 @@ function assess(cause: EventRow, effect: EventRow, toleranceMs: number): Tempora
       relation_semantics: RELATION_SEMANTICS,
       lag_ms: null,
       tolerance_ms: toleranceMs,
-      reasons: ["One or both persisted event timestamps could not be parsed; temporal order is unknown"],
+      reasons: ["One or both persisted source event occurrence times could not be parsed; temporal order is unknown"],
     };
   }
 
