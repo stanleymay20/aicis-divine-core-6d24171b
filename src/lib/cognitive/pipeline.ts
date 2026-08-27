@@ -15,6 +15,8 @@ export interface EntityMention {
 export interface EntityResolutionCandidate {
   entity: WorldEntity;
   score: number;
+  scoreSemantics: string;
+  autoResolvable: boolean;
   reasons: string[];
 }
 
@@ -23,7 +25,8 @@ export interface PerceptionPipelineInput {
   subjectMention?: EntityMention;
   objectMention?: EntityMention;
   knownEntities: WorldEntity[];
-  occurredAt?: string;
+  occurredAt?: string | null;
+  timeSemantics?: string;
   producer: string;
 }
 
@@ -37,9 +40,9 @@ export interface PerceptionPipelineResult {
 }
 
 /**
- * Deterministic pre-knowledge pipeline. It turns NLP output into auditable drafts,
- * never directly into verified graph state. Entity resolution and evidence status
- * are made explicit so downstream code can require a human/rule-based promotion.
+ * Deterministic pre-knowledge pipeline. NLP output becomes auditable drafts, not
+ * verified graph state. Observation time is never substituted for unknown event
+ * occurrence time, and extractor scores never become epistemic confidence.
  */
 export function buildPerceptionArtifacts(
   input: PerceptionPipelineInput,
@@ -52,11 +55,16 @@ export function buildPerceptionArtifacts(
     ? exactEntityResolution(input.candidate.objectEntityId, input.knownEntities)
     : resolveEntityMention(input.objectMention, input.knownEntities);
 
-  const occurredAt = input.occurredAt ?? newestObservedAt(input.candidate.provenance);
-  const subjectEntityId = subjectResolution?.score === 1
+  const observedAt = newestObservedAt(input.candidate.provenance);
+  const occurredAt = input.occurredAt ?? null;
+  const timeSemantics = occurredAt === null
+    ? input.timeSemantics ?? "occurrence_time_unknown_observation_time_not_substituted"
+    : input.timeSemantics ?? "caller_supplied_occurrence_time_semantics_unspecified";
+
+  const subjectEntityId = subjectResolution?.autoResolvable
     ? subjectResolution.entity.id
     : input.candidate.subjectEntityId;
-  const objectEntityId = objectResolution?.score === 1
+  const objectEntityId = objectResolution?.autoResolvable
     ? objectResolution.entity.id
     : input.candidate.objectEntityId;
 
@@ -67,18 +75,27 @@ export function buildPerceptionArtifacts(
     objectEntityId,
     objectValue: input.candidate.objectValue,
     epistemicStatus: assessment.epistemicStatus,
-    confidence: assessment.confidence,
+    confidence: null,
+    confidenceSemantics: assessment.confidenceSemantics,
     occurredAt,
+    timeSemantics,
     provenance: input.candidate.provenance,
     metadata: {
       ...(input.candidate.metadata ?? {}),
       perception: {
-        independentSources: assessment.independentSources,
+        distinctSourceIdentifiers: assessment.distinctSourceIdentifiers,
         sourceTypes: assessment.sourceTypes,
+        sourceIndependenceStatus: assessment.sourceIndependenceStatus,
         hasDirectObservation: assessment.hasDirectObservation,
+        extractorConfidence: assessment.extractorConfidence,
+        extractorConfidenceSemantics: assessment.extractorConfidenceSemantics,
         reasons: assessment.reasons,
         subjectResolutionScore: subjectResolution?.score ?? null,
+        subjectResolutionScoreSemantics: subjectResolution?.scoreSemantics ?? null,
+        subjectAutoResolvable: subjectResolution?.autoResolvable ?? false,
         objectResolutionScore: objectResolution?.score ?? null,
+        objectResolutionScoreSemantics: objectResolution?.scoreSemantics ?? null,
+        objectAutoResolvable: objectResolution?.autoResolvable ?? false,
       },
     },
   };
@@ -87,27 +104,32 @@ export function buildPerceptionArtifacts(
     {
       eventType: "claim.extracted",
       epistemicStatus: assessment.epistemicStatus,
-      confidence: assessment.confidence,
+      confidence: null,
+      confidenceSemantics: assessment.confidenceSemantics,
       subjectEntityId,
       occurredAt,
-      observedAt: newestObservedAt(input.candidate.provenance),
+      observedAt,
+      timeSemantics,
       producer: input.producer,
       payload: {
         statement: input.candidate.statement,
         predicate: input.candidate.predicate ?? null,
         objectEntityId: objectEntityId ?? null,
-        independentSources: assessment.independentSources,
+        distinctSourceIdentifiers: assessment.distinctSourceIdentifiers,
+        sourceIndependenceStatus: assessment.sourceIndependenceStatus,
+        extractorConfidence: assessment.extractorConfidence,
+        extractorConfidenceSemantics: assessment.extractorConfidenceSemantics,
         assessmentReasons: assessment.reasons,
       },
       provenance: input.candidate.provenance,
     },
   ];
 
-  if (subjectResolution?.score === 1) {
-    events.push(entityResolvedEvent(subjectResolution.entity, input.producer, occurredAt, input.candidate));
+  if (subjectResolution?.autoResolvable) {
+    events.push(entityResolvedEvent(subjectResolution, input.producer, observedAt, input.candidate));
   }
-  if (objectResolution?.score === 1 && objectResolution.entity.id !== subjectResolution?.entity.id) {
-    events.push(entityResolvedEvent(objectResolution.entity, input.producer, occurredAt, input.candidate));
+  if (objectResolution?.autoResolvable && objectResolution.entity.id !== subjectResolution?.entity.id) {
+    events.push(entityResolvedEvent(objectResolution, input.producer, observedAt, input.candidate));
   }
 
   let relationshipDraft: Omit<WorldRelationship, "id"> | undefined;
@@ -123,29 +145,37 @@ export function buildPerceptionArtifacts(
       relationshipType: input.candidate.predicate,
       status: "proposed",
       epistemicStatus: assessment.epistemicStatus,
-      strength: assessment.confidence,
-      confidence: assessment.confidence,
-      validFrom: occurredAt,
+      strength: null,
+      strengthSemantics: "unknown_not_quantified_perception_relationship",
+      confidence: null,
+      confidenceSemantics: "unknown_not_quantified_perception_relationship",
+      ...(occurredAt ? { validFrom: occurredAt } : {}),
       evidenceClaimIds: [],
       metadata: {
         generatedBy: "perception-pipeline",
         promotionRequired: true,
+        sourceIndependenceStatus: assessment.sourceIndependenceStatus,
+        note: "Claim extraction does not establish relationship strength, relationship confidence, or identity beyond explicitly auto-resolved entities.",
       },
     };
 
     events.push({
       eventType: "relationship.proposed",
       epistemicStatus: assessment.epistemicStatus,
-      confidence: assessment.confidence,
+      confidence: null,
+      confidenceSemantics: "unknown_not_quantified_relationship_proposal",
       subjectEntityId,
       occurredAt,
-      observedAt: newestObservedAt(input.candidate.provenance),
+      observedAt,
+      timeSemantics,
       producer: input.producer,
       payload: {
         sourceEntityId: subjectEntityId,
         targetEntityId: objectEntityId,
         relationshipType: input.candidate.predicate,
         promotionRequired: true,
+        strength: null,
+        relationshipConfidence: null,
       },
       provenance: input.candidate.provenance,
     });
@@ -162,9 +192,9 @@ export function buildPerceptionArtifacts(
 }
 
 /**
- * Candidate resolver for canonical identity. A score below 1 is intentionally not
- * auto-promoted: fuzzy matches remain suggestions because a wrong merge can poison
- * the planetary graph more seriously than leaving an entity temporarily unresolved.
+ * Candidate resolver for canonical identity. Name similarity alone never receives
+ * auto-resolution authority. Only an explicit known entity id or matching external
+ * identifier crosses the automatic identity boundary.
  */
 export function resolveEntityMention(
   mention: EntityMention | undefined,
@@ -175,25 +205,27 @@ export function resolveEntityMention(
   const candidates: EntityResolutionCandidate[] = [];
   for (const entity of entities) {
     let score = 0;
+    let scoreSemantics = "deterministic_name_similarity_candidate_score";
+    let autoResolvable = false;
     const reasons: string[] = [];
 
     if (entity.canonicalName.trim().toLocaleLowerCase() === mention.text.trim().toLocaleLowerCase()) {
-      score = 1;
-      reasons.push("Exact canonical-name match");
+      score = 0.95;
+      reasons.push("Exact canonical-name match; identity still requires disambiguation");
     } else if (entity.aliases.some((alias) => alias.trim().toLocaleLowerCase() === mention.text.trim().toLocaleLowerCase())) {
-      score = 1;
-      reasons.push("Exact alias match");
+      score = 0.94;
+      reasons.push("Exact alias match; identity still requires disambiguation");
     } else if (
       mentionsLikelyMatch(entity.canonicalName, mention.text) ||
       entity.aliases.some((alias) => mentionsLikelyMatch(alias, mention.text))
     ) {
-      score = Math.max(score, 0.82);
-      reasons.push("High token-overlap name match");
+      score = 0.82;
+      reasons.push("High token-overlap name candidate");
     }
 
-    if (mention.hintedType && entity.entityType === mention.hintedType) {
-      score = Math.min(1, score + 0.08);
-      reasons.push("Entity type agrees");
+    if (mention.hintedType && entity.entityType === mention.hintedType && score > 0) {
+      score = Math.min(0.99, score + 0.04);
+      reasons.push("Entity type agrees; type agreement does not prove identity");
     }
 
     if (mention.externalIds) {
@@ -202,25 +234,28 @@ export function resolveEntityMention(
       );
       if (externalMatches.length > 0) {
         score = 1;
-        reasons.push("External identifier match");
+        scoreSemantics = "deterministic_exact_external_identifier_match";
+        autoResolvable = true;
+        reasons.push("Exact external identifier match");
       }
     }
 
-    if (score > 0) candidates.push({ entity, score, reasons });
+    if (score > 0) candidates.push({ entity, score, scoreSemantics, autoResolvable, reasons });
   }
 
   return candidates.sort((a, b) => b.score - a.score)[0];
 }
 
+/**
+ * Automatic relationship promotion is intentionally disabled in the generic
+ * perception layer. Distinct source identifiers and extractor scores do not prove
+ * source independence or relationship truth. Promotion belongs to a governed,
+ * auditable verification workflow.
+ */
 export function relationshipPromotionEligible(
-  claim: Pick<EvidenceClaim, "epistemicStatus" | "confidence" | "provenance">,
-  independentSourceMinimum = 2,
+  _claim: Pick<EvidenceClaim, "epistemicStatus" | "confidence" | "provenance" | "metadata">,
 ): boolean {
-  if (claim.epistemicStatus === "unverified" || claim.epistemicStatus === "contradicted") {
-    return false;
-  }
-  const independentSources = new Set(claim.provenance.map((source) => source.sourceId)).size;
-  return claim.confidence >= 0.7 && independentSources >= independentSourceMinimum;
+  return false;
 }
 
 function exactEntityResolution(
@@ -228,7 +263,13 @@ function exactEntityResolution(
   entities: WorldEntity[],
 ): EntityResolutionCandidate | undefined {
   const entity = entities.find((candidate) => candidate.id === entityId);
-  return entity ? { entity, score: 1, reasons: ["Extractor supplied a known entity id"] } : undefined;
+  return entity ? {
+    entity,
+    score: 1,
+    scoreSemantics: "deterministic_supplied_known_entity_id_match",
+    autoResolvable: true,
+    reasons: ["Extractor supplied an entity id that exists in the known canonical set"],
+  } : undefined;
 }
 
 function newestObservedAt(provenance: ExtractionCandidate["provenance"]): string {
@@ -241,22 +282,27 @@ function newestObservedAt(provenance: ExtractionCandidate["provenance"]): string
 }
 
 function entityResolvedEvent(
-  entity: WorldEntity,
+  resolution: EntityResolutionCandidate,
   producer: string,
-  occurredAt: string,
+  resolvedAt: string,
   candidate: ExtractionCandidate,
 ): CognitiveEvent {
   return {
     eventType: "entity.resolved",
     epistemicStatus: "derived",
-    confidence: 1,
-    subjectEntityId: entity.id,
-    occurredAt,
-    observedAt: newestObservedAt(candidate.provenance),
+    confidence: null,
+    confidenceSemantics: "not_applicable_deterministic_identity_resolution_record",
+    subjectEntityId: resolution.entity.id,
+    occurredAt: resolvedAt,
+    observedAt: resolvedAt,
+    timeSemantics: "system_resolution_time",
     producer,
     payload: {
-      canonicalName: entity.canonicalName,
-      entityType: entity.entityType,
+      canonicalName: resolution.entity.canonicalName,
+      entityType: resolution.entity.entityType,
+      resolutionScore: resolution.score,
+      resolutionScoreSemantics: resolution.scoreSemantics,
+      autoResolvable: resolution.autoResolvable,
     },
     provenance: candidate.provenance,
   };
