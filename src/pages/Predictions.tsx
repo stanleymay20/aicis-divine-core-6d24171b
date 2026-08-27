@@ -43,11 +43,13 @@ interface MLRow {
   probability_semantics?:
     | "legacy_unknown"
     | "uncalibrated_logistic_screen_score"
+    | "trained_logistic_probability_estimate"
     | "empirical_bin_calibrated_probability";
   calibration_status?:
     | "legacy_unknown"
     | "not_available"
     | "insufficient_sample"
+    | "model_level_validation_only"
     | "empirical_bin_sufficient";
   calibration_sample_size?: number | null;
   calibration_computed_at?: string | null;
@@ -55,7 +57,11 @@ interface MLRow {
   source_kind?: "legacy_unknown" | "training_dataset_aicis";
   source_snapshot_date?: string | null;
   feature_completeness?: number | null;
-  model_semantics?: "legacy_unknown" | "fixed_logistic_screen";
+  model_semantics?:
+    | "legacy_unknown"
+    | "fixed_logistic_screen"
+    | "trained_logistic_temporal_holdout_v1";
+  training_run_id?: string | null;
 }
 
 interface MLListResponse {
@@ -70,9 +76,11 @@ interface InferenceResponse {
   uncalibrated_rows?: number;
   model_version?: string;
   model_semantics?: string;
+  training_run_id?: string | null;
+  model_source?: string;
 }
 
-type ScoreSemantics = "calibrated" | "screen" | "legacy";
+type ScoreSemantics = "calibrated" | "trained" | "screen" | "legacy";
 
 function scoreSemantics(row: MLRow): ScoreSemantics {
   if (
@@ -81,6 +89,13 @@ function scoreSemantics(row: MLRow): ScoreSemantics {
     row.calibrated_score !== null
   ) {
     return "calibrated";
+  }
+
+  if (
+    row.probability_semantics === "trained_logistic_probability_estimate" &&
+    row.model_semantics === "trained_logistic_temporal_holdout_v1"
+  ) {
+    return "trained";
   }
 
   if (row.probability_semantics === "uncalibrated_logistic_screen_score") {
@@ -111,8 +126,25 @@ const scoreClass = (score: number | null) => {
 function semanticsLabel(row: MLRow): string {
   const semantics = scoreSemantics(row);
   if (semantics === "calibrated") return "empirical probability";
+  if (semantics === "trained") return "trained probability";
   if (semantics === "screen") return "screen score";
   return "legacy score";
+}
+
+function rawEstimateLabel(row: MLRow): string {
+  if (row.model_semantics === "trained_logistic_temporal_holdout_v1") {
+    return row.calibration_status === "empirical_bin_sufficient"
+      ? "pre-calibration model estimate"
+      : "trained model estimate";
+  }
+  if (row.model_semantics === "fixed_logistic_screen") return "raw screen";
+  return "raw value";
+}
+
+function modelSemanticsLabel(value?: MLRow["model_semantics"]): string {
+  if (value === "trained_logistic_temporal_holdout_v1") return "trained · temporal holdout · human promoted";
+  if (value === "fixed_logistic_screen") return "fixed compatibility screen";
+  return "legacy / unproven semantics";
 }
 
 function formatSourceDate(value?: string | null): string | null {
@@ -152,9 +184,12 @@ export default function PredictionsPage() {
       const issued = data?.rows_inserted ?? 0;
       const withheld = data?.abstentions_recorded ?? 0;
       const calibrated = data?.calibrated_rows ?? 0;
-      const screened = data?.uncalibrated_rows ?? 0;
+      const notEmpiricallyRecalibrated = data?.uncalibrated_rows ?? 0;
+      const modelKind = data?.model_semantics === "trained_logistic_temporal_holdout_v1"
+        ? "trained model"
+        : "compatibility screen";
       toast.success(
-        `Inference complete: ${issued} issued · ${withheld} withheld · ${calibrated} empirically calibrated · ${screened} screening-only`,
+        `Inference complete: ${issued} issued · ${withheld} withheld · ${calibrated} empirically recalibrated · ${notEmpiricallyRecalibrated} ${modelKind} outputs without empirical recalibration`,
       );
       queryClient.invalidateQueries({ queryKey: ["ml-predictions"] });
     },
@@ -177,17 +212,23 @@ export default function PredictionsPage() {
 
   const stats = useMemo(() => {
     const calibrated = allRows.filter((row) => scoreSemantics(row) === "calibrated").length;
+    const trained = allRows.filter((row) => scoreSemantics(row) === "trained").length;
     const screens = allRows.filter((row) => scoreSemantics(row) === "screen").length;
     const legacy = allRows.filter((row) => scoreSemantics(row) === "legacy").length;
     const completeEvidence = allRows.filter((row) => row.evidence_status === "sufficient").length;
     const model = allRows[0]?.model_version ?? "—";
+    const modelSemantics = allRows[0]?.model_semantics;
+    const trainingRunId = allRows[0]?.training_run_id ?? null;
     return {
       total: allRows.length,
       calibrated,
+      trained,
       screens,
       legacy,
       completeEvidence,
       model,
+      modelSemantics,
+      trainingRunId,
     };
   }, [allRows]);
 
@@ -205,7 +246,7 @@ export default function PredictionsPage() {
                 <Brain className="h-5 w-5 text-primary" /> Risk Intelligence
               </h1>
               <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-                Evidence-gated risk screening with an auditable hash chain. A probability is shown only when an empirical calibration bin has sufficient observed samples; otherwise AICIS labels the value as an uncalibrated screening score and withholds output when required evidence is incomplete or stale.
+                Evidence-gated risk inference with immutable model lineage and an auditable hash chain. AICIS distinguishes a held-out-evaluated, human-promoted model estimate from an empirical recalibration and from the fixed compatibility screen; stale or incomplete evidence is withheld rather than converted into a number.
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -260,7 +301,7 @@ export default function PredictionsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-5">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 mt-5">
             <Card className="p-3">
               <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                 <Sigma className="h-3 w-3" /> Issued
@@ -269,9 +310,15 @@ export default function PredictionsPage() {
             </Card>
             <Card className="p-3">
               <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                <Database className="h-3 w-3" /> Empirical probabilities
+                <Database className="h-3 w-3" /> Empirical recalibrated
               </div>
               <div className="text-2xl font-bold font-mono tabular-nums text-primary mt-1">{stats.calibrated}</div>
+            </Card>
+            <Card className="p-3">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <Brain className="h-3 w-3" /> Trained estimates
+              </div>
+              <div className="text-2xl font-bold font-mono tabular-nums mt-1">{stats.trained}</div>
             </Card>
             <Card className="p-3">
               <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -291,7 +338,12 @@ export default function PredictionsPage() {
             <Card className="p-3 col-span-2 sm:col-span-1">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Model identifier</div>
               <div className="text-sm font-mono font-semibold mt-1 truncate" title={stats.model}>{stats.model}</div>
-              <div className="text-[9px] text-muted-foreground mt-1">fixed screening rule unless proven otherwise</div>
+              <div className="text-[9px] text-muted-foreground mt-1">{modelSemanticsLabel(stats.modelSemantics)}</div>
+              {stats.trainingRunId && (
+                <div className="text-[9px] font-mono text-muted-foreground mt-0.5 truncate" title={stats.trainingRunId}>
+                  lineage {stats.trainingRunId.slice(0, 8)}…
+                </div>
+              )}
             </Card>
           </div>
 
@@ -362,7 +414,7 @@ export default function PredictionsPage() {
                           No issued analytical output for the {item.label} horizon{domainFilter !== "all" ? ` in ${domainFilter}` : ""}.
                         </p>
                         <p className="text-xs text-muted-foreground max-w-lg mx-auto">
-                          Absence is not converted into a zero-risk claim. AICIS may have withheld inference because required evidence was unavailable or stale.
+                          Absence is not converted into a zero-risk claim. AICIS may have withheld inference because required evidence was unavailable, incompatible with the active model, or stale.
                         </p>
                       </div>
                     ) : (
@@ -391,6 +443,11 @@ export default function PredictionsPage() {
                                   <Badge variant="outline" className="text-[9px] uppercase tracking-wide">
                                     {semanticsLabel(row)}
                                   </Badge>
+                                  {row.calibration_status === "model_level_validation_only" && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      held-out evaluated · empirical outcome recalibration pending
+                                    </span>
+                                  )}
                                   {row.calibration_status === "insufficient_sample" && (
                                     <span className="text-[10px] text-amber-600">
                                       calibration sample insufficient{row.calibration_sample_size !== null && row.calibration_sample_size !== undefined ? ` (n=${row.calibration_sample_size})` : ""}
@@ -427,7 +484,7 @@ export default function PredictionsPage() {
 
                                 <div className="flex items-center gap-x-2 gap-y-1 flex-wrap text-[10px] text-muted-foreground font-mono tabular-nums">
                                   {row.raw_score !== null && Number.isFinite(Number(row.raw_score)) && (
-                                    <span>raw screen {Number(row.raw_score).toFixed(3)}</span>
+                                    <span>{rawEstimateLabel(row)} {Number(row.raw_score).toFixed(3)}</span>
                                   )}
                                   {hasEmpiricalInterval && lower !== null && upper !== null ? (
                                     <>
@@ -440,13 +497,19 @@ export default function PredictionsPage() {
                                   ) : (
                                     <>
                                       <span>·</span>
-                                      <span>empirical interval unavailable</span>
+                                      <span>empirical outcome interval unavailable</span>
                                     </>
                                   )}
                                   {sourceDate && (
                                     <>
                                       <span>·</span>
                                       <span>evidence {sourceDate}</span>
+                                    </>
+                                  )}
+                                  {row.training_run_id && (
+                                    <>
+                                      <span>·</span>
+                                      <span title={row.training_run_id}>training {row.training_run_id.slice(0, 8)}…</span>
                                     </>
                                   )}
                                   {row.audit_hash && (
