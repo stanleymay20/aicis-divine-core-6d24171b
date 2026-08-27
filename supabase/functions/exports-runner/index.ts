@@ -1,5 +1,5 @@
-// Executes an export run: pulls filtered signals, compresses, validates,
-// writes file to aicis-exports bucket, updates run row, triggers webhooks.
+// Executes governed export runs. Unknown evidence remains null all the way to
+// JSON/NDJSON/CSV; scheduled exports use the same epistemic contract as REST.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { gzip } from "https://deno.land/x/compress@v0.4.5/mod.ts";
@@ -12,6 +12,7 @@ import {
   rowsToCsv,
   buildEnvelope,
   ExportProfile,
+  EXPORT_SCHEMA_VERSION_DEFAULT,
 } from "../_shared/export-schema.ts";
 import { requireAdminOrCron } from "../_shared/auth.ts";
 import { invokeInternalFunction } from "../_shared/internal-invoke.ts";
@@ -25,6 +26,53 @@ const admin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
 );
+
+const SIGNAL_EXPORT_COLUMNS = [
+  "id",
+  "title",
+  "summary",
+  "category",
+  "subcategory",
+  "confidence_score",
+  "confidence_score_semantics",
+  "impact_score",
+  "impact_score_semantics",
+  "urgency_score",
+  "urgency_score_semantics",
+  "source_rank_score",
+  "source_rank_score_semantics",
+  "affected_countries",
+  "affected_regions",
+  "affected_sectors",
+  "affected_entities",
+  "primary_source",
+  "canonical_source_name",
+  "source_trust_tier",
+  "ingestion_source",
+  "source_count",
+  "source_count_semantics",
+  "source_identifier_count",
+  "source_identifier_count_semantics",
+  "merged_source_count",
+  "merged_source_count_semantics",
+  "source_independence_status",
+  "independent_origin_count",
+  "source_independence_semantics",
+  "official_source_present",
+  "official_source_present_semantics",
+  "evidence_hash",
+  "source_published_at",
+  "source_published_at_semantics",
+  "occurred_at",
+  "occurred_at_semantics",
+  "first_detected_at",
+  "first_detected_at_semantics",
+  "latest_update_at",
+  "impact_reasoning",
+  "source_urls",
+  "source_references",
+  "recommended_actions",
+].join(",");
 
 type RecommendationRow = {
   country_iso3: string | null;
@@ -65,10 +113,10 @@ async function buildRecsMap(countries: string[]): Promise<Map<string, string[]>>
 
 async function execRun(runId: string) {
   const start = Date.now();
-  await admin
-    .from("export_runs")
-    .update({ status: "running", started_at: new Date().toISOString() })
-    .eq("id", runId);
+  await admin.from("export_runs").update({
+    status: "running",
+    started_at: new Date().toISOString(),
+  }).eq("id", runId);
 
   const { data: run, error: runError } = await admin
     .from("export_runs")
@@ -86,6 +134,9 @@ async function execRun(runId: string) {
   if (profileError) throw profileError;
   if (!profile) throw new Error("profile_not_found");
   const prof = profile as ExportProfile;
+  const schemaVersion = prof.schema_version === "v2"
+    ? prof.schema_version
+    : EXPORT_SCHEMA_VERSION_DEFAULT;
 
   const { data: cursor, error: cursorError } = await admin
     .from("export_cursor_state")
@@ -94,11 +145,11 @@ async function execRun(runId: string) {
     .maybeSingle();
   if (cursorError) throw cursorError;
 
-  let query = admin.from("global_signals").select(
-    "id,title,summary,category,subcategory,confidence_score,impact_score,urgency_score,affected_countries,affected_regions,affected_sectors,primary_source,canonical_source_name,source_trust_tier,ingestion_source,merged_source_count,source_rank_score,official_source_present,evidence_hash,first_detected_at,latest_update_at,impact_reasoning,source_references,recommended_actions",
-  );
+  let query = admin.from("global_signals").select(SIGNAL_EXPORT_COLUMNS);
   query = applyProfileFilters(query, prof);
-  if (cursor?.last_signal_updated_at) query = query.gte("latest_update_at", cursor.last_signal_updated_at);
+  if (cursor?.last_signal_updated_at) {
+    query = query.gte("latest_update_at", cursor.last_signal_updated_at);
+  }
   query = query
     .order("latest_update_at", { ascending: false })
     .order("id", { ascending: false })
@@ -109,9 +160,7 @@ async function execRun(runId: string) {
   const raw = (rowData ?? []) as SignalRow[];
 
   const countries = [...new Set(
-    raw
-      .flatMap((row) => asStringArray(row.affected_countries))
-      .map((country) => country.toUpperCase()),
+    raw.flatMap((row) => asStringArray(row.affected_countries)).map((country) => country.toUpperCase()),
   )];
   const recsMap = await buildRecsMap(countries);
   const signals = raw.map((row) => normalizeSignal(row, prof, recsMap));
@@ -122,13 +171,17 @@ async function execRun(runId: string) {
   const finalData = prof.prefer_clusters ? postSignals : signals;
 
   const envelope = buildEnvelope(finalData, {
-    schema_version: prof.schema_version,
+    schema_version: schemaVersion,
     export_batch_id: run.export_batch_id,
     meta: {
       profile_id: prof.id,
       profile_name: prof.name,
+      requested_schema_version: prof.schema_version,
+      effective_schema_version: schemaVersion,
+      cluster_semantics: "country_domain_day_aggregation_bucket_not_event_identity",
       clusters,
       validation_issues: issues.slice(0, 50),
+      null_semantics: "missing_or_withheld_evidence_is_exported_as_null_not_zero",
     },
   });
 
@@ -139,9 +192,22 @@ async function execRun(runId: string) {
 
   if (format === "csv") {
     const columns = [
-      "signal_id", "title", "summary", "domain", "country", "region", "severity",
-      "confidence_score", "relevance_score", "urgency_score", "impact_score",
-      "trend_direction", "created_at", "updated_at",
+      "signal_id",
+      "title",
+      "summary",
+      "domain",
+      "country",
+      "region",
+      "severity",
+      "confidence_score",
+      "relevance_score",
+      "urgency_score",
+      "impact_score",
+      "score_semantics",
+      "trend_direction",
+      "created_at",
+      "updated_at",
+      "provenance",
     ];
     payload = rowsToCsv(columns, finalData);
     mime = "text/csv";
@@ -173,9 +239,9 @@ async function execRun(runId: string) {
     .upload(path, bytes, { contentType: storedMime, upsert: true });
   if (uploadError) throw new Error(`upload: ${uploadError.message}`);
 
-  const firstRow = raw[0];
-  const lastUpdatedAt = typeof firstRow?.latest_update_at === "string"
-    ? firstRow.latest_update_at
+  const newestRow = raw[0];
+  const newestUpdatedAt = typeof newestRow?.latest_update_at === "string"
+    ? newestRow.latest_update_at
     : null;
   const duration = Date.now() - start;
 
@@ -189,15 +255,20 @@ async function execRun(runId: string) {
     payload_size_bytes: bytes.byteLength,
     storage_path: path,
     finished_at: new Date().toISOString(),
-    cursor_end: { last_updated_at: lastUpdatedAt, raw_size_bytes: rawSize },
+    cursor_end: {
+      last_updated_at: newestUpdatedAt,
+      raw_size_bytes: rawSize,
+      schema_version: schemaVersion,
+      validation_issues: issues.length,
+    },
   }).eq("id", run.id);
   if (updateError) throw updateError;
 
-  if (firstRow && lastUpdatedAt) {
+  if (newestRow && newestUpdatedAt) {
     const { error: cursorUpdateError } = await admin.from("export_cursor_state").upsert({
       profile_id: prof.id,
-      last_signal_updated_at: lastUpdatedAt,
-      last_signal_id: firstRow.id,
+      last_signal_updated_at: newestUpdatedAt,
+      last_signal_id: newestRow.id,
       updated_at: new Date().toISOString(),
     });
     if (cursorUpdateError) throw cursorUpdateError;
@@ -215,7 +286,9 @@ async function execRun(runId: string) {
     45_000,
   );
   if (!webhookResult.ok) {
-    console.warn(`exports-webhook-dispatcher failed for ${run.id}: ${webhookResult.error ?? webhookResult.status}`);
+    console.warn(
+      `exports-webhook-dispatcher failed for ${run.id}: ${webhookResult.error ?? webhookResult.status}`,
+    );
   }
 
   return {
@@ -224,13 +297,14 @@ async function execRun(runId: string) {
     records: finalData.length,
     clusters: clusters.length,
     bytes: bytes.byteLength,
+    schema_version: schemaVersion,
+    validation_issues: issues.length,
     webhook_dispatch_ok: webhookResult.ok,
   };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
   const auth = await requireAdminOrCron(req, corsHeaders);
   if (auth.response) return auth.response;
 
