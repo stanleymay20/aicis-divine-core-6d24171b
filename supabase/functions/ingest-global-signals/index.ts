@@ -1,20 +1,16 @@
 import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { startProviderRun, finishProviderRun, failProviderRun } from "../_shared/provider-telemetry.ts";
+import {
+  startProviderRun,
+  finishProviderRun,
+  failProviderRun,
+} from "../_shared/provider-telemetry.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const SOURCE_SUFFIXES = [
-  / - [A-Z][A-Za-z\s.]+$/,
-  / \| [A-Z][A-Za-z\s.]+$/,
-  / — [A-Z][A-Za-z\s.]+$/,
-  /: Live [Uu]pdates?$/,
-  / Live [Uu]pdates?$/,
-];
 
 const GDELT_QUERIES = [
   "conflict OR war OR ceasefire OR missile OR military",
@@ -29,134 +25,24 @@ const GDELT_QUERIES = [
   "ship attack OR boarded OR navy intercept OR Houthi OR UKMTO OR EUNAVFOR OR convoy",
 ];
 
-function stripSourceSuffix(title: string): string {
-  let cleaned = title;
-  for (const p of SOURCE_SUFFIXES) cleaned = cleaned.replace(p, "");
-  return cleaned.trim();
-}
-
-function normalizeForDedup(title: string): string {
-  return stripSourceSuffix(title).toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
-}
-
-function computeDedup(title: string, source: string): string {
-  return `${normalizeForDedup(title).split(" ").slice(0, 8).join(" ")}::${source}`;
-}
-
-function jaccardSimilarity(a: string, b: string): number {
-  const setA = new Set(normalizeForDedup(a).split(" "));
-  const setB = new Set(normalizeForDedup(b).split(" "));
-  const intersection = new Set([...setA].filter(x => setB.has(x)));
-  const union = new Set([...setA, ...setB]);
-  return union.size === 0 ? 0 : intersection.size / union.size;
-}
-
-function combinedSimilarity(a: { title: string; desc: string }, b: { title: string; desc: string }): number {
-  const titleSim = jaccardSimilarity(a.title, b.title);
-  const descSim = jaccardSimilarity(a.desc, b.desc);
-  return titleSim * 0.7 + descSim * 0.3;
-}
-
-const MERGE_THRESHOLD = 0.45;
-
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  geopolitical: ["sanctions","diplomacy","treaty","summit","un","nato","ambassador","territorial","sovereignty","prime minister","president"],
-  economic: ["gdp","recession","inflation","unemployment","trade deficit","stimulus","fiscal","economy"],
-  financial_markets: ["stock","market","s&p","nasdaq","dow","bonds","rally","crash","ipo","sec"],
-  central_banking: ["fed","ecb","interest rate","monetary policy","central bank","rate hike","rate cut","quantitative"],
-  public_health: ["who","pandemic","outbreak","vaccine","epidemic","disease","health emergency","covid","bird flu"],
-  climate_disaster: ["earthquake","hurricane","flood","wildfire","tsunami","drought","climate","storm","tornado"],
-  energy: ["oil","gas","opec","pipeline","renewable","solar","nuclear","energy crisis","power grid","diesel","jet fuel","lng","refinery"],
-  technology: ["ai","artificial intelligence","tech","semiconductor","chip","quantum"],
-  cybersecurity: ["hack","ransomware","breach","malware","cyber attack","phishing","vulnerability","zero-day"],
-  defense_conflict: ["military","war","troops","missile","bombing","ceasefire","invasion","defense","conflict"],
-  legal_regulatory: ["regulation","lawsuit","court","ruling","law","antitrust","compliance","gdpr","ban"],
-  supply_chain: ["supply chain","shipping","port","logistics","shortage","tariff","import","export","freight","container"],
-  elections: ["election","vote","ballot","candidate","polling","referendum","inauguration","campaign"],
-  social_unrest: ["protest","riot","demonstration","strike","unrest","civil","march","activist"],
-  infrastructure: ["bridge","dam","grid","telecom","internet","rail","airport","infrastructure","blackout","aviation"],
-  maritime_security: ["pirate","piracy","hijack","hijacked","tanker","vessel","ship attack","boarded","ukmto","eunavfor","gulf of aden","red sea","strait of hormuz","bab el-mandeb","houthi","navy intercept","convoy","maritime"]
+  geopolitical: ["sanctions", "diplomacy", "treaty", "summit", "un", "nato", "ambassador", "territorial", "sovereignty", "prime minister", "president"],
+  economic: ["gdp", "recession", "inflation", "unemployment", "trade deficit", "stimulus", "fiscal", "economy"],
+  financial_markets: ["stock", "market", "s&p", "nasdaq", "dow", "bonds", "rally", "crash", "ipo", "sec"],
+  central_banking: ["fed", "ecb", "interest rate", "monetary policy", "central bank", "rate hike", "rate cut", "quantitative"],
+  public_health: ["who", "pandemic", "outbreak", "vaccine", "epidemic", "disease", "health emergency", "covid", "bird flu"],
+  climate_disaster: ["earthquake", "hurricane", "flood", "wildfire", "tsunami", "drought", "climate", "storm", "tornado"],
+  energy: ["oil", "gas", "opec", "pipeline", "renewable", "solar", "nuclear", "energy crisis", "power grid", "diesel", "jet fuel", "lng", "refinery"],
+  technology: ["ai", "artificial intelligence", "tech", "semiconductor", "chip", "quantum"],
+  cybersecurity: ["hack", "ransomware", "breach", "malware", "cyber attack", "phishing", "vulnerability", "zero-day"],
+  defense_conflict: ["military", "war", "troops", "missile", "bombing", "ceasefire", "invasion", "defense", "conflict"],
+  legal_regulatory: ["regulation", "lawsuit", "court", "ruling", "law", "antitrust", "compliance", "gdpr", "ban"],
+  supply_chain: ["supply chain", "shipping", "port", "logistics", "shortage", "tariff", "import", "export", "freight", "container"],
+  elections: ["election", "vote", "ballot", "candidate", "polling", "referendum", "inauguration", "campaign"],
+  social_unrest: ["protest", "riot", "demonstration", "strike", "unrest", "civil", "march", "activist"],
+  infrastructure: ["bridge", "dam", "grid", "telecom", "internet", "rail", "airport", "infrastructure", "blackout", "aviation"],
+  maritime_security: ["pirate", "piracy", "hijack", "hijacked", "tanker", "vessel", "ship attack", "boarded", "ukmto", "eunavfor", "gulf of aden", "red sea", "strait of hormuz", "bab el-mandeb", "houthi", "navy intercept", "convoy", "maritime"],
 };
-
-function classifyCategory(title: string, description: string): string {
-  const text = `${title} ${description}`.toLowerCase();
-  let best = "geopolitical";
-  let bestScore = 0;
-  for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-    const score = keywords.filter(k => text.includes(k)).length;
-    if (score > bestScore) {
-      bestScore = score;
-      best = cat;
-    }
-  }
-  return best;
-}
-
-function getTrustTier(weight: number): string {
-  if (weight >= 85) return "tier_1";
-  if (weight >= 60) return "tier_2";
-  return "tier_3";
-}
-
-function deriveSourceType(name: string, parserType: string, official: boolean): string {
-  if (official) return `official_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
-  if (parserType === "newsapi") return "newsapi";
-  if (parserType === "gdelt") return "gdelt";
-  return `feed_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
-}
-
-function parseRssItems(xml: string, sourceName: string, sourceType: string, official = false): any[] {
-  const items: any[] = [];
-  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
-  let match;
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const block = match[1];
-    const title = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() || "";
-    const desc = block.match(/<description[^>]*>([\s\S]*?)<\/description>/i)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").trim() || "";
-    const link = block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() || "";
-    const pubDate = block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim() ||
-      block.match(/<dc:date[^>]*>([\s\S]*?)<\/dc:date>/i)?.[1]?.trim() || "";
-    if (title && title.length > 10) {
-      items.push({
-        title,
-        description: desc || title,
-        url: link,
-        source: { name: sourceName },
-        publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
-        _ingestionSource: sourceType,
-        _isOfficial: official,
-      });
-    }
-  }
-  return items;
-}
-
-function parseAtomItems(xml: string, sourceName: string, sourceType: string, official = false): any[] {
-  const items: any[] = [];
-  const entryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
-  let match;
-  while ((match = entryRegex.exec(xml)) !== null) {
-    const block = match[1];
-    const title = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() || "";
-    const summary = block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").trim() || "";
-    const content = block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").trim() || "";
-    const link = block.match(/<link[^>]*href="([^"]+)"/i)?.[1] || "";
-    const updated = block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i)?.[1]?.trim() ||
-      block.match(/<published[^>]*>([\s\S]*?)<\/published>/i)?.[1]?.trim() || "";
-    if (title && title.length > 10) {
-      items.push({
-        title,
-        description: summary || content || title,
-        url: link,
-        source: { name: sourceName },
-        publishedAt: updated ? new Date(updated).toISOString() : new Date().toISOString(),
-        _ingestionSource: sourceType,
-        _isOfficial: official,
-      });
-    }
-  }
-  return items;
-}
 
 type RegistrySource = {
   source_name: string;
@@ -166,510 +52,646 @@ type RegistrySource = {
   enabled: boolean;
   priority: number;
   official_source: boolean;
-  trust_weight: number;
+  trust_weight: number | null;
 };
 
-async function loadRegistrySources(supabase: any): Promise<RegistrySource[]> {
-  const { data, error } = await supabase
-    .from("signal_source_registry")
-    .select("source_name, source_type, parser_type, urls, enabled, priority, official_source, trust_weight")
-    .eq("enabled", true)
-    .order("priority", { ascending: true });
+type Article = {
+  title: string;
+  description: string;
+  url: string;
+  source: { name: string };
+  publishedAt: string | null;
+  _ingestionSource: string;
+  _isOfficial?: boolean;
+};
 
-  if (error) throw new Error(`Failed to load signal_source_registry: ${error.message}`);
-  return (data || []) as RegistrySource[];
+type ConnectorRun = {
+  name: string;
+  status: string;
+  count: number;
+  error?: string;
+};
+
+type BenchmarkAudit = {
+  detected: number;
+  missed: number;
+  total: number;
+  review_candidates?: number;
+  skipped?: boolean;
+};
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-async function fetchRegistrySources(registrySources: RegistrySource[]): Promise<{ articles: any[]; runs: { name: string; status: string; count: number; error?: string }[] }> {
-  const articles: any[] = [];
-  const runs: { name: string; status: string; count: number; error?: string }[] = [];
+function safeIso(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
 
+function recordKey(article: Article): string {
+  const source = normalizeText(article.source.name || "unknown");
+  if (article.url) return `url::${source}::${article.url.trim()}`;
+  return `title::${source}::${normalizeText(article.title)}::${article.publishedAt ?? "time-unknown"}`;
+}
+
+function jaccardSimilarity(left: string, right: string): number {
+  const leftSet = new Set(normalizeText(left).split(" ").filter(Boolean));
+  const rightSet = new Set(normalizeText(right).split(" ").filter(Boolean));
+  if (leftSet.size === 0 || rightSet.size === 0) return 0;
+  let intersection = 0;
+  for (const token of leftSet) if (rightSet.has(token)) intersection += 1;
+  const union = new Set([...leftSet, ...rightSet]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function classifyCategory(title: string, description: string): string {
+  const text = `${title} ${description}`.toLowerCase();
+  let best = "geopolitical";
+  let bestScore = 0;
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    const score = keywords.filter((keyword) => text.includes(keyword)).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = category;
+    }
+  }
+  return best;
+}
+
+function deriveSourceType(name: string, parserType: string, official: boolean): string {
+  if (official) return `official_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+  if (parserType === "newsapi") return "newsapi";
+  if (parserType === "gdelt") return "gdelt";
+  return `feed_${name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+}
+
+function parseRssItems(
+  xml: string,
+  sourceName: string,
+  sourceType: string,
+  official = false,
+): Article[] {
+  const items: Article[] = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[1];
+    const title = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
+      ?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() ?? "";
+    const description = block.match(/<description[^>]*>([\s\S]*?)<\/description>/i)?.[1]
+      ?.replace(/<!\[CDATA\[|\]\]>/g, "")
+      .replace(/<[^>]+>/g, "").trim() ?? "";
+    const url = block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1]
+      ?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() ?? "";
+    const rawDate = block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim()
+      ?? block.match(/<dc:date[^>]*>([\s\S]*?)<\/dc:date>/i)?.[1]?.trim()
+      ?? null;
+    if (title.length > 10 && url) {
+      items.push({
+        title,
+        description: description || title,
+        url,
+        source: { name: sourceName },
+        publishedAt: safeIso(rawDate),
+        _ingestionSource: sourceType,
+        _isOfficial: official,
+      });
+    }
+  }
+  return items;
+}
+
+function parseAtomItems(
+  xml: string,
+  sourceName: string,
+  sourceType: string,
+  official = false,
+): Article[] {
+  const items: Article[] = [];
+  const entryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = entryRegex.exec(xml)) !== null) {
+    const block = match[1];
+    const title = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
+      ?.replace(/<!\[CDATA\[|\]\]>/g, "").trim() ?? "";
+    const summary = block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)?.[1]
+      ?.replace(/<!\[CDATA\[|\]\]>/g, "")
+      .replace(/<[^>]+>/g, "").trim() ?? "";
+    const content = block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)?.[1]
+      ?.replace(/<!\[CDATA\[|\]\]>/g, "")
+      .replace(/<[^>]+>/g, "").trim() ?? "";
+    const url = block.match(/<link[^>]*href="([^"]+)"/i)?.[1] ?? "";
+    const rawDate = block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i)?.[1]?.trim()
+      ?? block.match(/<published[^>]*>([\s\S]*?)<\/published>/i)?.[1]?.trim()
+      ?? null;
+    if (title.length > 10 && url) {
+      items.push({
+        title,
+        description: summary || content || title,
+        url,
+        source: { name: sourceName },
+        publishedAt: safeIso(rawDate),
+        _ingestionSource: sourceType,
+        _isOfficial: official,
+      });
+    }
+  }
+  return items;
+}
+
+async function loadRegistrySources(
+  supabase: ReturnType<typeof createClient>,
+): Promise<RegistrySource[]> {
+  const { data, error } = await supabase
+    .from("signal_source_registry")
+    .select("source_name,source_type,parser_type,urls,enabled,priority,official_source,trust_weight")
+    .eq("enabled", true)
+    .order("priority", { ascending: true });
+  if (error) throw new Error(`Failed to load signal_source_registry: ${error.message}`);
+  return (data ?? []) as RegistrySource[];
+}
+
+async function fetchRegistrySources(
+  registrySources: RegistrySource[],
+): Promise<{ articles: Article[]; runs: ConnectorRun[] }> {
+  const runs: ConnectorRun[] = [];
   const results = await Promise.allSettled(
-    registrySources.filter(s => s.parser_type !== "newsapi" && s.parser_type !== "gdelt").map(async (source) => {
-      const connArticles: any[] = [];
-      const sourceType = source.source_type || deriveSourceType(source.source_name, source.parser_type, source.official_source);
-
-      for (const url of source.urls || []) {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 10000);
-        try {
-          const res = await fetch(url, {
-            signal: ctrl.signal,
-            headers: { "User-Agent": "AICIS/1.0 Signal Intelligence Platform" },
-          });
-          if (!res.ok) {
-            runs.push({ name: source.source_name, status: "failed", count: 0, error: `HTTP ${res.status}` });
-            continue;
+    registrySources
+      .filter((source) => source.parser_type !== "newsapi" && source.parser_type !== "gdelt")
+      .map(async (source): Promise<Article[]> => {
+        const articles: Article[] = [];
+        const sourceType = source.source_type
+          || deriveSourceType(source.source_name, source.parser_type, source.official_source);
+        for (const url of source.urls ?? []) {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10_000);
+          try {
+            const response = await fetch(url, {
+              signal: controller.signal,
+              headers: { "User-Agent": "AICIS/1.0 Signal Intelligence Platform" },
+            });
+            if (!response.ok) {
+              runs.push({ name: source.source_name, status: "failed", count: 0, error: `HTTP ${response.status}` });
+              continue;
+            }
+            const text = await response.text();
+            const parsed = source.parser_type === "rss"
+              ? parseRssItems(text, source.source_name, sourceType, source.official_source)
+              : source.parser_type === "atom"
+              ? parseAtomItems(text, source.source_name, sourceType, source.official_source)
+              : [];
+            articles.push(...parsed.slice(0, 12));
+          } catch (error) {
+            runs.push({
+              name: source.source_name,
+              status: "failed",
+              count: 0,
+              error: error instanceof Error ? error.message.slice(0, 120) : String(error).slice(0, 120),
+            });
+          } finally {
+            clearTimeout(timeout);
           }
-          const text = await res.text();
-          let items: any[] = [];
-          if (source.parser_type === "rss") items = parseRssItems(text, source.source_name, sourceType, source.official_source);
-          else if (source.parser_type === "atom") items = parseAtomItems(text, source.source_name, sourceType, source.official_source);
-          connArticles.push(...items.slice(0, 12));
-        } catch (e) {
-          runs.push({ name: source.source_name, status: "failed", count: 0, error: (e as Error).message?.slice(0, 120) });
-        } finally {
-          clearTimeout(t);
         }
-      }
-
-      if (connArticles.length > 0) runs.push({ name: source.source_name, status: "success", count: connArticles.length });
-      else if (!runs.find(r => r.name === source.source_name)) runs.push({ name: source.source_name, status: "empty", count: 0 });
-
-      return connArticles;
-    })
+        if (articles.length > 0) {
+          runs.push({ name: source.source_name, status: "success", count: articles.length });
+        } else if (!runs.some((run) => run.name === source.source_name)) {
+          runs.push({ name: source.source_name, status: "empty", count: 0 });
+        }
+        return articles;
+      }),
   );
 
-  for (const r of results) {
-    if (r.status === "fulfilled" && r.value) articles.push(...r.value);
+  const articles: Article[] = [];
+  for (const result of results) {
+    if (result.status === "fulfilled") articles.push(...result.value);
   }
-
   return { articles, runs };
 }
 
-async function fetchNewsApiArticles(NEWSAPI_KEY: string | undefined): Promise<any[]> {
-  if (!NEWSAPI_KEY) return [];
-
+async function fetchNewsApiArticles(apiKey: string | undefined): Promise<Article[]> {
+  if (!apiKey) return [];
   const queries = [
     "fuel OR diesel OR jet fuel OR refinery",
     "trade OR tariff OR export restriction",
     "prime minister OR president OR bilateral",
     "port OR shipping OR logistics",
   ];
+  const urls = [
+    ...["general", "business", "health", "science", "technology"].map(
+      (category) => `https://newsapi.org/v2/top-headlines?category=${category}&language=en&pageSize=10&apiKey=${apiKey}`,
+    ),
+    ...queries.map(
+      (query) => `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&pageSize=10&apiKey=${apiKey}`,
+    ),
+  ];
 
-  const categoryResults = await Promise.allSettled(
-    ["general", "business", "health", "science", "technology"].map(async (cat) => {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      try {
-        const res = await fetch(
-          `https://newsapi.org/v2/top-headlines?category=${cat}&language=en&pageSize=10&apiKey=${NEWSAPI_KEY}`,
-          { signal: ctrl.signal }
-        );
-        if (!res.ok) return [];
-        const data = await res.json();
-        return (data.articles || []).map((a: any) => ({ ...a, _ingestionSource: "newsapi" }));
-      } catch {
-        return [];
-      } finally {
-        clearTimeout(t);
-      }
-    })
-  );
+  const results = await Promise.allSettled(urls.map(async (url): Promise<Article[]> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) return [];
+      const payload = await response.json();
+      const rows = Array.isArray(payload?.articles) ? payload.articles : [];
+      return rows.flatMap((article: Record<string, unknown>) => {
+        const title = typeof article.title === "string" ? article.title : "";
+        const description = typeof article.description === "string" ? article.description : title;
+        const articleUrl = typeof article.url === "string" ? article.url : "";
+        const sourceObject = article.source && typeof article.source === "object"
+          ? article.source as Record<string, unknown>
+          : {};
+        const sourceName = typeof sourceObject.name === "string" ? sourceObject.name : "NewsAPI";
+        if (title.length <= 10 || !articleUrl) return [];
+        return [{
+          title,
+          description,
+          url: articleUrl,
+          source: { name: sourceName },
+          publishedAt: safeIso(article.publishedAt),
+          _ingestionSource: url.includes("/everything?") ? "newsapi_search" : "newsapi",
+        } satisfies Article];
+      });
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timeout);
+    }
+  }));
 
-  const everythingResults = await Promise.allSettled(
-    queries.map(async (query) => {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      try {
-        const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&pageSize=10&apiKey=${NEWSAPI_KEY}`;
-        const res = await fetch(url, { signal: ctrl.signal });
-        if (!res.ok) return [];
-        const data = await res.json();
-        return (data.articles || []).map((a: any) => ({ ...a, _ingestionSource: "newsapi_search" }));
-      } catch {
-        return [];
-      } finally {
-        clearTimeout(t);
-      }
-    })
-  );
-
-  const all: any[] = [];
-  for (const r of [...categoryResults, ...everythingResults]) {
-    if (r.status === "fulfilled") all.push(...r.value);
-  }
-  return all;
+  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
 }
 
-async function fetchGdeltArticles(): Promise<any[]> {
-  const articles: any[] = [];
-  const results = await Promise.allSettled(
-    GDELT_QUERIES.map(async (query) => {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      try {
-        const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=12&timespan=6h`;
-        const res = await fetch(url, { signal: ctrl.signal });
-        if (res.ok) {
-          const data = await res.json();
-          return (data.articles || []).map((a: any) => ({
-            title: a.title || "",
-            description: a.seendate ? `${query}: ${a.title || ""}` : `GDELT: ${a.title || ""}`,
-            url: a.url || "",
-            source: { name: a.domain || "GDELT" },
-            publishedAt: a.seendate ? new Date(
-              a.seendate.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, "$1-$2-$3T$4:$5:$6Z")
-            ).toISOString() : new Date().toISOString(),
-            _ingestionSource: "gdelt",
-          }));
-        }
-        return [];
-      } catch {
-        return [];
-      } finally {
-        clearTimeout(t);
-      }
-    })
+function gdeltSeenDate(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const expanded = value.replace(
+    /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/,
+    "$1-$2-$3T$4:$5:$6Z",
   );
-
-  for (const r of results) if (r.status === "fulfilled") articles.push(...r.value);
-  return articles;
+  return safeIso(expanded);
 }
 
-async function updateBenchmarks(supabase: any) {
-  const { data: pendingBenchmarks, error } = await supabase
+async function fetchGdeltArticles(): Promise<Article[]> {
+  const results = await Promise.allSettled(GDELT_QUERIES.map(async (query): Promise<Article[]> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query)}&mode=artlist&format=json&maxrecords=12&timespan=6h`;
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) return [];
+      const payload = await response.json();
+      const rows = Array.isArray(payload?.articles) ? payload.articles : [];
+      return rows.flatMap((row: Record<string, unknown>) => {
+        const title = typeof row.title === "string" ? row.title : "";
+        const articleUrl = typeof row.url === "string" ? row.url : "";
+        if (title.length <= 10 || !articleUrl) return [];
+        const domain = typeof row.domain === "string" && row.domain ? row.domain : "GDELT";
+        return [{
+          title,
+          description: `GDELT document index: ${title}`,
+          url: articleUrl,
+          source: { name: domain },
+          publishedAt: gdeltSeenDate(row.seendate),
+          _ingestionSource: "gdelt",
+        } satisfies Article];
+      });
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timeout);
+    }
+  }));
+  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function updateBenchmarks(
+  supabase: ReturnType<typeof createClient>,
+): Promise<BenchmarkAudit> {
+  const { data, error } = await supabase
     .from("signal_detection_benchmarks")
-    .select("id, event_title, event_summary, event_occurred_at")
+    .select("id,event_title,event_summary,event_occurred_at")
     .in("validation_status", ["pending", "needs_review"])
     .order("event_occurred_at", { ascending: false })
     .limit(100);
+  if (error) return { detected: 0, missed: 0, total: 0, review_candidates: 0 };
 
-  if (error) {
-    console.error("Failed loading benchmarks:", error.message);
-    return { detected: 0, missed: 0, total: 0 };
-  }
+  let reviewCandidates = 0;
+  for (const benchmark of data ?? []) {
+    if (!benchmark.event_occurred_at) {
+      await supabase.from("signal_detection_benchmarks").update({
+        validation_status: "needs_review",
+        validation_notes: "Benchmark occurrence time is missing; automatic detection/latency assessment withheld.",
+      }).eq("id", benchmark.id);
+      continue;
+    }
 
-  let detected = 0;
-  let missed = 0;
-
-  for (const benchmark of pendingBenchmarks || []) {
-    const fromTs = benchmark.event_occurred_at || new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+    const start = new Date(new Date(benchmark.event_occurred_at).getTime() - 24 * 3_600_000).toISOString();
+    const end = new Date(new Date(benchmark.event_occurred_at).getTime() + 7 * 24 * 3_600_000).toISOString();
     const { data: candidates } = await supabase
       .from("global_signals")
-      .select("id, title, occurred_at, ingested_at")
-      .gte("occurred_at", new Date(new Date(fromTs).getTime() - 24 * 3600 * 1000).toISOString())
-      .order("occurred_at", { ascending: false })
-      .limit(60);
+      .select("id,title,first_detected_at,ingested_at")
+      .gte("first_detected_at", start)
+      .lte("first_detected_at", end)
+      .order("first_detected_at", { ascending: true })
+      .limit(100);
 
-    let best: any = null;
-    let bestScore = 0;
-    for (const candidate of candidates || []) {
-      const score = combinedSimilarity(
-        { title: benchmark.event_title, desc: benchmark.event_summary || "" },
-        { title: candidate.title || "", desc: "" }
-      );
-      if (score > bestScore) {
-        bestScore = score;
+    let best: { id: string; title: string; first_detected_at: string | null; ingested_at: string | null } | null = null;
+    let bestSimilarity = 0;
+    for (const candidate of candidates ?? []) {
+      const similarity = jaccardSimilarity(benchmark.event_title ?? "", candidate.title ?? "");
+      if (similarity > bestSimilarity) {
+        bestSimilarity = similarity;
         best = candidate;
       }
     }
 
-    if (best && bestScore >= 0.55) {
-      const detectedAt = best.ingested_at || best.occurred_at || new Date().toISOString();
-      const latency = benchmark.event_occurred_at
-        ? Math.max(0, Math.round((new Date(detectedAt).getTime() - new Date(benchmark.event_occurred_at).getTime()) / 60000))
-        : null;
-
+    if (best && bestSimilarity >= 0.55) {
+      reviewCandidates += 1;
       await supabase.from("signal_detection_benchmarks").update({
-        detected: true,
+        detected: null,
         detected_signal_id: best.id,
-        detected_at: detectedAt,
-        detection_latency_minutes: latency,
-        validation_status: "detected",
-        validation_notes: `Matched automatically with similarity ${bestScore.toFixed(2)}`,
+        detected_at: best.ingested_at ?? best.first_detected_at ?? null,
+        detection_latency_minutes: null,
+        validation_status: "needs_review",
+        validation_notes: `Lexical candidate similarity ${bestSimilarity.toFixed(2)}; similarity is not proof of benchmark-event identity.`,
       }).eq("id", benchmark.id);
-      detected++;
     } else {
       await supabase.from("signal_detection_benchmarks").update({
-        detected: false,
-        validation_status: "missed",
-        validation_notes: "No matching global signal found in automatic benchmark audit",
+        detected: null,
+        detected_signal_id: null,
+        detected_at: null,
+        detection_latency_minutes: null,
+        validation_status: "needs_review",
+        validation_notes: "No strong lexical candidate found; absence of a candidate is not proof that the event was missed.",
       }).eq("id", benchmark.id);
-      missed++;
     }
   }
 
-  return { detected, missed, total: (pendingBenchmarks || []).length };
+  return {
+    detected: 0,
+    missed: 0,
+    total: (data ?? []).length,
+    review_candidates: reviewCandidates,
+  };
 }
 
-async function snapshotCoverage(supabase: any, registrySources: RegistrySource[], benchmarkAudit: { detected: number; missed: number; total: number }) {
-  const [{ count: totalRuns24h }, { count: failedRuns24h }, { count: newSignals24h }, { data: uniqueRows }, { data: benchmarkSummary }] = await Promise.all([
-    supabase.from("source_connector_runs").select("id", { count: "exact", head: true }).gte("run_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
-    supabase.from("source_connector_runs").select("id", { count: "exact", head: true }).gte("run_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()).neq("run_status", "success"),
-    supabase.from("global_signals").select("id", { count: "exact", head: true }).gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
-    supabase.from("global_signals").select("primary_source").gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()),
-    supabase.from("signal_detection_benchmarks").select("detected, detection_latency_minutes, validation_status"),
+async function snapshotCoverage(
+  supabase: ReturnType<typeof createClient>,
+  registrySources: RegistrySource[],
+  benchmarkAudit: BenchmarkAudit,
+) {
+  const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  const [runs, failed, signals, sources, benchmarkSummary] = await Promise.all([
+    supabase.from("source_connector_runs").select("id", { count: "exact", head: true }).gte("run_at", since),
+    supabase.from("source_connector_runs").select("id", { count: "exact", head: true }).gte("run_at", since).neq("run_status", "success"),
+    supabase.from("global_signals").select("id", { count: "exact", head: true }).gte("created_at", since),
+    supabase.from("global_signals").select("primary_source").gte("created_at", since),
+    supabase.from("signal_detection_benchmarks").select("detected,detection_latency_minutes,validation_status"),
   ]);
 
-  const uniqueSources24h = new Set((uniqueRows || []).map((row: any) => row.primary_source).filter(Boolean)).size;
-  const benchmarks = benchmarkSummary || [];
-  const detectedCount = benchmarks.filter((b: any) => b.detected || b.validation_status === "detected").length;
-  const missedCount = benchmarks.filter((b: any) => b.validation_status === "missed").length;
-  const latencies = benchmarks.map((b: any) => b.detection_latency_minutes).filter((v: any) => typeof v === "number");
-  const avgLatency = latencies.length ? Number((latencies.reduce((a: number, b: number) => a + b, 0) / latencies.length).toFixed(2)) : null;
+  const uniqueSources = new Set((sources.data ?? []).map((row) => row.primary_source).filter(Boolean)).size;
+  const benchmarks = benchmarkSummary.data ?? [];
+  const detectedCount = benchmarks.filter((row) => row.detected === true && row.validation_status === "detected").length;
+  const missedCount = benchmarks.filter((row) => row.validation_status === "missed").length;
+  const latencies = benchmarks
+    .map((row) => row.detection_latency_minutes)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const avgLatency = latencies.length > 0
+    ? Number((latencies.reduce((sum, value) => sum + value, 0) / latencies.length).toFixed(2))
+    : null;
 
   await supabase.from("signal_coverage_snapshots").upsert({
     snapshot_date: new Date().toISOString().slice(0, 10),
     total_sources: registrySources.length,
-    active_sources: registrySources.filter(s => s.enabled).length,
-    official_sources: registrySources.filter(s => s.official_source).length,
-    total_runs_24h: totalRuns24h || 0,
-    failed_runs_24h: failedRuns24h || 0,
-    new_signals_24h: newSignals24h || 0,
-    unique_sources_24h: uniqueSources24h,
+    active_sources: registrySources.filter((source) => source.enabled).length,
+    official_sources: registrySources.filter((source) => source.official_source).length,
+    total_runs_24h: runs.count ?? null,
+    failed_runs_24h: failed.count ?? null,
+    new_signals_24h: signals.count ?? null,
+    unique_sources_24h: uniqueSources,
     benchmarks_total: benchmarks.length,
     benchmarks_detected: detectedCount,
     benchmarks_missed: missedCount,
     avg_detection_latency_minutes: avgLatency,
     metadata: {
       benchmark_audit_run: benchmarkAudit,
+      benchmark_semantics: "only explicitly validated detected/missed statuses counted; lexical candidates remain needs_review",
       generated_at: new Date().toISOString(),
     },
   }, { onConflict: "snapshot_date" });
 }
 
-// Background-safe runner so the HTTP response returns immediately and the
-// cron worker doesn't have to wait for the full ingestion (which can exceed
-// the edge function's ~30s wall-clock budget).
-async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; shardIndex: number; shardSize: number }) {
+async function logConnectorRun(
+  supabase: ReturnType<typeof createClient>,
+  source: string,
+  status: string,
+  fetched: number,
+  newCount: number,
+  durationMs: number,
+  error?: string,
+) {
+  try {
+    await supabase.from("source_connector_runs").insert({
+      source_name: source,
+      source_type: source.startsWith("official_") ? "official_feed" : source === "gdelt" ? "aggregator" : "news_api",
+      run_status: status,
+      signals_fetched: fetched,
+      signals_new: newCount,
+      signals_merged: 0,
+      duration_ms: durationMs,
+      ...(error ? { error_message: error } : {}),
+    });
+  } catch (logError) {
+    console.error("Failed to log connector run:", logError);
+  }
+}
+
+async function runIntake(opts: {
+  runBenchmarks: boolean;
+  shardCount: number;
+  shardIndex: number;
+  shardSize: number;
+}) {
   const intakeStart = Date.now();
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !supabaseKey) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) throw new Error("Missing Supabase runtime credentials");
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const NEWSAPI_KEY = Deno.env.get("NEWSAPI_KEY");
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
   const run = await startProviderRun(supabase, {
     provider_name: "ingest-global-signals",
     endpoint: "ingest-global-signals",
     scheduler_source: "cron",
     params: { shardIndex: opts.shardIndex, shardSize: opts.shardSize },
   });
+
   try {
+    const [allRegistrySources, newsArticles, gdeltArticles] = await Promise.all([
+      loadRegistrySources(supabase),
+      fetchNewsApiArticles(Deno.env.get("NEWSAPI_KEY")),
+      fetchGdeltArticles(),
+    ]);
 
-  const [trustDataRes, allRegistrySources, newsArticles, gdeltArticles] = await Promise.all([
-    supabase.from("source_trust_scores").select("source_name, credibility_weight, source_type, verification_level, official_source"),
-    loadRegistrySources(supabase),
-    fetchNewsApiArticles(NEWSAPI_KEY),
-    fetchGdeltArticles(),
-  ]);
-
-  // Shard the registry by minute so each cron tick only fetches a slice and
-  // the full registry is rotated through every `shardCount` runs.
-  const sortedRegistry = [...allRegistrySources];
-  let registrySources = sortedRegistry;
-  if (opts.shardSize > 0 && sortedRegistry.length > opts.shardSize) {
-    const shards: RegistrySource[][] = [];
-    for (let i = 0; i < sortedRegistry.length; i += opts.shardSize) {
-      shards.push(sortedRegistry.slice(i, i + opts.shardSize));
-    }
-    const idx = ((opts.shardIndex % shards.length) + shards.length) % shards.length;
-    registrySources = shards[idx];
-    console.log(`[intake] sharded registry: shard ${idx + 1}/${shards.length} (${registrySources.length}/${sortedRegistry.length} sources)`);
-  }
-
-    const trustData = trustDataRes.data || [];
-    const trustMap: Record<string, { weight: number; type: string; level: string; official: boolean }> = {};
-    for (const t of trustData) {
-      trustMap[t.source_name.toLowerCase()] = {
-        weight: t.credibility_weight,
-        type: t.source_type,
-        level: t.verification_level,
-        official: t.official_source ?? false,
-      };
-    }
-    for (const s of registrySources) {
-      if (!trustMap[s.source_name.toLowerCase()]) {
-        trustMap[s.source_name.toLowerCase()] = {
-          weight: s.trust_weight ?? 50,
-          type: s.source_type,
-          level: s.official_source ? "official" : "registry",
-          official: s.official_source ?? false,
-        };
+    let registrySources = [...allRegistrySources];
+    if (opts.shardSize > 0 && registrySources.length > opts.shardSize) {
+      const shards: RegistrySource[][] = [];
+      for (let index = 0; index < registrySources.length; index += opts.shardSize) {
+        shards.push(registrySources.slice(index, index + opts.shardSize));
       }
+      const shardIndex = ((opts.shardIndex % shards.length) + shards.length) % shards.length;
+      registrySources = shards[shardIndex];
     }
 
-    const officialResult = await fetchRegistrySources(registrySources);
-    const allArticles: any[] = [...newsArticles, ...gdeltArticles, ...officialResult.articles];
-    const newsapiCount = newsArticles.length;
+    const registryResult = await fetchRegistrySources(registrySources);
+    const allArticles = [...newsArticles, ...gdeltArticles, ...registryResult.articles]
+      .filter((article) => article.title.length > 10 && article.url);
 
-    await Promise.allSettled(
-      officialResult.runs.map(run =>
-        logConnectorRun(supabase, run.name, run.status, run.count, 0, 0, Date.now() - intakeStart, run.error)
+    await Promise.allSettled(registryResult.runs.map((connectorRun) =>
+      logConnectorRun(
+        supabase,
+        connectorRun.name,
+        connectorRun.status,
+        connectorRun.count,
+        0,
+        Date.now() - intakeStart,
+        connectorRun.error,
       )
-    );
+    ));
 
-    const valid = allArticles.filter(a => a.title && a.title !== "[Removed]" && a.description && a.description !== "[Removed]" && a.url);
+    // Exact source-record dedup only. No lexical/fuzzy same-event merge occurs here.
+    const unique = new Map<string, Article>();
+    for (const article of allArticles) {
+      const key = recordKey(article);
+      if (!unique.has(key)) unique.set(key, article);
+    }
+    const articles = [...unique.values()].slice(0, 80);
+    const dedupKeys = articles.map(recordKey);
 
-    const seen = new Set<string>();
-    const kept: any[] = [];
-
-    for (const a of valid) {
-      const key = computeDedup(a.title, a.source?.name || "unknown");
-      if (seen.has(key)) continue;
-
-      let merged = false;
-      for (const k of kept) {
-        const sim = combinedSimilarity(
-          { title: a.title, desc: a.description || "" },
-          { title: k.title, desc: k.description || "" }
-        );
-        if (sim > MERGE_THRESHOLD) {
-          if (!k._mergedSources) k._mergedSources = [];
-          k._mergedSources.push({ url: a.url, name: a.source?.name, published: a.publishedAt });
-          const existTrust = trustMap[k.source?.name?.toLowerCase()] || { weight: 50, official: false };
-          const newTrust = trustMap[a.source?.name?.toLowerCase()] || { weight: 50, official: false };
-          if (newTrust.official && !existTrust.official) {
-            k._mergedSources.push({ url: k.url, name: k.source?.name, published: k.publishedAt });
-            k.title = a.title; k.description = a.description;
-            k.url = a.url; k.source = a.source; k.publishedAt = a.publishedAt;
-            k._ingestionSource = a._ingestionSource; k._isOfficial = a._isOfficial;
-          } else if (newTrust.weight > existTrust.weight + 10) {
-            k._mergedSources.push({ url: k.url, name: k.source?.name, published: k.publishedAt });
-            k.title = a.title; k.description = a.description;
-            k.url = a.url; k.source = a.source; k.publishedAt = a.publishedAt;
-            k._ingestionSource = a._ingestionSource; k._isOfficial = a._isOfficial;
-          }
-          merged = true;
-          break;
-        }
-      }
-      if (!merged) { seen.add(key); kept.push(a); }
+    const existingKeys = new Set<string>();
+    for (let index = 0; index < dedupKeys.length; index += 100) {
+      const chunk = dedupKeys.slice(index, index + 100);
+      const { data } = await supabase.from("global_signals").select("dedup_key").in("dedup_key", chunk);
+      for (const row of data ?? []) if (row.dedup_key) existingKeys.add(row.dedup_key);
     }
 
-    const dedupKeys = kept.map(a => computeDedup(a.title, a.source?.name || "unknown"));
-    const { data: existing } = await supabase
-      .from("global_signals").select("dedup_key, id, title, source_count, source_references")
-      .in("dedup_key", dedupKeys);
-    const existingKeys = new Set((existing || []).map(e => e.dedup_key));
+    const pending = articles.filter((article) => !existingKeys.has(recordKey(article)));
+    const signals: Record<string, unknown>[] = [];
 
-    const { data: recentSignals } = await supabase
-      .from("global_signals").select("id, title, summary, source_count, source_references")
-      .order("first_detected_at", { ascending: false }).limit(120);
-
-    const newArticles: any[] = [];
-    const updatedSignals: any[] = [];
-
-    for (const a of kept) {
-      const key = computeDedup(a.title, a.source?.name || "unknown");
-      if (existingKeys.has(key)) continue;
-
-      let matchedExisting = false;
-      for (const recent of (recentSignals || [])) {
-        const sim = combinedSimilarity(
-          { title: a.title, desc: a.description || "" },
-          { title: recent.title, desc: (recent as any).summary || "" }
-        );
-        if (sim > MERGE_THRESHOLD) {
-          const newRefs = [...(recent.source_references || []), { url: a.url, name: a.source?.name, published: a.publishedAt }];
-          const newCount = (recent.source_count || 1) + 1;
-          const isOfficialNew = a._isOfficial || trustMap[a.source?.name?.toLowerCase()]?.official;
-          updatedSignals.push({
-            id: recent.id,
-            source_count: newCount,
-            source_references: newRefs,
-            multi_source_confirmed: newCount >= 3,
-            official_source_present: isOfficialNew || false,
-          });
-          matchedExisting = true;
-          break;
-        }
-      }
-      if (!matchedExisting) newArticles.push(a);
-    }
-
-    await Promise.allSettled(updatedSignals.map(u => {
-      const update: any = {
-        source_count: u.source_count,
-        source_references: u.source_references,
-        multi_source_confirmed: u.multi_source_confirmed,
-      };
-      if (u.official_source_present) update.official_source_present = true;
-      return supabase.from("global_signals").update(update).eq("id", u.id);
-    }));
-
-    if (newArticles.length === 0) {
-      await Promise.allSettled([
-        logConnectorRun(supabase, "newsapi", "success", newsapiCount, 0, updatedSignals.length, Date.now() - intakeStart),
-        gdeltArticles.length > 0
-          ? logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, 0, Date.now() - intakeStart)
-          : Promise.resolve(),
-      ]);
-
-      const benchmarkAudit = opts.runBenchmarks
-        ? await updateBenchmarks(supabase)
-        : { detected: 0, missed: 0, total: 0, skipped: true };
-      await snapshotCoverage(supabase, allRegistrySources, benchmarkAudit);
-
-      return {
-        ok: true,
-        new_signals: 0,
-        updated_signals: updatedSignals.length,
-        pending_enrichment: 0,
-        official_fetched: officialResult.articles.length,
-        benchmark_audit: benchmarkAudit,
-        duration_ms: Date.now() - intakeStart,
-        message: "No new signals, updated existing",
-      };
-    }
-
-    const signals: any[] = [];
-    for (const article of newArticles.slice(0, 80)) {
-      const sourceName = article.source?.name || "Unknown";
-      const trust = trustMap[sourceName.toLowerCase()];
-      const trustWeight = trust?.weight ?? 50;
-      const trustTier = getTrustTier(trustWeight);
-      const isOfficial = trust?.official ?? article._isOfficial ?? false;
-      const category = classifyCategory(article.title, article.description || "");
-      const dedupKey = computeDedup(article.title, sourceName);
-
-      const encoder = new TextEncoder();
-      const hashData = encoder.encode(`${article.title}|${article.url}|${article.publishedAt}`);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", hashData);
-      const evidenceHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-
-      const mergedSources = article._mergedSources || [];
-      const allRefs = [{ url: article.url, name: sourceName, published: article.publishedAt }, ...mergedSources];
-      const sourceCount = allRefs.length;
-      const officialPresent = isOfficial || mergedSources.some((s: any) => trustMap[s.name?.toLowerCase()]?.official);
-      const sourceRankScore = trustWeight + (isOfficial ? 20 : 0) + (sourceCount > 1 ? sourceCount * 2 : 0);
+    for (const article of pending) {
+      const detectedAt = new Date().toISOString();
+      const sourceName = article.source.name || "Unknown";
+      const registry = allRegistrySources.find(
+        (source) => source.source_name.toLowerCase() === sourceName.toLowerCase(),
+      );
+      const officialKnown = registry ? Boolean(registry.official_source) : article._isOfficial === true ? true : null;
+      const officialSemantics = registry
+        ? "signal_source_registry_configuration_v1"
+        : article._isOfficial === true
+        ? "provider_adapter_explicit_official_source_flag_v1"
+        : null;
+      const sourcePublishedAt = safeIso(article.publishedAt);
+      const evidenceHash = await sha256Hex(
+        `${article.title}|${article.url}|${sourcePublishedAt ?? "publication-time-unknown"}`,
+      );
 
       signals.push({
         title: article.title,
         summary: article.description || article.title,
-        category,
+        category: classifyCategory(article.title, article.description || ""),
         status: "new",
-        confidence_score: 50,
-        impact_score: 40,
-        urgency_score: 40,
-        source_count: sourceCount,
+
+        confidence_score: null,
+        confidence_score_semantics: "not_assessed_at_intake_no_signal_score",
+        impact_score: null,
+        impact_score_semantics: "not_assessed_at_intake_no_impact_score",
+        urgency_score: null,
+        urgency_score_semantics: "not_assessed_at_intake_no_urgency_score",
+        source_rank_score: null,
+        source_rank_score_semantics: "not_assessed_at_intake_no_source_rank_score",
+        routing_score: null,
+        routing_score_semantics: "not_assessed_at_intake_no_routing_score",
+
+        source_count: 1,
+        source_count_semantics: "single_observed_source_record_count_v1_not_independence",
+        source_identifier_count: 1,
+        source_identifier_count_semantics: "single_source_identifier_descriptive_only_not_independence",
+        merged_source_count: 1,
+        merged_source_count_semantics: "single_source_record_no_cross_report_grouping",
+        source_grouping_semantics: "single_source_record_no_cross_report_grouping",
+        source_independence_status: "not_assessed",
+        source_independence_semantics: "single_report_independence_not_applicable_until_corroboration_set_exists",
+        independent_origin_count: null,
+        corroboration_count: null,
+        corroboration_count_semantics: "not_assessed_no_independent_origin_set",
+        multi_source_confirmed: null,
+        multi_source_confirmation_semantics: "not_assessed_no_independent_origin_set",
+
         primary_source: sourceName,
-        source_references: allRefs,
-        first_detected_at: article.publishedAt || new Date().toISOString(),
-        latest_update_at: new Date().toISOString(),
-        occurred_at: article.publishedAt || null,
+        canonical_source_name: sourceName,
+        source_references: [{
+          url: article.url,
+          name: sourceName,
+          published: sourcePublishedAt,
+          publication_time_semantics: sourcePublishedAt
+            ? "source_reported_publication_or_update_time_v1"
+            : "missing",
+        }],
+        source_published_at: sourcePublishedAt,
+        source_published_at_semantics: sourcePublishedAt
+          ? "source_reported_publication_or_update_time_v1_not_event_occurrence"
+          : "missing_source_publication_time",
+
+        first_detected_at: detectedAt,
+        first_detected_at_semantics: "aicis_system_detection_time_v1",
+        ingested_at: detectedAt,
+        latest_update_at: detectedAt,
+        occurred_at: null,
+        occurred_at_semantics: "not_established_at_intake_publication_time_not_substituted",
+
         affected_regions: [],
         affected_countries: [],
         affected_sectors: [],
         affected_stakeholders: [],
         evidence_hash: evidenceHash,
         ingestion_source: article._ingestionSource || "registry_feed",
-        dedup_key: dedupKey,
-        source_trust_tier: trustTier,
-        multi_source_confirmed: sourceCount >= 3,
-        related_signal_ids: [],
+        dedup_key: recordKey(article),
+        source_record_key: recordKey(article),
+        source_lineage_status: "unknown",
+        source_lineage_method: null,
+        source_origin_key: null,
+        source_lineage_evidence: {},
+
         enrichment_status: "pending_enrichment",
         enrichment_attempts: 0,
-        ingested_at: new Date().toISOString(),
-        official_source: isOfficial,
-        official_source_present: officialPresent,
-        canonical_source_name: sourceName,
-        source_rank_score: sourceRankScore,
-        merged_source_count: sourceCount,
+        official_source: officialKnown,
+        official_source_semantics: officialSemantics,
+        official_source_present: officialKnown,
+        official_source_present_semantics: officialSemantics,
       });
     }
 
-    const { data: inserted, error: insertErr } = await supabase
-      .from("global_signals").insert(signals).select("id, title, impact_score, category");
-
-    if (insertErr) throw new Error(`Insert failed: ${insertErr.message}`);
+    const { data: inserted, error: insertError } = signals.length > 0
+      ? await supabase.from("global_signals").insert(signals).select("id")
+      : { data: [], error: null };
+    if (insertError) throw new Error(`Insert failed: ${insertError.message}`);
 
     const durationMs = Date.now() - intakeStart;
     await Promise.allSettled([
-      logConnectorRun(supabase, "newsapi", "success", newsapiCount, inserted?.length || 0, updatedSignals.length, durationMs),
+      logConnectorRun(supabase, "newsapi", "success", newsArticles.length, inserted?.length ?? 0, durationMs),
       gdeltArticles.length > 0
-        ? logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, 0, durationMs)
+        ? logConnectorRun(supabase, "gdelt", "success", gdeltArticles.length, 0, durationMs)
         : Promise.resolve(),
     ]);
 
@@ -683,91 +705,90 @@ async function runIntake(opts: { runBenchmarks: boolean; shardCount: number; sha
       resource_type: "global_signals",
       severity: "info",
       metadata: {
+        intake_semantics: "one_source_report_one_signal_no_fuzzy_same_event_merge_v2",
         articles_fetched: allArticles.length,
-        unique_after_dedup: newArticles.length,
-        signals_created: inserted?.length || 0,
-        signals_updated: updatedSignals.length,
-        pending_enrichment: inserted?.length || 0,
+        exact_source_records_after_dedup: articles.length,
+        signals_created: inserted?.length ?? 0,
+        signals_updated: 0,
         duration_ms: durationMs,
         benchmark_audit: benchmarkAudit,
-        shard: { index: opts.shardIndex, count: opts.shardCount, size: registrySources.length, total: allRegistrySources.length },
-        sources: {
-          newsapi: newsapiCount,
-          gdelt: gdeltArticles.length,
-          official: officialResult.articles.length,
-          registry_total: registrySources.length,
-          official_connectors: officialResult.runs.filter(r => r.status === "success").length,
-          official_failed: officialResult.runs.filter(r => r.status === "failed").length,
-        },
+        source_publication_time_substituted_for_event_time: false,
+        default_confidence_created: false,
+        default_impact_created: false,
+        default_urgency_created: false,
       },
     });
 
     await finishProviderRun(supabase, run, {
-      records_inserted: inserted?.length || 0,
-      records_updated: updatedSignals.length,
-      records_normalized: inserted?.length || 0,
+      records_inserted: inserted?.length ?? 0,
+      records_updated: 0,
+      records_normalized: inserted?.length ?? 0,
     });
 
     return {
       ok: true,
-      new_signals: inserted?.length || 0,
-      updated_signals: updatedSignals.length,
-      pending_enrichment: inserted?.length || 0,
+      new_signals: inserted?.length ?? 0,
+      updated_signals: 0,
+      pending_enrichment: inserted?.length ?? 0,
       duration_ms: durationMs,
       benchmark_audit: benchmarkAudit,
+      intake_semantics: "one_source_report_one_signal_no_fuzzy_same_event_merge_v2",
       sources: {
-        newsapi: newsapiCount,
+        newsapi: newsArticles.length,
         gdelt: gdeltArticles.length,
-        official: officialResult.articles.length,
+        registry: registryResult.articles.length,
         registry_total: registrySources.length,
       },
     };
-  } catch (e) {
-    await failProviderRun(supabase, run, e);
-    throw e;
+  } catch (error) {
+    await failProviderRun(supabase, run, error);
+    throw error;
   }
 }
 
-declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void } | undefined;
+declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void } | undefined;
 
 serve(async (req) => {
   const callerAuth = await requireAdminOrTrustedWorker(req, corsHeaders);
   if (callerAuth.response) return callerAuth.response;
-
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Parse options (allow manual overrides; defaults are tuned for cron).
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   if (req.method === "POST") {
-    try { body = await req.json(); } catch { body = {}; }
+    try {
+      body = await req.json();
+    } catch {
+      body = {};
+    }
   }
+
   const url = new URL(req.url);
   const wait = body.wait === true || url.searchParams.get("wait") === "1";
   const runBenchmarks = body.run_benchmarks === true || url.searchParams.get("run_benchmarks") === "1";
   const shardSize = Number(body.shard_size ?? url.searchParams.get("shard_size") ?? 40);
   const shardCount = Number(body.shard_count ?? url.searchParams.get("shard_count") ?? 0);
-  // Default shard rotation by current minute so every cron tick covers a new slice.
-  const defaultShardIndex = Math.floor(Date.now() / 60000);
+  const defaultShardIndex = Math.floor(Date.now() / 60_000);
   const shardIndex = Number(body.shard_index ?? url.searchParams.get("shard_index") ?? defaultShardIndex);
-
   const opts = { runBenchmarks, shardCount, shardIndex, shardSize };
 
   if (wait) {
     try {
       const result = await runIntake(opts);
-      return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     } catch (error) {
-      console.error("Intake error:", error);
-      return new Response(JSON.stringify({ error: ((error as Error).message || "Unknown intake error").slice(0, 500) }), {
+      return new Response(JSON.stringify({
+        error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+      }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
   }
 
-  // Fire-and-forget: respond immediately so cron pings never time out.
-  const task = runIntake(opts).catch((e) => {
-    console.error("Background intake failed:", e);
+  const task = runIntake(opts).catch((error) => {
+    console.error("Background intake failed:", error);
   });
   if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
     EdgeRuntime.waitUntil(task);
@@ -777,24 +798,10 @@ serve(async (req) => {
     ok: true,
     accepted: true,
     mode: "background",
-    shard: { index: shardIndex % Math.max(1, Math.ceil(1 / 1)), size: shardSize },
+    intake_semantics: "one_source_report_one_signal_no_fuzzy_same_event_merge_v2",
     started_at: new Date().toISOString(),
-  }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 202 });
+  }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status: 202,
+  });
 });
-
-async function logConnectorRun(supabase: any, source: string, status: string, fetched: number, newCount: number, merged: number, durationMs: number, error?: string) {
-  try {
-    await supabase.from("source_connector_runs").insert({
-      source_name: source,
-      source_type: source.startsWith("official_") ? "official_feed" : source === "gdelt" ? "aggregator" : "news_api",
-      run_status: status,
-      signals_fetched: fetched,
-      signals_new: newCount,
-      signals_merged: merged,
-      duration_ms: durationMs,
-      ...(error ? { error_message: error } : {}),
-    });
-  } catch (e) {
-    console.error("Failed to log connector run:", e);
-  }
-}
