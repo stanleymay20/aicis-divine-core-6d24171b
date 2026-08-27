@@ -2,11 +2,13 @@ import type { EvidenceClaim, WorldRelationship } from "./contracts";
 import { hasQuantifiedUnitInterval } from "./contracts";
 
 const CAUSAL_SCORE_SEMANTICS =
-  "deterministic_attached_evidence_screen_score_not_probability";
+  "deterministic_attached_evidence_screen_v3_source_identifier_diversity_excluded_not_probability";
 const CONFIDENCE_SEMANTICS =
   "no_calibrated_causal_confidence_issued";
 const SOURCE_DIVERSITY_SEMANTICS =
-  "distinct_source_identifier_diversity_heuristic_not_source_independence";
+  "distinct_source_identifier_diversity_descriptive_only_excluded_from_causal_score_not_source_independence";
+const SOURCE_INDEPENDENCE_SEMANTICS =
+  "cascade_review_requires_complete_current_claim_set_lineage_and_at_least_two_established_independent_origins";
 const TEMPORAL_SEMANTICS =
   "requires_explicit_mapped_cause_effect_temporal_assessment_not_timestamp_presence";
 const CHAIN_SCORE_SEMANTICS =
@@ -20,10 +22,27 @@ export type CausalVerdict =
   | "causally-supported"
   | "contradicted";
 
+export type SourceIndependenceStatus =
+  | "not_assessed"
+  | "partial"
+  | "complete_not_corroborated"
+  | "established"
+  | "conflicted"
+  | "stale_claim_set";
+
 export interface ExplicitTemporalAssessment {
   relation: "before" | "after" | "simultaneous" | "unknown";
   plausibleForwardCausation: boolean;
   method: string;
+}
+
+export interface SourceIndependenceAssessmentInput {
+  assessmentId?: string;
+  claimIds: string[];
+  lineageStatus: "not_assessed" | "partial" | "complete" | "conflicted";
+  corroborationStatus: "not_established" | "established" | "conflicted";
+  independentOriginCount: number | null;
+  semantics?: string;
 }
 
 export interface CausalEvidenceProfile {
@@ -35,6 +54,7 @@ export interface CausalEvidenceProfile {
   confounderEvidence?: EvidenceClaim[];
   interventionEvidence?: EvidenceClaim[];
   counterfactualEvidence?: EvidenceClaim[];
+  sourceIndependenceAssessment?: SourceIndependenceAssessmentInput;
 }
 
 export interface CausalAssessment {
@@ -48,7 +68,10 @@ export interface CausalAssessment {
   mechanismSupport: number | null;
   evidenceDiversity: number;
   evidenceDiversitySemantics: string;
-  sourceIndependenceStatus: "not_assessed";
+  sourceIndependenceStatus: SourceIndependenceStatus;
+  sourceIndependenceSemantics: string;
+  independentOriginCount: number | null;
+  sourceIndependenceAssessmentId?: string;
   contradictionPenalty: number | null;
   confounderPenalty: number | null;
   interventionSupport: number | null;
@@ -70,13 +93,22 @@ interface EvidenceScore {
   unquantifiedCount: number;
 }
 
+interface SourceIndependenceGate {
+  status: SourceIndependenceStatus;
+  established: boolean;
+  independentOriginCount: number | null;
+  assessmentId?: string;
+}
+
 /**
  * Evidence-screening helper, not a causal truth engine.
  *
  * Rules:
  * - attached evidence with unknown numeric semantics forces quantitative abstention;
  * - timestamp presence is never converted into temporal precedence;
- * - distinct source identifiers describe diversity only, never independence;
+ * - distinct source identifiers remain descriptive and never increase causal score;
+ * - cascade review requires a current, complete lineage assessment establishing
+ *   at least two independent origins for the exact supporting-claim set;
  * - the automated client layer never emits `causally-supported`;
  * - returned scores are deterministic screening heuristics, not probabilities.
  */
@@ -99,6 +131,10 @@ export function assessCausalRelationship(
   const interventionSupport = evidenceSupportScore(interventions);
   const counterfactualSupport = evidenceSupportScore(counterfactuals);
   const evidenceDiversity = sourceIdentifierDiversity(supports);
+  const sourceIndependence = evaluateSourceIndependence(
+    supports,
+    evidence.sourceIndependenceAssessment,
+  );
 
   const allRelevant = dedupeClaims([
     ...supports,
@@ -136,7 +172,6 @@ export function assessCausalRelationship(
   const score = canComputeScore
     ? heuristicCausalEvidenceScore({
       baseSupport: scoreOrZeroWhenNoClaims(baseSupport),
-      evidenceDiversity,
       mechanismSupport: scoreOrZeroWhenNoClaims(mechanismSupport),
       interventionSupport: scoreOrZeroWhenNoClaims(interventionSupport),
       counterfactualSupport: scoreOrZeroWhenNoClaims(counterfactualSupport),
@@ -172,8 +207,6 @@ export function assessCausalRelationship(
     temporalPrecedence === 1 &&
     score >= 0.45
   ) {
-    // Temporal order may make an association directionally plausible, but it
-    // still cannot establish causation and does not enter the numeric score.
     verdict = "temporally-plausible";
   } else {
     verdict = "associated";
@@ -184,7 +217,8 @@ export function assessCausalRelationship(
     score !== null &&
     score >= 0.55 &&
     quantitativeEvidenceStatus === "complete_for_attached_evidence" &&
-    structuralInputsExplicit;
+    structuralInputsExplicit &&
+    sourceIndependence.established;
 
   const reasons: string[] = [];
   if (supports.length === 0) reasons.push("No supporting evidence claims are attached");
@@ -211,7 +245,8 @@ export function assessCausalRelationship(
   if (!structuralInputsExplicit) {
     reasons.push("Relationship strength/confidence is incomplete or lacks usable semantics; cascade review eligibility is withheld");
   }
-  reasons.push("Distinct source identifiers are not proof of source independence; independence remains unassessed");
+  reasons.push("Distinct source identifiers are descriptive only and are excluded from the causal evidence score");
+  reasons.push(sourceIndependenceReason(sourceIndependence));
   reasons.push("Automated client-side screening never promotes a relationship to causally-supported");
 
   return {
@@ -225,7 +260,10 @@ export function assessCausalRelationship(
     mechanismSupport: mechanismSupport.score,
     evidenceDiversity,
     evidenceDiversitySemantics: SOURCE_DIVERSITY_SEMANTICS,
-    sourceIndependenceStatus: "not_assessed",
+    sourceIndependenceStatus: sourceIndependence.status,
+    sourceIndependenceSemantics: SOURCE_INDEPENDENCE_SEMANTICS,
+    independentOriginCount: sourceIndependence.independentOriginCount,
+    sourceIndependenceAssessmentId: sourceIndependence.assessmentId,
     contradictionPenalty: contradictionPenalty.score,
     confounderPenalty: confounderPenalty.score,
     interventionSupport: interventionSupport.score,
@@ -307,6 +345,7 @@ export function assessCausalChain(edges: CausalChainEdge[]): CausalChainAssessme
   const candidateForReview =
     edges.every((edge) => edge.assessment.verdict === "mechanistically-supported") &&
     edges.every((edge) => edge.assessment.eligibleForCascadeReview) &&
+    edges.every((edge) => edge.assessment.sourceIndependenceStatus === "established") &&
     weakestEdgeScore >= 0.55 &&
     pathEvidenceScore >= 0.30;
 
@@ -321,8 +360,8 @@ export function assessCausalChain(edges: CausalChainEdge[]): CausalChainAssessme
     weakestRelationshipId,
     autoCausalPromotionPerformed: false,
     reasons: candidateForReview
-      ? ["Every edge satisfies deterministic review thresholds; manual or governed causal review is still required"]
-      : ["At least one edge does not satisfy deterministic causal-chain review thresholds"],
+      ? ["Every edge satisfies deterministic review thresholds and audited source-independence gates; manual or governed causal review is still required"]
+      : ["At least one edge does not satisfy deterministic causal-chain review or source-independence thresholds"],
   };
 }
 
@@ -360,19 +399,24 @@ function scoreOrZeroWhenNoClaims(value: EvidenceScore): number {
 
 function heuristicCausalEvidenceScore(input: {
   baseSupport: number;
-  evidenceDiversity: number;
   mechanismSupport: number;
   interventionSupport: number;
   counterfactualSupport: number;
   contradictionPenalty: number;
   confounderPenalty: number;
 }): number {
-  return clamp01(
+  // Preserve the relative weights of the substantive positive evidence categories
+  // after removing the former 15% distinct-source-ID term. Source independence is
+  // handled only by the explicit corroboration gate above.
+  const positiveEvidence = (
     0.28 * input.baseSupport +
-    0.15 * input.evidenceDiversity +
     0.20 * input.mechanismSupport +
     0.14 * input.interventionSupport +
-    0.13 * input.counterfactualSupport -
+    0.13 * input.counterfactualSupport
+  ) / 0.75;
+
+  return clamp01(
+    positiveEvidence -
     0.15 * input.contradictionPenalty -
     0.10 * input.confounderPenalty,
   );
@@ -392,6 +436,91 @@ function sourceIdentifierDiversity(claims: EvidenceClaim[]): number {
     0.70 * Math.min(1, sourceIds.size / 4) +
     0.30 * Math.min(1, sourceTypes.size / 3),
   );
+}
+
+function evaluateSourceIndependence(
+  supportingClaims: EvidenceClaim[],
+  assessment: SourceIndependenceAssessmentInput | undefined,
+): SourceIndependenceGate {
+  if (!assessment) {
+    return { status: "not_assessed", established: false, independentOriginCount: null };
+  }
+
+  const currentClaimIds = [...new Set(supportingClaims.map((claim) => claim.id))].sort();
+  const assessedClaimIds = [...new Set(assessment.claimIds)].sort();
+  if (!sameStringArray(currentClaimIds, assessedClaimIds)) {
+    return {
+      status: "stale_claim_set",
+      established: false,
+      independentOriginCount: null,
+      assessmentId: assessment.assessmentId,
+    };
+  }
+
+  if (assessment.lineageStatus === "conflicted" || assessment.corroborationStatus === "conflicted") {
+    return {
+      status: "conflicted",
+      established: false,
+      independentOriginCount: null,
+      assessmentId: assessment.assessmentId,
+    };
+  }
+
+  if (assessment.lineageStatus === "not_assessed") {
+    return {
+      status: "not_assessed",
+      established: false,
+      independentOriginCount: null,
+      assessmentId: assessment.assessmentId,
+    };
+  }
+
+  if (assessment.lineageStatus === "partial") {
+    return {
+      status: "partial",
+      established: false,
+      independentOriginCount: null,
+      assessmentId: assessment.assessmentId,
+    };
+  }
+
+  const independentOriginCount = Number.isInteger(assessment.independentOriginCount) &&
+      Number(assessment.independentOriginCount) >= 0
+    ? Number(assessment.independentOriginCount)
+    : null;
+  const established =
+    assessment.lineageStatus === "complete" &&
+    assessment.corroborationStatus === "established" &&
+    independentOriginCount !== null &&
+    independentOriginCount >= 2;
+
+  return {
+    status: established ? "established" : "complete_not_corroborated",
+    established,
+    independentOriginCount,
+    assessmentId: assessment.assessmentId,
+  };
+}
+
+function sourceIndependenceReason(gate: SourceIndependenceGate): string {
+  switch (gate.status) {
+    case "established":
+      return `Source independence is established for the exact supporting-claim set with ${gate.independentOriginCount} explicit independent origins`;
+    case "stale_claim_set":
+      return "The supplied source-independence assessment does not match the current supporting-claim set; cascade review eligibility is withheld";
+    case "conflicted":
+      return "Source lineage is conflicted; independent corroboration is not established";
+    case "partial":
+      return "Source lineage coverage is partial; independent corroboration is not established";
+    case "complete_not_corroborated":
+      return "Source lineage is complete but fewer than two independent origins are established";
+    default:
+      return "Source independence has not been assessed for the exact supporting-claim set; cascade review eligibility is withheld";
+  }
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function explicitTemporalIndicator(
