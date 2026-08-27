@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,10 +7,13 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Activity, AlertTriangle, CheckCircle2, XCircle, HelpCircle, Database,
-  TrendingUp, Shield, Radio, Globe, Loader2, RefreshCw, BarChart3, Cpu
+  Activity, AlertTriangle, Database, TrendingUp, Shield, Radio, Globe,
+  Loader2, RefreshCw, BarChart3,
 } from "lucide-react";
 import { PanelEmpty } from "@/components/ui/panel-empty";
+
+const GOVERNED_SIGNAL_SCORE_SEMANTICS =
+  "deterministic_source_registry_trust_and_source_event_recency_screen_v1_not_probability_source_independence_excluded";
 
 type MetricStatus = "pass" | "warn" | "fail" | "no_data";
 
@@ -39,7 +41,7 @@ function MetricRow({ metric }: { metric: ScorecardMetric }) {
   return (
     <div className="flex items-center gap-2 py-1.5 border-b border-border/30 last:border-0">
       <StatusDot status={metric.status} />
-      <span className="text-xs flex-1 truncate">{metric.label}</span>
+      <span className="text-xs flex-1 truncate" title={metric.detail}>{metric.label}</span>
       <span className="text-xs font-mono font-bold w-16 text-right">{metric.value}</span>
       <span className="text-[10px] text-muted-foreground w-16 text-right">{metric.target}</span>
     </div>
@@ -60,12 +62,14 @@ function usePipelineMetrics() {
         registryRes,
       ] = await Promise.all([
         supabase.from("source_connector_runs").select("*").order("run_at", { ascending: false }).limit(50),
-        supabase.from("global_signals").select("id, enrichment_status, source_trust_tier, official_source_present, multi_source_confirmed, impact_score, confidence_score, category, status, routing_suppressed_reason, ingested_at, enriched_at, routed_at, source_count, primary_source, enrichment_error"),
-        supabase.from("signal_routing_feedback").select("signal_id, feedback, created_at"),
-        supabase.from("decision_outcome_log").select("id, signal_id, action_taken, outcome_success, execution_status").not("signal_id", "is", null),
+        supabase.from("global_signals").select(
+          "id,enrichment_status,source_trust_tier,official_source_present,impact_score,confidence_score,confidence_score_semantics,category,status,routing_suppressed_reason,ingested_at,enriched_at,routed_at,primary_source,enrichment_error,source_identifier_count,source_identifier_count_semantics,source_independence_status,independent_origin_count,source_independence_semantics,multi_source_confirmed,multi_source_confirmation_semantics",
+        ),
+        supabase.from("signal_routing_feedback").select("signal_id,feedback,created_at"),
+        supabase.from("decision_outcome_log").select("id,signal_id,action_taken,outcome_success,execution_status").not("signal_id", "is", null),
         supabase.from("signal_coverage_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(1).maybeSingle(),
-        supabase.from("signal_detection_benchmarks").select("id, detected, validation_status, detection_latency_minutes, event_title").order("created_at", { ascending: false }).limit(100),
-        supabase.from("signal_source_registry").select("source_name, official_source, enabled, source_type").order("priority", { ascending: true }),
+        supabase.from("signal_detection_benchmarks").select("id,detected,validation_status,detection_latency_minutes,event_title").order("created_at", { ascending: false }).limit(100),
+        supabase.from("signal_source_registry").select("source_name,official_source,enabled,source_type").order("priority", { ascending: true }),
       ]);
 
       const runs = connectorRes.data || [];
@@ -76,66 +80,130 @@ function usePipelineMetrics() {
       const benchmarks = benchmarksRes.data || [];
       const registry = registryRes.data || [];
 
-      const successRuns = runs.filter(r => r.run_status === "success").length;
+      const successRuns = runs.filter((row) => row.run_status === "success").length;
       const intakeSuccessRate = runs.length > 0 ? Math.round(successRuns / runs.length * 100) : 0;
-      const avgDuration = runs.length > 0 ? Math.round(runs.reduce((s, r) => s + (r.duration_ms || 0), 0) / runs.length) : 0;
-      const pending = signals.filter(s => s.enrichment_status === "pending_enrichment").length;
-      const stuck = signals.filter(s => s.enrichment_status === "enriching").length;
-      const enriched = signals.filter(s => s.enrichment_status === "enriched").length;
-      const withErrors = signals.filter(s => s.enrichment_error).length;
+      const avgDuration = runs.length > 0
+        ? Math.round(runs.reduce((sum, row) => sum + (row.duration_ms || 0), 0) / runs.length)
+        : 0;
+      const pending = signals.filter((row) => row.enrichment_status === "pending_enrichment").length;
+      const stuck = signals.filter((row) => row.enrichment_status === "enriching").length;
+      const enriched = signals.filter((row) => row.enrichment_status === "enriched").length;
+      const withErrors = signals.filter((row) => row.enrichment_error).length;
       const enrichSuccessRate = signals.length > 0 ? Math.round(enriched / signals.length * 100) : 0;
 
-      const tier1 = signals.filter(s => s.source_trust_tier === "tier_1").length;
-      const tier2 = signals.filter(s => s.source_trust_tier === "tier_2").length;
-      const tier3 = signals.filter(s => s.source_trust_tier === "tier_3").length;
-      const official = signals.filter(s => s.official_source_present).length;
+      const tier1 = signals.filter((row) => row.source_trust_tier === "tier_1").length;
+      const tier2 = signals.filter((row) => row.source_trust_tier === "tier_2").length;
+      const tier3 = signals.filter((row) => row.source_trust_tier === "tier_3").length;
+      const official = signals.filter((row) => row.official_source_present).length;
       const tier12pct = signals.length > 0 ? Math.round((tier1 + tier2) / signals.length * 100) : 0;
       const officialPct = signals.length > 0 ? Math.round(official / signals.length * 100) : 0;
-      const uniqueSources = new Set(signals.map(s => s.primary_source)).size;
+      const uniqueSources = new Set(
+        signals
+          .map((row) => typeof row.primary_source === "string" ? row.primary_source.trim() : "")
+          .filter(Boolean),
+      ).size;
 
-      const multiConfirmed = signals.filter(s => s.multi_source_confirmed).length;
-      const avgSourceCount = signals.length > 0 ? (signals.reduce((s, sig) => s + (sig.source_count || 1), 0) / signals.length).toFixed(1) : "0";
+      const independentlyCorroborated = signals.filter((row) =>
+        row.source_independence_status === "established" &&
+        typeof row.independent_origin_count === "number" &&
+        row.independent_origin_count >= 2 &&
+        row.multi_source_confirmed === true
+      ).length;
+      const completeLineage = signals.filter((row) =>
+        row.source_independence_status === "established" ||
+        row.source_independence_status === "complete_not_corroborated"
+      ).length;
+      const partialLineage = signals.filter((row) => row.source_independence_status === "partial").length;
+      const conflictedLineage = signals.filter((row) => row.source_independence_status === "conflicted").length;
+      const lineageCompletePct = signals.length > 0 ? Math.round(completeLineage / signals.length * 100) : 0;
+      const governedSignalScores = signals.filter((row) =>
+        row.confidence_score != null &&
+        row.confidence_score_semantics === GOVERNED_SIGNAL_SCORE_SEMANTICS
+      ).length;
+      const governedSignalScorePct = signals.length > 0
+        ? Math.round(governedSignalScores / signals.length * 100)
+        : 0;
 
-      const routed = signals.filter(s => s.routed_at).length;
-      const suppressed = signals.filter(s => s.routing_suppressed_reason).length;
-      const confirmed = feedback.filter(f => f.feedback === "confirmed").length;
-      const rejected = feedback.filter(f => f.feedback === "rejected").length;
-      const unclear = feedback.filter(f => f.feedback === "unclear").length;
+      const sourceIdentifierValues = signals
+        .map((row) => row.source_identifier_count)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+      const avgSourceIdentifiers = sourceIdentifierValues.length > 0
+        ? (sourceIdentifierValues.reduce((sum, value) => sum + value, 0) / sourceIdentifierValues.length).toFixed(1)
+        : null;
+
+      const routed = signals.filter((row) => row.routed_at).length;
+      const suppressed = signals.filter((row) => row.routing_suppressed_reason).length;
+      const confirmed = feedback.filter((row) => row.feedback === "confirmed").length;
+      const rejected = feedback.filter((row) => row.feedback === "rejected").length;
+      const unclear = feedback.filter((row) => row.feedback === "unclear").length;
       const feedbackTotal = feedback.length;
       const confirmRate = feedbackTotal > 0 ? Math.round(confirmed / feedbackTotal * 100) : 0;
       const rejectRate = feedbackTotal > 0 ? Math.round(rejected / feedbackTotal * 100) : 0;
 
       const signalDecisions = decisions.length;
-      const accepted = decisions.filter(d => d.action_taken).length;
-      const completed = decisions.filter(d => d.execution_status === "completed").length;
-      const withOutcomes = decisions.filter(d => d.outcome_success !== null).length;
+      const accepted = decisions.filter((row) => row.action_taken).length;
+      const completed = decisions.filter((row) => row.execution_status === "completed").length;
+      const withOutcomes = decisions.filter((row) => row.outcome_success !== null).length;
 
       const catCounts: Record<string, number> = {};
-      for (const s of signals) catCounts[s.category] = (catCounts[s.category] || 0) + 1;
+      for (const signal of signals) catCounts[signal.category] = (catCounts[signal.category] || 0) + 1;
 
       const enrichTimes: number[] = [];
-      for (const s of signals) {
-        if (s.ingested_at && s.enriched_at) {
-          const diff = new Date(s.enriched_at).getTime() - new Date(s.ingested_at).getTime();
+      for (const signal of signals) {
+        if (signal.ingested_at && signal.enriched_at) {
+          const diff = new Date(signal.enriched_at).getTime() - new Date(signal.ingested_at).getTime();
           if (diff > 0) enrichTimes.push(diff / 1000);
         }
       }
-      const avgEnrichSecs = enrichTimes.length > 0 ? Math.round(enrichTimes.reduce((a, b) => a + b, 0) / enrichTimes.length) : 0;
+      const avgEnrichSecs = enrichTimes.length > 0
+        ? Math.round(enrichTimes.reduce((left, right) => left + right, 0) / enrichTimes.length)
+        : 0;
 
-      const benchmarkDetected = benchmarks.filter(b => b.detected || b.validation_status === "detected").length;
-      const benchmarkMissed = benchmarks.filter(b => b.validation_status === "missed").length;
-      const benchmarkLatencies = benchmarks.map(b => b.detection_latency_minutes).filter((v): v is number => typeof v === "number");
-      const avgBenchmarkLatency = benchmarkLatencies.length > 0 ? Math.round(benchmarkLatencies.reduce((a, b) => a + b, 0) / benchmarkLatencies.length) : 0;
+      const benchmarkDetected = benchmarks.filter((row) => row.detected || row.validation_status === "detected").length;
+      const benchmarkMissed = benchmarks.filter((row) => row.validation_status === "missed").length;
+      const benchmarkLatencies = benchmarks
+        .map((row) => row.detection_latency_minutes)
+        .filter((value): value is number => typeof value === "number");
+      const avgBenchmarkLatency = benchmarkLatencies.length > 0
+        ? Math.round(benchmarkLatencies.reduce((left, right) => left + right, 0) / benchmarkLatencies.length)
+        : 0;
 
       return {
-        pipeline: { intakeSuccessRate, avgDuration, enrichSuccessRate, pending, stuck, withErrors, avgEnrichSecs, totalRuns: runs.length },
-        sourceQuality: {
-          tier1, tier2, tier3, official, tier12pct, officialPct, uniqueSources, total: signals.length,
-          registryTotal: registry.length,
-          registryOfficial: registry.filter(r => r.official_source).length,
-          registryEnabled: registry.filter(r => r.enabled).length,
+        pipeline: {
+          intakeSuccessRate,
+          avgDuration,
+          enrichSuccessRate,
+          pending,
+          stuck,
+          withErrors,
+          avgEnrichSecs,
+          totalRuns: runs.length,
         },
-        eventQuality: { multiConfirmed, avgSourceCount, total: signals.length },
+        sourceQuality: {
+          tier1,
+          tier2,
+          tier3,
+          official,
+          tier12pct,
+          officialPct,
+          uniqueSources,
+          total: signals.length,
+          registryTotal: registry.length,
+          registryOfficial: registry.filter((row) => row.official_source).length,
+          registryEnabled: registry.filter((row) => row.enabled).length,
+        },
+        eventQuality: {
+          independentlyCorroborated,
+          completeLineage,
+          partialLineage,
+          conflictedLineage,
+          lineageCompletePct,
+          governedSignalScores,
+          governedSignalScorePct,
+          avgSourceIdentifiers,
+          sourceIdentifierObserved: sourceIdentifierValues.length,
+          total: signals.length,
+        },
         routing: { routed, suppressed, confirmed, rejected, unclear, feedbackTotal, confirmRate, rejectRate },
         decisions: { signalDecisions, accepted, completed, withOutcomes },
         coverage: {
@@ -153,10 +221,10 @@ function usePipelineMetrics() {
   });
 }
 
-function ScorecardSection({ title, icon: Icon, metrics }: { title: string; icon: any; metrics: ScorecardMetric[] }) {
-  const passCount = metrics.filter(m => m.status === "pass").length;
-  const failCount = metrics.filter(m => m.status === "fail").length;
-  
+function ScorecardSection({ title, icon: Icon, metrics }: { title: string; icon: typeof Activity; metrics: ScorecardMetric[] }) {
+  const passCount = metrics.filter((metric) => metric.status === "pass").length;
+  const failCount = metrics.filter((metric) => metric.status === "fail").length;
+
   return (
     <Card className="p-3">
       <div className="flex items-center justify-between mb-2">
@@ -169,7 +237,7 @@ function ScorecardSection({ title, icon: Icon, metrics }: { title: string; icon:
         </div>
       </div>
       <div className="divide-y divide-border/30">
-        {metrics.map((m, i) => <MetricRow key={i} metric={m} />)}
+        {metrics.map((metric) => <MetricRow key={metric.label} metric={metric} />)}
       </div>
     </Card>
   );
@@ -200,26 +268,51 @@ export default function SignalValidation() {
     { label: "Stuck enriching", value: pipeline.stuck, target: "0", status: pipeline.stuck === 0 ? "pass" : "fail" },
     { label: "Enrichment errors", value: pipeline.withErrors, target: "0", status: pipeline.withErrors === 0 ? "pass" : pipeline.withErrors < 3 ? "warn" : "fail" },
   ];
-  pipelineMetrics.forEach(m => scores.push(m.status));
+  pipelineMetrics.forEach((metric) => scores.push(metric.status));
 
   const sourceMetrics: ScorecardMetric[] = [
     { label: "Tracked sources", value: sourceQuality.registryTotal, target: "≥ 15", status: sourceQuality.registryTotal >= 15 ? "pass" : sourceQuality.registryTotal >= 10 ? "warn" : "fail" },
     { label: "Official feeds", value: sourceQuality.registryOfficial, target: "≥ 8", status: sourceQuality.registryOfficial >= 8 ? "pass" : sourceQuality.registryOfficial >= 5 ? "warn" : "fail" },
-    { label: "Live unique sources", value: sourceQuality.uniqueSources, target: "≥ 15", status: sourceQuality.uniqueSources >= 15 ? "pass" : sourceQuality.uniqueSources >= 8 ? "warn" : "fail" },
+    { label: "Live unique source IDs", value: sourceQuality.uniqueSources, target: "coverage", status: sourceQuality.uniqueSources > 0 ? "no_data" : "no_data", detail: "Descriptive publisher/source-identifier diversity only; it is not independent corroboration." },
     { label: "Tier 1+2 share", value: `${sourceQuality.tier12pct}%`, target: "≥ 30%", status: sourceQuality.tier12pct >= 30 ? "pass" : sourceQuality.tier12pct >= 15 ? "warn" : "fail" },
     { label: "Official-source %", value: `${sourceQuality.officialPct}%`, target: "≥ 15%", status: sourceQuality.officialPct >= 15 ? "pass" : sourceQuality.officialPct >= 5 ? "warn" : "fail" },
     { label: "Tier 3 count", value: sourceQuality.tier3, target: "declining", status: sourceQuality.tier3 < sourceQuality.total * 0.5 ? "pass" : sourceQuality.tier3 < sourceQuality.total * 0.7 ? "warn" : "fail" },
-    { label: "Signals in window", value: sourceQuality.total, target: "rising", status: sourceQuality.total > 50 ? "pass" : sourceQuality.total > 10 ? "warn" : "fail" },
+    { label: "Signals in window", value: sourceQuality.total, target: "coverage", status: "no_data", detail: "Volume is descriptive and does not itself establish quality." },
   ];
-  sourceMetrics.forEach(m => scores.push(m.status));
+  sourceMetrics.forEach((metric) => scores.push(metric.status));
 
   const eventMetrics: ScorecardMetric[] = [
-    { label: "Multi-source confirmed", value: eventQuality.multiConfirmed, target: "rising", status: eventQuality.multiConfirmed > 5 ? "pass" : eventQuality.multiConfirmed > 0 ? "warn" : "fail" },
-    { label: "Avg source count", value: eventQuality.avgSourceCount, target: "> 1.0", status: parseFloat(eventQuality.avgSourceCount) > 1.0 ? "pass" : "warn" },
+    {
+      label: "Independent-origin corroborated",
+      value: eventQuality.independentlyCorroborated,
+      target: "rising",
+      status: eventQuality.total === 0 ? "no_data" : eventQuality.independentlyCorroborated > 5 ? "pass" : eventQuality.independentlyCorroborated > 0 ? "warn" : "fail",
+      detail: "Counts only signals with complete source lineage and at least two explicit independent origins.",
+    },
+    {
+      label: "Complete source lineage",
+      value: eventQuality.total > 0 ? `${eventQuality.lineageCompletePct}%` : "—",
+      target: "≥ 80%",
+      status: eventQuality.total === 0 ? "no_data" : eventQuality.lineageCompletePct >= 80 ? "pass" : eventQuality.lineageCompletePct >= 50 ? "warn" : "fail",
+    },
+    {
+      label: "Governed signal screens",
+      value: eventQuality.total > 0 ? `${eventQuality.governedSignalScorePct}%` : "—",
+      target: "≥ 90%",
+      status: eventQuality.total === 0 ? "no_data" : eventQuality.governedSignalScorePct >= 90 ? "pass" : eventQuality.governedSignalScorePct >= 60 ? "warn" : "fail",
+      detail: "Only scores carrying the current deterministic non-probability semantics count.",
+    },
+    {
+      label: "Avg source identifiers",
+      value: eventQuality.avgSourceIdentifiers ?? "—",
+      target: "descriptive",
+      status: "no_data",
+      detail: `Average over ${eventQuality.sourceIdentifierObserved} signals with an observed source-identifier count. Missing counts are excluded, never substituted with 1.`,
+    },
     { label: "Benchmarks detected", value: `${coverage.benchmarkDetected}/${coverage.benchmarkTotal}`, target: "all", status: coverage.benchmarkTotal === 0 ? "no_data" : coverage.benchmarkDetected === coverage.benchmarkTotal ? "pass" : coverage.benchmarkDetected >= Math.ceil(coverage.benchmarkTotal * 0.7) ? "warn" : "fail" },
     { label: "Avg benchmark latency", value: coverage.benchmarkTotal > 0 ? `${coverage.avgBenchmarkLatency}m` : "—", target: "< 120m", status: coverage.benchmarkTotal === 0 ? "no_data" : coverage.avgBenchmarkLatency <= 120 ? "pass" : coverage.avgBenchmarkLatency <= 360 ? "warn" : "fail" },
   ];
-  eventMetrics.forEach(m => scores.push(m.status));
+  eventMetrics.forEach((metric) => scores.push(metric.status));
 
   const routingMetrics: ScorecardMetric[] = [
     { label: "Total routed", value: routing.routed, target: "rising", status: routing.routed > 10 ? "pass" : routing.routed > 0 ? "warn" : "fail" },
@@ -228,7 +321,7 @@ export default function SignalValidation() {
     { label: "Confirm rate", value: routing.feedbackTotal > 0 ? `${routing.confirmRate}%` : "—", target: "≥ 70%", status: routing.feedbackTotal === 0 ? "no_data" : routing.confirmRate >= 70 ? "pass" : routing.confirmRate >= 50 ? "warn" : "fail" },
     { label: "Reject rate", value: routing.feedbackTotal > 0 ? `${routing.rejectRate}%` : "—", target: "< 20%", status: routing.feedbackTotal === 0 ? "no_data" : routing.rejectRate <= 20 ? "pass" : routing.rejectRate <= 35 ? "warn" : "fail" },
   ];
-  routingMetrics.forEach(m => scores.push(m.status));
+  routingMetrics.forEach((metric) => scores.push(metric.status));
 
   const decisionMetrics: ScorecardMetric[] = [
     { label: "Signal → decisions", value: decisions.signalDecisions, target: "> 0", status: decisions.signalDecisions > 0 ? "pass" : "fail" },
@@ -236,13 +329,25 @@ export default function SignalValidation() {
     { label: "Completed", value: decisions.completed, target: "> 0", status: decisions.completed > 0 ? "pass" : "warn" },
     { label: "Measured outcomes", value: decisions.withOutcomes, target: "> 0", status: decisions.withOutcomes > 0 ? "pass" : "warn" },
   ];
-  decisionMetrics.forEach(m => scores.push(m.status));
+  decisionMetrics.forEach((metric) => scores.push(metric.status));
 
-  const passCount = scores.filter(s => s === "pass").length;
-  const failCount = scores.filter(s => s === "fail").length;
-  const warnCount = scores.filter(s => s === "warn").length;
-  const overallGrade = failCount >= 5 ? "UNSTABLE" : failCount >= 3 ? "TECHNICALLY PROMISING" : failCount >= 1 ? "PILOT-READY" : "COMMERCIALLY DEFENSIBLE";
-  const gradeColor = failCount >= 5 ? "text-red-400" : failCount >= 3 ? "text-amber-400" : failCount >= 1 ? "text-yellow-400" : "text-emerald-400";
+  const passCount = scores.filter((status) => status === "pass").length;
+  const failCount = scores.filter((status) => status === "fail").length;
+  const warnCount = scores.filter((status) => status === "warn").length;
+  const overallGrade = failCount >= 5
+    ? "UNSTABLE"
+    : failCount >= 3
+      ? "TECHNICALLY PROMISING"
+      : failCount >= 1
+        ? "PILOT-READY"
+        : "COMMERCIALLY DEFENSIBLE";
+  const gradeColor = failCount >= 5
+    ? "text-red-400"
+    : failCount >= 3
+      ? "text-amber-400"
+      : failCount >= 1
+        ? "text-yellow-400"
+        : "text-emerald-400";
 
   const findings: { severity: "critical" | "medium" | "low"; text: string }[] = [];
   if (sourceQuality.tier3 > sourceQuality.total * 0.7) findings.push({ severity: "critical", text: `Tier 3 sources dominate at ${Math.round(sourceQuality.tier3 / Math.max(sourceQuality.total, 1) * 100)}% — weak source mix` });
@@ -251,7 +356,11 @@ export default function SignalValidation() {
   if (coverage.benchmarkMissed > 0) findings.push({ severity: "critical", text: `${coverage.benchmarkMissed} benchmark events were missed — planetary blind spots remain` });
   if (pipeline.avgEnrichSecs > 120) findings.push({ severity: "medium", text: `Avg enrichment ${pipeline.avgEnrichSecs}s — well above 30s target` });
   if (routing.feedbackTotal === 0) findings.push({ severity: "critical", text: "Zero routing feedback — precision metrics are blind" });
-  if (eventQuality.multiConfirmed <= 1) findings.push({ severity: "medium", text: `Only ${eventQuality.multiConfirmed} multi-source confirmed signals — weak verification` });
+  if (eventQuality.total > 0 && eventQuality.lineageCompletePct < 50) findings.push({ severity: "critical", text: `Complete source lineage covers only ${eventQuality.lineageCompletePct}% of signals — independent corroboration remains largely unassessable` });
+  if (eventQuality.independentlyCorroborated <= 1) findings.push({ severity: "medium", text: `Only ${eventQuality.independentlyCorroborated} signals have at least two explicitly independent origins` });
+  if (eventQuality.partialLineage > 0) findings.push({ severity: "medium", text: `${eventQuality.partialLineage} signals have only partial source-lineage coverage` });
+  if (eventQuality.conflictedLineage > 0) findings.push({ severity: "critical", text: `${eventQuality.conflictedLineage} signals have conflicting source-origin lineage` });
+  if (eventQuality.total > 0 && eventQuality.governedSignalScorePct < 60) findings.push({ severity: "medium", text: `Only ${eventQuality.governedSignalScorePct}% of signals carry the current governed evidence-screen semantics` });
   if (decisions.completed === 0) findings.push({ severity: "medium", text: "Zero completed signal-driven decisions" });
   if (decisions.withOutcomes === 0) findings.push({ severity: "medium", text: "Zero measured outcomes from signal-driven decisions" });
   if (pipeline.stuck > 0) findings.push({ severity: "critical", text: `${pipeline.stuck} signals stuck in 'enriching' state` });
@@ -260,15 +369,14 @@ export default function SignalValidation() {
     <AICISLayout>
       <ScrollArea className="h-full">
         <div className="p-4 max-w-4xl mx-auto space-y-4">
-          {/* Header */}
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-semibold flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-primary" />
-                Phase 16.2 Validation Scorecard
+                Signal Validation Scorecard
               </h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Forensic audit of signal engine quality, routing precision, and commercial readiness
+                Forensic audit of pipeline reliability, explicit source lineage, routing precision, and decision usefulness
               </p>
             </div>
             <Button size="sm" variant="outline" onClick={() => refetch()} className="h-8 text-xs">
@@ -276,7 +384,6 @@ export default function SignalValidation() {
             </Button>
           </div>
 
-          {/* Overall Grade */}
           <Card className="p-4 flex items-center justify-between">
             <div>
               <div className="text-xs text-muted-foreground mb-1">Overall Readiness</div>
@@ -298,22 +405,21 @@ export default function SignalValidation() {
             </div>
           </Card>
 
-          {/* Forensic Findings */}
           {findings.length > 0 ? (
             <Card className="p-3">
               <h3 className="text-xs font-semibold flex items-center gap-1.5 mb-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400" /> Forensic Findings ({findings.length})
               </h3>
               <div className="space-y-1">
-                {findings.map((f, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs py-1">
+                {findings.map((finding, index) => (
+                  <div key={`${finding.text}-${index}`} className="flex items-start gap-2 text-xs py-1">
                     <Badge variant="outline" className={cn(
                       "text-[9px] h-4 shrink-0",
-                      f.severity === "critical" ? "border-red-500/30 text-red-400" :
-                      f.severity === "medium" ? "border-amber-500/30 text-amber-400" :
-                      "border-muted-foreground/30 text-muted-foreground"
-                    )}>{f.severity}</Badge>
-                    <span>{f.text}</span>
+                      finding.severity === "critical" ? "border-red-500/30 text-red-400" :
+                      finding.severity === "medium" ? "border-amber-500/30 text-amber-400" :
+                      "border-muted-foreground/30 text-muted-foreground",
+                    )}>{finding.severity}</Badge>
+                    <span>{finding.text}</span>
                   </div>
                 ))}
               </div>
@@ -321,34 +427,32 @@ export default function SignalValidation() {
           ) : (
             <PanelEmpty
               title="No forensic findings"
-              reason="Every scorecard metric is at or above its operator threshold — the validation audit has nothing to flag in the current window."
-              nextStep="No action required. Findings reappear automatically if any metric regresses."
+              reason="Every scored metric is at or above its operator threshold; descriptive source-volume metrics do not contribute to this grade."
+              nextStep="No action required. Findings reappear automatically if a scored metric regresses."
               compact
             />
           )}
 
-          {/* Scorecard Sections */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <ScorecardSection title="Pipeline Reliability" icon={Activity} metrics={pipelineMetrics} />
             <ScorecardSection title="Source Quality" icon={Shield} metrics={sourceMetrics} />
-            <ScorecardSection title="Event Quality / Dedup" icon={Globe} metrics={eventMetrics} />
+            <ScorecardSection title="Event Evidence / Identity" icon={Globe} metrics={eventMetrics} />
             <ScorecardSection title="Routing Precision" icon={Radio} metrics={routingMetrics} />
           </div>
 
           <ScorecardSection title="Decision Usefulness" icon={TrendingUp} metrics={decisionMetrics} />
 
-          {/* Category Breakdown */}
           <Card className="p-3">
             <h3 className="text-xs font-semibold mb-2 flex items-center gap-1.5">
               <Database className="h-3.5 w-3.5 text-primary" /> Category Distribution
             </h3>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {Object.entries(data.categories)
-                .sort((a, b) => b[1] - a[1])
-                .map(([cat, count]) => (
-                  <div key={cat} className="text-center p-1.5 rounded bg-muted/30">
+                .sort((left, right) => right[1] - left[1])
+                .map(([category, count]) => (
+                  <div key={category} className="text-center p-1.5 rounded bg-muted/30">
                     <div className="text-sm font-bold font-mono">{count}</div>
-                    <div className="text-[9px] text-muted-foreground truncate">{cat.replace("_", " ")}</div>
+                    <div className="text-[9px] text-muted-foreground truncate">{category.replace("_", " ")}</div>
                   </div>
                 ))}
             </div>
