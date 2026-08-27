@@ -62,12 +62,14 @@ const provenance = z.object({
 const inputSchema = z.object({
   eventType,
   epistemicStatus,
-  confidence: z.number().min(0).max(1),
+  confidence: z.number().min(0).max(1).nullable().optional(),
+  confidenceSemantics: z.string().trim().min(1).max(240).optional(),
   subjectEntityId: z.string().uuid().optional(),
   correlationId: z.string().uuid().optional(),
   causationId: z.string().uuid().optional(),
-  occurredAt: z.string().datetime(),
+  occurredAt: z.string().datetime().nullable().optional(),
   observedAt: z.string().datetime().optional(),
+  timeSemantics: z.string().trim().min(1).max(300).optional(),
   producer: z.string().trim().min(1).max(160),
   payload: z.record(z.unknown()).default({}),
   provenance: z.array(provenance).max(100).default([]),
@@ -79,6 +81,16 @@ const inputSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["provenance"],
       message: "Observed events require provenance",
+    });
+  }
+
+  // If a caller supplies explicit semantics it must not contradict the value's
+  // presence. NULL confidence means the quantity is not numerically expressed.
+  if (value.confidence === null && value.confidenceSemantics?.toLowerCase().includes("calibrated")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["confidenceSemantics"],
+      message: "NULL confidence cannot be labeled calibrated numeric confidence",
     });
   }
 });
@@ -104,6 +116,16 @@ serve(async (req) => {
   }
 
   const value = parsed.data;
+  const observedAt = value.observedAt ?? new Date().toISOString();
+  const confidence = value.confidence ?? null;
+  const confidenceSemantics = confidence === null
+    ? value.confidenceSemantics ?? "unknown_not_quantified"
+    : value.confidenceSemantics ?? "caller_supplied_numeric_semantics_unspecified";
+  const occurredAt = value.occurredAt ?? null;
+  const timeSemantics = occurredAt === null
+    ? value.timeSemantics ?? "occurrence_time_unknown_observation_time_not_substituted"
+    : value.timeSemantics ?? "caller_supplied_occurrence_time_semantics_unspecified";
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -114,17 +136,19 @@ serve(async (req) => {
     .insert({
       event_type: value.eventType,
       epistemic_status: value.epistemicStatus,
-      confidence: value.confidence,
+      confidence,
+      confidence_semantics: confidenceSemantics,
       subject_entity_id: value.subjectEntityId ?? null,
       correlation_id: value.correlationId ?? null,
       causation_id: value.causationId ?? null,
-      occurred_at: value.occurredAt,
-      observed_at: value.observedAt ?? new Date().toISOString(),
+      occurred_at: occurredAt,
+      observed_at: observedAt,
+      time_semantics: timeSemantics,
       producer: value.producer,
       payload: value.payload,
       provenance: value.provenance,
     })
-    .select("id,event_type,epistemic_status,confidence,occurred_at,observed_at,producer")
+    .select("id,event_type,epistemic_status,confidence,confidence_semantics,occurred_at,observed_at,time_semantics,producer")
     .single();
 
   if (error) {
@@ -149,13 +173,25 @@ serve(async (req) => {
     metadata: {
       cognitive_event_id: data.id,
       epistemic_status: value.epistemicStatus,
-      confidence: value.confidence,
+      confidence,
+      confidence_semantics: confidenceSemantics,
+      occurred_at: occurredAt,
+      observed_at: observedAt,
+      time_semantics: timeSemantics,
       auth_via: via,
       producer: value.producer,
     },
   });
 
-  return new Response(JSON.stringify({ success: true, event: data }), {
+  return new Response(JSON.stringify({
+    success: true,
+    event: data,
+    epistemic_contract: {
+      missing_confidence_remains_null: true,
+      missing_occurrence_time_remains_null: true,
+      observation_time_substituted_for_occurrence_time: false,
+    },
+  }), {
     status: 201,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
