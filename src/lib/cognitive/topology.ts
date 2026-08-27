@@ -4,7 +4,7 @@ import { degreeCentrality, findDirectedCycles, weaklyConnectedComponents, weight
 export interface NodeTopologyState {
   nodeId: string;
   degreeCentrality: number;
-  influence: number;
+  influence: number | null;
   outgoingEdges: number;
   incomingEdges: number;
 }
@@ -16,6 +16,7 @@ export interface GraphTopologySnapshot {
   componentCount: number;
   largestComponentSize: number;
   cycleCount: number;
+  influenceCoverage: "complete" | "incomplete";
   nodes: Map<string, NodeTopologyState>;
 }
 
@@ -49,9 +50,8 @@ export interface TopologyDiffOptions {
 }
 
 /**
- * Captures a deterministic structural snapshot of the verified planetary graph.
- * This is intentionally semantic-free: it measures what changed before an LLM
- * is ever invited to explain why the change might matter.
+ * Captures deterministic structure and keeps weighted influence NULL when the
+ * verified graph is not fully quantified. Structural degree remains measurable.
  */
 export function captureTopology(
   graph: PlanetaryGraph,
@@ -70,8 +70,8 @@ export function captureTopology(
     edgeCount += outgoingEdges;
     nodes.set(nodeId, {
       nodeId,
-      degreeCentrality: clamp01(centrality.get(nodeId) ?? 0),
-      influence: clamp01(influence.values.get(nodeId) ?? 0),
+      degreeCentrality: centrality.get(nodeId) ?? 0,
+      influence: influence.values.get(nodeId) ?? null,
       outgoingEdges,
       incomingEdges,
     });
@@ -84,14 +84,14 @@ export function captureTopology(
     componentCount: components.length,
     largestComponentSize: components[0]?.length ?? 0,
     cycleCount: cycles.length,
+    influenceCoverage: influence.quantitativeCoverage,
     nodes,
   };
 }
 
 /**
- * Compares two graph snapshots and returns only material structural changes.
- * Values are normalized so the result can feed anomaly/orchestration layers
- * without conflating topology measurement with narrative interpretation.
+ * Structural changes are always comparable. Influence changes are emitted only
+ * when both snapshots contain quantified influence for the node.
  */
 export function diffTopology(
   previous: GraphTopologySnapshot,
@@ -113,9 +113,9 @@ export function diffTopology(
       changes.push({
         kind: "node.emerged",
         nodeId,
-        severity: clamp01(0.2 + 0.4 * after.degreeCentrality + 0.4 * after.influence),
+        severity: nodePresencePriority(after.degreeCentrality, after.influence),
         currentValue: after.degreeCentrality,
-        evidence: { current: after },
+        evidence: { current: after, influence_quantified: after.influence !== null },
       });
       continue;
     }
@@ -124,9 +124,9 @@ export function diffTopology(
       changes.push({
         kind: "node.disappeared",
         nodeId,
-        severity: clamp01(0.2 + 0.4 * before.degreeCentrality + 0.4 * before.influence),
+        severity: nodePresencePriority(before.degreeCentrality, before.influence),
         previousValue: before.degreeCentrality,
-        evidence: { previous: before },
+        evidence: { previous: before, influence_quantified: before.influence !== null },
       });
       continue;
     }
@@ -134,7 +134,6 @@ export function diffTopology(
     if (!before || !after) continue;
 
     const centralityDelta = after.degreeCentrality - before.degreeCentrality;
-    const influenceDelta = after.influence - before.influence;
 
     if (
       before.degreeCentrality < connectorThreshold &&
@@ -166,26 +165,29 @@ export function diffTopology(
       });
     }
 
-    if (influenceDelta >= influenceDeltaThreshold) {
-      changes.push({
-        kind: "influence.surge",
-        nodeId,
-        severity: clamp01(0.3 + influenceDelta),
-        previousValue: before.influence,
-        currentValue: after.influence,
-        delta: influenceDelta,
-        evidence: { before, after },
-      });
-    } else if (-influenceDelta >= influenceDeltaThreshold) {
-      changes.push({
-        kind: "influence.drop",
-        nodeId,
-        severity: clamp01(0.25 - influenceDelta),
-        previousValue: before.influence,
-        currentValue: after.influence,
-        delta: influenceDelta,
-        evidence: { before, after },
-      });
+    if (before.influence !== null && after.influence !== null) {
+      const influenceDelta = after.influence - before.influence;
+      if (influenceDelta >= influenceDeltaThreshold) {
+        changes.push({
+          kind: "influence.surge",
+          nodeId,
+          severity: clamp01(0.3 + influenceDelta),
+          previousValue: before.influence,
+          currentValue: after.influence,
+          delta: influenceDelta,
+          evidence: { before, after },
+        });
+      } else if (-influenceDelta >= influenceDeltaThreshold) {
+        changes.push({
+          kind: "influence.drop",
+          nodeId,
+          severity: clamp01(0.25 - influenceDelta),
+          previousValue: before.influence,
+          currentValue: after.influence,
+          delta: influenceDelta,
+          evidence: { before, after },
+        });
+      }
     }
   }
 
@@ -225,7 +227,7 @@ export function diffTopology(
       previousValue: previous.cycleCount,
       currentValue: current.cycleCount,
       delta,
-      evidence: {},
+      evidence: { bounded_cycle_scan: true },
     });
   } else if (current.cycleCount < previous.cycleCount) {
     const delta = previous.cycleCount - current.cycleCount;
@@ -235,7 +237,7 @@ export function diffTopology(
       previousValue: previous.cycleCount,
       currentValue: current.cycleCount,
       delta: -delta,
-      evidence: {},
+      evidence: { bounded_cycle_scan: true },
     });
   }
 
@@ -289,6 +291,13 @@ export function topologyChangeSummary(changes: TopologyChange[]): {
   };
 }
 
+function nodePresencePriority(degreeCentrality: number, influence: number | null): number {
+  const structural = clamp01(degreeCentrality);
+  const weighted = influence === null ? null : clamp01(influence);
+  const combined = weighted === null ? structural : 0.5 * structural + 0.5 * weighted;
+  return clamp01(0.2 + 0.8 * combined);
+}
+
 function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+  return Math.min(1, Math.max(0, value));
 }
