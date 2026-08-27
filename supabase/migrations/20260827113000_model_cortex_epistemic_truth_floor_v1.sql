@@ -23,6 +23,8 @@ ALTER TABLE public.aicis_model_competency
   ADD COLUMN IF NOT EXISTS calibration_semantics text,
   ADD COLUMN IF NOT EXISTS reliability_semantics text,
   ADD COLUMN IF NOT EXISTS latency_semantics text,
+  ADD COLUMN IF NOT EXISTS brier_score_semantics text,
+  ADD COLUMN IF NOT EXISTS ece_semantics text,
   ADD COLUMN IF NOT EXISTS evaluation_status text,
   ADD COLUMN IF NOT EXISTS evaluation_method text;
 
@@ -38,6 +40,12 @@ WHERE reliability IS NOT NULL AND reliability_semantics IS NULL;
 UPDATE public.aicis_model_competency
 SET latency_semantics = 'legacy_latency_semantics_unverified'
 WHERE latency_ms_p95 IS NOT NULL AND latency_semantics IS NULL;
+UPDATE public.aicis_model_competency
+SET brier_score_semantics = 'legacy_metric_semantics_unverified'
+WHERE brier_score IS NOT NULL AND brier_score_semantics IS NULL;
+UPDATE public.aicis_model_competency
+SET ece_semantics = 'legacy_metric_semantics_unverified'
+WHERE ece IS NOT NULL AND ece_semantics IS NULL;
 UPDATE public.aicis_model_competency
 SET evaluation_status = 'legacy_evaluation_status_unverified'
 WHERE evaluation_status IS NULL;
@@ -85,6 +93,24 @@ SET latency_semantics = 'legacy_latency_semantics_unverified'
 WHERE latency_ms IS NOT NULL AND latency_semantics IS NULL;
 UPDATE public.aicis_model_execution_outputs
 SET evidence_status = 'legacy_evidence_status_unknown'
+WHERE evidence_status IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- Model outcomes: direct metrics carry their own semantics.
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.aicis_model_outcomes
+  ADD COLUMN IF NOT EXISTS brier_score_semantics text,
+  ADD COLUMN IF NOT EXISTS absolute_error_semantics text,
+  ADD COLUMN IF NOT EXISTS evidence_status text;
+
+UPDATE public.aicis_model_outcomes
+SET brier_score_semantics = 'legacy_metric_semantics_unverified'
+WHERE brier_score IS NOT NULL AND brier_score_semantics IS NULL;
+UPDATE public.aicis_model_outcomes
+SET absolute_error_semantics = 'legacy_metric_semantics_unverified'
+WHERE absolute_error IS NOT NULL AND absolute_error_semantics IS NULL;
+UPDATE public.aicis_model_outcomes
+SET evidence_status = 'legacy_outcome_evidence_status_unknown'
 WHERE evidence_status IS NULL;
 
 -- ---------------------------------------------------------------------------
@@ -148,10 +174,16 @@ COMMENT ON COLUMN public.aicis_model_competency.calibration IS
   'Nullable calibration quality metric. NULL means not quantified. A zero value must be an observed/evaluated zero, never a default.';
 COMMENT ON COLUMN public.aicis_model_competency.reliability IS
   'Nullable measured reliability metric. NULL means not quantified; inspect reliability_semantics.';
+COMMENT ON COLUMN public.aicis_model_competency.brier_score IS
+  'Direct mean Brier score when evaluated on realized binary probabilistic outcomes. Inspect brier_score_semantics and sample_size.';
+COMMENT ON COLUMN public.aicis_model_competency.ece IS
+  'Direct expected calibration error when enough realized probabilistic outcomes exist. Inspect ece_semantics and sample_size.';
 COMMENT ON COLUMN public.aicis_model_predictions.probability IS
   'Nullable model output in [0,1]. It is only a calibrated empirical probability when probability_semantics and calibration_status explicitly establish that interpretation.';
 COMMENT ON COLUMN public.aicis_model_predictions.confidence IS
   'Nullable analytical/model confidence. NULL means not issued. Never infer confidence from probability magnitude or model agreement.';
+COMMENT ON COLUMN public.aicis_model_outcomes.brier_score IS
+  'Nullable per-prediction Brier score, computed only when the stored prediction semantics establish a probabilistic output and a binary outcome exists.';
 COMMENT ON COLUMN public.aicis_ensemble_predictions.probability IS
   'Nullable ensemble probability-like output. Aggregation alone does not make the ensemble calibrated; inspect probability_semantics and calibration_status.';
 COMMENT ON COLUMN public.aicis_ensemble_predictions.confidence IS
