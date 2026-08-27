@@ -19,16 +19,35 @@ export interface BaselineComparison {
 
 /**
  * Deterministic logistic baseline for already-trained coefficients. This is not
- * a trainer; it exists so tabular ANN/tree challengers have a simple, auditable
- * reference model to beat.
+ * a trainer and its raw sigmoid output is not assumed calibrated merely because
+ * it lies in [0,1]. Every coefficient feature must be present; missing features
+ * are never silently converted to zero.
  */
 export function runLogisticBaseline(
   modelId: string,
   input: TabularLogisticInput,
-  latencyMs = 0,
+  latencyMs: number | null = null,
 ): ModelExecutionOutput {
-  const linear = Object.entries(input.coefficients).reduce(
-    (sum, [feature, coefficient]) => sum + coefficient * (input.features[feature] ?? 0),
+  const coefficientEntries = Object.entries(input.coefficients);
+  const missingFeatures = coefficientEntries
+    .map(([feature]) => feature)
+    .filter((feature) => !Object.prototype.hasOwnProperty.call(input.features, feature));
+  if (missingFeatures.length > 0) {
+    throw new Error(`logistic baseline missing required feature(s): ${missingFeatures.join(", ")}`);
+  }
+
+  for (const [feature, coefficient] of coefficientEntries) {
+    const value = input.features[feature];
+    if (!Number.isFinite(coefficient) || !Number.isFinite(value)) {
+      throw new Error(`logistic baseline requires finite coefficient and feature value for ${feature}`);
+    }
+  }
+  if (!Number.isFinite(input.intercept)) {
+    throw new Error("logistic baseline requires a finite intercept");
+  }
+
+  const linear = coefficientEntries.reduce(
+    (sum, [feature, coefficient]) => sum + coefficient * input.features[feature],
     input.intercept,
   );
   const probability = sigmoid(linear);
@@ -37,55 +56,95 @@ export function runLogisticBaseline(
     kind: "probability",
     value: probability,
     probability,
-    confidence: 0.6,
-    latencyMs: Math.max(0, latencyMs),
-    metadata: { baseline: "logistic", linearScore: linear },
+    probabilitySemantics: "raw_logistic_model_output_not_assumed_calibrated",
+    calibrationStatus: "not_proven_by_baseline_execution",
+    confidence: null,
+    confidenceSemantics: "not_issued_deterministic_execution_is_not_epistemic_confidence",
+    latencyMs: normalizeLatency(latencyMs),
+    latencySemantics: latencyMs === null
+      ? "not_measured"
+      : "caller_supplied_execution_latency_ms",
+    evidenceStatus: "complete_required_feature_vector",
+    metadata: {
+      baseline: "logistic",
+      linearScore: linear,
+      featureCount: coefficientEntries.length,
+      deterministicBaseline: true,
+    },
   };
 }
 
-/** Last-observation persistence: y(t+h) = y(t). */
+/** Last-observation persistence: y(t+h) = y(t). Deterministic rule, no confidence issued. */
 export function runPersistenceBaseline(
   modelId: string,
   input: TemporalSeriesInput,
-  latencyMs = 0,
+  latencyMs: number | null = null,
 ): ModelExecutionOutput {
   const values = cleanSeries(input.values);
   if (values.length === 0) throw new Error("persistence baseline requires at least one finite value");
+  if (values.length !== input.values.length) {
+    throw new Error("persistence baseline does not accept missing/non-finite series values");
+  }
   const value = values[values.length - 1];
   return {
     modelId,
     kind: "numeric",
     value,
-    confidence: values.length >= 8 ? 0.55 : 0.35,
-    latencyMs: Math.max(0, latencyMs),
-    metadata: { baseline: "persistence", observations: values.length },
+    confidence: null,
+    confidenceSemantics: "not_issued_observation_count_is_not_forecast_confidence",
+    latencyMs: normalizeLatency(latencyMs),
+    latencySemantics: latencyMs === null
+      ? "not_measured"
+      : "caller_supplied_execution_latency_ms",
+    evidenceStatus: "complete_supplied_series",
+    metadata: {
+      baseline: "persistence",
+      observations: values.length,
+      deterministicBaseline: true,
+      forecastSemantics: "last_observation_persistence_rule_not_probabilistic_forecast",
+    },
   };
 }
 
-/** Simple local drift: extrapolate the average first difference one step. */
+/** Simple local drift: extrapolate average first difference one step. No confidence issued. */
 export function runDriftBaseline(
   modelId: string,
   input: TemporalSeriesInput,
-  latencyMs = 0,
+  latencyMs: number | null = null,
 ): ModelExecutionOutput {
   const values = cleanSeries(input.values);
   if (values.length < 2) throw new Error("drift baseline requires at least two finite values");
+  if (values.length !== input.values.length) {
+    throw new Error("drift baseline does not accept missing/non-finite series values");
+  }
   const drift = (values[values.length - 1] - values[0]) / (values.length - 1);
   const value = values[values.length - 1] + drift;
   return {
     modelId,
     kind: "numeric",
     value,
-    confidence: values.length >= 8 ? 0.5 : 0.3,
-    latencyMs: Math.max(0, latencyMs),
-    metadata: { baseline: "drift", observations: values.length, drift },
+    confidence: null,
+    confidenceSemantics: "not_issued_observation_count_is_not_forecast_confidence",
+    latencyMs: normalizeLatency(latencyMs),
+    latencySemantics: latencyMs === null
+      ? "not_measured"
+      : "caller_supplied_execution_latency_ms",
+    evidenceStatus: "complete_supplied_series",
+    metadata: {
+      baseline: "drift",
+      observations: values.length,
+      drift,
+      deterministicBaseline: true,
+      forecastSemantics: "linear_local_drift_rule_not_probabilistic_forecast",
+    },
   };
 }
 
 /**
  * Conservative promotion gate. A challenger must improve probabilistic error
  * and must not materially worsen calibration. Sample-size requirements prevent
- * tiny benchmark wins from becoming production authority.
+ * tiny benchmark wins from becoming production authority. Thresholds are policy
+ * thresholds, not claims of statistical significance.
  */
 export function compareChallengerToBaseline(input: {
   baselineBrier: number | null;
@@ -114,7 +173,7 @@ export function compareChallengerToBaseline(input: {
     relativeBrierImprovement = (input.baselineBrier - input.challengerBrier) / input.baselineBrier;
     const required = input.minimumRelativeBrierImprovement ?? 0.05;
     if (relativeBrierImprovement < required) {
-      reasons.push(`Brier improvement ${(relativeBrierImprovement * 100).toFixed(1)}% is below required ${(required * 100).toFixed(1)}%`);
+      reasons.push(`Brier improvement ${(relativeBrierImprovement * 100).toFixed(1)}% is below required policy threshold ${(required * 100).toFixed(1)}%`);
     }
   } else {
     reasons.push("comparable Brier evidence is unavailable");
@@ -146,6 +205,14 @@ export function compareChallengerToBaseline(input: {
 
 function cleanSeries(values: number[]): number[] {
   return values.filter((value) => Number.isFinite(value));
+}
+
+function normalizeLatency(value: number | null): number | null {
+  if (value === null) return null;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("latency must be a finite non-negative number when supplied");
+  }
+  return value;
 }
 
 function sigmoid(value: number): number {
