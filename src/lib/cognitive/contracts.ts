@@ -3,8 +3,11 @@ import { z } from "zod";
 /**
  * Shared contracts for the AICIS cognitive substrate.
  *
- * Design rule: generated language is never implicitly trusted knowledge.
- * Every fact-like object carries an epistemic state, confidence and provenance.
+ * Design rules:
+ * - generated language is never implicitly trusted knowledge;
+ * - unknown numeric confidence remains null rather than becoming a neutral-looking value;
+ * - observation time is not a substitute for real-world event occurrence time;
+ * - a numeric field is not quantitatively trusted unless its semantics are declared.
  */
 export const epistemicStatusSchema = z.enum([
   "observed",
@@ -54,7 +57,7 @@ export const cognitiveEventTypeSchema = z.enum([
 ]);
 export type CognitiveEventType = z.infer<typeof cognitiveEventTypeSchema>;
 
-const confidenceSchema = z.number().min(0).max(1);
+export const unitIntervalSchema = z.number().min(0).max(1);
 
 export const provenanceSchema = z.object({
   sourceId: z.string().trim().min(1).max(300),
@@ -88,8 +91,10 @@ export const evidenceClaimSchema = z.object({
   objectEntityId: z.string().uuid().optional(),
   objectValue: z.unknown().optional(),
   epistemicStatus: epistemicStatusSchema,
-  confidence: confidenceSchema,
-  occurredAt: z.string().datetime().optional(),
+  confidence: unitIntervalSchema.nullable(),
+  confidenceSemantics: z.string().trim().min(1).max(240).optional(),
+  occurredAt: z.string().datetime().nullable().optional(),
+  timeSemantics: z.string().trim().min(1).max(300).optional(),
   validFrom: z.string().datetime().optional(),
   validTo: z.string().datetime().optional(),
   provenance: z.array(provenanceSchema).min(1),
@@ -104,8 +109,10 @@ export const worldRelationshipSchema = z.object({
   relationshipType: z.string().trim().min(1).max(160),
   status: relationshipStatusSchema,
   epistemicStatus: epistemicStatusSchema,
-  strength: confidenceSchema.optional(),
-  confidence: confidenceSchema,
+  strength: unitIntervalSchema.nullable().optional(),
+  strengthSemantics: z.string().trim().min(1).max(240).optional(),
+  confidence: unitIntervalSchema.nullable(),
+  confidenceSemantics: z.string().trim().min(1).max(240).optional(),
   validFrom: z.string().datetime().optional(),
   validTo: z.string().datetime().optional(),
   evidenceClaimIds: z.array(z.string().uuid()).default([]),
@@ -117,12 +124,14 @@ export const cognitiveEventSchema = z.object({
   id: z.string().uuid().optional(),
   eventType: cognitiveEventTypeSchema,
   epistemicStatus: epistemicStatusSchema,
-  confidence: confidenceSchema,
+  confidence: unitIntervalSchema.nullable(),
+  confidenceSemantics: z.string().trim().min(1).max(240).optional(),
   subjectEntityId: z.string().uuid().optional(),
   correlationId: z.string().uuid().optional(),
   causationId: z.string().uuid().optional(),
-  occurredAt: z.string().datetime(),
+  occurredAt: z.string().datetime().nullable(),
   observedAt: z.string().datetime(),
+  timeSemantics: z.string().trim().min(1).max(300).optional(),
   producer: z.string().trim().min(1).max(160),
   payload: z.record(z.unknown()).default({}),
   provenance: z.array(provenanceSchema).default([]),
@@ -133,15 +142,38 @@ export function isTrustedKnowledge(status: EpistemicStatus): boolean {
   return status === "observed" || status === "derived";
 }
 
+/**
+ * Graph membership is an epistemic/status decision. Numeric confidence is not a
+ * universal admission threshold because many verified relationships legitimately
+ * have no calibrated confidence value. Quantitative algorithms must separately
+ * require declared numeric semantics.
+ */
 export function canEnterVerifiedGraph(
   status: EpistemicStatus,
   relationshipStatus: RelationshipStatus,
-  confidence: number,
 ): boolean {
-  return (
-    relationshipStatus === "verified" &&
+  return relationshipStatus === "verified" &&
     status !== "unverified" &&
-    status !== "contradicted" &&
-    confidence >= 0.5
-  );
+    status !== "contradicted";
+}
+
+export function hasUsableNumericSemantics(semantics: string | undefined | null): boolean {
+  if (!semantics) return false;
+  const normalized = semantics.toLowerCase();
+  return !normalized.includes("legacy") &&
+    !normalized.includes("unknown") &&
+    !normalized.includes("not_quantified") &&
+    !normalized.includes("unspecified") &&
+    !normalized.includes("unverified");
+}
+
+export function hasQuantifiedUnitInterval(
+  value: number | null | undefined,
+  semantics: string | null | undefined,
+): value is number {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 1 &&
+    hasUsableNumericSemantics(semantics);
 }
