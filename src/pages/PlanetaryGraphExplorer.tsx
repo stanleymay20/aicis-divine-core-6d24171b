@@ -110,7 +110,7 @@ function formatNodeLabel(kind: string, key: string, entityLabels: Map<string, st
     const [country, domain] = key.split("/");
     return domain ? `${country} · ${titleCase(domain)}` : key;
   }
-  return titleCase(key.replaceAll("/", " · "));
+  return titleCase(key.split("/").join(" · "));
 }
 
 function numberOrZero(value: number | null | undefined) {
@@ -455,6 +455,7 @@ export default function PlanetaryGraphExplorer() {
       <SEO
         title="Planetary Graph Explorer | AICIS"
         description="Explore AICIS evidence-weighted planetary relationships, temporal decay, network influence, and directed downstream reachability."
+        path="/planetary-graph"
       />
 
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">

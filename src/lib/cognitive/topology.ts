@@ -71,7 +71,7 @@ export function captureTopology(
     nodes.set(nodeId, {
       nodeId,
       degreeCentrality: clamp01(centrality.get(nodeId) ?? 0),
-      influence: clamp01(influence.get(nodeId) ?? 0),
+      influence: clamp01(influence.values.get(nodeId) ?? 0),
       outgoingEdges,
       incomingEdges,
     });
