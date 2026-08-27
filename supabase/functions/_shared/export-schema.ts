@@ -55,17 +55,19 @@ export interface ExportProfile {
   schema_version: string;
 }
 
+const UNUSABLE_SEMANTIC_TOKENS = [
+  "legacy",
+  "unknown",
+  "unverified",
+  "unspecified",
+  "unlabeled",
+  "withheld",
+] as const;
+
 function semanticsUsable(value: unknown): boolean {
   if (typeof value !== "string" || value.trim() === "") return false;
   const normalized = value.toLowerCase();
-  return ![
-    "legacy",
-    "unknown",
-    "unverified",
-    "unspecified",
-    "unlabeled",
-    "withheld",
-  ].some((token) => normalized.includes(token));
+  return !UNUSABLE_SEMANTIC_TOKENS.some((token) => normalized.includes(token));
 }
 
 export function clamp01_100(n: unknown): number | null {
@@ -403,13 +405,30 @@ export const corsHeaders = {
   "Access-Control-Expose-Headers": "x-ratelimit-limit, x-ratelimit-remaining, x-schema-version, x-export-batch-id, x-next-cursor",
 };
 
+function requireUsableSemantics(q: any, column: string) {
+  q = q.not(column, "is", null);
+  for (const token of UNUSABLE_SEMANTIC_TOKENS) {
+    q = q.not(column, "ilike", `%${token}%`);
+  }
+  return q;
+}
+
 export function applyProfileFilters<T>(q: any, profile: ExportProfile) {
   if (profile.domains.length) q = q.in("category", profile.domains);
   if (profile.countries.length) q = q.overlaps("affected_countries", profile.countries);
   if (profile.regions.length) q = q.overlaps("affected_regions", profile.regions);
-  // Compatibility filters are retained at the storage layer. normalizeSignal
-  // still withholds any selected score whose semantics are unusable.
-  if (profile.min_confidence_score > 0) q = q.gte("confidence_score", profile.min_confidence_score);
-  if (profile.min_urgency_score > 0) q = q.gte("urgency_score", profile.min_urgency_score);
+
+  if (profile.min_relevance_score > 0) {
+    q = q.gte("source_rank_score", profile.min_relevance_score);
+    q = requireUsableSemantics(q, "source_rank_score_semantics");
+  }
+  if (profile.min_confidence_score > 0) {
+    q = q.gte("confidence_score", profile.min_confidence_score);
+    q = requireUsableSemantics(q, "confidence_score_semantics");
+  }
+  if (profile.min_urgency_score > 0) {
+    q = q.gte("urgency_score", profile.min_urgency_score);
+    q = requireUsableSemantics(q, "urgency_score_semantics");
+  }
   return q;
 }
