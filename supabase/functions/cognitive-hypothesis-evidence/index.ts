@@ -9,6 +9,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const QUALITATIVE_SEMANTICS = "qualitative_only_unquantified";
+const SUBJECTIVE_QUANTITATIVE_SEMANTICS = "operator_supplied_subjective_likelihood_ratio_and_reliability";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -30,17 +33,47 @@ serve(async (req) => {
   try { body = await req.json(); } catch { /* validation below */ }
 
   if (!body.hypothesis_id) return json({ error: "hypothesis_id is required" }, 400);
-  if (!body.claim_id && !body.cognitive_event_id) return json({ error: "claim_id or cognitive_event_id is required" }, 400);
-  if (body.claim_id && body.cognitive_event_id) return json({ error: "Attach one evidence object at a time" }, 400);
+  if (!body.claim_id && !body.cognitive_event_id) {
+    return json({ error: "claim_id or cognitive_event_id is required" }, 400);
+  }
+  if (body.claim_id && body.cognitive_event_id) {
+    return json({ error: "Attach one evidence object at a time" }, 400);
+  }
 
   const stance = body.stance ?? "context";
   if (!["supports", "contradicts", "context", "discriminates"].includes(stance)) {
     return json({ error: "Invalid stance" }, 400);
   }
 
-  const pTrue = clampLikelihood(body.likelihood_given_hypothesis ?? defaultLikelihood(stance, true));
-  const pFalse = clampLikelihood(body.likelihood_given_alternative ?? defaultLikelihood(stance, false));
-  const reliability = clamp01(body.reliability ?? 0.5);
+  const quantitativeFields = [
+    body.reliability,
+    body.likelihood_given_hypothesis,
+    body.likelihood_given_alternative,
+  ];
+  const suppliedQuantitativeCount = quantitativeFields.filter((value) => value !== undefined).length;
+  if (suppliedQuantitativeCount !== 0 && suppliedQuantitativeCount !== quantitativeFields.length) {
+    return json({
+      error: "Quantitative evidence requires reliability, likelihood_given_hypothesis, and likelihood_given_alternative together",
+      semantics: "missing quantitative assumptions are not filled with defaults",
+    }, 400);
+  }
+
+  const hasQuantitativeAssumptions = suppliedQuantitativeCount === quantitativeFields.length;
+  if (hasQuantitativeAssumptions) {
+    if (!isUnitInterval(body.reliability)) {
+      return json({ error: "reliability must be a finite number between 0 and 1" }, 400);
+    }
+    if (!isOpenProbability(body.likelihood_given_hypothesis) || !isOpenProbability(body.likelihood_given_alternative)) {
+      return json({ error: "Likelihood assumptions must be finite numbers strictly between 0 and 1" }, 400);
+    }
+  }
+
+  const reliability = hasQuantitativeAssumptions ? Number(body.reliability) : null;
+  const pTrue = hasQuantitativeAssumptions ? Number(body.likelihood_given_hypothesis) : null;
+  const pFalse = hasQuantitativeAssumptions ? Number(body.likelihood_given_alternative) : null;
+  const quantitativeSemantics = hasQuantitativeAssumptions
+    ? SUBJECTIVE_QUANTITATIVE_SEMANTICS
+    : QUALITATIVE_SEMANTICS;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -50,16 +83,27 @@ serve(async (req) => {
   const [{ data: hypothesis }, sourceResult] = await Promise.all([
     supabase.from("aicis_hypotheses").select("id,status").eq("id", body.hypothesis_id).maybeSingle(),
     body.claim_id
-      ? supabase.from("aicis_evidence_claims").select("id,epistemic_status,confidence").eq("id", body.claim_id).maybeSingle()
-      : supabase.from("aicis_cognitive_events").select("id,epistemic_status,confidence").eq("id", body.cognitive_event_id).maybeSingle(),
+      ? supabase
+        .from("aicis_evidence_claims")
+        .select("id,epistemic_status,confidence,confidence_semantics")
+        .eq("id", body.claim_id)
+        .maybeSingle()
+      : supabase
+        .from("aicis_cognitive_events")
+        .select("id,epistemic_status,confidence,confidence_semantics")
+        .eq("id", body.cognitive_event_id)
+        .maybeSingle(),
   ]);
 
   if (!hypothesis) return json({ error: "Hypothesis not found" }, 404);
   if (!sourceResult.data) return json({ error: "Evidence source not found" }, 404);
 
-  const source = sourceResult.data as { epistemic_status: string; confidence: number };
-  const statusCap = epistemicReliabilityCap(source.epistemic_status);
-  const effectiveReliability = Math.min(reliability, clamp01(Number(source.confidence)), statusCap);
+  const source = sourceResult.data as {
+    epistemic_status: string;
+    confidence: number | null;
+    confidence_semantics: string | null;
+  };
+  const directObservation = Boolean(body.direct_observation && source.epistemic_status === "observed");
 
   const { data: evidence, error } = await supabase
     .from("aicis_hypothesis_evidence")
@@ -68,11 +112,12 @@ serve(async (req) => {
       claim_id: body.claim_id ?? null,
       cognitive_event_id: body.cognitive_event_id ?? null,
       stance,
-      reliability: effectiveReliability,
+      reliability,
       likelihood_given_hypothesis: pTrue,
       likelihood_given_alternative: pFalse,
+      quantitative_semantics: quantitativeSemantics,
       description: body.description ?? null,
-      direct_observation: Boolean(body.direct_observation && source.epistemic_status === "observed"),
+      direct_observation: directObservation,
     })
     .select("id")
     .single();
@@ -87,7 +132,11 @@ serve(async (req) => {
       hypothesis_id: body.hypothesis_id,
       evidence_id: evidence.id,
       source_epistemic_status: source.epistemic_status,
-      effective_reliability: effectiveReliability,
+      source_confidence: source.confidence,
+      source_confidence_semantics: source.confidence_semantics,
+      quantitative_semantics: quantitativeSemantics,
+      quantitative_assumptions_supplied: hasQuantitativeAssumptions,
+      direct_observation: directObservation,
       auth_via: via,
     },
   });
@@ -97,37 +146,28 @@ serve(async (req) => {
     evidence_id: evidence.id,
     hypothesis_id: body.hypothesis_id,
     stance,
-    effective_reliability: effectiveReliability,
+    reliability,
     likelihood_given_hypothesis: pTrue,
     likelihood_given_alternative: pFalse,
+    quantitative_semantics: quantitativeSemantics,
+    source_epistemic_status: source.epistemic_status,
+    source_confidence: source.confidence,
+    source_confidence_semantics: source.confidence_semantics,
+    direct_observation: directObservation,
   });
 });
 
-function defaultLikelihood(stance: string, hypothesis: boolean) {
-  if (stance === "supports") return hypothesis ? 0.75 : 0.35;
-  if (stance === "contradicts") return hypothesis ? 0.25 : 0.75;
-  if (stance === "discriminates") return hypothesis ? 0.7 : 0.3;
-  return 0.5;
+function isUnitInterval(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
-function epistemicReliabilityCap(status: string) {
-  switch (status) {
-    case "observed": return 1;
-    case "derived": return 0.9;
-    case "inferred": return 0.7;
-    case "predicted": return 0.45;
-    case "simulated": return 0.35;
-    case "hypothesized": return 0.3;
-    case "unverified": return 0.2;
-    case "contradicted": return 0.1;
-    default: return 0.2;
-  }
+
+function isOpenProbability(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value < 1;
 }
-function clampLikelihood(value: number) {
-  return Math.min(0.99, Math.max(0.01, Number.isFinite(value) ? value : 0.5));
-}
-function clamp01(value: number) {
-  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
-}
+
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
