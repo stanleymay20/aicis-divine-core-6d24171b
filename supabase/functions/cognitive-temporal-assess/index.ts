@@ -9,12 +9,28 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const RELATION_SEMANTICS = "deterministic_timestamp_ordering_with_explicit_tolerance_v2";
+const CONFIDENCE_SEMANTICS = "not_applicable_deterministic_timestamp_ordering";
+
 type EventRow = {
   id: string;
   occurred_at: string;
   observed_at: string;
-  confidence: number;
+  confidence: number | null;
+  confidence_semantics: string | null;
+  epistemic_status: string;
   event_type: string;
+};
+
+type TemporalAssessment = {
+  relation: "before" | "after" | "simultaneous" | "unknown";
+  plausible_forward_causation: boolean;
+  confidence: null;
+  confidence_semantics: string;
+  relation_semantics: string;
+  lag_ms: number | null;
+  tolerance_ms: number;
+  reasons: string[];
 };
 
 serve(async (req) => {
@@ -29,7 +45,13 @@ serve(async (req) => {
   if (!body.cause_event_id || !body.effect_event_id) {
     return json({ error: "cause_event_id and effect_event_id are required" }, 400);
   }
-  if (body.cause_event_id === body.effect_event_id) return json({ error: "Events must be distinct" }, 400);
+  if (body.cause_event_id === body.effect_event_id) {
+    return json({ error: "Events must be distinct" }, 400);
+  }
+
+  const toleranceResult = parseTolerance(body.tolerance_ms);
+  if (!toleranceResult.ok) return json({ error: toleranceResult.error }, 400);
+  const toleranceMs = toleranceResult.value;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -38,7 +60,7 @@ serve(async (req) => {
 
   const { data: rows, error } = await supabase
     .from("aicis_cognitive_events")
-    .select("id,occurred_at,observed_at,confidence,event_type")
+    .select("id,occurred_at,observed_at,confidence,confidence_semantics,epistemic_status,event_type")
     .in("id", [body.cause_event_id, body.effect_event_id]);
   if (error) return json({ error: "Failed to load events" }, 500);
   if (!rows || rows.length !== 2) return json({ error: "One or both events were not found" }, 404);
@@ -48,8 +70,8 @@ serve(async (req) => {
   const effect = byId.get(body.effect_event_id);
   if (!cause || !effect) return json({ error: "Event lookup failed" }, 500);
 
-  const toleranceMs = Math.max(0, Math.min(Number(body.tolerance_ms ?? 60_000), 86_400_000));
   const assessment = assess(cause, effect, toleranceMs);
+  const assessedAt = new Date().toISOString();
 
   const { data: persisted, error: persistError } = await supabase
     .from("aicis_temporal_relations")
@@ -59,21 +81,24 @@ serve(async (req) => {
       relation: assessment.relation,
       plausible_forward_causation: assessment.plausible_forward_causation,
       confidence: assessment.confidence,
+      confidence_semantics: assessment.confidence_semantics,
+      relation_semantics: assessment.relation_semantics,
       lag_ms: assessment.lag_ms,
       reasons: assessment.reasons,
-      assessed_at: new Date().toISOString(),
+      assessed_at: assessedAt,
     }, { onConflict: "cause_event_id,effect_event_id" })
     .select("id")
     .single();
-  if (persistError) return json({ error: "Failed to persist temporal assessment" }, 500);
+  if (persistError || !persisted) return json({ error: "Failed to persist temporal assessment" }, 500);
 
   if (!assessment.plausible_forward_causation && assessment.relation === "after") {
     await supabase.from("aicis_cognitive_events").insert({
       event_type: "claim.contradicted",
       epistemic_status: "derived",
-      confidence: assessment.confidence,
-      occurred_at: new Date().toISOString(),
-      observed_at: new Date().toISOString(),
+      confidence: null,
+      confidence_semantics: "not_quantified_temporal_order_contradiction_record",
+      occurred_at: assessedAt,
+      observed_at: assessedAt,
       producer: FN,
       payload: {
         contradiction_type: "temporal-order",
@@ -82,15 +107,18 @@ serve(async (req) => {
         cause_event_type: cause.event_type,
         effect_event_type: effect.event_type,
         relation: assessment.relation,
+        lag_ms: assessment.lag_ms,
+        tolerance_ms: assessment.tolerance_ms,
+        relation_semantics: assessment.relation_semantics,
         reasons: assessment.reasons,
-        note: "Temporal inconsistency rejects ordinary forward causation but does not rule out common causes or data timestamp errors.",
+        note: "The proposed cause occurs after the proposed effect under the selected timestamp tolerance. This rules out ordinary forward temporal order only; it does not establish an alternative cause or rule out timestamp error/common causes.",
       },
       provenance: [{
         sourceId: `temporal-relation:${persisted.id}`,
         sourceType: "derived-temporal-assessment",
-        observedAt: new Date().toISOString(),
+        observedAt: assessedAt,
         extractor: FN,
-        extractorVersion: "1",
+        extractorVersion: "2",
       }],
     });
   }
@@ -103,42 +131,105 @@ serve(async (req) => {
     metadata: {
       cause_event_id: cause.id,
       effect_event_id: effect.id,
+      cause_epistemic_status: cause.epistemic_status,
+      effect_epistemic_status: effect.epistemic_status,
+      cause_confidence: cause.confidence,
+      cause_confidence_semantics: cause.confidence_semantics,
+      effect_confidence: effect.confidence,
+      effect_confidence_semantics: effect.confidence_semantics,
       plausible_forward_causation: assessment.plausible_forward_causation,
+      relation_semantics: assessment.relation_semantics,
+      confidence_semantics: assessment.confidence_semantics,
       lag_ms: assessment.lag_ms,
+      tolerance_ms: assessment.tolerance_ms,
       auth_via: via,
     },
   });
 
-  return json({ success: true, relation_id: persisted.id, ...assessment });
+  return json({
+    success: true,
+    relation_id: persisted.id,
+    ...assessment,
+    source_event_epistemics: {
+      cause: {
+        status: cause.epistemic_status,
+        confidence: cause.confidence,
+        confidence_semantics: cause.confidence_semantics,
+      },
+      effect: {
+        status: effect.epistemic_status,
+        confidence: effect.confidence,
+        confidence_semantics: effect.confidence_semantics,
+      },
+    },
+  });
 });
 
-function assess(cause: EventRow, effect: EventRow, toleranceMs: number) {
-  const causeTime = Date.parse(cause.occurred_at || cause.observed_at);
-  const effectTime = Date.parse(effect.occurred_at || effect.observed_at);
-  const confidence = clamp01(Math.min(Number(cause.confidence), Number(effect.confidence)));
+function assess(cause: EventRow, effect: EventRow, toleranceMs: number): TemporalAssessment {
+  const causeTime = Date.parse(cause.occurred_at);
+  const effectTime = Date.parse(effect.occurred_at);
+
   if (!Number.isFinite(causeTime) || !Number.isFinite(effectTime)) {
-    return { relation: "unknown", plausible_forward_causation: false, confidence: 0.2, lag_ms: null, reasons: ["Invalid event timestamp"] };
+    return {
+      relation: "unknown",
+      plausible_forward_causation: false,
+      confidence: null,
+      confidence_semantics: CONFIDENCE_SEMANTICS,
+      relation_semantics: RELATION_SEMANTICS,
+      lag_ms: null,
+      tolerance_ms: toleranceMs,
+      reasons: ["One or both persisted event timestamps could not be parsed; temporal order is unknown"],
+    };
   }
 
   const lag = effectTime - causeTime;
   if (lag > toleranceMs) {
-    return { relation: "before", plausible_forward_causation: true, confidence, lag_ms: lag, reasons: ["Proposed cause precedes effect"] };
+    return {
+      relation: "before",
+      plausible_forward_causation: true,
+      confidence: null,
+      confidence_semantics: CONFIDENCE_SEMANTICS,
+      relation_semantics: RELATION_SEMANTICS,
+      lag_ms: lag,
+      tolerance_ms: toleranceMs,
+      reasons: ["Proposed cause timestamp precedes effect timestamp beyond the selected tolerance; chronology permits but does not prove forward causation"],
+    };
   }
   if (lag < -toleranceMs) {
-    return { relation: "after", plausible_forward_causation: false, confidence, lag_ms: lag, reasons: ["Proposed cause occurs after effect"] };
+    return {
+      relation: "after",
+      plausible_forward_causation: false,
+      confidence: null,
+      confidence_semantics: CONFIDENCE_SEMANTICS,
+      relation_semantics: RELATION_SEMANTICS,
+      lag_ms: lag,
+      tolerance_ms: toleranceMs,
+      reasons: ["Proposed cause timestamp follows effect timestamp beyond the selected tolerance; ordinary forward causal order is temporally inconsistent"],
+    };
   }
   return {
     relation: "simultaneous",
     plausible_forward_causation: false,
-    confidence: confidence * 0.7,
+    confidence: null,
+    confidence_semantics: CONFIDENCE_SEMANTICS,
+    relation_semantics: RELATION_SEMANTICS,
     lag_ms: lag,
-    reasons: ["Events are approximately simultaneous; ordering cannot establish direction"],
+    tolerance_ms: toleranceMs,
+    reasons: ["Event timestamps fall within the selected tolerance; timestamp ordering cannot establish a direction"],
   };
 }
 
-function clamp01(value: number) {
-  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+function parseTolerance(value: unknown): { ok: true; value: number } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, value: 60_000 };
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 86_400_000) {
+    return { ok: false, error: "tolerance_ms must be a finite number from 0 through 86400000" };
+  }
+  return { ok: true, value };
 }
+
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
