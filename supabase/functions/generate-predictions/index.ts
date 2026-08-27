@@ -1,18 +1,138 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resilientCall, structuredLog, handleCors, corsHeaders, errorResponse, jsonResponse } from "../_shared/resilience.ts";
+import {
+  structuredLog,
+  handleCors,
+  corsHeaders,
+  errorResponse,
+  jsonResponse,
+} from "../_shared/resilience.ts";
 import { requireAdminOrCron } from "../_shared/auth.ts";
 
 const FN = "generate-predictions";
+const VERSION = "v4-truth-floor";
+const MODEL_VERSION = "deterministic-snapshot-extrapolation-v4";
+const TOP_PER_DOMAIN = 8;
 
-/**
- * v3: Hybrid data source strategy
- *  - Primary: country_performance_snapshots (fresh, daily, multi-domain)
- *  - Fallback: legacy domain tables (health_data, food_security, etc.)
- *
- * This ensures predictions accumulate continuously even when individual
- * source tables stale out, and feeds the prospective evaluation pipeline.
- */
+type SnapshotRow = {
+  iso3: string | null;
+  domain: string | null;
+  performance_index: number | null;
+  momentum_score: number | null;
+  volatility_index: number | null;
+  forecast_direction: string | null;
+  forecast_90d: unknown;
+  confidence_score: number | null;
+  snapshot_date: string | null;
+};
+
+type TimelinePoint = {
+  date: string;
+  value: number;
+};
+
+type DeterministicForecast = {
+  summary: string;
+  trend: "increasing" | "decreasing" | "stable";
+  risk_level: "critical" | "high" | "medium" | "low";
+  risk_level_semantics: "volatility_threshold_heuristic";
+  analytical_confidence: null;
+  calibration_status: "not_calibrated";
+  probability_semantics: "not_probabilistic";
+  method: "deterministic_snapshot_extrapolation_v4";
+  assumptions: string[];
+  key_factors: string[];
+  timeline: TimelinePoint[];
+  source: "country_performance_snapshots";
+  source_snapshot_date: string;
+  upstream_confidence_score: number | null;
+  upstream_confidence_semantics: "source_field_preserved_not_prediction_confidence";
+};
+
+type PredictionDraft = {
+  division: string;
+  country: string;
+  forecast: DeterministicForecast;
+  confidence: null;
+  volatility_index: number;
+  predicted_at: string;
+};
+
+type ForecastAbstentionInsert = {
+  requested_by: null;
+  affected_divisions: string[];
+  reason: string;
+  evidence_counts: Record<string, unknown>;
+  evidence_sufficiency: null;
+  source_independence: Record<string, unknown>;
+  calibration_context: unknown[];
+  model_provider: "deterministic_local";
+  model_name: string;
+  metadata: Record<string, unknown>;
+};
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatDate(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
+function validIso3(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : null;
+}
+
+function normalizedDomain(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function missingRequiredFields(row: SnapshotRow): string[] {
+  const missing: string[] = [];
+  if (!validIso3(row.iso3)) missing.push("iso3");
+  if (!normalizedDomain(row.domain)) missing.push("domain");
+  if (finiteNumber(row.performance_index) === null) missing.push("performance_index");
+  if (finiteNumber(row.momentum_score) === null) missing.push("momentum_score");
+  if (finiteNumber(row.volatility_index) === null) missing.push("volatility_index");
+  if (!row.snapshot_date) missing.push("snapshot_date");
+  return missing;
+}
+
+function toAbstention(
+  row: SnapshotRow,
+  reason: string,
+  missingFields: string[],
+): ForecastAbstentionInsert {
+  return {
+    requested_by: null,
+    affected_divisions: normalizedDomain(row.domain) ? [normalizedDomain(row.domain) as string] : [],
+    reason,
+    evidence_counts: {
+      country_iso3: validIso3(row.iso3),
+      source_snapshot_date: row.snapshot_date,
+      missing_required_fields: missingFields,
+      missing_required_field_count: missingFields.length,
+    },
+    evidence_sufficiency: null,
+    source_independence: {
+      status: "not_assessed",
+      reason: "single_snapshot_source",
+    },
+    calibration_context: [],
+    model_provider: "deterministic_local",
+    model_name: MODEL_VERSION,
+    metadata: {
+      function: FN,
+      version: VERSION,
+      source: "country_performance_snapshots",
+      abstention_semantics: "no_prediction_issued",
+    },
+  };
+}
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -23,181 +143,310 @@ serve(async (req) => {
 
   const start = Date.now();
   const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
   try {
-    structuredLog('info', FN, 'Starting prediction generation (v3 hybrid)');
+    structuredLog("info", FN, "Starting evidence-gated deterministic trajectory generation");
 
-    // PRIMARY SOURCE: pull recent snapshots grouped by (domain, iso3)
-    const { data: snapshots, error: snapErr } = await supabase
-      .from('country_performance_snapshots')
-      .select('iso3, domain, performance_index, momentum_score, volatility_index, forecast_direction, forecast_90d, confidence_score, snapshot_date')
-      .gte('snapshot_date', new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0])
-      .order('snapshot_date', { ascending: false })
+    const recentCutoff = new Date(Date.now() - 14 * 86_400_000).toISOString().split("T")[0];
+    const { data: snapshotData, error: snapshotError } = await supabase
+      .from("country_performance_snapshots")
+      .select("iso3, domain, performance_index, momentum_score, volatility_index, forecast_direction, forecast_90d, confidence_score, snapshot_date")
+      .gte("snapshot_date", recentCutoff)
+      .order("snapshot_date", { ascending: false })
       .limit(2000);
 
-    if (snapErr) throw snapErr;
-    structuredLog('info', FN, `Fetched ${snapshots?.length ?? 0} snapshots`);
+    if (snapshotError) throw snapshotError;
 
-    // Group: latest per (domain, iso3)
-    const latestByKey = new Map<string, any>();
-    for (const s of snapshots || []) {
-      const k = `${s.domain}::${s.iso3}`;
-      if (!latestByKey.has(k)) latestByKey.set(k, s);
+    const snapshots = (snapshotData ?? []) as unknown as SnapshotRow[];
+    structuredLog("info", FN, `Fetched ${snapshots.length} recent snapshots`);
+
+    // Keep the newest observed row for each subject. If the newest row is
+    // incomplete we abstain rather than silently falling back to an older row.
+    const latestByKey = new Map<string, SnapshotRow>();
+    const structurallyInvalid: SnapshotRow[] = [];
+
+    for (const snapshot of snapshots) {
+      const iso3 = validIso3(snapshot.iso3);
+      const domain = normalizedDomain(snapshot.domain);
+      if (!iso3 || !domain) {
+        structurallyInvalid.push(snapshot);
+        continue;
+      }
+      const key = `${domain}::${iso3}`;
+      if (!latestByKey.has(key)) latestByKey.set(key, snapshot);
     }
 
-    // Pick top N per domain by absolute momentum (most actionable forecasts)
-    const byDomain: Record<string, any[]> = {};
-    for (const s of latestByKey.values()) {
-      (byDomain[s.domain] ||= []).push(s);
+    const abstentions: ForecastAbstentionInsert[] = structurallyInvalid.map((snapshot) =>
+      toAbstention(snapshot, "invalid_subject_identity", missingRequiredFields(snapshot))
+    );
+
+    const byDomain = new Map<string, SnapshotRow[]>();
+    for (const snapshot of latestByKey.values()) {
+      const missing = missingRequiredFields(snapshot);
+      if (missing.length > 0) {
+        abstentions.push(toAbstention(snapshot, "required_snapshot_fields_missing", missing));
+        continue;
+      }
+
+      const domain = normalizedDomain(snapshot.domain) as string;
+      const list = byDomain.get(domain) ?? [];
+      list.push(snapshot);
+      byDomain.set(domain, list);
     }
-    const TOP_PER_DOMAIN = 8;
-    const targets: any[] = [];
-    for (const [, list] of Object.entries(byDomain)) {
-      list.sort((a, b) => Math.abs(b.momentum_score ?? 0) - Math.abs(a.momentum_score ?? 0));
+
+    const targets: SnapshotRow[] = [];
+    for (const list of byDomain.values()) {
+      // Every surviving row has an observed momentum_score. Ranking therefore
+      // never converts missing momentum into zero.
+      list.sort((left, right) => {
+        const leftMomentum = finiteNumber(left.momentum_score) as number;
+        const rightMomentum = finiteNumber(right.momentum_score) as number;
+        return Math.abs(rightMomentum) - Math.abs(leftMomentum);
+      });
       targets.push(...list.slice(0, TOP_PER_DOMAIN));
     }
 
-    structuredLog('info', FN, `Selected ${targets.length} targets across ${Object.keys(byDomain).length} domains`);
+    structuredLog(
+      "info",
+      FN,
+      `Selected ${targets.length} complete-evidence targets across ${byDomain.size} domains; ${abstentions.length} abstentions queued`,
+    );
 
-    const predictions: any[] = [];
+    const predictions: PredictionDraft[] = [];
     const today = new Date();
-    const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
-    for (const t of targets) {
-      const futureDate1 = new Date(today); futureDate1.setDate(today.getDate() + 30);
-      const futureDate2 = new Date(today); futureDate2.setDate(today.getDate() + 60);
-      const futureDate3 = new Date(today); futureDate3.setDate(today.getDate() + 90);
+    for (const target of targets) {
+      const iso3 = validIso3(target.iso3);
+      const domain = normalizedDomain(target.domain);
+      const baseValue = finiteNumber(target.performance_index);
+      const momentum = finiteNumber(target.momentum_score);
+      const volatility = finiteNumber(target.volatility_index);
 
-      // Deterministic forecast derived from snapshot — NO LLM dependency,
-      // ensuring the prospective pipeline accumulates even if AI gateway is unavailable.
-      const baseValue = Number(t.performance_index ?? 50);
-      const momentum = Number(t.momentum_score ?? 0);
-      const vol = Number(t.volatility_index ?? 0.3);
-      const dir = momentum > 0.05 ? 'increasing' : momentum < -0.05 ? 'decreasing' : 'stable';
-      const trendFactor = momentum * 10;
+      // These values were already checked above. Keep a defensive abstention in
+      // case a future schema/runtime change violates that invariant.
+      if (!iso3 || !domain || baseValue === null || momentum === null || volatility === null || !target.snapshot_date) {
+        abstentions.push(toAbstention(target, "required_snapshot_fields_missing_at_generation", missingRequiredFields(target)));
+        continue;
+      }
 
-      const v1 = Math.max(0, Math.min(100, baseValue + trendFactor * 0.33));
-      const v2 = Math.max(0, Math.min(100, baseValue + trendFactor * 0.66));
-      const v3 = Math.max(0, Math.min(100, baseValue + trendFactor));
+      const futureDate30 = new Date(today);
+      const futureDate60 = new Date(today);
+      const futureDate90 = new Date(today);
+      futureDate30.setDate(today.getDate() + 30);
+      futureDate60.setDate(today.getDate() + 60);
+      futureDate90.setDate(today.getDate() + 90);
 
-      const riskLevel =
-        vol > 0.7 ? 'critical' :
-        vol > 0.5 ? 'high' :
-        vol > 0.3 ? 'medium' : 'low';
+      // Deterministic policy trajectory. This is intentionally NOT described as
+      // a calibrated probability or statistical confidence interval.
+      const direction: DeterministicForecast["trend"] =
+        momentum > 0.05 ? "increasing" : momentum < -0.05 ? "decreasing" : "stable";
+      const ninetyDayDelta = momentum * 10;
+      const value30 = Math.max(0, Math.min(100, baseValue + ninetyDayDelta * (30 / 90)));
+      const value60 = Math.max(0, Math.min(100, baseValue + ninetyDayDelta * (60 / 90)));
+      const value90 = Math.max(0, Math.min(100, baseValue + ninetyDayDelta));
 
-      const confidence = Math.min(0.95, Math.max(0.5, Number(t.confidence_score ?? 0.7)));
+      const riskLevel: DeterministicForecast["risk_level"] =
+        volatility > 0.7 ? "critical" :
+        volatility > 0.5 ? "high" :
+        volatility > 0.3 ? "medium" : "low";
 
-      const forecast = {
-        summary: `${t.iso3} ${t.domain}: ${dir} trend over 90 days (momentum ${(momentum * 100).toFixed(1)}%)`,
-        trend: dir,
+      const upstreamConfidence = finiteNumber(target.confidence_score);
+      const forecast: DeterministicForecast = {
+        summary: `${iso3} ${domain}: deterministic ${direction} screening trajectory over 90 days; this is not a calibrated probability forecast`,
+        trend: direction,
         risk_level: riskLevel,
-        confidence,
+        risk_level_semantics: "volatility_threshold_heuristic",
+        analytical_confidence: null,
+        calibration_status: "not_calibrated",
+        probability_semantics: "not_probabilistic",
+        method: "deterministic_snapshot_extrapolation_v4",
+        assumptions: [
+          "90-day index delta is defined by the deterministic policy rule momentum_score × 10",
+          "30-day and 60-day trajectory points are linear fractions of the 90-day policy delta",
+          "values are bounded to the source index range 0–100",
+          "no missing input is replaced with a default number",
+        ],
         key_factors: [
-          `performance_index=${baseValue.toFixed(1)}`,
-          `momentum=${(momentum * 100).toFixed(1)}%`,
-          `volatility=${(vol * 100).toFixed(1)}%`,
+          `performance_index=${baseValue.toFixed(2)}`,
+          `momentum_score=${momentum.toFixed(4)}`,
+          `volatility_index=${volatility.toFixed(4)}`,
         ],
         timeline: [
-          { date: formatDate(futureDate1), value: Number(v1.toFixed(2)) },
-          { date: formatDate(futureDate2), value: Number(v2.toFixed(2)) },
-          { date: formatDate(futureDate3), value: Number(v3.toFixed(2)) },
+          { date: formatDate(futureDate30), value: Number(value30.toFixed(2)) },
+          { date: formatDate(futureDate60), value: Number(value60.toFixed(2)) },
+          { date: formatDate(futureDate90), value: Number(value90.toFixed(2)) },
         ],
-        source: 'country_performance_snapshots',
+        source: "country_performance_snapshots",
+        source_snapshot_date: target.snapshot_date,
+        upstream_confidence_score: upstreamConfidence,
+        upstream_confidence_semantics: "source_field_preserved_not_prediction_confidence",
       };
 
       predictions.push({
-        division: t.domain,
-        country: t.iso3,
+        division: domain,
+        country: iso3,
         forecast,
-        confidence,
-        volatility_index: vol,
+        confidence: null,
+        volatility_index: volatility,
         predicted_at: new Date().toISOString(),
       });
     }
 
-    // INSERT predictions + prospective evaluations
     let inserted = 0;
     let prospectiveInserted = 0;
 
-    for (const pred of predictions) {
-      const { data: predRow, error } = await supabase.from('predictions').insert({
-        division: pred.division,
-        country: pred.country,
-        forecast: pred.forecast,
-        confidence: pred.confidence,
-        volatility_index: pred.volatility_index,
-        predicted_at: pred.predicted_at,
-      }).select('id').single();
+    for (const prediction of predictions) {
+      const { data: predictionRow, error } = await supabase
+        .from("predictions")
+        .insert({
+          division: prediction.division,
+          country: prediction.country,
+          forecast: prediction.forecast,
+          confidence: null,
+          volatility_index: prediction.volatility_index,
+          predicted_at: prediction.predicted_at,
+        })
+        .select("id")
+        .single();
 
       if (error) {
-        structuredLog('warn', FN, `predictions insert failed`, { error: error.message, division: pred.division, country: pred.country });
+        structuredLog("warn", FN, "predictions insert failed", {
+          error: error.message,
+          division: prediction.division,
+          country: prediction.country,
+        });
         continue;
       }
-      inserted++;
+      inserted += 1;
 
-      const timeline = pred.forecast?.timeline;
-      const horizons = [30, 60, 90];
-      for (let i = 0; i < horizons.length; i++) {
-        const tl = timeline?.[i];
-        const predictedValue = tl?.value ?? (pred.confidence * 100);
-        const trendDir =
-          pred.forecast?.trend === 'increasing' ? 'increasing' :
-          pred.forecast?.trend === 'decreasing' ? 'decreasing' : 'stable';
+      const horizons = [30, 60, 90] as const;
+      for (let index = 0; index < horizons.length; index += 1) {
+        const timelinePoint = prediction.forecast.timeline[index];
+        if (!timelinePoint || !Number.isFinite(timelinePoint.value)) {
+          abstentions.push({
+            requested_by: null,
+            affected_divisions: [prediction.division],
+            reason: "prospective_evaluation_timeline_value_missing",
+            evidence_counts: {
+              country_iso3: prediction.country,
+              horizon_days: horizons[index],
+            },
+            evidence_sufficiency: null,
+            source_independence: { status: "not_assessed", reason: "single_snapshot_source" },
+            calibration_context: [],
+            model_provider: "deterministic_local",
+            model_name: MODEL_VERSION,
+            metadata: {
+              function: FN,
+              version: VERSION,
+              forecast_id: predictionRow?.id ?? null,
+              abstention_semantics: "no_prospective_evaluation_issued",
+            },
+          });
+          continue;
+        }
 
         const predictedAt = new Date();
         const dueAt = new Date(predictedAt);
-        dueAt.setDate(dueAt.getDate() + horizons[i]);
+        dueAt.setDate(dueAt.getDate() + horizons[index]);
 
-        const iso3 = (pred.country && pred.country.length === 3) ? pred.country : 'GLB';
+        const { error: prospectiveError } = await supabase
+          .from("forecast_prospective_evaluations")
+          .insert({
+            forecast_id: predictionRow?.id ?? null,
+            domain: prediction.division,
+            iso3: prediction.country,
+            model_version: MODEL_VERSION,
+            horizon_days: horizons[index],
+            predicted_value: timelinePoint.value,
+            predicted_direction: prediction.forecast.trend,
+            predicted_at: predictedAt.toISOString(),
+            realization_due_at: dueAt.toISOString(),
+            evaluation_window: `${horizons[index]}d`,
+            metadata: {
+              source: FN,
+              version: VERSION,
+              forecast_id: predictionRow?.id ?? null,
+              source_snapshot_date: prediction.forecast.source_snapshot_date,
+              prediction_semantics: "deterministic_heuristic_trajectory",
+              analytical_confidence: null,
+              calibration_status: "not_calibrated",
+            },
+          });
 
-        const { error: prospErr } = await supabase.from('forecast_prospective_evaluations').insert({
-          forecast_id: predRow?.id ?? null,
-          domain: pred.division,
-          iso3,
-          model_version: 'snapshot-derived-v3',
-          horizon_days: horizons[i],
-          predicted_value: predictedValue,
-          predicted_direction: trendDir,
-          predicted_at: predictedAt.toISOString(),
-          realization_due_at: dueAt.toISOString(),
-          evaluation_window: `${horizons[i]}d`,
-          metadata: {
-            source: 'generate-predictions-v3',
-            forecast_id: predRow?.id,
-            base_performance_index: pred.forecast?.timeline?.[0]?.value,
-          },
-        });
-        if (!prospErr) prospectiveInserted++;
+        if (!prospectiveError) {
+          prospectiveInserted += 1;
+        } else {
+          structuredLog("warn", FN, "prospective evaluation insert failed", {
+            error: prospectiveError.message,
+            division: prediction.division,
+            country: prediction.country,
+            horizon_days: horizons[index],
+          });
+        }
       }
     }
 
-    await supabase.from('system_logs').insert({
-      division: 'intelligence',
-      action: 'generate_predictions',
-      result: 'success',
-      log_level: 'info',
+    if (abstentions.length > 0) {
+      const { error: abstentionError } = await supabase
+        .from("forecast_abstentions")
+        .insert(abstentions);
+      if (abstentionError) throw abstentionError;
+    }
+
+    await supabase.from("system_logs").insert({
+      division: "intelligence",
+      action: "generate_predictions",
+      result: "success",
+      log_level: "info",
       metadata: {
         predictions_generated: inserted,
         prospective_evaluations: prospectiveInserted,
-        domains_processed: Object.keys(byDomain).length,
-        version: 'v3',
+        abstentions_recorded: abstentions.length,
+        domains_processed: byDomain.size,
+        version: VERSION,
+        model_version: MODEL_VERSION,
+        probability_semantics: "not_probabilistic",
+        analytical_confidence: null,
+        synthetic_missing_value_fallbacks: false,
       },
     });
 
-    structuredLog('info', FN, `Generated ${inserted} predictions, ${prospectiveInserted} prospective evaluations`, undefined, start);
+    structuredLog(
+      "info",
+      FN,
+      `Generated ${inserted} deterministic trajectories, ${prospectiveInserted} prospective evaluations, ${abstentions.length} abstentions`,
+      undefined,
+      start,
+    );
+
     return jsonResponse({
       success: true,
       predictions_generated: inserted,
       prospective_evaluations: prospectiveInserted,
-      total_processed: predictions.length,
-      domains: Object.keys(byDomain).length,
-      version: 'v3',
+      abstentions_recorded: abstentions.length,
+      total_candidates: latestByKey.size + structurallyInvalid.length,
+      domains: byDomain.size,
+      version: VERSION,
+      model_version: MODEL_VERSION,
+      semantics: {
+        probabilistic: false,
+        calibrated: false,
+        analytical_confidence: null,
+        synthetic_missing_value_fallbacks: false,
+      },
     });
   } catch (error) {
-    structuredLog('error', FN, (error as Error).message, undefined, start);
+    structuredLog(
+      "error",
+      FN,
+      error instanceof Error ? error.message : String(error),
+      undefined,
+      start,
+    );
     return errorResponse(error);
   }
 });
