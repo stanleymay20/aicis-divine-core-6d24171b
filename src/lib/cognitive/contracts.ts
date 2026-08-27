@@ -53,6 +53,8 @@ export const cognitiveEventTypeSchema = z.enum([
   "action.executed",
   "outcome.observed",
   "model.degraded",
+  "model.promoted",
+  "model.promotion_evaluated",
   "sensor.degraded",
 ]);
 export type CognitiveEventType = z.infer<typeof cognitiveEventTypeSchema>;
