@@ -53,9 +53,10 @@ export function simulateGraphIntervention(
       )
     : [];
 
-  const influenceLosses = [...baselineInfluence.entries()]
-    .map(([entityId, before]) => {
-      const after = counterfactualInfluence.get(entityId) ?? 0;
+  const influenceLosses = [...baselineInfluence.values.entries()]
+    .map(([entityId, rawBefore]) => {
+      const before = rawBefore ?? 0;
+      const after = counterfactualInfluence.values.get(entityId) ?? 0;
       return { entityId, before, after, delta: before - after };
     })
     .filter((item) => item.delta > 0.0001)
@@ -105,6 +106,9 @@ function applyIntervention(graph: PlanetaryGraph, intervention: GraphInterventio
   const nodes = new Map(graph.nodes);
   const outgoing = new Map<string, GraphEdge[]>();
   const incoming = new Map<string, GraphEdge[]>();
+  let verifiedRelationshipCount = 0;
+  let quantifiedTraversalEdgeCount = 0;
+  let unquantifiedTraversalEdgeCount = 0;
 
   if (intervention.type === "remove-node") nodes.delete(intervention.entityId);
 
@@ -125,12 +129,23 @@ function applyIntervention(graph: PlanetaryGraph, intervention: GraphInterventio
         };
       }
 
+      verifiedRelationshipCount += 1;
+      if (nextEdge.traversalScore === null) unquantifiedTraversalEdgeCount += 1;
+      else quantifiedTraversalEdgeCount += 1;
+
       push(outgoing, nextEdge.source, nextEdge);
       push(incoming, nextEdge.target, nextEdge);
     }
   }
 
-  return { nodes, outgoing, incoming };
+  return {
+    nodes,
+    outgoing,
+    incoming,
+    verifiedRelationshipCount,
+    quantifiedTraversalEdgeCount,
+    unquantifiedTraversalEdgeCount,
+  };
 }
 
 function summarize(graph: PlanetaryGraph, anchorEntityId?: string): GraphStateSummary {

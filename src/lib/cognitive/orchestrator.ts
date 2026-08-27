@@ -73,9 +73,11 @@ export function routeCognitiveEvent(
       novelty,
       severity,
     );
-    priority = clamp01(0.55 * priority + 0.45 * graphPriority);
     capabilities.add("graph-analysis");
-    if (graphPriority >= 0.7) reasons.push("Event touches a systemically important graph node");
+    if (graphPriority.score !== null) {
+      priority = clamp01(0.55 * priority + 0.45 * graphPriority.score);
+      if (graphPriority.score >= 0.7) reasons.push("Event touches a systemically important graph node");
+    }
   }
 
   if (event.epistemicStatus === "unverified") {
@@ -109,7 +111,7 @@ export function routeCognitiveEvent(
   }
 
   const reliability = context.reliability
-    ? operationalReliability(context.reliability)
+    ? (operationalReliability(context.reliability).score ?? 1)
     : 1;
 
   if (context.forecasts && context.reliability) {
