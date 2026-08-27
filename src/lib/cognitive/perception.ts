@@ -6,7 +6,8 @@ export interface ExtractionCandidate {
   predicate?: string;
   objectEntityId?: string;
   objectValue?: unknown;
-  confidence: number;
+  confidence?: number | null;
+  confidenceSemantics?: string;
   provenance: Provenance[];
   directObservation?: boolean;
   metadata?: Record<string, unknown>;
@@ -14,72 +15,63 @@ export interface ExtractionCandidate {
 
 export interface EvidenceAssessment {
   epistemicStatus: EpistemicStatus;
-  confidence: number;
-  independentSources: number;
+  confidence: null;
+  confidenceSemantics: string;
+  extractorConfidence: number | null;
+  extractorConfidenceSemantics: string;
+  distinctSourceIdentifiers: number;
   sourceTypes: number;
+  sourceIndependenceStatus: "not_assessed";
   hasDirectObservation: boolean;
   reasons: string[];
 }
 
 /**
- * Converts a language-model/NLP extraction into an epistemic assessment without
- * allowing the extractor to declare its own output factual.
+ * Characterizes an NLP extraction without manufacturing epistemic confidence.
+ *
+ * Distinct source identifiers are useful provenance metadata, but they are not
+ * proof that the underlying sources are independent. Extractor/model confidence
+ * is retained separately and is never promoted into claim confidence here.
  */
 export function assessExtraction(candidate: ExtractionCandidate): EvidenceAssessment {
   const provenance = dedupeProvenance(candidate.provenance);
-  const sourceIds = new Set(provenance.map((item) => item.sourceId));
-  const sourceTypes = new Set(provenance.map((item) => item.sourceType));
-  const extractionConfidence = clamp01(candidate.confidence);
-  const hasDirectObservation = Boolean(candidate.directObservation);
+  const sourceIds = new Set(provenance.map((item) => item.sourceId.trim().toLowerCase()));
+  const sourceTypes = new Set(provenance.map((item) => item.sourceType.trim().toLowerCase()));
+  const extractorConfidence = validUnitIntervalOrNull(candidate.confidence);
+  const extractorConfidenceSemantics = extractorConfidence === null
+    ? "extractor_confidence_unknown_not_quantified"
+    : candidate.confidenceSemantics ?? "caller_supplied_extractor_score_semantics_unspecified";
+  const hasDirectObservation = Boolean(candidate.directObservation && provenance.length > 0);
   const reasons: string[] = [];
 
   if (provenance.length === 0) {
-    return {
-      epistemicStatus: "unverified",
-      confidence: Math.min(0.25, extractionConfidence),
-      independentSources: 0,
-      sourceTypes: 0,
-      hasDirectObservation,
-      reasons: ["No provenance supplied"],
-    };
+    reasons.push("No provenance supplied; extraction remains unverified");
+  } else {
+    reasons.push(`${sourceIds.size} distinct source identifier(s) are attached`);
+    reasons.push("Distinct source identifiers are not treated as proof of source independence");
   }
-
-  // Multiple independent sources can strengthen an inference, but agreement is
-  // not proof of direct observation or causality.
-  const diversityBoost = Math.min(0.15, Math.max(0, sourceIds.size - 1) * 0.05);
-  const typeBoost = Math.min(0.1, Math.max(0, sourceTypes.size - 1) * 0.025);
-  const assessedConfidence = clamp01(extractionConfidence + diversityBoost + typeBoost);
 
   if (hasDirectObservation) {
-    reasons.push("Direct observation is backed by provenance");
-    return {
-      epistemicStatus: "observed",
-      confidence: assessedConfidence,
-      independentSources: sourceIds.size,
-      sourceTypes: sourceTypes.size,
-      hasDirectObservation,
-      reasons,
-    };
+    reasons.push("Caller marked the evidence as a direct observation and provenance is present");
+  } else if (candidate.directObservation) {
+    reasons.push("Direct-observation flag was supplied without provenance and was not accepted as observed evidence");
+  } else {
+    reasons.push("No direct-observation claim was supplied; extraction remains unverified pending a separate verification/inference step");
   }
 
-  if (sourceIds.size >= 2 && assessedConfidence >= 0.7) {
-    reasons.push("Independent sources support the extracted claim");
-    return {
-      epistemicStatus: "inferred",
-      confidence: assessedConfidence,
-      independentSources: sourceIds.size,
-      sourceTypes: sourceTypes.size,
-      hasDirectObservation,
-      reasons,
-    };
+  if (extractorConfidence !== null) {
+    reasons.push("Extractor score retained as model/extractor metadata only; it is not epistemic confidence");
   }
 
-  reasons.push("Evidence exists but has not crossed the inference threshold");
   return {
-    epistemicStatus: "unverified",
-    confidence: assessedConfidence,
-    independentSources: sourceIds.size,
+    epistemicStatus: hasDirectObservation ? "observed" : "unverified",
+    confidence: null,
+    confidenceSemantics: "not_quantified_extraction_evidence_assessment",
+    extractorConfidence,
+    extractorConfidenceSemantics,
+    distinctSourceIdentifiers: sourceIds.size,
     sourceTypes: sourceTypes.size,
+    sourceIndependenceStatus: "not_assessed",
     hasDirectObservation,
     reasons,
   };
@@ -115,6 +107,10 @@ export function normalizeMention(value: string): string {
     .trim();
 }
 
+/**
+ * Deterministic token-overlap candidate matching only. A positive result is a
+ * resolution suggestion, not evidence that two real-world entities are identical.
+ */
 export function mentionsLikelyMatch(a: string, b: string): boolean {
   const left = normalizeMention(a);
   const right = normalizeMention(b);
@@ -128,21 +124,27 @@ export function mentionsLikelyMatch(a: string, b: string): boolean {
   return union > 0 && intersection / union >= 0.8;
 }
 
-export function contradictoryAssessment(
-  currentConfidence: number,
-  contradictionWeight: number,
-): EvidenceAssessment {
-  const confidence = clamp01(currentConfidence * (1 - clamp01(contradictionWeight)));
+/**
+ * Contradiction changes epistemic state but does not create a new numeric
+ * confidence through an arbitrary subtraction formula.
+ */
+export function contradictoryAssessment(reason = "Material contradictory evidence is attached to this claim"): EvidenceAssessment {
   return {
     epistemicStatus: "contradicted",
-    confidence,
-    independentSources: 0,
+    confidence: null,
+    confidenceSemantics: "not_quantified_contradicted_assessment",
+    extractorConfidence: null,
+    extractorConfidenceSemantics: "not_applicable",
+    distinctSourceIdentifiers: 0,
     sourceTypes: 0,
+    sourceIndependenceStatus: "not_assessed",
     hasDirectObservation: false,
-    reasons: ["Material contradictory evidence is attached to this claim"],
+    reasons: [reason],
   };
 }
 
-function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+function validUnitIntervalOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : null;
 }
