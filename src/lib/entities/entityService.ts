@@ -1,6 +1,7 @@
 /**
  * AICIS Entity Resolution Service
- * Client-side service for resolving, searching, and managing canonical entities.
+ * Client contract mirrors the evidence-backed resolver: search/name similarity is
+ * candidate evidence, while only verified identifiers or reviewed mappings resolve.
  */
 import { supabase } from "@/integrations/supabase/client";
 
@@ -16,9 +17,11 @@ export interface CanonicalEntity {
   iso3: string | null;
   lat: number | null;
   lon: number | null;
-  metadata: Record<string, any>;
-  trust_score: number;
-  source_count: number;
+  metadata: Record<string, unknown>;
+  trust_score: number | null;
+  trust_score_semantics?: string | null;
+  source_count: number | null;
+  evidence_status?: string | null;
   last_resolved_at: string | null;
   created_at: string;
   updated_at: string;
@@ -30,7 +33,9 @@ export interface EntityAlias {
   alias: string;
   alias_type: EntityAliasType;
   source: string | null;
-  confidence: number;
+  confidence: number | null;
+  confidence_semantics?: string | null;
+  verification_status?: string | null;
 }
 
 export interface EntityLink {
@@ -38,50 +43,85 @@ export interface EntityLink {
   source_entity_id: string;
   target_entity_id: string;
   link_type: EntityLinkType;
-  strength: number;
+  strength: number | null;
+  strength_semantics?: string | null;
   source: string | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
+  provenance_source?: string | null;
+  provenance_confidence?: number | null;
+  provenance_confidence_semantics?: string | null;
+  provenance_observed_at?: string | null;
+  provenance_time_semantics?: string | null;
+  verification_status?: string | null;
+}
+
+export interface ResolutionCandidate {
+  entity: CanonicalEntity;
+  match_type: 'exact_name' | 'alias' | 'fuzzy' | 'iso3';
+  match_score: number | null;
+  match_score_semantics: string;
+  candidate_record_id: string | null;
+  evidence: Record<string, unknown>;
 }
 
 export interface ResolveResult {
   resolved: boolean;
+  resolution_status?: 'resolved_by_reviewed_mapping' | 'resolved_by_verified_external_identifier' | 'candidate_review_required' | 'unresolved_no_candidate';
   entity?: CanonicalEntity;
-  match_type?: 'exact' | 'alias' | 'external_id' | 'fuzzy';
-  match_confidence?: number;
+  match_type?: 'reviewed_candidate' | 'external_id';
+  match_confidence?: number | null;
+  match_confidence_semantics?: string;
+  candidates?: ResolutionCandidate[];
 }
 
 export interface EntityGraph {
   entity: CanonicalEntity;
   aliases: EntityAlias[];
-  external_ids: Array<{ provider: string; external_id: string; external_type: string | null }>;
+  external_ids: Array<{
+    provider: string;
+    external_id: string;
+    external_type: string | null;
+    verification_status?: string | null;
+    verification_method?: string | null;
+    last_verified_at?: string | null;
+  }>;
   relationships: {
-    outgoing: Array<EntityLink & { target: Partial<CanonicalEntity> }>;
-    incoming: Array<EntityLink & { source: Partial<CanonicalEntity> }>;
+    outgoing: EntityLink[];
+    incoming: EntityLink[];
   };
 }
 
-// ─── Invoke edge function helper ────────────────────────────────────
-async function invokeEntityFn(action: string, params: Record<string, any> = {}) {
+type EntityFunctionResponse = Record<string, unknown>;
+
+async function invokeEntityFn<T extends EntityFunctionResponse>(
+  action: string,
+  params: Record<string, unknown> = {},
+): Promise<T> {
   const { data, error } = await supabase.functions.invoke("entity-resolve", {
     body: { action, ...params },
   });
   if (error) throw new Error(error.message);
-  return data;
+  return data as T;
 }
-
-// ─── Public API ─────────────────────────────────────────────────────
 
 export async function resolveEntity(
   name: string,
   entityType: EntityType,
-  options?: { iso3?: string; external_ids?: Array<{ provider: string; external_id: string }> }
+  options?: { iso3?: string; external_ids?: Array<{ provider: string; external_id: string }> },
 ): Promise<ResolveResult> {
-  return invokeEntityFn("resolve", {
+  return invokeEntityFn<ResolveResult & EntityFunctionResponse>("resolve", {
     name,
     entity_type: entityType,
     iso3: options?.iso3,
     external_ids: options?.external_ids,
   });
+}
+
+export async function reviewEntityCandidate(params: {
+  candidate_id: string;
+  decision: 'accepted' | 'rejected';
+}): Promise<{ ok: boolean; decision: 'accepted' | 'rejected'; candidate: Record<string, unknown> }> {
+  return invokeEntityFn("review_candidate", params);
 }
 
 export async function registerEntity(params: {
@@ -91,9 +131,22 @@ export async function registerEntity(params: {
   iso3?: string;
   lat?: number;
   lon?: number;
-  metadata?: Record<string, any>;
-  aliases?: Array<{ alias: string; type?: EntityAliasType; source?: string; confidence?: number }>;
-  external_ids?: Array<{ provider: string; external_id: string; external_type?: string }>;
+  metadata?: Record<string, unknown>;
+  aliases?: Array<{
+    alias: string;
+    type?: EntityAliasType;
+    source?: string;
+    confidence?: number;
+    confidence_semantics?: string;
+  }>;
+  external_ids?: Array<{
+    provider: string;
+    external_id: string;
+    external_type?: string;
+    verified?: boolean;
+    verified_at?: string;
+    verification_method?: string;
+  }>;
 }): Promise<{ ok: boolean; entity: CanonicalEntity }> {
   return invokeEntityFn("register", params);
 }
@@ -103,8 +156,15 @@ export async function linkEntities(params: {
   target_id: string;
   link_type: EntityLinkType;
   strength?: number;
+  strength_semantics?: string;
   source?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+  provenance_source?: string;
+  provenance_confidence?: number;
+  provenance_confidence_semantics?: string;
+  provenance_observed_at?: string;
+  provenance_time_semantics?: string;
+  verification_status?: 'proposed' | 'verified';
 }): Promise<{ ok: boolean; link: EntityLink }> {
   return invokeEntityFn("link", params);
 }
@@ -113,15 +173,32 @@ export async function mergeEntities(params: {
   winner_id: string;
   loser_id: string;
   reason: string;
+  confirm_merge: true;
   confidence?: number;
-}): Promise<{ ok: boolean; winner_id: string; loser_id: string; merged: boolean }> {
+}): Promise<{
+  ok: boolean;
+  winner_id: string;
+  loser_id: string;
+  merged: boolean;
+  merge_confidence: number | null;
+  merge_confidence_semantics: string;
+  merge_decision_semantics: string;
+}> {
   return invokeEntityFn("merge", params);
 }
 
 export async function searchEntities(
   query: string,
-  options?: { entity_type?: EntityType; iso3?: string; limit?: number }
-): Promise<{ results: CanonicalEntity[]; count: number }> {
+  options?: { entity_type?: EntityType; iso3?: string; limit?: number },
+): Promise<{
+  results: Array<CanonicalEntity & {
+    match_score?: number | null;
+    match_score_semantics?: string;
+    match_source?: string;
+  }>;
+  count: number;
+  result_semantics?: string;
+}> {
   return invokeEntityFn("search", { query, ...options });
 }
 
@@ -129,11 +206,9 @@ export async function getEntityGraph(entityId: string, depth = 1): Promise<Entit
   return invokeEntityFn("graph", { entity_id: entityId, depth });
 }
 
-// ─── Direct DB queries (for read-only, faster operations) ───────────
-
 export async function searchEntitiesDirect(
   query: string,
-  options?: { entity_type?: EntityType; iso3?: string; limit?: number }
+  options?: { entity_type?: EntityType; iso3?: string; limit?: number },
 ): Promise<CanonicalEntity[]> {
   let q = supabase
     .from("canonical_entities")
@@ -154,7 +229,6 @@ export async function getEntityById(id: string): Promise<CanonicalEntity | null>
     .select("*")
     .eq("id", id)
     .maybeSingle();
-
   return (data as unknown as CanonicalEntity) || null;
 }
 
@@ -163,7 +237,6 @@ export async function getEntityAliases(entityId: string): Promise<EntityAlias[]>
     .from("entity_aliases")
     .select("*")
     .eq("entity_id", entityId);
-
   return (data as unknown as EntityAlias[]) || [];
 }
 
