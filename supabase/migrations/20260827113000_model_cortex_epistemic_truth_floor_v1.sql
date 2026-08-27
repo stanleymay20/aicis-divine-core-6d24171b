@@ -96,6 +96,8 @@ ALTER TABLE public.aicis_ensemble_predictions
   ALTER COLUMN disagreement DROP NOT NULL,
   ALTER COLUMN spread DROP DEFAULT,
   ALTER COLUMN spread DROP NOT NULL,
+  ALTER COLUMN high_disagreement DROP DEFAULT,
+  ALTER COLUMN high_disagreement DROP NOT NULL,
   ADD COLUMN IF NOT EXISTS probability_semantics text,
   ADD COLUMN IF NOT EXISTS confidence_semantics text,
   ADD COLUMN IF NOT EXISTS disagreement_semantics text,
@@ -158,3 +160,5 @@ COMMENT ON COLUMN public.aicis_ensemble_predictions.disagreement IS
   'Nullable deterministic member-output disagreement statistic. It is not confidence and requires at least two usable comparable probabilistic members.';
 COMMENT ON COLUMN public.aicis_ensemble_predictions.spread IS
   'Nullable max-minus-min member probability spread. It is not confidence and requires at least two usable comparable probabilistic members.';
+COMMENT ON COLUMN public.aicis_ensemble_predictions.high_disagreement IS
+  'Nullable threshold flag. NULL means disagreement was not assessable because fewer than two usable probabilistic members were available.';
