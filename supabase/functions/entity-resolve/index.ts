@@ -1,311 +1,645 @@
-import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
+import {
+  requireAdminOrTrustedWorker,
+  requireUserOrTrustedWorker,
+} from "../_shared/auth.ts";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
 
 const FN = "entity-resolve";
+const WRITE_ACTIONS = new Set(["register", "link", "merge", "review_candidate"]);
+
+type RecordValue = Record<string, unknown>;
+
+type Candidate = {
+  entity: RecordValue;
+  match_type: "exact_name" | "alias" | "fuzzy" | "iso3";
+  match_score: number | null;
+  match_score_semantics: string;
+  evidence: RecordValue;
+};
 
 serve(async (req) => {
-  const callerAuth = await requireUserOrTrustedWorker(req);
-  if (callerAuth.response) return callerAuth.response;
-
   const cors = handleCors(req);
   if (cors) return cors;
 
+  let body: RecordValue;
+  try {
+    const parsed = await req.json();
+    if (!isRecord(parsed)) throw new Error("Request body must be a JSON object");
+    body = parsed;
+  } catch (error) {
+    return errorResponse(error, 400);
+  }
+
+  const action = typeof body.action === "string" ? body.action : "";
+  if (!action) return errorResponse(new Error("action is required"), 400);
+
+  let actorUserId: string | null = null;
+  let actor = "unknown";
+  if (WRITE_ACTIONS.has(action)) {
+    const auth = await requireAdminOrTrustedWorker(req);
+    if (auth.response) return auth.response;
+    const user = isRecord(auth.user) ? auth.user : null;
+    actorUserId = typeof user?.id === "string" ? user.id : null;
+    actor = actorUserId ? `admin:${actorUserId}` : auth.via ?? "trusted_worker";
+  } else {
+    const auth = await requireUserOrTrustedWorker(req);
+    if (auth.response) return auth.response;
+    actorUserId = typeof auth.ctx?.user?.id === "string" ? auth.ctx.user.id : null;
+    actor = actorUserId ? `user:${actorUserId}` : auth.via ?? "trusted_worker";
+  }
+
+  const { action: _action, ...params } = body;
+  void _action;
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
 
   try {
-    const { action, ...params } = await req.json();
-
     switch (action) {
       case "resolve": return await resolveEntity(supabase, params);
-      case "register": return await registerEntity(supabase, params);
-      case "link": return await linkEntities(supabase, params);
-      case "merge": return await mergeEntities(supabase, params);
+      case "register": return await registerEntity(supabase, params, actor);
+      case "link": return await linkEntities(supabase, params, actor);
+      case "merge": return await mergeEntities(supabase, params, actor);
+      case "review_candidate": return await reviewCandidate(supabase, params, actorUserId, actor);
       case "search": return await searchEntities(supabase, params);
       case "graph": return await getEntityGraph(supabase, params);
-      default:
-        return errorResponse(new Error(`Unknown action: ${action}`), 400);
+      default: return errorResponse(new Error(`Unknown action: ${action}`), 400);
     }
-  } catch (e) {
-    structuredLog("error", FN, (e as Error).message);
-    return errorResponse(e);
+  } catch (error) {
+    structuredLog("error", FN, error instanceof Error ? error.message : String(error));
+    return errorResponse(error);
   }
 });
 
-// ─── Resolve: hardened priority order ────────────────────────────────
-// 1. External ID exact → 2. Canonical normalized exact → 3. Alias exact → 4. Fuzzy → 5. Unresolved
-async function resolveEntity(supabase: any, params: any) {
-  const { name, entity_type, iso3, external_ids } = params;
-  if (!name || !entity_type) {
+async function resolveEntity(supabase: ReturnType<typeof createClient>, params: RecordValue) {
+  const name = stringValue(params.name);
+  const entityType = stringValue(params.entity_type);
+  const iso3 = stringValue(params.iso3)?.toUpperCase() ?? null;
+  const externalIds = Array.isArray(params.external_ids) ? params.external_ids : [];
+  if (!name || !entityType) {
     return errorResponse(new Error("name and entity_type required"), 400);
   }
 
-  // 1. External ID match FIRST (strongest signal)
-  if (external_ids && Array.isArray(external_ids)) {
-    for (const ext of external_ids) {
-      const { data: extMatch } = await supabase
-        .from("entity_external_ids")
-        .select("entity_id, canonical_entities(*)")
-        .eq("provider", ext.provider)
-        .eq("external_id", ext.external_id)
-        .limit(1)
-        .maybeSingle();
+  // Previously reviewed mappings are explicit human evidence and may be reused.
+  const acceptedQuery = supabase
+    .from("entity_resolution_candidates")
+    .select("id,candidate_entity_id,evidence,canonical_entities(*)")
+    .eq("requested_entity_type", entityType)
+    .eq("status", "accepted")
+    .ilike("requested_name", name)
+    .order("reviewed_at", { ascending: false })
+    .limit(1);
+  const { data: acceptedRows } = iso3
+    ? await acceptedQuery.eq("requested_iso3", iso3)
+    : await acceptedQuery.is("requested_iso3", null);
+  const accepted = acceptedRows?.[0] as RecordValue | undefined;
+  if (accepted && isRecord(accepted.canonical_entities)) {
+    return jsonResponse({
+      resolved: true,
+      resolution_status: "resolved_by_reviewed_mapping",
+      entity: accepted.canonical_entities,
+      match_type: "reviewed_candidate",
+      match_confidence: null,
+      match_confidence_semantics: "not_issued_identity_resolution_is_a_reviewed_decision_not_probability",
+      candidate_record_id: accepted.id,
+    });
+  }
 
-      if (extMatch?.canonical_entities) {
-        return jsonResponse({
-          resolved: true,
-          entity: extMatch.canonical_entities,
-          match_type: "external_id",
-          match_confidence: 1.0,
-          matched_provider: ext.provider,
-        });
-      }
+  // Only explicitly verified external identifiers may auto-resolve.
+  for (const rawExt of externalIds) {
+    if (!isRecord(rawExt)) continue;
+    const provider = stringValue(rawExt.provider);
+    const externalId = stringValue(rawExt.external_id);
+    if (!provider || !externalId) continue;
+
+    const { data: extMatch } = await supabase
+      .from("entity_external_ids")
+      .select("entity_id,verification_status,verification_method,last_verified_at,canonical_entities(*)")
+      .eq("provider", provider)
+      .eq("external_id", externalId)
+      .eq("verification_status", "verified")
+      .limit(1)
+      .maybeSingle();
+
+    if (extMatch && isRecord(extMatch.canonical_entities)) {
+      return jsonResponse({
+        resolved: true,
+        resolution_status: "resolved_by_verified_external_identifier",
+        entity: extMatch.canonical_entities,
+        match_type: "external_id",
+        match_confidence: null,
+        match_confidence_semantics: "not_issued_authoritative_identifier_match_is_not_probability",
+        matched_provider: provider,
+        verification_method: extMatch.verification_method ?? null,
+        last_verified_at: extMatch.last_verified_at ?? null,
+      });
     }
   }
 
-  const normalizedName = name.toLowerCase().trim();
+  const candidates: Candidate[] = [];
+  const seen = new Set<string>();
 
-  // 2. Canonical normalized exact match
-  const { data: exact } = await supabase
+  const addCandidate = (candidate: Candidate) => {
+    const id = stringValue(candidate.entity.id);
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    candidates.push(candidate);
+  };
+
+  const normalizedName = name.toLowerCase().trim();
+  const { data: exactRows } = await supabase
     .from("canonical_entities")
     .select("*")
-    .eq("entity_type", entity_type)
+    .eq("entity_type", entityType)
     .eq("normalized_name", normalizedName)
-    .limit(1)
-    .maybeSingle();
-
-  if (exact) {
-    return jsonResponse({ resolved: true, entity: exact, match_type: "exact", match_confidence: 1.0 });
-  }
-
-  // 3. Alias exact match
-  const { data: aliasMatch } = await supabase
-    .from("entity_aliases")
-    .select("entity_id, alias, confidence, canonical_entities(*)")
-    .ilike("alias", name)
-    .limit(1)
-    .maybeSingle();
-
-  if (aliasMatch?.canonical_entities) {
-    return jsonResponse({
-      resolved: true,
-      entity: aliasMatch.canonical_entities,
-      match_type: "alias",
-      match_confidence: aliasMatch.confidence,
+    .limit(10);
+  for (const row of exactRows ?? []) {
+    addCandidate({
+      entity: row as RecordValue,
+      match_type: "exact_name",
+      match_score: null,
+      match_score_semantics: "exact_normalized_name_match_not_identity_probability",
+      evidence: { normalized_name: normalizedName },
     });
   }
 
-  // 4. Fuzzy match using ranked trigram similarity
-  const { data: fuzzyResults } = await supabase.rpc("similarity_search_entities", {
+  const { data: aliasRows } = await supabase
+    .from("entity_aliases")
+    .select("entity_id,alias,verification_status,canonical_entities(*)")
+    .ilike("alias", name)
+    .limit(10);
+  for (const row of aliasRows ?? []) {
+    if (!isRecord(row.canonical_entities)) continue;
+    addCandidate({
+      entity: row.canonical_entities,
+      match_type: "alias",
+      match_score: null,
+      match_score_semantics: "exact_alias_text_match_not_identity_probability",
+      evidence: {
+        alias: row.alias,
+        alias_verification_status: row.verification_status ?? null,
+      },
+    });
+  }
+
+  if (iso3 && entityType === "country") {
+    const { data: isoRows } = await supabase
+      .from("canonical_entities")
+      .select("*")
+      .eq("entity_type", "country")
+      .eq("iso3", iso3)
+      .limit(10);
+    for (const row of isoRows ?? []) {
+      addCandidate({
+        entity: row as RecordValue,
+        match_type: "iso3",
+        match_score: null,
+        match_score_semantics: "stored_iso3_equality_not_authoritative_verification",
+        evidence: { iso3 },
+      });
+    }
+  }
+
+  const { data: fuzzyRows } = await supabase.rpc("similarity_search_entities", {
     search_name: name,
-    search_type: entity_type,
+    search_type: entityType,
     min_similarity: 0.3,
     max_results: 5,
   });
-
-  if (fuzzyResults && fuzzyResults.length > 0) {
-    const best = fuzzyResults[0];
-    return jsonResponse({
-      resolved: true,
-      entity: best,
+  for (const row of fuzzyRows ?? []) {
+    const score = unitOrNull(row.similarity);
+    addCandidate({
+      entity: row as RecordValue,
       match_type: "fuzzy",
-      match_confidence: best.similarity || 0.5,
-      match_source: best.match_source,
-      alternatives: fuzzyResults.length > 1 ? fuzzyResults.slice(1) : [],
+      match_score: score,
+      match_score_semantics: "trigram_string_similarity_not_identity_probability",
+      evidence: { match_source: row.match_source ?? null },
     });
   }
 
-  // 5. Unresolved
+  const persisted = await persistCandidates(supabase, {
+    requestedName: name,
+    requestedEntityType: entityType,
+    requestedIso3: iso3,
+    candidates,
+  });
+
+  if (candidates.length > 0) {
+    return jsonResponse({
+      resolved: false,
+      resolution_status: "candidate_review_required",
+      candidates: candidates.map((candidate, index) => ({
+        entity: candidate.entity,
+        match_type: candidate.match_type,
+        match_score: candidate.match_score,
+        match_score_semantics: candidate.match_score_semantics,
+        evidence: candidate.evidence,
+        candidate_record_id: persisted[index] ?? null,
+      })),
+      source_independence_assessed: false,
+      searched: { name, entity_type: entityType, iso3 },
+    });
+  }
+
   return jsonResponse({
     resolved: false,
-    suggestion: "Use action='register' to create this entity",
-    searched: { name, entity_type, iso3 },
+    resolution_status: "unresolved_no_candidate",
+    candidates: [],
+    suggestion: "An administrator may register a new canonical entity after evidence review",
+    searched: { name, entity_type: entityType, iso3 },
   });
 }
 
-// ─── Register: create new canonical entity ──────────────────────────
-async function registerEntity(supabase: any, params: any) {
-  const { name, entity_type, display_name, iso3, lat, lon, metadata, aliases, external_ids } = params;
-  if (!name || !entity_type) {
-    return errorResponse(new Error("name and entity_type required"), 400);
+async function persistCandidates(
+  supabase: ReturnType<typeof createClient>,
+  input: {
+    requestedName: string;
+    requestedEntityType: string;
+    requestedIso3: string | null;
+    candidates: Candidate[];
+  },
+): Promise<Array<string | null>> {
+  if (input.candidates.length === 0) return [];
+  const rows = input.candidates.map((candidate) => ({
+    requested_name: input.requestedName,
+    requested_entity_type: input.requestedEntityType,
+    requested_iso3: input.requestedIso3,
+    candidate_entity_id: candidate.entity.id,
+    match_type: candidate.match_type,
+    match_score: candidate.match_score,
+    match_score_semantics: candidate.match_score_semantics,
+    evidence: candidate.evidence,
+    status: "pending_review",
+  }));
+  const { data, error } = await supabase
+    .from("entity_resolution_candidates")
+    .insert(rows)
+    .select("id");
+  if (error) {
+    structuredLog("warn", FN, `candidate persistence failed: ${error.message}`);
+    return rows.map(() => null);
   }
+  return (data ?? []).map((row) => stringValue(row.id));
+}
+
+async function reviewCandidate(
+  supabase: ReturnType<typeof createClient>,
+  params: RecordValue,
+  actorUserId: string | null,
+  actor: string,
+) {
+  const candidateId = stringValue(params.candidate_id);
+  const decision = stringValue(params.decision);
+  if (!candidateId || (decision !== "accepted" && decision !== "rejected")) {
+    return errorResponse(new Error("candidate_id and decision=accepted|rejected are required"), 400);
+  }
+
+  const { data, error } = await supabase
+    .from("entity_resolution_candidates")
+    .update({
+      status: decision,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: actorUserId,
+    })
+    .eq("id", candidateId)
+    .eq("status", "pending_review")
+    .select("id,candidate_entity_id,status")
+    .maybeSingle();
+  if (error) return errorResponse(error);
+  if (!data) return errorResponse(new Error("Pending candidate not found"), 404);
+
+  structuredLog("info", FN, `${actor} ${decision} entity resolution candidate ${candidateId}`);
+  return jsonResponse({ ok: true, candidate: data, decision });
+}
+
+async function registerEntity(
+  supabase: ReturnType<typeof createClient>,
+  params: RecordValue,
+  actor: string,
+) {
+  const name = stringValue(params.name);
+  const entityType = stringValue(params.entity_type);
+  if (!name || !entityType) return errorResponse(new Error("name and entity_type required"), 400);
+
+  const aliases = Array.isArray(params.aliases) ? params.aliases : [];
+  const externalIds = Array.isArray(params.external_ids) ? params.external_ids : [];
+  const metadata = isRecord(params.metadata) ? params.metadata : {};
 
   const { data: entity, error } = await supabase
     .from("canonical_entities")
     .insert({
-      entity_type,
+      entity_type: entityType,
       canonical_name: name,
-      display_name: display_name || name,
-      iso3, lat, lon,
-      metadata: metadata || {},
-      trust_score: 0.5,
-      source_count: 1,
+      display_name: stringValue(params.display_name) ?? name,
+      iso3: stringValue(params.iso3),
+      lat: finiteOrNull(params.lat),
+      lon: finiteOrNull(params.lon),
+      metadata,
+      trust_score: null,
+      trust_score_semantics: "not_quantified_registration_is_not_trust_measurement",
+      source_count: null,
+      evidence_status: "registered_identity_not_independently_verified",
       last_resolved_at: new Date().toISOString(),
     })
     .select()
     .single();
-
   if (error) return errorResponse(error);
 
-  // Register aliases
-  if (aliases && Array.isArray(aliases)) {
-    const aliasRows = aliases.map((a: any) => ({
+  const aliasRows = aliases.flatMap((rawAlias) => {
+    const alias = isRecord(rawAlias)
+      ? stringValue(rawAlias.alias) ?? stringValue(rawAlias.name)
+      : typeof rawAlias === "string" ? rawAlias : null;
+    if (!alias) return [];
+    const confidence = isRecord(rawAlias) ? unitOrNull(rawAlias.confidence) : null;
+    const confidenceSemantics = isRecord(rawAlias)
+      ? stringValue(rawAlias.confidence_semantics) ?? stringValue(rawAlias.confidenceSemantics)
+      : null;
+    if (confidence !== null && !confidenceSemantics) {
+      throw new Error(`Alias ${alias} supplies numeric confidence without confidence semantics`);
+    }
+    return [{
       entity_id: entity.id,
-      alias: a.alias || a.name || a,
-      alias_type: a.type || "name",
-      source: a.source || "registration",
-      confidence: a.confidence || 1.0,
-    }));
-    await supabase.from("entity_aliases").insert(aliasRows);
-  }
+      alias,
+      alias_type: isRecord(rawAlias) ? stringValue(rawAlias.type) ?? "name" : "name",
+      source: isRecord(rawAlias) ? stringValue(rawAlias.source) ?? "registration" : "registration",
+      confidence,
+      confidence_semantics: confidence === null ? "not_quantified" : confidenceSemantics,
+      verification_status: "registered_alias_unverified",
+    }];
+  });
+  if (aliasRows.length > 0) await supabase.from("entity_aliases").insert(aliasRows);
 
-  // Auto-register canonical name as alias
   await supabase.from("entity_aliases").upsert({
     entity_id: entity.id,
     alias: name,
     alias_type: "name",
     source: "canonical",
-    confidence: 1.0,
+    confidence: null,
+    confidence_semantics: "not_applicable_canonical_label_not_identity_probability",
+    verification_status: "canonical_label",
   }, { onConflict: "entity_id,alias,alias_type" });
 
-  // Register external IDs
-  if (external_ids && Array.isArray(external_ids)) {
-    const extRows = external_ids.map((e: any) => ({
+  const extRows = externalIds.flatMap((rawExt) => {
+    if (!isRecord(rawExt)) return [];
+    const provider = stringValue(rawExt.provider);
+    const externalId = stringValue(rawExt.external_id);
+    if (!provider || !externalId) return [];
+    const verified = rawExt.verified === true;
+    const verifiedAt = verified ? isoDateOrNull(rawExt.verified_at) : null;
+    const verificationMethod = verified ? stringValue(rawExt.verification_method) : null;
+    if (verified && (!verifiedAt || !verificationMethod)) {
+      throw new Error(`Verified external identifier ${provider}:${externalId} requires verified_at and verification_method`);
+    }
+    return [{
       entity_id: entity.id,
-      provider: e.provider,
-      external_id: e.external_id,
-      external_type: e.external_type,
-      last_verified_at: new Date().toISOString(),
-    }));
-    await supabase.from("entity_external_ids").insert(extRows);
-  }
+      provider,
+      external_id: externalId,
+      external_type: stringValue(rawExt.external_type),
+      last_verified_at: verifiedAt,
+      verification_status: verified ? "verified" : "registered_unverified",
+      verification_method: verificationMethod,
+    }];
+  });
+  if (extRows.length > 0) await supabase.from("entity_external_ids").insert(extRows);
 
-  structuredLog("info", FN, `Registered entity: ${name} (${entity_type})`);
-  return jsonResponse({ ok: true, entity });
+  structuredLog("info", FN, `${actor} registered entity ${name} (${entityType})`);
+  return jsonResponse({
+    ok: true,
+    entity,
+    epistemic_contract: {
+      trust_score_issued: false,
+      aliases_prove_identity: false,
+      external_ids_verified: extRows.filter((row) => row.verification_status === "verified").length,
+    },
+  });
 }
 
-// ─── Link: create relationship with provenance ──────────────────────
-async function linkEntities(supabase: any, params: any) {
-  const { source_id, target_id, link_type, strength, source, metadata, provenance_source, provenance_confidence } = params;
-  if (!source_id || !target_id || !link_type) {
-    return errorResponse(new Error("source_id, target_id, link_type required"), 400);
+async function linkEntities(
+  supabase: ReturnType<typeof createClient>,
+  params: RecordValue,
+  actor: string,
+) {
+  const sourceId = stringValue(params.source_id);
+  const targetId = stringValue(params.target_id);
+  const linkType = stringValue(params.link_type);
+  if (!sourceId || !targetId || !linkType) {
+    return errorResponse(new Error("source_id, target_id and link_type required"), 400);
   }
-  if (source_id === target_id) {
-    return errorResponse(new Error("Cannot link entity to itself"), 400);
+  if (sourceId === targetId) return errorResponse(new Error("Cannot link entity to itself"), 400);
+
+  const strength = unitOrNull(params.strength);
+  const strengthSemantics = stringValue(params.strength_semantics) ?? stringValue(params.strengthSemantics);
+  if (params.strength !== undefined && strength === null) {
+    return errorResponse(new Error("strength must be a finite value between 0 and 1"), 400);
+  }
+  if (strength !== null && !strengthSemantics) {
+    return errorResponse(new Error("numeric strength requires strength_semantics"), 400);
+  }
+
+  const provenanceConfidence = unitOrNull(params.provenance_confidence);
+  const provenanceConfidenceSemantics = stringValue(params.provenance_confidence_semantics);
+  if (params.provenance_confidence !== undefined && provenanceConfidence === null) {
+    return errorResponse(new Error("provenance_confidence must be between 0 and 1"), 400);
+  }
+  if (provenanceConfidence !== null && !provenanceConfidenceSemantics) {
+    return errorResponse(new Error("numeric provenance_confidence requires provenance_confidence_semantics"), 400);
+  }
+
+  const provenanceObservedAt = isoDateOrNull(params.provenance_observed_at);
+  if (params.provenance_observed_at !== undefined && provenanceObservedAt === null) {
+    return errorResponse(new Error("provenance_observed_at must be a valid ISO datetime"), 400);
+  }
+  const provenanceTimeSemantics = stringValue(params.provenance_time_semantics);
+  if (provenanceObservedAt && !provenanceTimeSemantics) {
+    return errorResponse(new Error("provenance_observed_at requires provenance_time_semantics"), 400);
+  }
+
+  const verificationStatus = stringValue(params.verification_status) ?? "proposed";
+  if (verificationStatus !== "proposed" && verificationStatus !== "verified") {
+    return errorResponse(new Error("verification_status must be proposed or verified"), 400);
+  }
+  const provenanceSource = stringValue(params.provenance_source) ?? stringValue(params.source);
+  if (verificationStatus === "verified" && (!provenanceSource || !provenanceObservedAt)) {
+    return errorResponse(new Error("verified links require provenance_source and provenance_observed_at"), 400);
   }
 
   const { data, error } = await supabase
     .from("entity_links")
     .insert({
-      source_entity_id: source_id,
-      target_entity_id: target_id,
-      link_type,
-      strength: strength || 1.0,
-      source: source || "manual",
-      metadata: metadata || {},
-      provenance_source: provenance_source || source || "manual",
-      provenance_confidence: provenance_confidence || 1.0,
-      provenance_observed_at: new Date().toISOString(),
+      source_entity_id: sourceId,
+      target_entity_id: targetId,
+      link_type: linkType,
+      strength,
+      strength_semantics: strength === null ? "not_quantified" : strengthSemantics,
+      source: stringValue(params.source),
+      metadata: isRecord(params.metadata) ? params.metadata : {},
+      provenance_source: provenanceSource,
+      provenance_confidence: provenanceConfidence,
+      provenance_confidence_semantics: provenanceConfidence === null
+        ? "not_quantified"
+        : provenanceConfidenceSemantics,
+      provenance_observed_at: provenanceObservedAt,
+      provenance_time_semantics: provenanceObservedAt === null
+        ? "source_observation_time_unknown"
+        : provenanceTimeSemantics,
+      verification_status: verificationStatus,
     })
     .select()
     .single();
-
   if (error) return errorResponse(error);
+
+  structuredLog("info", FN, `${actor} created ${verificationStatus} entity link ${sourceId} -> ${targetId}`);
   return jsonResponse({ ok: true, link: data });
 }
 
-// ─── Merge: transactional via DB function ───────────────────────────
-async function mergeEntities(supabase: any, params: any) {
-  const { winner_id, loser_id, reason, confidence } = params;
-  if (!winner_id || !loser_id || !reason) {
-    return errorResponse(new Error("winner_id, loser_id, reason required"), 400);
+async function mergeEntities(
+  supabase: ReturnType<typeof createClient>,
+  params: RecordValue,
+  actor: string,
+) {
+  const winnerId = stringValue(params.winner_id);
+  const loserId = stringValue(params.loser_id);
+  const reason = stringValue(params.reason);
+  if (!winnerId || !loserId || !reason) {
+    return errorResponse(new Error("winner_id, loser_id and reason required"), 400);
+  }
+  if (params.confirm_merge !== true) {
+    return errorResponse(new Error("confirm_merge=true is required for destructive identity merge"), 400);
+  }
+
+  const confidence = unitOrNull(params.confidence);
+  if (params.confidence !== undefined && confidence === null) {
+    return errorResponse(new Error("confidence must be between 0 and 1 when supplied"), 400);
   }
 
   const { data, error } = await supabase.rpc("merge_entities_tx", {
-    _winner_id: winner_id,
-    _loser_id: loser_id,
+    _winner_id: winnerId,
+    _loser_id: loserId,
     _reason: reason,
-    _confidence: confidence || 0.9,
-    _merged_by: "system",
+    _confidence: confidence,
+    _merged_by: actor,
   });
-
   if (error) return errorResponse(error);
-  structuredLog("info", FN, `Merged entity ${loser_id} → ${winner_id}`);
-  return jsonResponse(data);
+
+  structuredLog("info", FN, `${actor} explicitly merged entity ${loserId} -> ${winnerId}`);
+  return jsonResponse({
+    ...((isRecord(data) ? data : { result: data }) as RecordValue),
+    merge_decision_semantics: "explicit_privileged_identity_merge_not_similarity_autopromotion",
+  });
 }
 
-// ─── Search: ranked with trigram scoring ────────────────────────────
-async function searchEntities(supabase: any, params: any) {
-  const { query, entity_type, iso3, limit = 20 } = params;
+async function searchEntities(supabase: ReturnType<typeof createClient>, params: RecordValue) {
+  const query = stringValue(params.query);
+  const entityType = stringValue(params.entity_type);
+  const iso3 = stringValue(params.iso3);
+  const limit = integerInRange(params.limit, 1, 100) ?? 20;
   if (!query) return errorResponse(new Error("query required"), 400);
 
-  // Use ranked fuzzy search
   const { data: ranked } = await supabase.rpc("similarity_search_entities", {
     search_name: query,
-    search_type: entity_type || null,
+    search_type: entityType,
     min_similarity: 0.2,
     max_results: limit,
   });
 
-  let results = ranked || [];
+  const results: RecordValue[] = (ranked ?? []).map((row: RecordValue) => ({
+    ...row,
+    match_score: unitOrNull(row.similarity),
+    match_score_semantics: "trigram_string_similarity_not_identity_probability",
+  }));
 
-  // Also do substring fallback for short queries
   if (results.length < 3) {
-    let q = supabase
+    let dbQuery = supabase
       .from("canonical_entities")
       .select("*")
       .ilike("canonical_name", `%${query}%`)
       .limit(limit);
-    if (entity_type) q = q.eq("entity_type", entity_type);
-    if (iso3) q = q.eq("iso3", iso3);
-    const { data: substringHits } = await q;
+    if (entityType) dbQuery = dbQuery.eq("entity_type", entityType);
+    if (iso3) dbQuery = dbQuery.eq("iso3", iso3);
+    const { data: substringHits } = await dbQuery;
 
-    const seen = new Set(results.map((r: any) => r.id));
-    for (const hit of substringHits || []) {
-      if (!seen.has(hit.id)) {
-        seen.add(hit.id);
-        results.push({ ...hit, similarity: 0.1, match_source: "substring" });
-      }
+    const seen = new Set(results.map((row) => stringValue(row.id)).filter(Boolean));
+    for (const hit of substringHits ?? []) {
+      if (seen.has(hit.id)) continue;
+      seen.add(hit.id);
+      results.push({
+        ...(hit as RecordValue),
+        match_source: "substring",
+        match_score: null,
+        match_score_semantics: "substring_candidate_not_numeric_identity_score",
+      });
     }
   }
 
-  return jsonResponse({ results, count: results.length });
+  return jsonResponse({
+    results,
+    count: results.length,
+    result_semantics: "search_candidates_not_resolved_identities",
+  });
 }
 
-// ─── Graph: real depth traversal ────────────────────────────────────
-async function getEntityGraph(supabase: any, params: any) {
-  const { entity_id, depth = 1 } = params;
-  if (!entity_id) return errorResponse(new Error("entity_id required"), 400);
+async function getEntityGraph(supabase: ReturnType<typeof createClient>, params: RecordValue) {
+  const entityId = stringValue(params.entity_id);
+  const depth = integerInRange(params.depth, 1, 5) ?? 1;
+  if (!entityId) return errorResponse(new Error("entity_id required"), 400);
 
   const { data: entity } = await supabase
     .from("canonical_entities")
     .select("*")
-    .eq("id", entity_id)
+    .eq("id", entityId)
     .single();
-
   if (!entity) return errorResponse(new Error("Entity not found"), 404);
 
-  // Parallel fetch: aliases, external IDs, and graph traversal
   const [aliasRes, extRes, graphRes] = await Promise.all([
-    supabase.from("entity_aliases").select("*").eq("entity_id", entity_id),
-    supabase.from("entity_external_ids").select("*").eq("entity_id", entity_id),
-    supabase.rpc("traverse_entity_graph", { _entity_id: entity_id, _depth: depth }),
+    supabase.from("entity_aliases").select("*").eq("entity_id", entityId),
+    supabase.from("entity_external_ids").select("*").eq("entity_id", entityId),
+    supabase.rpc("traverse_entity_graph", { _entity_id: entityId, _depth: depth }),
   ]);
 
-  const edges = graphRes.data || [];
-  const outgoing = edges.filter((e: any) => e.direction === "outgoing");
-  const incoming = edges.filter((e: any) => e.direction === "incoming");
-
+  const edges = graphRes.data ?? [];
   return jsonResponse({
     entity,
-    aliases: aliasRes.data || [],
-    external_ids: extRes.data || [],
-    relationships: { outgoing, incoming },
+    aliases: aliasRes.data ?? [],
+    external_ids: extRes.data ?? [],
+    relationships: {
+      outgoing: edges.filter((edge: RecordValue) => edge.direction === "outgoing"),
+      incoming: edges.filter((edge: RecordValue) => edge.direction === "incoming"),
+    },
     graph_depth: depth,
     total_connections: edges.length,
   });
+}
+
+function isRecord(value: unknown): value is RecordValue {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function unitOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : null;
+}
+
+function isoDateOrNull(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
+function integerInRange(value: unknown, min: number, max: number): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max
+    ? value
+    : null;
 }
