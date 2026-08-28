@@ -3,6 +3,10 @@
 -- NEVER run during T0 restore, shadow validation, parity comparison, or while
 -- the Lovable project is still the authoritative production writer.
 --
+-- Guarded source refs:
+--   psonnnuhjjskrdazrakk  - repository-declared source binding
+--   itpwpnwzzitkelffttyx  - live Lovable runtime binding observed 2026-08-28
+--
 -- Preconditions:
 --   1. migration/target/001_rebind_pipeline_cron.sql has quarantined all jobs.
 --   2. Database/Auth/Storage/function parity gates pass.
@@ -49,8 +53,9 @@ BEGIN
     RAISE EXCEPTION 'aicis_project_url is missing';
   END IF;
 
-  IF project_url LIKE '%psonnnuhjjskrdazrakk%' THEN
-    RAISE EXCEPTION 'Refusing cutover: aicis_project_url still points to Lovable source';
+  IF project_url LIKE '%psonnnuhjjskrdazrakk%'
+     OR project_url LIKE '%itpwpnwzzitkelffttyx%' THEN
+    RAISE EXCEPTION 'Refusing cutover: aicis_project_url points to a guarded source project';
   END IF;
 
   IF project_url NOT LIKE '%qpphncfgbhizvnovzivw%' THEN
@@ -71,7 +76,6 @@ BEGIN
 END;
 $$;
 
--- Pipeline replay: audited target-safe scheduler paths.
 SELECT cron.unschedule('pipeline-replay-drain-10min')
 WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pipeline-replay-drain-10min');
 SELECT cron.schedule(
@@ -105,8 +109,6 @@ SELECT cron.schedule(
     );$$
 );
 
--- Global performance driver: preserve the latest production cadence from
--- 20260821224500_schedule_global_performance_engine.sql (every 6h at :25).
 SELECT cron.unschedule('pns-global-performance-engine')
 WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pns-global-performance-engine');
 SELECT cron.schedule(
@@ -145,6 +147,7 @@ BEGIN
   WHERE active
     AND (
       command LIKE '%psonnnuhjjskrdazrakk%'
+      OR command LIKE '%itpwpnwzzitkelffttyx%'
       OR command ILIKE '%anon_key%'
       OR command ILIKE '%service_role_key%'
       OR command ILIKE '%authorization%bearer%'
