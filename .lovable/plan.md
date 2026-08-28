@@ -65,16 +65,16 @@ At 181 GB, steps 1 and 5 are the blockers. Steps 2–3 remain useful because the
 | Artifact | In self-service export | How to handle |
 |---|---|---|
 | Table schema + data | Yes (≤5 GB) | Blocked at this size |
-| RLS policies, DB functions, triggers, views | Yes, if the dump is schema-complete | Verify; otherwise re-emit as SQL |
-| Extensions | **[Assumption]** typically as `CREATE EXTENSION` lines | Pre-create in target before restore |
-| pg_cron / pg_net jobs (172) | **[Assumption]** `cron.job` lives in the `cron` schema, normally excluded from a public-schema dump | Export `cron.job` rows separately and recreate after cutover |
+| RLS policies, DB functions, triggers, views | **Unverified** — must be confirmed from the actual export format, not assumed from "schema-complete" | Verify inclusion; otherwise re-emit as SQL |
+| Extensions | **Unverified [Assumption]** typically emitted as `CREATE EXTENSION` lines | Confirm; pre-create in target before restore |
+| pg_cron / pg_net jobs (172 total, 171 active — directly observed) | **Unverified**; `cron.job` lives in the `cron` schema and is commonly outside a public-schema dump | Export `cron.job` rows separately; **all jobs stay DISABLED on target** until cutover |
 | Edge Functions code | **No** | Re-deploy from `supabase/functions/` in this repo via Supabase CLI |
-| Secrets / env vars | **No** | Re-enter manually in the new project |
+| Secrets / env vars | **No** | Re-provision fresh values in the new project; never copy |
 | Auth config (providers, redirect URLs, email templates) | **No** | Reconfigure manually |
-| Migration history (`supabase_migrations.schema_migrations`) | **No** | Copy the table or re-baseline |
+| Migration history (`supabase_migrations.schema_migrations`) | **Unknown — verify export scope** | If absent, copy the table or re-baseline |
 | Storage objects | **No** | See §6 |
 
-**[Observed] Lovable-specific runtime dependency:** ~29 edge functions call the Lovable AI Gateway using `LOVABLE_API_KEY` / `ai.gateway.lovable.dev`, and Google sign-in currently uses `@lovable.dev/cloud-auth-js` with native Supabase Google OAuth disabled in `config.toml`. Both must be replaced with direct provider keys / native Supabase OAuth for the backend to be Lovable-independent.
+**Lovable coupling status:** canonical CI currently reports **zero direct Lovable runtime dependencies** (`ai.gateway.lovable.dev`, `LOVABLE_API_KEY`, `@lovable.dev/cloud-auth-*`), per `docs/PORTABILITY_POLICY.md` and the portability gate. Unused Lovable packages/config remnants may still exist and should be inventoried, but no count of gateway-dependent edge functions is asserted here without a fresh audit run against this repository.
 
 ## 8. Safest zero-data-loss sequence at ~181 GB
 
