@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const auth = await requireAdminOrTrustedWorker(req, corsHeaders);
-  if (!auth.ok) return auth.response;
+  if (auth.response) return auth.response;
 
   const started = Date.now();
   try {
@@ -85,9 +85,6 @@ Deno.serve(async (req) => {
       const target = index.get(edge.target_node_id);
       if (source === undefined || target === undefined) continue;
 
-      // Topology propagation requires an explicit deterministic strength. Unknown
-      // strength is withheld rather than replaced with 0.5. Confidence is deliberately
-      // excluded: graph traversal weight is not evidence confidence.
       const strength = finite(edge.strength);
       if (strength === null) {
         withheldEdges += 1;
@@ -100,7 +97,6 @@ Deno.serve(async (req) => {
       incoming[target].push({ from: source, w: weight, type: edge.edge_type, sem: edge.relationship_semantics });
     }
 
-    // Weighted PageRank is a deterministic structural heuristic, not reliability.
     const damping = 0.85;
     let pageRank = new Array(nodes.length).fill(1 / nodes.length);
     for (let iteration = 0; iteration < 15; iteration += 1) {
@@ -150,14 +146,10 @@ Deno.serve(async (req) => {
 
     const payload = nodes.map((node, i) => {
       const centrality = clamp((pageRank[i] / maxPageRank) * 100);
-      const escalationEdges = incoming[i].filter((edge) =>
-        edge.type === "escalates" || edge.type === "pressure_propagates_to"
-      );
+      const escalationEdges = incoming[i].filter((edge) => edge.type === "escalates" || edge.type === "pressure_propagates_to");
       const escalationDensity = clamp(escalationEdges.reduce((sum, edge) => sum + edge.w * 100, 0) / 2);
       const conflictDensity = clamp(incoming[i].filter((edge) => edge.type === "contradicts").length * 25);
-      const dependencyCount =
-        out[i].filter((edge) => edge.type === "caused_by").length +
-        incoming[i].filter((edge) => edge.type === "depends_on").length;
+      const dependencyCount = out[i].filter((edge) => edge.type === "caused_by").length + incoming[i].filter((edge) => edge.type === "depends_on").length;
       const dependencyScore = clamp(dependencyCount * 15);
       const outgoingWeight = out[i].reduce((sum, edge) => sum + edge.w, 0);
       const propagationRisk = clamp(centrality * 0.4 + outgoingWeight * 20);
@@ -175,32 +167,20 @@ Deno.serve(async (req) => {
         escalation_density: escalationDensity,
         conflict_density: conflictDensity,
         blast_radius_score: blast.score,
-        blast_radius_breakdown: {
-          depth: blast.depth,
-          touched: blast.touched,
-          unknown_criticality_nodes: blast.unknown_criticality_nodes,
-        },
-        // These fields require governed evidence/outcome semantics. Graph structure alone
-        // cannot establish them, so unknown remains NULL.
+        blast_radius_breakdown: { depth: blast.depth, touched: blast.touched, unknown_criticality_nodes: blast.unknown_criticality_nodes },
         evidence_confidence: null,
         relationship_stability: null,
         cross_source_consistency: null,
         topology_reliability: null,
         historical_accuracy: null,
-        scoring_breakdown: {
-          pagerank: pageRank[i],
-          incoming_edges_used: incoming[i].length,
-          outgoing_edges_used: out[i].length,
-        },
+        scoring_breakdown: { pagerank: pageRank[i], incoming_edges_used: incoming[i].length, outgoing_edges_used: out[i].length },
         score_semantics: {
           centrality_score: "deterministic_weighted_pagerank_heuristic_not_probability",
           decision_dependency_score: "deterministic_edge_count_heuristic_not_probability",
           propagation_risk: "deterministic_topology_heuristic_not_calibrated_risk_probability",
           escalation_density: "deterministic_weighted_edge_heuristic",
           conflict_density: "deterministic_edge_count_heuristic",
-          blast_radius_score: blast.score === null
-            ? "withheld_missing_required_criticality"
-            : "deterministic_depth_limited_graph_heuristic",
+          blast_radius_score: blast.score === null ? "withheld_missing_required_criticality" : "deterministic_depth_limited_graph_heuristic",
           evidence_confidence: "withheld_no_governed_evidence_confidence_model",
           relationship_stability: "withheld_no_measured_stability_window",
           cross_source_consistency: "withheld_relationship_semantics_are_not_independent_sources",
@@ -212,13 +192,9 @@ Deno.serve(async (req) => {
       };
     });
 
-    const { error: upsertError } = await supabase
-      .from("graph_topology_scores")
-      .upsert(payload, { onConflict: "node_id" });
+    const { error: upsertError } = await supabase.from("graph_topology_scores").upsert(payload, { onConflict: "node_id" });
     if (upsertError) throw upsertError;
 
-    // Governance events are triggered only by explicitly named deterministic heuristic
-    // thresholds. They are not evidence that a real-world escalation has occurred.
     const events: Record<string, unknown>[] = [];
     for (const score of payload) {
       const checks: Array<[string, number | null, number]> = [
@@ -264,6 +240,7 @@ Deno.serve(async (req) => {
       epistemic_contract: "truth_floor_v2",
       calibrated_probability: null,
       analytical_confidence: null,
+      authenticated_via: auth.via,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("compute-graph-topology error:", error);
