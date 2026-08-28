@@ -26,13 +26,6 @@
       "cutover_requirement": "Resolve the live polling scheduler and provider rate/cadence constraints, preserve it only at audited target cutover, then enforce requireAdminOrTrustedWorker."
     },
     {
-      "name": "lril-process",
-      "source_caller_state": "no_committed_executable_caller_found_live_activation_unknown",
-      "evidence": "Exact-name, exact function-URL, functions.invoke and cron.schedule searches found the worker, LRIL support schema/memory and audit references but no committed executable caller to lril-process. Related LRIL workers do not by themselves prove invocation of this function.",
-      "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Trace the live/restored LRIL scheduler or orchestration path, rebind any required caller to target trusted-worker invocation, then enforce requireAdminOrTrustedWorker."
-    },
-    {
       "name": "planetary-backfill",
       "source_caller_state": "mixed_current_internal_and_historical_database_http_callers_live_activation_partially_unknown",
       "evidence": "Current graph-recovery-tick directly fetches /functions/v1/planetary-backfill with a service-role Bearer. pipeline-watchdog can also resolve planetary-backfill through target_function and invokeInternalFunction with x-cron-secret. Historical migrations 20260413114431_7dfd2577-1e0c-4c94-8ff9-49b773850234.sql and 20260413114900_c155eccf-ce46-44f7-bacc-40895b228609.sql define database HTTP wrappers posting to the Lovable source with a legacy anon JWT. Historical wrapper activation in the live source is unresolved.",
