@@ -33,8 +33,10 @@ SET
   humanitarian_impact_reduction = NULL,
   outcome_metric_semantics = COALESCE(outcome_metric_semantics, 'legacy_outcome_metrics_semantics_unverified'),
   evidence_status = CASE
-    WHEN evaluated_at IS NOT NULL AND cardinality(ARRAY(SELECT jsonb_array_elements(validation_evidence))) > 0
-      THEN 'partial'
+    WHEN evaluated_at IS NOT NULL
+      AND validation_evidence IS NOT NULL
+      AND jsonb_typeof(validation_evidence) = 'array'
+      AND jsonb_array_length(validation_evidence) > 0 THEN 'partial'
     ELSE 'unresolved'
   END;
 
