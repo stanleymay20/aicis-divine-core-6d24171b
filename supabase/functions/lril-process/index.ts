@@ -1,52 +1,41 @@
 /**
- * lril-process — Local Reality Ingestion Layer: detect → geo → classify → cluster
+ * lril-process — Local Reality Ingestion Layer: detect → geo → classify → cluster.
  *
- * Reads unprocessed rows from `aicis_raw_local_signals`, runs:
- *   1. Keyword detection (via lril_detect_keywords RPC)
- *   2. Geo resolution (locality match against aicis_geo_entities,
- *      with country_hint/region_hint fallback)
- *   3. Event classification (domain + subtype from keyword pack)
- *   4. Spatial-temporal clustering (10–50km, 6–24h window)
- *   5. Confidence scoring (lril_compute_confidence)
- *   6. Upsert into aicis_local_events
- *   7. Bridge medium+ confidence events to normalized_events
- *
- * Idempotent: marks signals as processed_at = now() to avoid reprocessing.
+ * Truth-floor rules:
+ * - missing provider time is not converted to now
+ * - missing source/geo quality remains unknown
+ * - LRIL confidence is a deterministic heuristic score, not a probability
+ * - incomplete evidence yields NULL confidence and cannot bridge
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 const FN = "lril-process";
-const BATCH = 500;             // v18: 750 also timed out per call -> settle at 500 (parallel callers scale throughput)
+const BATCH = 500;
 const CLUSTER_RADIUS_KM = 25;
 const CLUSTER_WINDOW_HOURS = 12;
 
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
+type JsonRecord = Record<string, unknown>;
 
-interface Signal {
+type Signal = {
   id: string;
   raw_text: string | null;
   language: string;
   country_hint: string | null;
   region_hint: string | null;
-  source_reliability: number;
+  source_reliability: number | null;
   published_at: string | null;
   url: string | null;
   source_name: string;
-}
+};
 
-interface GeoEntity {
+type GeoEntity = {
   id: string;
   iso3: string;
   admin_level_1: string | null;
@@ -54,147 +43,237 @@ interface GeoEntity {
   locality: string | null;
   lat: number | null;
   lon: number | null;
-  geo_confidence: number;
+  geo_confidence: number | null;
+};
+
+type ExistingEvent = {
+  id: string;
+  lat: number | null;
+  lon: number | null;
+  source_count: number | null;
+  raw_signal_ids: unknown;
+  matched_keywords: unknown;
+  severity: number | null;
+  confidence: number | null;
+  locality: string | null;
+};
+
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" ? value as JsonRecord : {};
+}
+
+function finiteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parseProviderTime(value: string | null): string | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (auth.response) return auth.response;
+
   const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
   const start = Date.now();
-  const workerId = (req.headers.get("x-worker-id")) || crypto.randomUUID().slice(0, 8);
-  const stats = { fetched: 0, classified: 0, geo_resolved: 0, events_created: 0, events_updated: 0, bridged: 0, errors: 0 };
+  const workerId = req.headers.get("x-worker-id") || crypto.randomUUID().slice(0, 8);
+  const stats = {
+    fetched: 0,
+    classified: 0,
+    geo_resolved: 0,
+    events_created: 0,
+    events_updated: 0,
+    bridged: 0,
+    withheld_missing_time: 0,
+    withheld_missing_confidence_inputs: 0,
+    errors: 0,
+  };
 
-  // v18: Release any stale claims from crashed workers (>5 min)
-  try { await supabase.rpc("lril_release_stale_claims", { p_max_age_minutes: 5 }); } catch (_) { /* non-blocking */ }
+  try {
+    await supabase.rpc("lril_release_stale_claims", { p_max_age_minutes: 5 });
+  } catch {
+    // Non-blocking cleanup.
+  }
 
-  // 1. Atomically claim a batch via FOR UPDATE SKIP LOCKED — safe for parallel workers
-  const { data: signals, error: sErr } = await supabase.rpc("lril_claim_signals", { p_limit: BATCH });
+  const { data: signalRows, error: sErr } = await supabase.rpc("lril_claim_signals", { p_limit: BATCH });
   if (sErr) {
     await supabase.from("automation_logs").insert({ job_name: FN, status: "error", message: sErr.message });
-    return new Response(JSON.stringify({ ok: false, error: sErr.message }), { status: 500, headers: corsHeaders });
+    return new Response(JSON.stringify({ ok: false, error: sErr.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
-  stats.fetched = signals?.length || 0;
 
-  if (!signals || signals.length === 0) {
+  const signals = (signalRows ?? []) as Signal[];
+  stats.fetched = signals.length;
+  if (signals.length === 0) {
     return new Response(JSON.stringify({ ok: true, stats, message: "no unprocessed signals" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  // 2. Pre-load geo cache by country hints present in this batch
-  const isos = [...new Set(signals.map(s => s.country_hint).filter(Boolean) as string[])];
+  const isos = [...new Set(signals.map((signal) => signal.country_hint).filter((iso): iso is string => Boolean(iso)))];
   const geoCache = new Map<string, GeoEntity[]>();
   if (isos.length > 0) {
     const { data: geos } = await supabase
       .from("aicis_geo_entities")
       .select("id, iso3, admin_level_1, city, locality, lat, lon, geo_confidence")
       .in("iso3", isos);
-    for (const g of (geos || []) as GeoEntity[]) {
-      const list = geoCache.get(g.iso3) || [];
-      list.push(g);
-      geoCache.set(g.iso3, list);
+    for (const geo of (geos ?? []) as GeoEntity[]) {
+      const list = geoCache.get(geo.iso3) ?? [];
+      list.push(geo);
+      geoCache.set(geo.iso3, list);
     }
   }
 
-  // Holding pen for new local events to cluster against (per iso3+subtype)
   const processedIds: string[] = [];
 
-  for (const s of signals as Signal[]) {
+  for (const signal of signals) {
     try {
-      // 2a. Keyword detection
       const { data: kwRows } = await supabase.rpc("lril_detect_keywords", {
-        p_text: s.raw_text || "",
-        p_language: s.language || "en",
-        p_country: s.country_hint,
+        p_text: signal.raw_text || "",
+        p_language: signal.language || "en",
+        p_country: signal.country_hint,
       });
-      const top = Array.isArray(kwRows) && kwRows.length > 0 ? kwRows[0] : null;
-      if (!top) { processedIds.push(s.id); continue; }
+      const top = Array.isArray(kwRows) && kwRows.length > 0 ? asRecord(kwRows[0]) : null;
+      if (!top) {
+        processedIds.push(signal.id);
+        continue;
+      }
 
-      const matched: any[] = top.matched_terms || [];
-      const domain: string = top.domain;
-      const subtype: string = top.subtype;
-      const keyword_strength = Number(top.score || 0);
+      const matched = stringArray(top.matched_terms);
+      const domain = typeof top.domain === "string" ? top.domain : null;
+      const subtype = typeof top.subtype === "string" ? top.subtype : null;
+      const keywordStrength = finiteNumber(top.score);
+      if (!domain || !subtype) {
+        processedIds.push(signal.id);
+        continue;
+      }
 
-      // Country resolution: (1) normalize FIPS→ISO3, (2) override from text if mismatch detected
-      let effectiveIso3: string | null = s.country_hint;
-      const originalHint: string | null = s.country_hint;
+      let effectiveIso3: string | null = signal.country_hint;
+      const originalHint = signal.country_hint;
       let countryCorrected = false;
-      try {
-        const { data: norm } = await supabase.rpc("lril_fips_to_iso3", { p_code: effectiveIso3 || "" });
-        if (typeof norm === "string" && norm) effectiveIso3 = norm;
-      } catch (_) { /* ignore */ }
-      try {
-        const { data: detected } = await supabase.rpc("lril_detect_country_from_text", { p_text: s.raw_text || "" });
-        if (detected && typeof detected === "string") {
-          if (!effectiveIso3 || effectiveIso3 !== detected) {
-            if (effectiveIso3 && effectiveIso3 !== detected) {
-              countryCorrected = true;
-              try {
-                await supabase.from("lril_country_corrections").insert({
-                  signal_id: s.id,
-                  original_country_hint: originalHint,
-                  detected_iso3: detected,
-                  raw_text_excerpt: (s.raw_text || "").slice(0, 500),
-                  source_name: s.source_name,
-                  confidence_penalty: -0.05,
-                });
-              } catch (_) { /* non-blocking */ }
-            }
-            effectiveIso3 = detected;
-          }
-        }
-      } catch (_) { /* keep original */ }
-      (s as any).country_hint = effectiveIso3;
 
-      // 2b. Geo resolution: cached substring first, then fuzzy DB resolver
-      const iso3 = s.country_hint;
-      let geo: GeoEntity | null = null;
-      if (iso3 && geoCache.has(iso3) && s.raw_text) {
-        const lc = s.raw_text.toLowerCase();
-        const candidates = geoCache.get(iso3)!;
-        for (const g of candidates) {
-          const targets = [g.locality, g.city, g.admin_level_1].filter(Boolean) as string[];
-          for (const t of targets) {
-            if (t.length >= 4 && lc.includes(t.toLowerCase())) { geo = g; break; }
+      try {
+        const { data: normalized } = await supabase.rpc("lril_fips_to_iso3", { p_code: effectiveIso3 || "" });
+        if (typeof normalized === "string" && normalized) effectiveIso3 = normalized;
+      } catch {
+        // Preserve upstream value when normalization is unavailable.
+      }
+
+      try {
+        const { data: detected } = await supabase.rpc("lril_detect_country_from_text", {
+          p_text: signal.raw_text || "",
+        });
+        if (typeof detected === "string" && detected && effectiveIso3 !== detected) {
+          if (effectiveIso3) {
+            countryCorrected = true;
+            try {
+              await supabase.from("lril_country_corrections").insert({
+                signal_id: signal.id,
+                original_country_hint: originalHint,
+                detected_iso3: detected,
+                raw_text_excerpt: (signal.raw_text || "").slice(0, 500),
+                source_name: signal.source_name,
+                confidence_penalty: null,
+              });
+            } catch {
+              // Audit write is best-effort.
+            }
           }
-          if (geo) break;
+          effectiveIso3 = detected;
+        }
+      } catch {
+        // Keep the upstream/normalized country when text detection is unavailable.
+      }
+
+      const iso3 = effectiveIso3;
+      if (!iso3) {
+        processedIds.push(signal.id);
+        continue;
+      }
+
+      let geo: GeoEntity | null = null;
+      if (geoCache.has(iso3) && signal.raw_text) {
+        const lowerText = signal.raw_text.toLowerCase();
+        for (const candidate of geoCache.get(iso3) ?? []) {
+          const targets = [candidate.locality, candidate.city, candidate.admin_level_1]
+            .filter((value): value is string => typeof value === "string");
+          if (targets.some((target) => target.length >= 4 && lowerText.includes(target.toLowerCase()))) {
+            geo = candidate;
+            break;
+          }
         }
       }
-      // v17: signal-linked phrase-aware fuzzy resolver (audit rows now carry signal_id)
-      if (!geo && iso3 && s.raw_text) {
+
+      if (!geo && signal.raw_text) {
         try {
-          const { data: fuzzy } = await supabase.rpc("lril_resolve_geo_fuzzy_v3", {
-            p_text: s.raw_text.slice(0, 1500), p_iso3: iso3, p_signal_id: s.id,
+          const { data: fuzzyRows } = await supabase.rpc("lril_resolve_geo_fuzzy_v3", {
+            p_text: signal.raw_text.slice(0, 1500),
+            p_iso3: iso3,
+            p_signal_id: signal.id,
           });
-          if (Array.isArray(fuzzy) && fuzzy.length > 0) {
-            const f = fuzzy[0];
-            geo = {
-              id: f.geo_entity_id, iso3, admin_level_1: f.admin_level_1,
-              city: null, locality: f.locality, lat: f.lat, lon: f.lon,
-              geo_confidence: Number(f.geo_confidence) || 0.5,
-            };
+          if (Array.isArray(fuzzyRows) && fuzzyRows.length > 0) {
+            const fuzzy = asRecord(fuzzyRows[0]);
+            const id = typeof fuzzy.geo_entity_id === "string" ? fuzzy.geo_entity_id : null;
+            if (id) {
+              geo = {
+                id,
+                iso3,
+                admin_level_1: typeof fuzzy.admin_level_1 === "string" ? fuzzy.admin_level_1 : null,
+                city: null,
+                locality: typeof fuzzy.locality === "string" ? fuzzy.locality : null,
+                lat: finiteNumber(fuzzy.lat),
+                lon: finiteNumber(fuzzy.lon),
+                geo_confidence: finiteNumber(fuzzy.geo_confidence),
+              };
+            }
           }
-        } catch (_) { /* keep null */ }
+        } catch {
+          // Unknown geo remains unknown.
+        }
       }
-      let geo_confidence = geo ? geo.geo_confidence : (iso3 ? 0.4 : 0.15);
-      if (countryCorrected) geo_confidence = Math.max(0.05, geo_confidence - 0.05);
+
+      let geoConfidence = geo?.geo_confidence ?? null;
+      if (countryCorrected && geoConfidence != null) {
+        geoConfidence = Math.max(0, geoConfidence - 0.05);
+      }
       if (geo) stats.geo_resolved++;
       stats.classified++;
 
-      const startTime = s.published_at || new Date().toISOString();
+      const startTime = parseProviderTime(signal.published_at);
+      if (!startTime) {
+        stats.withheld_missing_time++;
+        processedIds.push(signal.id);
+        continue;
+      }
 
-      if (!iso3) { processedIds.push(s.id); continue; }
+      const windowStart = new Date(Date.parse(startTime) - CLUSTER_WINDOW_HOURS * 3600 * 1000).toISOString();
+      const windowEnd = new Date(Date.parse(startTime) + CLUSTER_WINDOW_HOURS * 3600 * 1000).toISOString();
 
-      // 2c. Cluster: find existing active event in same iso3 + domain + subtype
-      // within time window and (if both have coords) spatial radius
-      const windowStart = new Date(new Date(startTime).getTime() - CLUSTER_WINDOW_HOURS * 3600 * 1000).toISOString();
-      const windowEnd   = new Date(new Date(startTime).getTime() + CLUSTER_WINDOW_HOURS * 3600 * 1000).toISOString();
-
-      const { data: existing } = await supabase
+      const { data: existingRows } = await supabase
         .from("aicis_local_events")
         .select("id, lat, lon, source_count, raw_signal_ids, matched_keywords, severity, confidence, locality")
         .eq("iso3", iso3)
@@ -204,132 +283,164 @@ serve(async (req) => {
         .gte("start_time", windowStart)
         .lte("start_time", windowEnd)
         .limit(20);
+      const existing = (existingRows ?? []) as ExistingEvent[];
 
       let clusterId: string | null = null;
-      if (existing && existing.length > 0 && geo?.lat != null && geo?.lon != null) {
-        for (const e of existing) {
-          if (e.lat != null && e.lon != null) {
-            const d = haversineKm(geo.lat, geo.lon, Number(e.lat), Number(e.lon));
-            if (d <= CLUSTER_RADIUS_KM) { clusterId = e.id; break; }
-          } else {
-            // existing has no coords → cluster anyway if same iso3+subtype within window
-            clusterId = e.id; break;
+      if (existing.length > 0 && geo?.lat != null && geo?.lon != null) {
+        for (const event of existing) {
+          if (event.lat != null && event.lon != null) {
+            if (haversineKm(geo.lat, geo.lon, Number(event.lat), Number(event.lon)) <= CLUSTER_RADIUS_KM) {
+              clusterId = event.id;
+              break;
+            }
           }
         }
-      } else if (existing && existing.length > 0) {
-        clusterId = existing[0].id;
       }
 
-      // Compute per-signal source tier (overrides static source_reliability)
-      let sourceTier = s.source_reliability ?? 0.5;
+      let sourceTier = finiteNumber(signal.source_reliability);
       try {
-        const { data: tier } = await supabase.rpc("lril_source_tier", { p_source: s.source_name, p_url: s.url });
-        if (typeof tier === "number" || (tier && !isNaN(Number(tier)))) sourceTier = Number(tier);
-      } catch (_) { /* keep default */ }
+        const { data: tier } = await supabase.rpc("lril_source_tier", {
+          p_source: signal.source_name,
+          p_url: signal.url,
+        });
+        const measuredTier = finiteNumber(tier);
+        if (measuredTier != null) sourceTier = measuredTier;
+      } catch {
+        // Missing tier evidence remains unknown.
+      }
+
+      const confidenceInputsComplete = sourceTier != null && keywordStrength != null && geoConfidence != null;
+      if (!confidenceInputsComplete) stats.withheld_missing_confidence_inputs++;
 
       if (clusterId) {
-        const target = existing!.find(e => e.id === clusterId)!;
-        const newIds = [...new Set([...((target.raw_signal_ids as any[]) || []), s.id])];
-        const newKws = [...new Set([...((target.matched_keywords as any[]) || []), ...matched])];
+        const target = existing.find((event) => event.id === clusterId);
+        if (!target) continue;
+        const newIds = [...new Set([...stringArray(target.raw_signal_ids), signal.id])];
+        const newKeywords = [...new Set([...stringArray(target.matched_keywords), ...matched])];
         const newCount = newIds.length;
-        const temporal_density = Math.min(1, newCount / CLUSTER_WINDOW_HOURS);
-        // Blend tier across cluster: weighted average of existing reliability and this signal's tier
-        const blendedReliability = Math.max(sourceTier, Number((target as any).avg_reliability) || sourceTier);
-        const { data: confRow } = await supabase.rpc("lril_compute_confidence", {
-          p_source_count: newCount,
-          p_avg_source_reliability: blendedReliability,
-          p_keyword_strength: Math.max(keyword_strength, 0.5 + 0.2 * newKws.length),
-          p_geo_confidence: geo_confidence,
-          p_temporal_density: temporal_density,
-          p_proxy_boost: 0,
-        });
-        const newConfidence = Number(confRow ?? target.confidence ?? 0.3);
+        const temporalDensity = Math.min(1, newCount / CLUSTER_WINDOW_HOURS);
+
+        let newConfidence: number | null = target.confidence ?? null;
+        let confidenceSemantics = "existing_score_preserved_missing_recompute_evidence";
+        if (confidenceInputsComplete) {
+          const { data: confRow } = await supabase.rpc("lril_compute_confidence", {
+            p_source_count: newCount,
+            p_avg_source_reliability: sourceTier,
+            p_keyword_strength: Math.max(keywordStrength, 0.5 + 0.2 * newKeywords.length),
+            p_geo_confidence: geoConfidence,
+            p_temporal_density: temporalDensity,
+            p_proxy_boost: 0,
+          });
+          newConfidence = finiteNumber(confRow);
+          confidenceSemantics = "deterministic_heuristic_v1_not_calibrated_probability";
+        }
 
         await supabase.from("aicis_local_events").update({
           source_count: newCount,
           raw_signal_ids: newIds,
-          matched_keywords: newKws,
+          matched_keywords: newKeywords,
           confidence: newConfidence,
+          confidence_semantics: confidenceSemantics,
+          epistemic_status: newConfidence == null ? "insufficient_evidence" : "heuristic_score_available",
+          event_time_status: "provider_supplied",
           bridged_to_normalized: false,
         }).eq("id", clusterId);
         stats.events_updated++;
       } else {
-        const { data: confRow } = await supabase.rpc("lril_compute_confidence", {
-          p_source_count: 1,
-          p_avg_source_reliability: sourceTier,
-          p_keyword_strength: keyword_strength,
-          p_geo_confidence: geo_confidence,
-          p_temporal_density: 0.1,
-          p_proxy_boost: 0,
-        });
-        const confidence = Number(confRow ?? 0.3);
-        // v13: severity from SQL severity model (domain + keyword + magnitude cues + tier-A boost)
-        let severity = Math.min(1, 0.3 + 0.1 * matched.length);
-        try {
-          const { data: sevRow } = await supabase.rpc("lril_compute_severity", {
-            p_domain: domain,
-            p_subtype: subtype,
-            p_text: (s.raw_text || "").slice(0, 2000),
-            p_matched_keywords: matched,
-            p_source_reliability: sourceTier,
+        let confidence: number | null = null;
+        if (confidenceInputsComplete) {
+          const { data: confRow } = await supabase.rpc("lril_compute_confidence", {
+            p_source_count: 1,
+            p_avg_source_reliability: sourceTier,
+            p_keyword_strength: keywordStrength,
+            p_geo_confidence: geoConfidence,
+            p_temporal_density: 0.1,
+            p_proxy_boost: 0,
           });
-          if (sevRow != null && !isNaN(Number(sevRow))) severity = Number(sevRow);
-        } catch (_) { /* keep fallback */ }
+          confidence = finiteNumber(confRow);
+        }
 
-        const title = `${subtype.replace(/_/g, ' ')} — ${geo?.locality || geo?.city || iso3}`;
-        const description = (s.raw_text || "").slice(0, 500);
+        let severity = Math.min(1, 0.3 + 0.1 * matched.length);
+        let severitySemantics = "deterministic_keyword_count_heuristic_v1";
+        if (sourceTier != null) {
+          try {
+            const { data: severityRow } = await supabase.rpc("lril_compute_severity", {
+              p_domain: domain,
+              p_subtype: subtype,
+              p_text: (signal.raw_text || "").slice(0, 2000),
+              p_matched_keywords: matched,
+              p_source_reliability: sourceTier,
+            });
+            const computedSeverity = finiteNumber(severityRow);
+            if (computedSeverity != null) {
+              severity = computedSeverity;
+              severitySemantics = "deterministic_lril_severity_model_v1";
+            }
+          } catch {
+            // Keep explicitly labelled deterministic fallback.
+          }
+        }
 
-        const { error: insErr } = await supabase.from("aicis_local_events").insert({
+        const title = `${subtype.replace(/_/g, " ")} — ${geo?.locality || geo?.city || iso3}`;
+        const description = (signal.raw_text || "").slice(0, 500);
+        const { error: insertError } = await supabase.from("aicis_local_events").insert({
           event_type: domain,
           subtype,
           iso3,
           iso3_normalized: iso3,
           admin_level_1: geo?.admin_level_1 || null,
-          locality: geo?.locality || geo?.city || s.region_hint || null,
+          locality: geo?.locality || geo?.city || signal.region_hint || null,
           geo_entity_id: geo?.id || null,
-          lat: geo?.lat || null,
-          lon: geo?.lon || null,
+          lat: geo?.lat ?? null,
+          lon: geo?.lon ?? null,
           start_time: startTime,
           severity,
           confidence,
           source_count: 1,
-          raw_signal_ids: [s.id],
+          raw_signal_ids: [signal.id],
           matched_keywords: matched,
           title,
           description,
           status: "active",
+          epistemic_status: confidence == null ? "insufficient_evidence" : "heuristic_score_available",
+          confidence_semantics: confidence == null
+            ? "withheld_missing_required_inputs"
+            : "deterministic_heuristic_v1_not_calibrated_probability",
+          severity_semantics: severitySemantics,
+          event_time_status: "provider_supplied",
         });
-        if (insErr) { stats.errors++; console.error("event insert", insErr.message); }
-        else stats.events_created++;
+        if (insertError) {
+          stats.errors++;
+          console.error("event insert", insertError.message);
+        } else {
+          stats.events_created++;
+        }
       }
 
-      processedIds.push(s.id);
-    } catch (e) {
+      processedIds.push(signal.id);
+    } catch (error) {
       stats.errors++;
-      console.error("signal", s.id, (e as Error).message);
+      console.error("signal", signal.id, error instanceof Error ? error.message : String(error));
     }
   }
 
-  // Mark signals processed
   if (processedIds.length > 0) {
-    for (let i = 0; i < processedIds.length; i += 500) {
+    for (let index = 0; index < processedIds.length; index += 500) {
       await supabase.from("aicis_raw_local_signals")
         .update({ processed_at: new Date().toISOString() })
-        .in("id", processedIds.slice(i, i + 500));
+        .in("id", processedIds.slice(index, index + 500));
     }
   }
 
-  // Bridge medium+ confidence events to normalized_events
   try {
     const { data: bridgeRows } = await supabase.rpc("lril_bridge_to_normalized");
-    stats.bridged = Number(bridgeRows?.[0]?.bridged_count || 0);
-  } catch (e) {
-    console.error("bridge error", (e as Error).message);
+    const first = Array.isArray(bridgeRows) && bridgeRows.length > 0 ? asRecord(bridgeRows[0]) : {};
+    stats.bridged = finiteNumber(first.bridged_count) ?? 0;
+  } catch (error) {
+    console.error("bridge error", error instanceof Error ? error.message : String(error));
   }
 
   const duration = Date.now() - start;
-
-  // v18: write progress checkpoint for parallel-worker observability
   try {
     const { count: remaining } = await supabase
       .from("aicis_raw_local_signals")
@@ -342,7 +453,9 @@ serve(async (req) => {
       last_batch_duration_ms: duration,
       remaining_unprocessed: remaining ?? null,
     });
-  } catch (_) { /* non-blocking */ }
+  } catch {
+    // Non-blocking observability.
+  }
 
   await supabase.from("automation_logs").insert({
     job_name: FN,
@@ -350,7 +463,17 @@ serve(async (req) => {
     message: `worker=${workerId} ${JSON.stringify(stats)} (${duration}ms)`,
   });
 
-  return new Response(JSON.stringify({ ok: true, worker_id: workerId, duration_ms: duration, stats }), {
+  return new Response(JSON.stringify({
+    ok: true,
+    worker_id: workerId,
+    duration_ms: duration,
+    truth_floor: {
+      missing_event_time: "withheld",
+      missing_confidence_inputs: "confidence_null",
+      confidence_semantics: "deterministic_heuristic_not_calibrated_probability",
+    },
+    stats,
+  }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
