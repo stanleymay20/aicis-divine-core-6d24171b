@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """Validate AICIS live-source cron preservation decisions.
 
-Default mode is a structural pre-cutover audit: it verifies that the observed
-live source cron set is complete, unique, explicitly classified, that source
-Edge Function targets exist in the repository when applicable, and that every
-job scheduled by the cutover SQL is represented as an approved target action.
+Default mode is a structural pre-cutover audit. It verifies that any *verified*
+AICIS live-source cron set is complete, unique and explicitly classified, that
+source Edge Function targets exist in the repository when applicable, and that
+every job scheduled by the cutover SQL is represented as an approved target
+action.
 
---cutover-ready is intentionally stricter. It fails while any observed live
-source job remains pending, lacks a captured source schedule, has no repository
-implementation for an Edge Function target, or is missing an explicit
-activate/replace/retire decision. This keeps CI green during migration work
-while providing a separate hard gate for actual cutover.
+Cross-project or otherwise invalidated observations are not counted as AICIS
+source evidence. If the manifest says the current AICIS source inventory is not
+verified, structural CI may pass while cutover remains explicitly blocked.
+
+--cutover-ready is intentionally stricter. It fails while the current AICIS
+source inventory is unverified, any verified source job remains pending, lacks
+a captured source schedule, has no repository implementation for an Edge
+Function target, or is missing an explicit activate/replace/retire decision.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ FUNCTIONS_DIR = ROOT / "supabase" / "functions"
 
 ALLOWED_SOURCE_DECISIONS = {"pending", "activate", "replace", "retire"}
 ALLOWED_TARGET_DECISIONS = {"approved_target_only"}
+VERIFIED_SOURCE_STATUS = "verified_current_aicis_source"
 
 
 def scheduled_jobnames(sql: str) -> set[str]:
@@ -67,12 +72,18 @@ def main() -> int:
     data = json.loads(MANIFEST.read_text(encoding="utf-8"))
     jobs = data.get("jobs", [])
     observed_expected = data.get("observed_source_job_count")
+    source_inventory_status = data.get("source_inventory_status")
 
     source_jobs = [j for j in jobs if j.get("origin") == "live_source"]
     target_jobs = [j for j in jobs if j.get("origin") == "target_new"]
 
     source_names = [j.get("source_jobname") for j in source_jobs]
     target_names = [j.get("target_jobname") for j in target_jobs]
+
+    if source_inventory_status != VERIFIED_SOURCE_STATUS:
+        blockers.append(
+            "current AICIS source cron inventory is not verified; cross-project/invalidated observations cannot satisfy parity"
+        )
 
     if observed_expected != len(source_jobs):
         errors.append(
@@ -153,6 +164,7 @@ def main() -> int:
         )
 
     print("AICIS live-source cron parity audit")
+    print(f"source_inventory_status={source_inventory_status}")
     print(f"observed_live_source_jobs={len(source_jobs)}")
     print(f"approved_target_only_jobs={len(target_jobs)}")
     print(f"cutover_sql_scheduled_jobs={len(sql_jobs)}")
@@ -175,7 +187,7 @@ def main() -> int:
     if blockers:
         print(
             "PASS: structural cron manifest is internally consistent; cutover remains blocked until "
-            "pending source jobs are classified, schedules are captured, and missing implementations are resolved"
+            "the current AICIS source inventory is verified and all required source jobs are classified"
         )
     else:
         print("PASS: live-source cron preservation decisions are complete")
