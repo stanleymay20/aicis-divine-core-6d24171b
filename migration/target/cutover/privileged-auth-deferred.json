@@ -12,13 +12,6 @@
   },
   "functions": [
     {
-      "name": "ingest-maritime-ais-telemetry",
-      "source_caller_state": "registry_only_no_committed_executable_caller_found_live_delivery_unknown",
-      "evidence": "The enterprise registry labels this connector as a webhook, but no code was found that executes job_metadata.function and no committed exact function URL, functions.invoke or proven dynamic dispatcher targets ingest-maritime-ais-telemetry. Registry presence is configuration, not caller evidence.",
-      "target_auth_intent": "signed_webhook_or_trusted_worker",
-      "cutover_requirement": "Determine the actual AIS delivery mode. If push, require a dedicated webhook signature/HMAC secret with replay protection; if pull/internal, use trusted-worker auth. Never substitute anon JWT authorization."
-    },
-    {
       "name": "planetary-backfill",
       "source_caller_state": "mixed_current_internal_and_historical_database_http_callers_live_activation_partially_unknown",
       "evidence": "Current graph-recovery-tick directly fetches /functions/v1/planetary-backfill with a service-role Bearer. pipeline-watchdog can also resolve planetary-backfill through target_function and invokeInternalFunction with x-cron-secret. Historical migrations 20260413114431_7dfd2577-1e0c-4c94-8ff9-49b773850234.sql and 20260413114900_c155eccf-ce46-44f7-bacc-40895b228609.sql define database HTTP wrappers posting to the Lovable source with a legacy anon JWT. Historical wrapper activation in the live source is unresolved.",
