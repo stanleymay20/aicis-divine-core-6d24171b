@@ -22,6 +22,7 @@ AUTH_MARKERS = (
     "requireAdminOrCron(",
     "requireAdminOrTrustedWorker(",
     "requireUserOrTrustedWorker(",
+    "requireSignedWebhookOrTrustedWorker(",
     "requireCronSecret(",
     "requireAdminUser(",
     "requireUser(",
