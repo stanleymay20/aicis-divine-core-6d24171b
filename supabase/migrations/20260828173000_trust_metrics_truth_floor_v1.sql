@@ -27,9 +27,21 @@ ALTER TABLE public.trust_metrics
   ADD CONSTRAINT trust_metrics_evidence_count_check
   CHECK (evidence_count IS NULL OR evidence_count >= 0);
 
+-- The historical policy allowed any role that could reach the table to insert
+-- arbitrary public-facing "trust" values. Service-role workers bypass RLS, so
+-- public insertion is unnecessary. Keep explicit authenticated-admin insertion
+-- for governed manual repair while denying ordinary clients.
+DROP POLICY IF EXISTS "System can insert trust metrics" ON public.trust_metrics;
+DROP POLICY IF EXISTS "Admins can insert trust metrics" ON public.trust_metrics;
+CREATE POLICY "Admins can insert trust metrics"
+ON public.trust_metrics
+FOR INSERT
+TO authenticated
+WITH CHECK (public.has_role(auth.uid(), 'admin'));
+
 -- Quarantine the exact synthetic seed rows created by
--- 20251024184439_1b87a0e4-d097-4916-9e36-d6455a3c8192.sql.  Their numeric
--- values were constants, not measurements.  Keep the records for auditability
+-- 20251024184439_1b87a0e4-d097-4916-9e36-d6455a3c8192.sql. Their numeric
+-- values were constants, not measurements. Keep the records for auditability
 -- but remove the values so downstream consumers cannot mistake them for truth.
 UPDATE public.trust_metrics
 SET
