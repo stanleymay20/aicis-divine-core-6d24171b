@@ -3,7 +3,8 @@
 -- Purpose:
 --   Preserve deterministic graph structure while preventing restored/source-era
 --   defaults from manufacturing confidence, validation freshness, historical
---   effectiveness, reliability, criticality, exposure, or volatility evidence.
+--   effectiveness, reliability, criticality, exposure, volatility, or topology
+--   evidence.
 --
 -- Safety:
 --   * This migration does not schedule or invoke any writer.
@@ -48,6 +49,12 @@ ALTER TABLE IF EXISTS public.operational_graph_edges
   ADD COLUMN IF NOT EXISTS validation_semantics text;
 
 ALTER TABLE IF EXISTS public.graph_topology_scores
+  ALTER COLUMN exposure_score DROP DEFAULT,
+  ALTER COLUMN exposure_score DROP NOT NULL,
+  ALTER COLUMN volatility_score DROP DEFAULT,
+  ALTER COLUMN volatility_score DROP NOT NULL,
+  ALTER COLUMN operational_criticality DROP DEFAULT,
+  ALTER COLUMN operational_criticality DROP NOT NULL,
   ALTER COLUMN evidence_confidence DROP DEFAULT,
   ALTER COLUMN evidence_confidence DROP NOT NULL,
   ALTER COLUMN relationship_stability DROP DEFAULT,
