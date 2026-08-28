@@ -1,60 +1,114 @@
-# AICIS — Netlify Migration Audit (no code changes)
+# AICIS Backend Migration Audit — Lovable Cloud → Self-Owned Supabase (~181 GB)
 
-Read-only audit of the current project. Nothing was modified.
+Informational only. No code, schema, data, functions, secrets, cron jobs, settings, or deployment were modified in this run.
 
-## 1. Public frontend environment variables
+Each item below is marked **[Documented]** (official Lovable docs), **[Observed]** (verified earlier in this project), or **[Assumption]** (my recommendation, not a supported guarantee).
 
-These are the only variables the browser bundle reads (`src/integrations/supabase/client.ts` uses the first two; the third is metadata only). All are public by design — RLS protects the data.
+## 1. Full portable PostgreSQL export at ~181 GB
 
-```
-VITE_SUPABASE_URL=https://psonnnuhjjskrdazrakk.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzb25ubnVoampza3JkYXpyYWtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk2OTU0NzAsImV4cCI6MjA3NTI3MTQ3MH0.7ZqxEzVc9mVLJrbI5HgesAmKaHWlNt9oB4lZta_in6o
-VITE_SUPABASE_PROJECT_ID=psonnnuhjjskrdazrakk
-```
+**[Documented]** Lovable Cloud has a self-service database export: Cloud tab > Overview > Advanced settings > "Export project data" > Database > Export > Start export. Lovable emails you when it is ready; you download it from Cloud tab > Storage.
 
-Set these in Netlify → Site settings → Environment variables (all deploy contexts). Vite inlines them at build time, so a rebuild is required after any change. No server-side/service-role key belongs on Netlify — the SPA never uses one.
+**[Documented]** Limits that disqualify it here:
+- Export size limit: **5 GB**. A ~181 GB database is ~36x over the limit.
+- Rate limit: **one export per day**.
+- Contents: schema + data only. **Excludes** storage files, edge function code, and secrets. **User passwords are not exported in a usable format.**
 
-`netlify.toml` is already correct: `npm run build`, publish `dist`, SPA fallback redirect, security headers.
+**Conclusion:** No, the self-service export cannot produce a restorable ~181 GB dump. There is no documented `pg_dump`/`pg_restore`-grade full-size export path in the product UI.
 
-## 2. Does the backend survive without Lovable?
+## 2. Supported alternative for a database this size
 
-Technically yes, contractually no — as things stand today.
+**[Documented]** None self-service. The docs describe no large-database export tier.
 
-- The database, auth, storage, edge functions and `pg_cron` schedules are a standard Supabase project (`psonnnuhjjskrdazrakk.supabase.co`). Any external client with the URL + anon key can use it; Netlify does not need Lovable at all.
-- But this project's Supabase instance is **provisioned and billed through Lovable Cloud**. When Cloud is paused (it is paused right now), the whole Supabase project is paused: queries fail, crons stop, edge functions stop. So "Lovable credits lapse" currently means "backend offline", not "frontend offline only".
-- To make Lovable genuinely optional, the backend must be moved out of Lovable's billing scope: either transfer/claim the project into your own Supabase organisation, or stand up your own Supabase project and migrate (`pg_dump`/restore of schema + data, redeploy the ~250 edge functions with the Supabase CLI, recreate `pg_cron` jobs, re-add all function secrets, re-upload storage objects). Until that happens Lovable remains a production dependency regardless of where the frontend runs.
+**[Assumption / requires Lovable Support]** The only realistic supported routes are:
+- **A. Escalate to Lovable Support** and request either (i) an internal full `pg_dump`/physical backup handoff, or (ii) a **project transfer** of the underlying Supabase project into your own Supabase organization. Route (ii) is the true zero-data-loss path because nothing is copied — ownership/billing moves. Whether Lovable offers it is a Support decision, not a documented feature.
+- **B. Logical replication / self-driven incremental copy** (see §8) if you can obtain read credentials.
 
-## 3. Lovable-specific runtime dependencies found
+Ask Support explicitly for: full backup export above 5 GB, **or** transfer of the managed Supabase project (`psonnnuhjjskrdazrakk`) to a Supabase org you own.
 
-| Area | Dependency | Impact |
+## 3. Direct PostgreSQL credentials for pg_dump
+
+**[Documented]** No. Lovable Cloud does not expose Postgres connection strings, the database password, or the service-role key. Database access is via the Lovable UI/SQL editor only.
+
+**[Observed]** In this project, service-role key and DB password are explicitly inaccessible; only the public URL and publishable/anon key are available to the frontend.
+
+**Implication:** `pg_dump` against production is impossible without Lovable Support issuing credentials or performing the dump. Temporary read-only credentials are not a documented capability — it must be requested.
+
+## 4. Supported Lovable Cloud → user-owned Supabase migration
+
+**[Documented]** There is **no one-click migration**. The documented path is manual:
+1. Export Lovable Cloud data (5 GB cap).
+2. Create your own Supabase project; link your Supabase org to your Lovable workspace via Connectors > Supabase.
+3. In the Lovable project: More > Cloud > "Already have a Supabase project? Connect it here".
+4. Rebuild schema in the new project.
+5. Import data.
+6. Reconfigure auth, secrets, edge functions.
+
+At 181 GB, steps 1 and 5 are the blockers. Steps 2–3 remain useful because they re-point the Lovable app at your own project once data is in place.
+
+## 5. Auth identities, UUIDs, passwords, sessions
+
+- **[Documented]** Password hashes are **not exported in a usable format** by the self-service export.
+- **[Assumption]** To preserve `auth.users.id` UUIDs (which every `user_id` FK in your 333 public tables depends on), you must copy `auth.users`, `auth.identities`, and related auth tables at the SQL level with IDs intact. That requires a real dump — i.e. §2 route A or B. The Supabase Admin API (`createUser` with explicit `id`) can preserve UUIDs and accepts pre-hashed bcrypt passwords, but only if you can read those hashes.
+- **Sessions**: never portable. `auth.sessions`/refresh tokens will not survive; all users are signed out at cutover and must re-authenticate.
+- **Fallback if hashes are unobtainable**: recreate users with the same UUIDs and force a password-reset email flow; OAuth (Google) identities re-link by provider subject if `auth.identities` rows are recreated.
+
+## 6. Storage objects
+
+- **[Documented]** Storage files are **not** included in the database export.
+- **[Assumption]** Migrate in two parts: (a) object **bytes** — enumerate buckets/objects via the Storage API with a key that can read them and stream-copy to the new project's buckets; (b) **metadata** — recreate buckets (name, public flag, size limit, allowed MIME types) and re-apply `storage.objects` RLS policies as SQL. Owner IDs and paths should be preserved so existing DB references keep resolving.
+
+## 7. What an export does and does not include
+
+| Artifact | In self-service export | How to handle |
 |---|---|---|
-| AI features | **29 edge functions** call `ai.gateway.lovable.dev` with `LOVABLE_API_KEY` (e.g. `aicis-intelligence`, `enrich-global-signals`, `decision-infer`, `orchestrate-multi-agent`, `predict-risks`, `signal-translator`) | Hard dependency. Without Lovable credits these return errors even if Supabase is self-hosted. Must be repointed to a direct provider (OpenAI/Google/Anthropic) with your own key. |
-| Google sign-in | `@lovable.dev/cloud-auth-js` via `src/integrations/lovable/index.ts`, used in `src/pages/Auth.tsx` | Google OAuth is brokered by Lovable. `supabase/config.toml` shows `[auth.external.google] enabled = false`, i.e. no native Supabase Google provider. Email/password sign-in, reset and signup are pure Supabase and unaffected. |
-| Auth storage | `src/integrations/supabase/previewAuthStorage.ts` | Only activates on `*.lovable.app` / preview hosts; falls back to `localStorage` on Netlify. Harmless, no change needed. |
-| Build | `lovable-tagger` in `vite.config.ts` | Dev-mode plugin only; does not affect the Netlify production build. |
-| Storage / cron / other functions | none found | Standard Supabase `pg_cron` + edge functions. |
+| Table schema + data | Yes (≤5 GB) | Blocked at this size |
+| RLS policies, DB functions, triggers, views | Yes, if the dump is schema-complete | Verify; otherwise re-emit as SQL |
+| Extensions | **[Assumption]** typically as `CREATE EXTENSION` lines | Pre-create in target before restore |
+| pg_cron / pg_net jobs (172) | **[Assumption]** `cron.job` lives in the `cron` schema, normally excluded from a public-schema dump | Export `cron.job` rows separately and recreate after cutover |
+| Edge Functions code | **No** | Re-deploy from `supabase/functions/` in this repo via Supabase CLI |
+| Secrets / env vars | **No** | Re-enter manually in the new project |
+| Auth config (providers, redirect URLs, email templates) | **No** | Reconfigure manually |
+| Migration history (`supabase_migrations.schema_migrations`) | **No** | Copy the table or re-baseline |
+| Storage objects | **No** | See §6 |
 
-## 4. Redirect / auth URL changes for `aicis.netlify.app`
+**[Observed] Lovable-specific runtime dependency:** ~29 edge functions call the Lovable AI Gateway using `LOVABLE_API_KEY` / `ai.gateway.lovable.dev`, and Google sign-in currently uses `@lovable.dev/cloud-auth-js` with native Supabase Google OAuth disabled in `config.toml`. Both must be replaced with direct provider keys / native Supabase OAuth for the backend to be Lovable-independent.
 
-Auth code already derives URLs from `window.location.origin` (`Auth.tsx` lines 59, 80, 204), so no code change is required — only backend auth configuration:
+## 8. Safest zero-data-loss sequence at ~181 GB
 
-- **Site URL** → `https://aicis.netlify.app`
-- **Additional redirect URLs** → `https://aicis.netlify.app`, `https://aicis.netlify.app/**`, `https://aicis.netlify.app/auth`, `https://aicis.netlify.app/reset-password`, plus `http://localhost:5173/**` for local dev, plus any Netlify deploy-preview pattern (`https://*--aicis.netlify.app/**`) if you want previews to log in.
-- Current stored config is `site_url = http://localhost:5173` — email confirmation and password-reset links will point at localhost until this is changed.
-- If Google sign-in is kept: enable Supabase's own Google provider, register `https://psonnnuhjjskrdazrakk.supabase.co/auth/v1/callback` in Google Cloud Console, and switch `Auth.tsx` from the Lovable helper to `supabase.auth.signInWithOAuth`.
+**Preferred (if Support grants it): project transfer.** Zero copy, zero data loss, zero downtime, keeps UUIDs, storage, cron, auth and extensions. Everything below is only needed if transfer is refused.
 
-## 5. Remaining migration steps
+**Copy-based sequence [Assumption]:**
 
-1. Netlify: connect the Git repo, set the three `VITE_*` variables, deploy (`netlify.toml` needs no edits).
-2. Update Supabase auth Site URL + redirect allowlist as above.
-3. Replace the Lovable Google OAuth path with the native Supabase provider (or drop Google and keep email/password).
-4. Repoint the 29 AI-gateway edge functions to a direct model provider and add that key as a Supabase function secret; remove reliance on `LOVABLE_API_KEY`.
-5. Update hardcoded canonical/SEO hosts still pointing at `aicis-divine-core.lovable.app`: `index.html` (canonical, `og:url`, `og:image`, JSON-LD), `public/robots.txt` (sitemap URL), `public/sitemap.xml`, `src/components/SEO.tsx`, and `supabase/functions/public-api/index.ts`. Set `PUBLIC_SITE_URL` secret to the Netlify origin.
-6. Check CORS on public edge functions (`public-api`, `public-intelligence`, `country-profile`) — they currently allow `*`, so they work, but tighten to the Netlify origin if desired.
-7. Stripe: update webhook endpoint/return URLs to the Netlify domain.
-8. Decide on backend ownership (section 2). Until the Supabase project leaves Lovable billing, pausing Cloud still takes the whole system down.
-9. Optional: point a custom domain at Netlify rather than depending on `aicis.netlify.app`.
+```text
+T-14d  Open Support ticket: request transfer, or >5GB dump / temporary read creds.
+       In parallel: provision target Supabase project sized for 181 GB + 25% headroom.
+T-7d   Schema-first: apply extensions, then DDL (tables, types, functions, RLS,
+       grants), WITHOUT indexes/FKs, and with all 172 cron jobs DISABLED in target.
+T-5d   T0 bulk copy of cold/append-only tables (largest first: community_metrics,
+       normalized_metrics, global_signals) via COPY streams or logical replication.
+       Prefer logical replication - it keeps the delta continuously applied.
+T-2d   Build indexes and FKs in target. Copy auth.users/auth.identities preserving
+       UUIDs. Copy storage buckets + object bytes.
+T-1d   Validation pass: per-table row counts and max(created_at) source vs target,
+       checksum/aggregate spot checks on the top 20 tables by size, RLS behaviour
+       tests as anon + authenticated, ledger hash-chain integrity re-verification.
+T-0    WRITE FREEZE: pause all Lovable Cloud cron jobs and ingestion edge functions;
+       put the frontend in read-only. Wait for replication lag = 0 (or run the final
+       incremental delta by created_at/updated_at watermark).
+T+0    Re-validate row counts on every table. Copy cron.job rows and enable jobs in
+       target. Deploy edge functions + secrets to target. Update auth Site URL and
+       redirect allowlist to the production domain.
+T+0    Cutover: repoint VITE_SUPABASE_URL / publishable key to the new project,
+       redeploy frontend, smoke-test sign-in, ingestion write, and a dashboard read.
+T+7d   Keep the Lovable Cloud project paused-but-retained as rollback until the new
+       project has run a full week of crons cleanly. Only then decommission.
+```
 
-## Immediate blocker
+**Zero-data-loss guardrails:** never delete the source until T+7d validation passes; the write freeze must cover pg_cron, not just the UI; and the storage disk on the source is at ~77% — do not start a large in-database copy operation on the source that would consume more disk.
 
-The Lovable Cloud backend is **paused right now**, so the database, crons and edge functions are all offline. It must be resumed before any Netlify frontend can load data or authenticate.
+## Bottom line
+
+- Self-service export: **capped at 5 GB — unusable here [Documented]**.
+- No direct Postgres credentials, no `pg_dump`, no one-click migration **[Documented]**.
+- At 181 GB the only credible zero-data-loss path runs through **Lovable Support**, ideally as a **project transfer** rather than a copy **[Assumption on availability]**.
+- Regardless of path, edge function code, secrets, storage bytes, cron jobs, auth config, and the AI-Gateway/auth-SDK Lovable couplings are **separate manual work** **[Documented + Observed]**.
