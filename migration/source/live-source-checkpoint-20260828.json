@@ -1,0 +1,71 @@
+{
+  "checkpoint_version": 1,
+  "observation_date": "2026-08-28",
+  "observation_mode": "read_only_lovable_project_sql",
+  "lovable_project_id": "28b43e06-9231-4c54-bc18-a49be01a6516",
+  "authoritative_source_status": "live_production_source_until_cutover",
+  "guarded_source_refs": {
+    "repository_declared": "psonnnuhjjskrdazrakk",
+    "live_runtime_observed": "itpwpnwzzitkelffttyx",
+    "identity_divergence_status": "unresolved_guard_both"
+  },
+  "database": {
+    "postgres_version": "17.6",
+    "public_table_count": 210,
+    "public_schema_md5": "8a77a338a4b553fb4348726376a13a54",
+    "public_function_count": 83,
+    "public_functions_md5": "7a6aecd043f7c4b90896690078e85c0f",
+    "public_rls_policy_count": 476,
+    "public_policies_md5": "cfdaf78969d028e2dd4a21cc974f7cee",
+    "extension_count": 9,
+    "extensions_md5": "3fe0a8550380a1554befe1280af305bb",
+    "migration_history_rows": 186
+  },
+  "auth": {
+    "user_count": 172
+  },
+  "storage": {
+    "bucket_count": 2,
+    "metadata_object_count": 45,
+    "object_bytes_preserved": false
+  },
+  "scheduler": {
+    "cron_job_count": 26,
+    "active_cron_job_count": 26,
+    "live_runtime_ref_cron_mentions": 25,
+    "repository_declared_ref_cron_mentions": 0,
+    "live_runtime_ref_function_body_mentions": 2,
+    "repository_declared_ref_function_body_mentions": 0
+  },
+  "largest_observed_public_table_estimate": {
+    "table": "metrics",
+    "estimated_live_rows": 401458,
+    "semantics": "pg_stat_user_tables estimate_not_exact_parity_count"
+  },
+  "target": {
+    "project_ref": "qpphncfgbhizvnovzivw",
+    "status": "ACTIVE_HEALTHY",
+    "public_table_count": 0,
+    "auth_user_count": 0,
+    "storage_bucket_count": 0,
+    "storage_object_count": 0,
+    "migration_history_rows": 0,
+    "writers_enabled": false
+  },
+  "gate_status": {
+    "portable_database_export": "not_yet_proven",
+    "storage_object_bytes_export": "not_yet_proven",
+    "target_restore": "not_started",
+    "auth_parity": "not_started",
+    "storage_parity": "not_started",
+    "function_parity": "not_started",
+    "final_delta": "not_started",
+    "cutover": "blocked"
+  },
+  "notes": [
+    "This checkpoint contains metadata and cryptographic fingerprints only; it is not a database backup.",
+    "No source write was performed to create this checkpoint.",
+    "No target writer was enabled.",
+    "The official Lovable database export or legitimate direct database backup remains required for T0 preservation."
+  ]
+}
