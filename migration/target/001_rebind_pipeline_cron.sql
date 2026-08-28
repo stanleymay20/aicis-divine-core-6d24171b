@@ -9,9 +9,10 @@
 -- reads and final parity checks. Audited schedules are enabled only by an
 -- explicit file under migration/target/cutover/ after the cutover gate passes.
 --
--- Guarded source refs:
---   psonnnuhjjskrdazrakk  - repository-declared source binding
---   itpwpnwzzitkelffttyx  - live Lovable runtime binding observed 2026-08-28
+-- Guarded destination refs:
+--   psonnnuhjjskrdazrakk  - verified current AICIS source runtime binding
+--   itpwpnwzzitkelffttyx  - external/legacy Quantivis bridge binding observed
+--                           inside the AICIS database; never an AICIS target
 --
 -- Before cutover, create these target Vault secrets:
 --   aicis_project_url      -> https://<destination-ref>.supabase.co
@@ -61,7 +62,7 @@ BEGIN
 
   IF project_url LIKE '%psonnnuhjjskrdazrakk%'
      OR project_url LIKE '%itpwpnwzzitkelffttyx%' THEN
-    RAISE EXCEPTION 'AICIS destination URL resolves to a guarded Lovable/source project';
+    RAISE EXCEPTION 'AICIS destination URL resolves to a guarded source/external project';
   END IF;
 
   IF publishable_key IS NULL OR btrim(publishable_key) = '' THEN
@@ -93,8 +94,9 @@ GRANT EXECUTE ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) TO serv
 
 -- CRITICAL FAIL-CLOSED BARRIER
 -- Disable EVERY restored schedule, not just commands that visibly contain a
--- source project ref. Historical AICIS jobs can call stored PostgreSQL wrappers
--- whose pg_proc body contains a Lovable URL even when cron.job.command does not.
+-- guarded project ref. Historical AICIS jobs can call stored PostgreSQL wrappers
+-- whose pg_proc body contains a source/external URL even when cron.job.command
+-- does not.
 UPDATE cron.job
 SET active = false
 WHERE active;
@@ -102,14 +104,14 @@ WHERE active;
 DO $$
 DECLARE
   active_jobs bigint;
-  direct_source_jobs bigint;
-  indirect_source_jobs bigint;
+  direct_guarded_jobs bigint;
+  indirect_guarded_jobs bigint;
 BEGIN
   SELECT count(*) INTO active_jobs
   FROM cron.job
   WHERE active;
 
-  SELECT count(*) INTO direct_source_jobs
+  SELECT count(*) INTO direct_guarded_jobs
   FROM cron.job
   WHERE active
     AND (
@@ -117,7 +119,7 @@ BEGIN
       OR command LIKE '%itpwpnwzzitkelffttyx%'
     );
 
-  WITH source_bound_functions AS (
+  WITH guarded_functions AS (
     SELECT DISTINCT p.proname
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -127,9 +129,9 @@ BEGIN
         OR p.prosrc LIKE '%itpwpnwzzitkelffttyx%'
       )
   )
-  SELECT count(DISTINCT j.jobid) INTO indirect_source_jobs
+  SELECT count(DISTINCT j.jobid) INTO indirect_guarded_jobs
   FROM cron.job j
-  JOIN source_bound_functions f
+  JOIN guarded_functions f
     ON j.command ILIKE '%' || f.proname || '%'
   WHERE j.active;
 
@@ -137,11 +139,11 @@ BEGIN
     RAISE EXCEPTION 'AICIS target cron quarantine failed: % active restored job(s) remain', active_jobs;
   END IF;
 
-  IF direct_source_jobs <> 0 OR indirect_source_jobs <> 0 THEN
+  IF direct_guarded_jobs <> 0 OR indirect_guarded_jobs <> 0 THEN
     RAISE EXCEPTION
-      'AICIS target source isolation failed: direct=% indirect=% active source-bound jobs remain',
-      direct_source_jobs,
-      indirect_source_jobs;
+      'AICIS target isolation failed: direct=% indirect=% active guarded-bound jobs remain',
+      direct_guarded_jobs,
+      indirect_guarded_jobs;
   END IF;
 END;
 $$;
