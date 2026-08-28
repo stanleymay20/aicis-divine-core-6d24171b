@@ -76,42 +76,49 @@ At 181 GB, steps 1 and 5 are the blockers. Steps 2–3 remain useful because the
 
 **Lovable coupling status:** canonical CI currently reports **zero direct Lovable runtime dependencies** (`ai.gateway.lovable.dev`, `LOVABLE_API_KEY`, `@lovable.dev/cloud-auth-*`), per `docs/PORTABILITY_POLICY.md` and the portability gate. Unused Lovable packages/config remnants may still exist and should be inventoried, but no count of gateway-dependent edge functions is asserted here without a fresh audit run against this repository.
 
-## 8. Safest zero-data-loss sequence at ~181 GB
+## 8. Safest sequence at ~181 GB
 
-**Preferred (if Support grants it): project transfer.** Zero copy, zero data loss, zero downtime, keeps UUIDs, storage, cron, auth and extensions. Everything below is only needed if transfer is refused.
+**Preferred path, if Lovable/Supabase supports it: managed project transfer or equivalent infrastructure-level handoff.** This may minimize copying and preserve more state than a logical migration, but its preservation guarantees, required downtime, Auth/session behavior, Storage continuity, cron behavior, secrets, billing and Lovable-specific integrations must be confirmed in writing before treating it as a zero-data-loss solution.
 
-**Copy-based sequence [Assumption]:**
+**Copy-based sequence [Assumption — shape depends on which export/replication mechanism Lovable can actually provide]:**
 
 ```text
 T-14d  Open Support ticket: request transfer, or >5GB dump / temporary read creds.
-       In parallel: provision target Supabase project sized for 181 GB + 25% headroom.
+       Do not finalise the sequence below until the mechanism is known.
+       In parallel: provision target Supabase project with headroom above the
+       actual restored size (181 GB is total DB size incl. indexes/TOAST/overhead;
+       logical payload will be smaller).
 T-7d   Schema-first: apply extensions, then DDL (tables, types, functions, RLS,
-       grants), WITHOUT indexes/FKs, and with all 172 cron jobs DISABLED in target.
+       grants), and with all 172 cron jobs (171 active on source) DISABLED in target.
+       Whether to defer indexes/FKs depends on the load mechanism - decide once
+       the mechanism is confirmed (helpful for bulk COPY, harmful/unnecessary for
+       logical replication or a physical restore).
 T-5d   T0 bulk copy of cold/append-only tables (largest first: community_metrics,
        normalized_metrics, global_signals) via COPY streams or logical replication.
-       Prefer logical replication - it keeps the delta continuously applied.
-T-2d   Build indexes and FKs in target. Copy auth.users/auth.identities preserving
-       UUIDs. Copy storage buckets + object bytes.
+       Logical replication is preferred where available - it keeps the delta applied.
+T-2d   Build any deferred indexes/FKs. Restore auth users/identities preserving
+       UUIDs via a supported mechanism. Copy storage buckets + object bytes.
 T-1d   Validation pass: per-table row counts and max(created_at) source vs target,
        checksum/aggregate spot checks on the top 20 tables by size, RLS behaviour
        tests as anon + authenticated, ledger hash-chain integrity re-verification.
 T-0    WRITE FREEZE: pause all Lovable Cloud cron jobs and ingestion edge functions;
        put the frontend in read-only. Wait for replication lag = 0 (or run the final
        incremental delta by created_at/updated_at watermark).
-T+0    Re-validate row counts on every table. Copy cron.job rows and enable jobs in
-       target. Deploy edge functions + secrets to target. Update auth Site URL and
-       redirect allowlist to the production domain.
+T+0    Re-validate row counts on every table. Copy cron.job rows and enable only
+       audited jobs in target. Deploy edge functions + freshly provisioned secrets.
+       Update auth Site URL and redirect allowlist to the production domain.
 T+0    Cutover: repoint VITE_SUPABASE_URL / publishable key to the new project,
        redeploy frontend, smoke-test sign-in, ingestion write, and a dashboard read.
 T+7d   Keep the Lovable Cloud project paused-but-retained as rollback until the new
        project has run a full week of crons cleanly. Only then decommission.
 ```
 
-**Zero-data-loss guardrails:** never delete the source until T+7d validation passes; the write freeze must cover pg_cron, not just the UI; and the storage disk on the source is at ~77% — do not start a large in-database copy operation on the source that would consume more disk.
+**Guardrails:** never delete the source until T+7d validation passes; the write freeze must cover pg_cron, not just the UI; all 172 target cron jobs stay disabled until explicitly audited and approved; and the source data disk is at ~77% — do not start a large in-database copy on the source that would consume more disk.
 
 ## Bottom line
 
 - Self-service export: **capped at 5 GB — unusable here [Documented]**.
 - No direct Postgres credentials, no `pg_dump`, no one-click migration **[Documented]**.
-- At 181 GB the only credible zero-data-loss path runs through **Lovable Support**, ideally as a **project transfer** rather than a copy **[Assumption on availability]**.
-- Regardless of path, edge function code, secrets, storage bytes, cron jobs, auth config, and the AI-Gateway/auth-SDK Lovable couplings are **separate manual work** **[Documented + Observed]**.
+- At this scale, the safest supported migration path currently depends on Lovable's escalation. A managed project transfer / infrastructure handoff is preferred **if** formally supported and its preservation semantics are confirmed in writing. Otherwise we need a supported full backup or another source-access mechanism before beginning the 181 GB data movement.
+- Regardless of path, edge function code, secrets, storage bytes, cron jobs, auth config, and any residual Lovable packages/config remnants are **separate manual work**.
+
