@@ -1,7 +1,8 @@
 {
-  "checkpoint_version": 2,
+  "checkpoint_version": 3,
   "observation_date": "2026-08-28",
-  "observation_mode": "identity_reconciliation_after_read_only_project_inspection",
+  "observation_time_utc": "2026-08-28T17:21:22Z",
+  "observation_mode": "read_only_correct_aicis_project_sql",
   "aicis_lovable_project_id": "3e68d974-d275-4a8c-8b33-e785fe8113c6",
   "aicis_project_identity_evidence": {
     "project_name": "aicis-divine-core",
@@ -10,36 +11,64 @@
   },
   "invalidated_project_id": "28b43e06-9231-4c54-bc18-a49be01a6516",
   "invalidated_project_identity": "Quantivis",
-  "authoritative_source_status": "AICIS source database inventory not yet proven after project-identity correction",
-  "guarded_source_refs": {
-    "repository_declared": "psonnnuhjjskrdazrakk",
-    "previous_runtime_observed": "itpwpnwzzitkelffttyx",
-    "identity_divergence_status": "previous runtime observation quarantined because it was obtained through the wrong Lovable project identity; do not treat it as AICIS source evidence until independently re-observed on the AICIS project"
+  "authoritative_source_status": "verified_correct_aicis_live_source_inventory_read_only",
+  "source_bindings": {
+    "repository_declared_ref": "psonnnuhjjskrdazrakk",
+    "repository_declared_ref_cron_mentions": 116,
+    "repository_declared_ref_public_function_mentions": 5,
+    "secondary_ref": "itpwpnwzzitkelffttyx",
+    "secondary_ref_cron_mentions": 0,
+    "secondary_ref_public_function_mentions": 2,
+    "secondary_ref_function_names": ["enqueue_quantivis_event_batch","enqueue_quantivis_metric_batch"],
+    "semantics": "psonnnuhjjskrdazrakk is now directly observed in the correct AICIS runtime cron catalog and public function bodies. itpwpnwzzitkelffttyx is also present in two explicitly Quantivis-named bridge functions but not in AICIS cron commands; treat it as an external/legacy integration binding, not the AICIS source project identity."
   },
   "database": {
-    "postgres_version": null,
-    "public_table_count": null,
-    "public_schema_md5": null,
-    "public_function_count": null,
-    "public_functions_md5": null,
-    "public_rls_policy_count": null,
-    "public_policies_md5": null,
-    "extension_count": null,
-    "extensions_md5": null,
-    "migration_history_rows": null
+    "postgres_version": "17.6",
+    "database_bytes": 181195320467,
+    "public_base_table_count": 333,
+    "public_function_count": 257,
+    "public_rls_policy_count": 651,
+    "extension_count": 9,
+    "migration_history_rows": 370,
+    "exact_large_table_row_counts": "not_collected_to_avoid_unnecessary_source_load"
   },
   "auth": {
-    "user_count": null
+    "user_count": 2
   },
   "storage": {
-    "bucket_count": null,
-    "metadata_object_count": null,
-    "object_bytes_preserved": false
+    "bucket_count": 1,
+    "metadata_object_count": 56,
+    "metadata_reported_object_bytes": 1273019,
+    "object_bytes_preserved": false,
+    "semantics": "metadata_reported_object_bytes is derived from parseable storage.objects metadata.size values and is not object-byte checksum/parity proof"
   },
   "scheduler": {
-    "cron_job_count": null,
-    "active_cron_job_count": null,
-    "source_schedule_inventory_status": "unknown_pending_correct_aicis_source_access"
+    "cron_job_count": 172,
+    "active_cron_job_count": 171,
+    "inactive_cron_job_count": 1,
+    "inactive_job": {"jobid":14,"jobname":"ingest-gdelt-fan-out","schedule":"0 3 * * *"},
+    "cron_schedule_md5": "a550bb8085790bb45c77646718fdaf44",
+    "http_post_jobs": 116,
+    "jobs_with_auth_header_material": 116,
+    "repo_ref_command_mentions": 116,
+    "secondary_ref_command_mentions": 0,
+    "source_schedule_inventory_status": "verified_current_aicis_source",
+    "sanitized_snapshot": "migration/source/aicis-cron-snapshot-20260828.json",
+    "raw_command_bodies_preserved_in_repo": false
+  },
+  "large_relation_observations": {
+    "semantics": "pg_total_relation_size is measured relation size; pg_stat n_live_tup estimates were not accepted as exact row-count evidence",
+    "largest": [
+      {"table":"public.community_metrics","total_bytes":124024422400},
+      {"table":"public.metrics","total_bytes":25906667520},
+      {"table":"public.economic_indicators","total_bytes":7048019968},
+      {"table":"public.risk_scores","total_bytes":4198858752},
+      {"table":"public.global_signals","total_bytes":4055506944},
+      {"table":"public.normalized_metrics","total_bytes":3331940352},
+      {"table":"public.entity_metric_links","total_bytes":2411872256},
+      {"table":"public.urban_metrics","total_bytes":2062245888},
+      {"table":"public.normalized_events","total_bytes":1190576128}
+    ]
   },
   "target": {
     "project_ref": "qpphncfgbhizvnovzivw",
@@ -48,13 +77,13 @@
     "auth_user_count": 0,
     "storage_bucket_count": 0,
     "storage_object_count": 0,
-    "migration_history_rows": 0,
     "writers_enabled": false
   },
   "gate_status": {
-    "correct_source_identity": "proven_at_lovable_project_level",
+    "correct_source_identity": "proven",
+    "source_database_inventory": "verified_read_only",
+    "source_cron_schedule_inventory": "verified_read_only",
     "portable_database_export": "not_yet_proven",
-    "source_database_inventory": "blocked_until_correct_aicis_database_access",
     "storage_object_bytes_export": "not_yet_proven",
     "target_restore": "not_started",
     "auth_parity": "not_started",
@@ -64,14 +93,15 @@
     "cutover": "blocked"
   },
   "invalidated_prior_observations": {
-    "reason": "The previously recorded Lovable project ID resolves to a Quantivis repository, not AICIS. Therefore the prior counts of 210 public tables, 172 Auth users, 2 Storage buckets, 45 Storage objects, 186 migrations and 26 active cron jobs are quarantined and must not be used for AICIS restore/parity decisions.",
+    "reason": "Checkpoint versions 1 and 2 documented that project 28b43e06-9231-4c54-bc18-a49be01a6516 is Quantivis. Its counts remain invalid for AICIS migration.",
     "prior_counts_retained_as_audit_history_only": true
   },
   "notes": [
-    "This checkpoint supersedes checkpoint_version 1.",
-    "No Quantivis database, Auth, Storage, cron or function observation may be used as AICIS source evidence.",
-    "No source write was performed during identity reconciliation.",
+    "This checkpoint supersedes versions 1 and 2.",
+    "Correct AICIS database access resumed after the Lovable workspace payment and was used read-only.",
+    "No raw cron command body was committed.",
+    "No source write was performed.",
     "No target writer was enabled.",
-    "The correct AICIS Lovable project database currently reports enabled but SQL connectivity remains unavailable; a portable T0 or legitimate direct backup is still required."
+    "This metadata checkpoint is not a portable database backup. A recoverable T0 database artifact and Storage object-byte preservation are still required before restore."
   ]
 }
