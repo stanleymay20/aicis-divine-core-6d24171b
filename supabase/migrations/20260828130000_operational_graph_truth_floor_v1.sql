@@ -3,12 +3,24 @@
 -- Purpose:
 --   Preserve deterministic graph structure while preventing restored/source-era
 --   defaults from manufacturing confidence, validation freshness, historical
---   effectiveness, or reliability evidence.
+--   effectiveness, reliability, criticality, exposure, or volatility evidence.
 --
 -- Safety:
 --   * This migration does not schedule or invoke any writer.
 --   * ALTER TABLE IF EXISTS makes it safe before source graph tables are restored.
---   * Unknown epistemic values remain NULL until measured or explicitly verified.
+--   * Unknown epistemic values remain NULL until measured or explicitly governed.
+
+ALTER TABLE IF EXISTS public.operational_graph_nodes
+  ALTER COLUMN operational_criticality DROP DEFAULT,
+  ALTER COLUMN operational_criticality DROP NOT NULL,
+  ALTER COLUMN exposure_score DROP DEFAULT,
+  ALTER COLUMN exposure_score DROP NOT NULL,
+  ALTER COLUMN volatility_score DROP DEFAULT,
+  ALTER COLUMN volatility_score DROP NOT NULL;
+
+ALTER TABLE IF EXISTS public.operational_graph_nodes
+  ADD COLUMN IF NOT EXISTS score_semantics jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS epistemic_status text NOT NULL DEFAULT 'legacy_unverified';
 
 ALTER TABLE IF EXISTS public.operational_graph_edges
   ALTER COLUMN strength DROP DEFAULT,
@@ -60,6 +72,16 @@ ALTER TABLE IF EXISTS public.graph_memory_patterns
 
 DO $$
 BEGIN
+  IF to_regclass('public.operational_graph_nodes') IS NOT NULL THEN
+    UPDATE public.operational_graph_nodes
+    SET
+      epistemic_status = 'legacy_unverified',
+      score_semantics = COALESCE(score_semantics, '{}'::jsonb) || jsonb_build_object(
+        'legacy_numeric_fields', true,
+        'calibration_status', 'not_established'
+      );
+  END IF;
+
   IF to_regclass('public.operational_graph_edges') IS NOT NULL THEN
     UPDATE public.operational_graph_edges
     SET
