@@ -63,7 +63,7 @@ function usePipelineMetrics() {
       ] = await Promise.all([
         supabase.from("source_connector_runs").select("*").order("run_at", { ascending: false }).limit(50),
         supabase.from("global_signals").select(
-          "id,enrichment_status,source_trust_tier,official_source_present,impact_score,confidence_score,confidence_score_semantics,category,status,routing_suppressed_reason,ingested_at,enriched_at,routed_at,primary_source,enrichment_error,source_identifier_count,source_identifier_count_semantics,source_independence_status,independent_origin_count,source_independence_semantics,multi_source_confirmed,multi_source_confirmation_semantics",
+          "id,enrichment_status,source_trust_tier,official_source_present,impact_score,confidence_score,category,status,routing_suppressed_reason,ingested_at,enriched_at,routed_at,primary_source,enrichment_error,multi_source_confirmed",
         ),
         supabase.from("signal_routing_feedback").select("signal_id,feedback,created_at"),
         supabase.from("decision_outcome_log").select("id,signal_id,action_taken,outcome_success,execution_status").not("signal_id", "is", null),
@@ -73,7 +73,17 @@ function usePipelineMetrics() {
       ]);
 
       const runs = connectorRes.data || [];
-      const signals = signalsRes.data || [];
+      // Provenance-governance columns are not yet provisioned on global_signals; they read as
+      // absent (undefined) so dependent metrics honestly report "no data" instead of fabricating.
+      const signals = (signalsRes.data || []) as unknown as Array<
+        NonNullable<typeof signalsRes.data>[number] & {
+          confidence_score_semantics?: string | null;
+          source_identifier_count?: number | null;
+          source_independence_status?: string | null;
+          independent_origin_count?: number | null;
+        }
+      >;
+
       const feedback = feedbackRes.data || [];
       const decisions = decisionsRes.data || [];
       const latestCoverage = coverageRes.data || null;
