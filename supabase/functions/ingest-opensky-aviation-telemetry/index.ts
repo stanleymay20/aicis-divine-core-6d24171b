@@ -4,10 +4,11 @@ import {
   finishProviderRun,
   failProviderRun,
 } from "../_shared/provider-telemetry.ts";
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -188,6 +189,9 @@ async function fetchBox(box: WatchBox): Promise<OpenSkyResponse> {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const auth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (auth.response) return auth.response;
 
   const started = Date.now();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
