@@ -203,7 +203,7 @@ export async function searchEntities(
 }
 
 export async function getEntityGraph(entityId: string, depth = 1): Promise<EntityGraph> {
-  return invokeEntityFn("graph", { entity_id: entityId, depth });
+  return invokeEntityFn<EntityGraph & EntityFunctionResponse>("graph", { entity_id: entityId, depth });
 }
 
 export async function searchEntitiesDirect(
