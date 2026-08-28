@@ -9,6 +9,10 @@
 -- reads and final parity checks. Audited schedules are enabled only by an
 -- explicit file under migration/target/cutover/ after the cutover gate passes.
 --
+-- Guarded source refs:
+--   psonnnuhjjskrdazrakk  - repository-declared source binding
+--   itpwpnwzzitkelffttyx  - live Lovable runtime binding observed 2026-08-28
+--
 -- Before cutover, create these target Vault secrets:
 --   aicis_project_url      -> https://<destination-ref>.supabase.co
 --   aicis_publishable_key  -> destination sb_publishable_... key
@@ -33,22 +37,19 @@ DECLARE
   cron_secret text;
   request_id bigint;
 BEGIN
-  SELECT decrypted_secret
-    INTO project_url
+  SELECT decrypted_secret INTO project_url
   FROM vault.decrypted_secrets
   WHERE name = 'aicis_project_url'
   ORDER BY created_at DESC
   LIMIT 1;
 
-  SELECT decrypted_secret
-    INTO publishable_key
+  SELECT decrypted_secret INTO publishable_key
   FROM vault.decrypted_secrets
   WHERE name = 'aicis_publishable_key'
   ORDER BY created_at DESC
   LIMIT 1;
 
-  SELECT decrypted_secret
-    INTO cron_secret
+  SELECT decrypted_secret INTO cron_secret
   FROM vault.decrypted_secrets
   WHERE name = 'aicis_cron_secret'
   ORDER BY created_at DESC
@@ -58,8 +59,9 @@ BEGIN
     RAISE EXCEPTION 'AICIS destination Vault secret aicis_project_url is missing';
   END IF;
 
-  IF project_url LIKE '%psonnnuhjjskrdazrakk%' THEN
-    RAISE EXCEPTION 'AICIS destination URL still resolves to the Lovable source project';
+  IF project_url LIKE '%psonnnuhjjskrdazrakk%'
+     OR project_url LIKE '%itpwpnwzzitkelffttyx%' THEN
+    RAISE EXCEPTION 'AICIS destination URL resolves to a guarded Lovable/source project';
   END IF;
 
   IF publishable_key IS NULL OR btrim(publishable_key) = '' THEN
@@ -90,11 +92,9 @@ REVOKE ALL ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) FROM authe
 GRANT EXECUTE ON FUNCTION public.invoke_aicis_edge_function(text, jsonb) TO service_role;
 
 -- CRITICAL FAIL-CLOSED BARRIER
--- Disable EVERY restored schedule, not just commands that visibly contain the
+-- Disable EVERY restored schedule, not just commands that visibly contain a
 -- source project ref. Historical AICIS jobs can call stored PostgreSQL wrappers
--- whose pg_proc body contains the Lovable URL even when cron.job.command does
--- not. A blanket quarantine also prevents ordinary target-side ingestion from
--- creating drift before parity is complete.
+-- whose pg_proc body contains a Lovable URL even when cron.job.command does not.
 UPDATE cron.job
 SET active = false
 WHERE active;
@@ -105,26 +105,29 @@ DECLARE
   direct_source_jobs bigint;
   indirect_source_jobs bigint;
 BEGIN
-  SELECT count(*)
-  INTO active_jobs
+  SELECT count(*) INTO active_jobs
   FROM cron.job
   WHERE active;
 
-  SELECT count(*)
-  INTO direct_source_jobs
+  SELECT count(*) INTO direct_source_jobs
   FROM cron.job
   WHERE active
-    AND command LIKE '%psonnnuhjjskrdazrakk%';
+    AND (
+      command LIKE '%psonnnuhjjskrdazrakk%'
+      OR command LIKE '%itpwpnwzzitkelffttyx%'
+    );
 
   WITH source_bound_functions AS (
     SELECT DISTINCT p.proname
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-      AND p.prosrc LIKE '%psonnnuhjjskrdazrakk%'
+      AND (
+        p.prosrc LIKE '%psonnnuhjjskrdazrakk%'
+        OR p.prosrc LIKE '%itpwpnwzzitkelffttyx%'
+      )
   )
-  SELECT count(DISTINCT j.jobid)
-  INTO indirect_source_jobs
+  SELECT count(DISTINCT j.jobid) INTO indirect_source_jobs
   FROM cron.job j
   JOIN source_bound_functions f
     ON j.command ILIKE '%' || f.proname || '%'
