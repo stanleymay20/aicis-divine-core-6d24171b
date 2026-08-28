@@ -54,6 +54,11 @@ jobs:
         continue-on-error: true
         run: python3 scripts/audit-target-cron-quarantine.py
 
+      - name: Live source cron parity
+        id: live_cron_parity
+        continue-on-error: true
+        run: python3 scripts/audit-live-cron-parity.py
+
       - name: Privileged Edge Function auth
         id: edge_auth
         continue-on-error: true
@@ -80,10 +85,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # AICIS completed the provider-portability rewrite at this checkpoint.
-          # Ordinary changed TypeScript must remain lint-clean. Legacy files changed
-          # solely to add the standardized privileged-auth boundary may retain only
-          # rule-count debt that demonstrably existed at this same baseline.
           BASE_SHA="0f316cf331ef45cebd62937b4ad63c8e2bc4d984"
           mapfile -t FILES < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- '*.ts' '*.tsx')
           if [ ${#FILES[@]} -eq 0 ]; then
@@ -108,9 +109,6 @@ jobs:
             echo "ESLint execution/configuration failed with status $ESLINT_STATUS"
             exit "$ESLINT_STATUS"
           fi
-          # Tightened to the verified 2026-08-26 debt after privileged-auth hardening.
-          # Future work may only reduce or hold these counts; never raise this ceiling
-          # to make a change pass.
           node .github/scripts/check-lint-baseline.mjs eslint-report.json 1227 66
 
       - name: Typecheck
@@ -132,6 +130,7 @@ jobs:
           echo "Lovable runtime gate: ${{ steps.lovable_runtime.outcome }}"
           echo "Source-project binding gate: ${{ steps.source_bindings.outcome }}"
           echo "Target cron quarantine: ${{ steps.target_cron.outcome }}"
+          echo "Live source cron parity: ${{ steps.live_cron_parity.outcome }}"
           echo "Privileged Edge Function auth: ${{ steps.edge_auth.outcome }}"
           echo "Deferred privileged-auth manifest: ${{ steps.deferred_auth.outcome }}"
           echo "Secret-name inventory: ${{ steps.secret_inventory.outcome }}"
@@ -145,6 +144,7 @@ jobs:
           [ "${{ steps.lovable_runtime.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.source_bindings.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.target_cron.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.live_cron_parity.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.edge_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.deferred_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.secret_inventory.outcome }}" = "success" ] || FAILED=1
@@ -153,11 +153,6 @@ jobs:
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.build.outcome }}" = "success" ] || FAILED=1
-
-          if [ "${{ steps.edge_auth.outcome }}" != "success" ] && [ "${{ steps.deferred_auth.outcome }}" = "success" ]; then
-            echo "Known pre-cutover blocker: the exact deferred privileged-auth manifest still contains unguarded functions."
-            echo "CI intentionally remains red until those caller paths are proven and the unguarded count reaches zero."
-          fi
 
           if [ "$FAILED" -ne 0 ]; then
             echo "One or more verification gates failed."
