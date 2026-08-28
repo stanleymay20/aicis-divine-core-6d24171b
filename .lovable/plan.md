@@ -19,11 +19,14 @@ Each item below is marked **[Documented]** (official Lovable docs), **[Observed]
 
 **[Documented]** None self-service. The docs describe no large-database export tier.
 
-**[Assumption / requires Lovable Support]** The only realistic supported routes are:
-- **A. Escalate to Lovable Support** and request either (i) an internal full `pg_dump`/physical backup handoff, or (ii) a **project transfer** of the underlying Supabase project into your own Supabase organization. Route (ii) is the true zero-data-loss path because nothing is copied — ownership/billing moves. Whether Lovable offers it is a Support decision, not a documented feature.
+**[Assumption / requires Lovable Support]** The only realistic routes are:
+- **A. Escalate to Lovable Support** and request either (i) an internal full `pg_dump`/physical backup handoff, or (ii) a **managed project transfer / infrastructure-level handoff** of the underlying Supabase project into your own Supabase organization. Route (ii) is potentially the **lowest-copy-risk** path, but it is not proven zero-data-loss: what survives a transfer (managed secrets, Auth configuration, cron state, Storage ownership, gateway bindings, billing) and whether downtime is required must be confirmed by Lovable/Supabase in writing.
 - **B. Logical replication / self-driven incremental copy** (see §8) if you can obtain read credentials.
 
-Ask Support explicitly for: full backup export above 5 GB, **or** transfer of the managed Supabase project (`psonnnuhjjskrdazrakk`) to a Supabase org you own.
+Ask Support explicitly for: full backup export above 5 GB, **or** transfer of the managed Supabase project (`psonnnuhjjskrdazrakk`) to a Supabase org you own — and for the written preservation semantics of that transfer.
+
+**Size note:** ~181 GB is **total PostgreSQL database size**, not 181 GB of logical table payload. Indexes, TOAST and database overhead account for a substantial share; a logical dump will likely be materially smaller than 181 GB, though still far above the 5 GB cap.
+
 
 ## 3. Direct PostgreSQL credentials for pg_dump
 
