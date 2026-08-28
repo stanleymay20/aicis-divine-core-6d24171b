@@ -3,10 +3,11 @@
  * All operations are idempotent.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 type SupabaseClient = ReturnType<typeof createClient>;
@@ -80,6 +81,9 @@ function jsonRes(data: unknown, status = 200) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (auth.response) return auth.response;
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const startedAt = Date.now();
