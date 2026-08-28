@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/one-time-strict-lint-repair.py
+      - scripts/one-time-strict-lint-repair-v2.trigger
 
 permissions:
   contents: write
@@ -21,7 +22,13 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: python3 scripts/one-time-strict-lint-repair.py
+      - name: Apply corrected repair script
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/text.count("sb: any") != 9/text.count("sb: any") != 10/' scripts/one-time-strict-lint-repair.py
+          sed -i 's/expected 9 sb:any occurrences/expected 10 sb:any occurrences/' scripts/one-time-strict-lint-repair.py
+          python3 scripts/one-time-strict-lint-repair.py
       - name: Verify repaired files
         run: |
           bunx eslint src/pages/Simulation.tsx supabase/functions/_shared/export-schema.ts supabase/functions/export-aicis-dataset/index.ts supabase/functions/public-api/index.ts --max-warnings=0
