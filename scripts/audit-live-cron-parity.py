@@ -2,13 +2,15 @@
 """Validate AICIS live-source cron preservation decisions.
 
 Default mode is a structural pre-cutover audit: it verifies that the observed
-live source cron set is complete, unique, explicitly classified, and that every
+live source cron set is complete, unique, explicitly classified, that source
+Edge Function targets exist in the repository when applicable, and that every
 job scheduled by the cutover SQL is represented as an approved target action.
 
 --cutover-ready is intentionally stricter. It fails while any observed live
-source job remains pending, lacks a captured source schedule, or is missing an
-explicit activate/replace/retire decision. This keeps CI green during migration
-work while providing a separate hard gate for actual cutover.
+source job remains pending, lacks a captured source schedule, has no repository
+implementation for an Edge Function target, or is missing an explicit
+activate/replace/retire decision. This keeps CI green during migration work
+while providing a separate hard gate for actual cutover.
 """
 
 from __future__ import annotations
@@ -22,13 +24,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "migration" / "target" / "cutover" / "live-source-cron-decisions.json"
 CUTOVER_SQL = ROOT / "migration" / "target" / "cutover" / "001_activate_audited_cron.sql"
+FUNCTIONS_DIR = ROOT / "supabase" / "functions"
 
 ALLOWED_SOURCE_DECISIONS = {"pending", "activate", "replace", "retire"}
 ALLOWED_TARGET_DECISIONS = {"approved_target_only"}
 
 
 def scheduled_jobnames(sql: str) -> set[str]:
-    # Matches the literal job-name first argument in the repository's cutover SQL.
     return set(
         re.findall(
             r"cron\s*\.\s*schedule\s*\(\s*'([^']+)'",
@@ -38,6 +40,14 @@ def scheduled_jobnames(sql: str) -> set[str]:
     )
 
 
+def edge_function_exists(target: str | None) -> bool | None:
+    if not target:
+        return False
+    if target.startswith("public."):
+        return None
+    return (FUNCTIONS_DIR / target / "index.ts").exists()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cutover-ready", action="store_true")
@@ -45,6 +55,7 @@ def main() -> int:
 
     errors: list[str] = []
     blockers: list[str] = []
+    missing_repo_targets: list[str] = []
 
     if not MANIFEST.exists():
         print(f"FAIL: missing cron decision manifest: {MANIFEST.relative_to(ROOT)}")
@@ -74,6 +85,7 @@ def main() -> int:
 
     for job in source_jobs:
         name = job.get("source_jobname") or "<missing>"
+        target = job.get("source_target")
         if not job.get("source_jobname"):
             errors.append("live_source entry missing source_jobname")
         if job.get("source_active") is not True:
@@ -89,6 +101,11 @@ def main() -> int:
         if decision == "retire" and not job.get("rationale"):
             errors.append(f"{name}: retire requires rationale")
 
+        implementation = edge_function_exists(target)
+        if implementation is False:
+            missing_repo_targets.append(f"{name}->{target}")
+            blockers.append(f"{name}: repository Edge Function target {target!r} is missing")
+
         if decision == "pending":
             blockers.append(f"{name}: decision pending")
         if job.get("source_schedule") is None:
@@ -96,12 +113,15 @@ def main() -> int:
 
     for job in target_jobs:
         name = job.get("target_jobname") or "<missing>"
+        target = job.get("target_target")
         if not job.get("target_jobname"):
             errors.append("target_new entry missing target_jobname")
         if job.get("decision") not in ALLOWED_TARGET_DECISIONS:
             errors.append(f"{name}: invalid target_new decision {job.get('decision')!r}")
-        if not job.get("target_target"):
+        if not target:
             errors.append(f"{name}: target_new entry missing target_target")
+        elif not (FUNCTIONS_DIR / target / "index.ts").exists():
+            errors.append(f"{name}: approved target-only Edge Function {target!r} does not exist in repository")
         if not job.get("rationale"):
             errors.append(f"{name}: target_new entry missing rationale")
 
@@ -136,6 +156,9 @@ def main() -> int:
     print(f"observed_live_source_jobs={len(source_jobs)}")
     print(f"approved_target_only_jobs={len(target_jobs)}")
     print(f"cutover_sql_scheduled_jobs={len(sql_jobs)}")
+    print(f"missing_repository_source_targets={len(missing_repo_targets)}")
+    if missing_repo_targets:
+        print("missing_repository_source_target_names=" + ",".join(sorted(missing_repo_targets)))
     print(f"cutover_blockers={len(blockers)}")
 
     if errors:
@@ -151,8 +174,8 @@ def main() -> int:
 
     if blockers:
         print(
-            "PASS: structural cron manifest is internally consistent; "
-            "cutover remains blocked until pending source jobs are classified and schedules are captured"
+            "PASS: structural cron manifest is internally consistent; cutover remains blocked until "
+            "pending source jobs are classified, schedules are captured, and missing implementations are resolved"
         )
     else:
         print("PASS: live-source cron preservation decisions are complete")
