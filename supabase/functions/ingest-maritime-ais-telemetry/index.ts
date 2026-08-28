@@ -4,10 +4,11 @@ import {
   finishProviderRun,
   failProviderRun,
 } from "../_shared/provider-telemetry.ts";
+import { requireSignedWebhookOrTrustedWorker } from "../_shared/signed-webhook-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret, x-webhook-signature, x-webhook-timestamp, x-webhook-id",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -195,7 +196,7 @@ async function recordConnectorHealth(
     provider_name: "provider-flexible-ais",
     data_domain: "shipping-logistics",
     geographic_scope: "global-chokepoints-and-ports",
-    auth_mode: "provider_webhook_or_posted_payload",
+    auth_mode: "signed_webhook_or_trusted_worker",
     polling_interval_seconds: 900,
     operational_status: args.success ? "active" : "degraded",
     last_success_at: args.success ? now : undefined,
@@ -211,6 +212,7 @@ async function recordConnectorHealth(
       duration_ms: args.durationMs ?? null,
       provider_quality_status: "unmeasured_provider_specific",
       analytical_confidence_status: "unmeasured",
+      webhook_auth: "HMAC-SHA256 + timestamp + single-use nonce; internal trusted-worker fallback",
       note: "Most real AIS feeds require a provider API key or webhook. This endpoint normalizes approved provider payloads; provider quality and analytical confidence must be supplied or measured separately.",
     },
     updated_at: now,
@@ -220,13 +222,22 @@ async function recordConnectorHealth(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const auth = await requireSignedWebhookOrTrustedWorker(req, {
+    provider: "maritime_ais",
+    secretEnv: "AIS_WEBHOOK_SECRET",
+    maxSkewSeconds: 300,
+    nonceTtlSeconds: 600,
+    extraHeaders: corsHeaders,
+  });
+  if (auth.response) return auth.response;
+
   const started = Date.now();
   const requestReceivedAt = new Date().toISOString();
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   const telemetryRun = await startProviderRun(supabase, {
     provider_name: "maritime_ais",
     endpoint: "ingest-maritime-ais-telemetry",
-    scheduler_source: req.headers.get("x-scheduler-source") ?? "manual",
+    scheduler_source: req.headers.get("x-scheduler-source") ?? auth.via ?? "manual",
   });
 
   try {
@@ -234,6 +245,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         status: "ready",
         connector_key: CONNECTOR_KEY,
+        auth_mode: "signed_webhook_or_trusted_worker",
         message: "POST AIS observations to ingest. Supports observations[], vessels[], messages[], AISStream-style messages, or a single vessel object.",
         watched_zones: PORT_ZONES,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -278,6 +290,7 @@ Deno.serve(async (req) => {
           port_zone: zone,
           provider: obs.provider,
           raw: obs.raw,
+          caller_auth: auth.via,
           observed_data_semantics: "provider_supplied_vessel_fields",
           provider_timestamp_status: observedAt ? "provider_supplied" : "unknown",
           request_received_at: requestReceivedAt,
@@ -317,6 +330,7 @@ Deno.serve(async (req) => {
           zone,
           vessel_count: count,
           provider: "derived-from-current-ais-payload",
+          caller_auth: auth.via,
           observed_data_semantics: "deterministic_count_of_payload_records_inside_watch_box",
           coverage_scope: "posted_payload_only_not_complete_zone_population",
           derivation_time: derivedAt,
@@ -358,7 +372,7 @@ Deno.serve(async (req) => {
     await supabase.from("automation_logs").insert({
       job_name: "ingest-maritime-ais-telemetry",
       status: "success",
-      message: `observations=${observations.length} rows=${rows.length} inserted=${inserted} duration_ms=${Date.now() - started}`,
+      message: `auth=${auth.via} observations=${observations.length} rows=${rows.length} inserted=${inserted} duration_ms=${Date.now() - started}`,
     });
 
     try {
@@ -373,6 +387,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       status: "success",
       connector_key: CONNECTOR_KEY,
+      auth_mode: auth.via,
       observations: observations.length,
       derived_rows: rows.length,
       inserted,
