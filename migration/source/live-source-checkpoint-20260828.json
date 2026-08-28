@@ -1,5 +1,5 @@
 {
-  "checkpoint_version": 3,
+  "checkpoint_version": 4,
   "observation_date": "2026-08-28",
   "observation_time_utc": "2026-08-28T17:21:22Z",
   "observation_mode": "read_only_correct_aicis_project_sql",
@@ -20,7 +20,7 @@
     "secondary_ref_cron_mentions": 0,
     "secondary_ref_public_function_mentions": 2,
     "secondary_ref_function_names": ["enqueue_quantivis_event_batch","enqueue_quantivis_metric_batch"],
-    "semantics": "psonnnuhjjskrdazrakk is now directly observed in the correct AICIS runtime cron catalog and public function bodies. itpwpnwzzitkelffttyx is also present in two explicitly Quantivis-named bridge functions but not in AICIS cron commands; treat it as an external/legacy integration binding, not the AICIS source project identity."
+    "semantics": "psonnnuhjjskrdazrakk is directly observed in the correct AICIS runtime cron catalog and public function bodies. itpwpnwzzitkelffttyx is present in two explicitly Quantivis-named bridge functions but not in AICIS cron commands; treat it as an external/legacy integration binding, not the AICIS source project identity."
   },
   "database": {
     "postgres_version": "17.6",
@@ -30,17 +30,26 @@
     "public_rls_policy_count": 651,
     "extension_count": 9,
     "migration_history_rows": 370,
+    "schema_metadata_md5": "8c76ab0b15f7029edbe33c3c9b15814d",
+    "public_function_definitions_md5": "c399f572aaadf4af4b9f172d80838a57",
+    "public_policies_md5": "048a4e914720a5b6f3d6381363315977",
+    "extensions_md5": "f8eba3cb6e049a0943a7fb829257e74c",
+    "fingerprint_semantics": "Server-side MD5 fingerprints over sorted metadata/definitions are drift detectors, not cryptographic authenticity attestations and not data-content backups.",
     "exact_large_table_row_counts": "not_collected_to_avoid_unnecessary_source_load"
   },
   "auth": {
-    "user_count": 2
+    "user_count": 2,
+    "identity_metadata_md5": "5509baf45e4189f5c2c8aefcd68ca397",
+    "fingerprint_semantics": "Server-side digest of sorted user id/email/create/update metadata; no email addresses or user IDs are stored in this checkpoint. It is not an Auth backup."
   },
   "storage": {
     "bucket_count": 1,
     "metadata_object_count": 56,
     "metadata_reported_object_bytes": 1273019,
+    "buckets_metadata_md5": "65bd6760e36b14b5f72cf7f5d02cfbb6",
+    "object_metadata_md5": "e87f0a05dd8015be9cc9c7d6cb8c883d",
     "object_bytes_preserved": false,
-    "semantics": "metadata_reported_object_bytes is derived from parseable storage.objects metadata.size values and is not object-byte checksum/parity proof"
+    "semantics": "Metadata fingerprints and metadata.size totals are drift evidence only. They do not prove actual Storage object-byte preservation or byte checksums."
   },
   "scheduler": {
     "cron_job_count": 172,
@@ -57,17 +66,17 @@
     "raw_command_bodies_preserved_in_repo": false
   },
   "large_relation_observations": {
-    "semantics": "pg_total_relation_size is measured relation size; pg_stat n_live_tup estimates were not accepted as exact row-count evidence",
+    "semantics": "pg_total_relation_size is measured relation size; planner/statistics row estimates are not accepted as exact row-count evidence.",
     "largest": [
       {"table":"public.community_metrics","total_bytes":124024422400},
       {"table":"public.metrics","total_bytes":25906667520},
       {"table":"public.economic_indicators","total_bytes":7048019968},
       {"table":"public.risk_scores","total_bytes":4198858752},
-      {"table":"public.global_signals","total_bytes":4055506944},
+      {"table":"public.global_signals","total_bytes":4057194496},
       {"table":"public.normalized_metrics","total_bytes":3331940352},
       {"table":"public.entity_metric_links","total_bytes":2411872256},
       {"table":"public.urban_metrics","total_bytes":2062245888},
-      {"table":"public.normalized_events","total_bytes":1190576128}
+      {"table":"public.normalized_events","total_bytes":1190608896}
     ]
   },
   "target": {
@@ -83,6 +92,7 @@
     "correct_source_identity": "proven",
     "source_database_inventory": "verified_read_only",
     "source_cron_schedule_inventory": "verified_read_only",
+    "source_metadata_fingerprints": "verified_read_only",
     "portable_database_export": "not_yet_proven",
     "storage_object_bytes_export": "not_yet_proven",
     "target_restore": "not_started",
@@ -97,7 +107,7 @@
     "prior_counts_retained_as_audit_history_only": true
   },
   "notes": [
-    "This checkpoint supersedes versions 1 and 2.",
+    "This checkpoint supersedes versions 1, 2 and 3.",
     "Correct AICIS database access resumed after the Lovable workspace payment and was used read-only.",
     "No raw cron command body was committed.",
     "No source write was performed.",
