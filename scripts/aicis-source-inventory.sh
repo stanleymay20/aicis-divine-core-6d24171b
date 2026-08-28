@@ -6,7 +6,10 @@ OUT_DIR="${1:-artifacts/aicis-source-inventory}"
 mkdir -p "$OUT_DIR"
 
 PSQL=(psql "$AICIS_SOURCE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -At)
-SOURCE_REFS=(
+# Both refs are guarded as forbidden target destinations, but their semantics
+# differ. ps... is the verified current AICIS source runtime binding. it... is
+# observed only in legacy/external Quantivis bridge functions on the AICIS DB.
+GUARDED_REFS=(
   "psonnnuhjjskrdazrakk"
   "itpwpnwzzitkelffttyx"
 )
@@ -33,20 +36,37 @@ fi
   echo "active_cron_jobs=$(${PSQL[@]} -c "select count(*) from cron.job where active;" 2>/dev/null || echo unavailable)"
 } > "$OUT_DIR/summary.txt"
 
+# Planner/statistics estimates are metadata observations, not exact row counts.
+# They are cheap enough for a very large production database and are labelled
+# accordingly. Never promote them to parity evidence.
 ${PSQL[@]} -F $'\t' -c "
-select schemaname, relname, n_live_tup::bigint
-from pg_stat_user_tables
+select schemaname,
+       relname,
+       c.reltuples::bigint as planner_estimated_rows,
+       pg_total_relation_size(c.oid) as total_bytes
+from pg_stat_user_tables s
+join pg_class c on c.oid=s.relid
 where schemaname in ('public','auth','storage')
 order by schemaname, relname;
 " > "$OUT_DIR/table-estimates.tsv"
 
-# Exact row counts for public tables only. Auth/storage counts are captured separately above.
+# Exact COUNT(*) across a ~181 GB source can create needless load and extend the
+# paid-source window. It is opt-in and can be narrowed to a comma-separated
+# allowlist. Use exact counts only when a concrete parity decision needs them.
 : > "$OUT_DIR/public-table-counts.tsv"
-while IFS= read -r table_name; do
-  [[ -z "$table_name" ]] && continue
-  count="$(${PSQL[@]} -c "select count(*) from public.\"${table_name//\"/\"\"}\";")"
-  printf 'public\t%s\t%s\n' "$table_name" "$count" >> "$OUT_DIR/public-table-counts.tsv"
-done < <(${PSQL[@]} -c "select tablename from pg_tables where schemaname='public' order by tablename;")
+if [[ "${AICIS_INVENTORY_EXACT_COUNTS:-false}" == "true" ]]; then
+  ALLOWLIST=",${AICIS_INVENTORY_EXACT_TABLES:-},"
+  while IFS= read -r table_name; do
+    [[ -z "$table_name" ]] && continue
+    if [[ "$ALLOWLIST" != ",," && "$ALLOWLIST" != *",$table_name,"* ]]; then
+      continue
+    fi
+    count="$(${PSQL[@]} -c "select count(*) from public.\"${table_name//\"/\"\"}\";")"
+    printf 'public\t%s\t%s\n' "$table_name" "$count" >> "$OUT_DIR/public-table-counts.tsv"
+  done < <(${PSQL[@]} -c "select tablename from pg_tables where schemaname='public' order by tablename;")
+else
+  printf '# exact public table counts intentionally skipped; set AICIS_INVENTORY_EXACT_COUNTS=true to enable\n' > "$OUT_DIR/public-table-counts.tsv"
+fi
 
 ${PSQL[@]} -F $'\t' -c "
 select extname, extversion
@@ -79,8 +99,8 @@ select jobid,
        jobname,
        schedule,
        active,
-       (command like '%psonnnuhjjskrdazrakk%') as references_repository_source_ref,
-       (command like '%itpwpnwzzitkelffttyx%') as references_live_runtime_ref
+       (command like '%psonnnuhjjskrdazrakk%') as references_verified_aicis_source_ref,
+       (command like '%itpwpnwzzitkelffttyx%') as references_external_quantivis_bridge_ref
 from cron.job
 order by jobid;
 " > "$OUT_DIR/cron-jobs-redacted.tsv" || true
@@ -88,12 +108,12 @@ else
   printf 'pg_cron not installed\n' > "$OUT_DIR/cron-jobs-redacted.tsv"
 fi
 
-# Count direct cron and stored-function bindings for every guarded source ref.
+# Count direct cron and stored-function bindings for every guarded ref.
 : > "$OUT_DIR/source-ref-bindings.tsv"
-for source_ref in "${SOURCE_REFS[@]}"; do
-  cron_count="$(${PSQL[@]} -c "select count(*) from cron.job where command like '%' || :'ref' || '%';" -v ref="$source_ref" 2>/dev/null || echo unavailable)"
-  function_count="$(${PSQL[@]} -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname not in ('pg_catalog','information_schema') and p.prosrc like '%' || :'ref' || '%';" -v ref="$source_ref" 2>/dev/null || echo unavailable)"
-  printf '%s\t%s\t%s\n' "$source_ref" "$cron_count" "$function_count" >> "$OUT_DIR/source-ref-bindings.tsv"
+for guarded_ref in "${GUARDED_REFS[@]}"; do
+  cron_count="$(${PSQL[@]} -c "select count(*) from cron.job where command like '%' || :'ref' || '%';" -v ref="$guarded_ref" 2>/dev/null || echo unavailable)"
+  function_count="$(${PSQL[@]} -c "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname not in ('pg_catalog','information_schema') and p.prosrc like '%' || :'ref' || '%';" -v ref="$guarded_ref" 2>/dev/null || echo unavailable)"
+  printf '%s\t%s\t%s\n' "$guarded_ref" "$cron_count" "$function_count" >> "$OUT_DIR/source-ref-bindings.tsv"
 done
 
 # Schema fingerprint is metadata-only: no table row contents are hashed or emitted.
