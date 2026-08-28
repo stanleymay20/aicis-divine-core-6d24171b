@@ -10,13 +10,5 @@
     "cutover": "Every entry must receive an explicit caller trust boundary before Lovable-pause readiness can pass.",
     "forbidden_shortcut": "A Supabase anon/publishable key or gateway verify_jwt alone is not privileged authorization."
   },
-  "functions": [
-    {
-      "name": "planetary-backfill",
-      "source_caller_state": "mixed_current_internal_and_historical_database_http_callers_live_activation_partially_unknown",
-      "evidence": "Current graph-recovery-tick directly fetches /functions/v1/planetary-backfill with a service-role Bearer. pipeline-watchdog can also resolve planetary-backfill through target_function and invokeInternalFunction with x-cron-secret. Historical migrations 20260413114431_7dfd2577-1e0c-4c94-8ff9-49b773850234.sql and 20260413114900_c155eccf-ce46-44f7-bacc-40895b228609.sql define database HTTP wrappers posting to the Lovable source with a legacy anon JWT. Historical wrapper activation in the live source is unresolved.",
-      "target_auth_intent": "admin_or_trusted_worker",
-      "cutover_requirement": "Keep historical source wrappers quarantined on target, preserve the current service-role and x-cron-secret trusted-worker paths or atomically rebind them, resolve live wrapper usage, then enforce requireAdminOrTrustedWorker."
-    }
-  ]
+  "functions": []
 }
