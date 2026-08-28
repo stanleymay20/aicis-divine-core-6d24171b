@@ -51,9 +51,9 @@ At 181 GB, steps 1 and 5 are the blockers. Steps 2–3 remain useful because the
 ## 5. Auth identities, UUIDs, passwords, sessions
 
 - **[Documented]** Password hashes are **not exported in a usable format** by the self-service export.
-- **[Assumption]** To preserve `auth.users.id` UUIDs (which every `user_id` FK in your 333 public tables depends on), you must copy `auth.users`, `auth.identities`, and related auth tables at the SQL level with IDs intact. That requires a real dump — i.e. §2 route A or B. The Supabase Admin API (`createUser` with explicit `id`) can preserve UUIDs and accepts pre-hashed bcrypt passwords, but only if you can read those hashes.
-- **Sessions**: never portable. `auth.sessions`/refresh tokens will not survive; all users are signed out at cutover and must re-authenticate.
-- **Fallback if hashes are unobtainable**: recreate users with the same UUIDs and force a password-reset email flow; OAuth (Google) identities re-link by provider subject if `auth.identities` rows are recreated.
+- **[Assumption]** Preserving `auth.users.id` UUIDs (which every `user_id` FK in the public tables depends on) and password hashes requires an **officially supported Auth migration/export mechanism, or SQL-level restoration of the `auth` schema** from a real dump — i.e. §2 route A or B. Do not assume any client/Admin API accepts an explicit existing id plus a pre-hashed password; that must be independently verified against current Supabase behaviour before it is planned on.
+- **Sessions**: do not rely on preserving existing sessions. Plan for all users to re-authenticate at cutover unless Lovable/Supabase explicitly confirms session-token continuity.
+- **Fallback if hashes are unobtainable**: recreate users with the same UUIDs and force a password-reset flow; OAuth (Google) identities re-link by provider subject if `auth.identities` rows are recreated — verify this behaviour before depending on it.
 
 ## 6. Storage objects
 
