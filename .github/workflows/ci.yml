@@ -69,6 +69,11 @@ jobs:
         continue-on-error: true
         run: python3 scripts/aicis-secret-inventory.py
 
+      - name: Migration view replacement safety
+        id: migration_views
+        continue-on-error: true
+        run: python3 scripts/audit-migration-view-replacements.py
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
@@ -130,6 +135,7 @@ jobs:
           echo "Privileged Edge Function auth: ${{ steps.edge_auth.outcome }}"
           echo "Deferred privileged-auth manifest: ${{ steps.deferred_auth.outcome }}"
           echo "Secret-name inventory: ${{ steps.secret_inventory.outcome }}"
+          echo "Migration view replacement safety: ${{ steps.migration_views.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
@@ -142,6 +148,7 @@ jobs:
           [ "${{ steps.edge_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.deferred_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.secret_inventory.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.migration_views.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
