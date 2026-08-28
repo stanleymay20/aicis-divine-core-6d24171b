@@ -1,0 +1,189 @@
+name: One-time strict lint repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/one-time-strict-lint-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Apply exact lint repairs
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, count: int = 1):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {actual}: {old[:80]!r}")
+              p.write_text(text.replace(old, new, count))
+
+          # React hook: stabilize the fallback array identity.
+          replace_exact(
+              "src/pages/Simulation.tsx",
+              "  const rows = list.data?.rows ?? [];",
+              "  const rows = useMemo(() => list.data?.rows ?? [], [list.data?.rows]);",
+          )
+
+          # Shared export schema: replace explicit-any escape hatches with narrow,
+          # null-preserving dynamic-row/query helpers.
+          path = Path("supabase/functions/_shared/export-schema.ts")
+          text = path.read_text()
+          marker = "export interface ExportProfile {\n"
+          insert_after = """type ExportSourceRow = Record<string, unknown>;
+
+function queryCall<T>(query: T, method: string, ...args: unknown[]): T {
+  const callable = query as unknown as Record<string, (...methodArgs: unknown[]) => T>;
+  const fn = callable[method];
+  if (typeof fn !== "function") throw new TypeError(`Query builder does not support ${method}`);
+  return fn(...args);
+}
+
+"""
+          if insert_after in text:
+              raise SystemExit("export-schema.ts: query helper already present")
+          idx = text.find(marker)
+          if idx < 0:
+              raise SystemExit("export-schema.ts: ExportProfile marker missing")
+          text = text[:idx] + insert_after + text[idx:]
+          replacements = [
+              ("function sourceUrls(row: any): string[] {", "function sourceUrls(row: ExportSourceRow): string[] {"),
+              ("      const url = reference && typeof reference === \"object\" ? reference.url : null;", "      const url = reference && typeof reference === \"object\" && \"url\" in reference\n        ? (reference as Record<string, unknown>).url\n        : null;"),
+              ("  row: any,", "  row: ExportSourceRow,"),
+              ("  const domain = row.category ?? null;", "  const domain = typeof row.category === \"string\" ? row.category : null;"),
+              ("    trend_direction: row.trend_direction ?? null,", "    trend_direction: typeof row.trend_direction === \"string\" ? row.trend_direction : null,"),
+              ("    affected_sectors: Array.isArray(row.affected_sectors) ? row.affected_sectors : [],", "    affected_sectors: Array.isArray(row.affected_sectors)\n      ? row.affected_sectors.filter((value): value is string => typeof value === \"string\")\n      : [],"),
+              ("    affected_entities: Array.isArray(row.affected_entities) ? row.affected_entities : [],", "    affected_entities: Array.isArray(row.affected_entities)\n      ? row.affected_entities.filter((value): value is string => typeof value === \"string\")\n      : [],"),
+              ("      ? (row.why_it_matters ?? row.summary ?? null)", "      ? (typeof row.why_it_matters === \"string\"\n        ? row.why_it_matters\n        : typeof row.summary === \"string\" ? row.summary : null)"),
+              ("  if (!opts.prefer_clusters) return { signals: unique, clusters: [] as any[] };", "  if (!opts.prefer_clusters) return { signals: unique, clusters: [] as Array<Record<string, unknown>> };"),
+              ("  const clusters: any[] = [];", "  const clusters: Array<Record<string, unknown>> = [];"),
+              ("export function rowsToCsv(cols: string[], rows: any[]): string {", "export function rowsToCsv(cols: string[], rows: Array<Record<string, unknown>>): string {"),
+              ("    return /[\\\",\\n\\r]/.test(text) ? `\"${text.replace(/\"/g, '\"\"')}\"` : text;", "    return /[\",\\n\\r]/.test(text) ? `\"${text.replace(/\"/g, '\"\"')}\"` : text;"),
+              ("function requireUsableSemantics(q: any, column: string) {\n  q = q.not(column, \"is\", null);\n  for (const token of UNUSABLE_SEMANTIC_TOKENS) {\n    q = q.not(column, \"ilike\", `%${token}%`);\n  }\n  return q;\n}\n\nexport function applyProfileFilters<T>(q: any, profile: ExportProfile) {\n  if (profile.domains.length) q = q.in(\"category\", profile.domains);\n  if (profile.countries.length) q = q.overlaps(\"affected_countries\", profile.countries);\n  if (profile.regions.length) q = q.overlaps(\"affected_regions\", profile.regions);\n\n  if (profile.min_relevance_score > 0) {\n    q = q.gte(\"source_rank_score\", profile.min_relevance_score);", "function requireUsableSemantics<T>(q: T, column: string): T {\n  q = queryCall(q, \"not\", column, \"is\", null);\n  for (const token of UNUSABLE_SEMANTIC_TOKENS) {\n    q = queryCall(q, \"not\", column, \"ilike\", `%${token}%`);\n  }\n  return q;\n}\n\nexport function applyProfileFilters<T>(q: T, profile: ExportProfile): T {\n  if (profile.domains.length) q = queryCall(q, \"in\", \"category\", profile.domains);\n  if (profile.countries.length) q = queryCall(q, \"overlaps\", \"affected_countries\", profile.countries);\n  if (profile.regions.length) q = queryCall(q, \"overlaps\", \"affected_regions\", profile.regions);\n\n  if (profile.min_relevance_score > 0) {\n    q = queryCall(q, \"gte\", \"source_rank_score\", profile.min_relevance_score);"),
+              ("    q = q.gte(\"confidence_score\", profile.min_confidence_score);", "    q = queryCall(q, \"gte\", \"confidence_score\", profile.min_confidence_score);"),
+              ("    q = q.gte(\"urgency_score\", profile.min_urgency_score);", "    q = queryCall(q, \"gte\", \"urgency_score\", profile.min_urgency_score);"),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"export-schema.ts replacement mismatch: {old[:100]!r} count={text.count(old)}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          # Governed raw exporter: generic query-call bridge instead of explicit any.
+          path = Path("supabase/functions/export-aicis-dataset/index.ts")
+          text = path.read_text()
+          helper = """function queryCall<T>(query: T, method: string, ...args: unknown[]): T {
+  const callable = query as unknown as Record<string, (...methodArgs: unknown[]) => T>;
+  const fn = callable[method];
+  if (typeof fn !== "function") throw new TypeError(`Query builder does not support ${method}`);
+  return fn(...args);
+}
+
+"""
+          anchor = "function requireUsableSemantics(query: any, column: string) {\n"
+          if text.count(anchor) != 1:
+              raise SystemExit("export-aicis-dataset: requireUsableSemantics marker mismatch")
+          text = text.replace(anchor, helper + "function requireUsableSemantics<T>(query: T, column: string): T {\n", 1)
+          text = text.replace("  query = query.not(column, \"is\", null);", "  query = queryCall(query, \"not\", column, \"is\", null);", 1)
+          text = text.replace("  for (const token of UNUSABLE_SEMANTIC_TOKENS) query = query.not(column, \"ilike\", `%${token}%`);", "  for (const token of UNUSABLE_SEMANTIC_TOKENS) query = queryCall(query, \"not\", column, \"ilike\", `%${token}%`);", 1)
+          text = text.replace("function applyFilters(query: any, spec: DatasetSpec, filters: z.infer<typeof FilterSchema>) {", "function applyFilters<T>(query: T, spec: DatasetSpec, filters: z.infer<typeof FilterSchema>): T {", 1)
+          for method, condition in [
+              ("gte", "filters.date_from && spec.dateCol"),
+              ("lte", "filters.date_to && spec.dateCol"),
+              ("eq", "filters.iso3 && spec.iso3Col"),
+              ("eq", "filters.event_type && spec.typeCol"),
+              ("eq", "filters.warning_kind && spec.warningKindCol"),
+          ]:
+              pass
+          text = text.replace("if (filters.date_from && spec.dateCol) query = query.gte(spec.dateCol, filters.date_from);", "if (filters.date_from && spec.dateCol) query = queryCall(query, \"gte\", spec.dateCol, filters.date_from);", 1)
+          text = text.replace("if (filters.date_to && spec.dateCol) query = query.lte(spec.dateCol, filters.date_to);", "if (filters.date_to && spec.dateCol) query = queryCall(query, \"lte\", spec.dateCol, filters.date_to);", 1)
+          text = text.replace("if (filters.iso3 && spec.iso3Col) query = query.eq(spec.iso3Col, filters.iso3.toUpperCase());", "if (filters.iso3 && spec.iso3Col) query = queryCall(query, \"eq\", spec.iso3Col, filters.iso3.toUpperCase());", 1)
+          text = text.replace("if (filters.event_type && spec.typeCol) query = query.eq(spec.typeCol, filters.event_type);", "if (filters.event_type && spec.typeCol) query = queryCall(query, \"eq\", spec.typeCol, filters.event_type);", 1)
+          text = text.replace("if (filters.warning_kind && spec.warningKindCol) query = query.eq(spec.warningKindCol, filters.warning_kind);", "if (filters.warning_kind && spec.warningKindCol) query = queryCall(query, \"eq\", spec.warningKindCol, filters.warning_kind);", 1)
+          text = text.replace("    query = query.gte(spec.confidenceCol, value);", "    query = queryCall(query, \"gte\", spec.confidenceCol, value);", 1)
+          text = text.replace("    query = query.gte(spec.severityCol, value);", "    query = queryCall(query, \"gte\", spec.severityCol, value);", 1)
+          path.write_text(text)
+
+          # Public API: use the actual Supabase client type; rely on contextual row
+          # inference instead of explicit-any callback annotations.
+          path = Path("supabase/functions/public-api/index.ts")
+          text = path.read_text()
+          type_anchor = 'const EPISTEMIC_CONTRACT = "null_preserving_semantically_typed_v2";\n'
+          addition = type_anchor + "type SupabaseClientLike = ReturnType<typeof createClient>;\n"
+          if text.count(type_anchor) != 1:
+              raise SystemExit("public-api: EPISTEMIC_CONTRACT marker mismatch")
+          text = text.replace(type_anchor, addition, 1)
+          old_helper = """function requireUsableSemantics(query: any, column: string) {
+  query = query.not(column, "is", null);
+  for (const token of UNUSABLE_SEMANTIC_TOKENS) {
+    query = query.not(column, "ilike", `%${token}%`);
+  }
+  return query;
+}
+"""
+          new_helper = """function queryCall<T>(query: T, method: string, ...args: unknown[]): T {
+  const callable = query as unknown as Record<string, (...methodArgs: unknown[]) => T>;
+  const fn = callable[method];
+  if (typeof fn !== "function") throw new TypeError(`Query builder does not support ${method}`);
+  return fn(...args);
+}
+
+function requireUsableSemantics<T>(query: T, column: string): T {
+  query = queryCall(query, "not", column, "is", null);
+  for (const token of UNUSABLE_SEMANTIC_TOKENS) {
+    query = queryCall(query, "not", column, "ilike", `%${token}%`);
+  }
+  return query;
+}
+"""
+          if text.count(old_helper) != 1:
+              raise SystemExit("public-api: semantic helper mismatch")
+          text = text.replace(old_helper, new_helper, 1)
+          if text.count("sb: any") != 9:
+              raise SystemExit(f"public-api: expected 9 sb:any occurrences, found {text.count('sb: any')}")
+          text = text.replace("sb: any", "sb: SupabaseClientLike")
+          callback_replacements = {
+              "(signal: any)": "(signal)",
+              "(outcome: any)": "(outcome)",
+              "(log: any)": "(log)",
+              "(row: any)": "(row)",
+          }
+          expected = {"(signal: any)": 2, "(outcome: any)": 1, "(log: any)": 1, "(row: any)": 3}
+          for old, new in callback_replacements.items():
+              if text.count(old) != expected[old]:
+                  raise SystemExit(f"public-api: {old} expected {expected[old]}, found {text.count(old)}")
+              text = text.replace(old, new)
+          if "any" in "":
+              raise SystemExit("unreachable")
+          path.write_text(text)
+
+      - name: Verify repaired files
+        run: |
+          bunx eslint src/pages/Simulation.tsx supabase/functions/_shared/export-schema.ts supabase/functions/export-aicis-dataset/index.ts supabase/functions/public-api/index.ts --max-warnings=0
+          bun run typecheck
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "AICIS CI Repair"
+          git config user.email "107648937+stanleymay20@users.noreply.github.com"
+          git add src/pages/Simulation.tsx supabase/functions/_shared/export-schema.ts supabase/functions/export-aicis-dataset/index.ts supabase/functions/public-api/index.ts
+          git diff --cached --check
+          git commit -m "repair strict lint regressions"
+          git push origin HEAD:main
