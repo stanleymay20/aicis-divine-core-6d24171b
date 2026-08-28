@@ -20,8 +20,9 @@
       "target_jobname": "pns-global-performance-engine",
       "target_target": "drive-performance-engine-v2",
       "decision": "approved_target_only",
+      "activation_approved": false,
       "schedule": "25 */6 * * *",
-      "rationale": "Audited target-only performance driver. This job name is absent from the verified AICIS source cron snapshot, but activation must still wait for complete source scheduler classification and all migration gates."
+      "rationale": "Target-only design is approved, but activation is explicitly withheld until the verified 172-job source scheduler is fully classified and all migration gates pass."
     }
   ]
 }
