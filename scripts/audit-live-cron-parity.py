@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
-"""Validate AICIS live-source cron preservation decisions.
+"""Validate AICIS source scheduler preservation without trusting stale inventories.
 
-Default mode is a structural pre-cutover audit. It verifies that any *verified*
-AICIS live-source cron set is complete, unique and explicitly classified, that
-source Edge Function targets exist in the repository when applicable, and that
-every job scheduled by the cutover SQL is represented as an approved target
-action.
+The verified source schedule lives in a separate sanitized snapshot. Raw cron
+commands are intentionally excluded from Git. The decision manifest classifies
+source jobs and separately records target-only designs.
 
-Cross-project or otherwise invalidated observations are not counted as AICIS
-source evidence. If the manifest says the current AICIS source inventory is not
-verified, structural CI may pass while cutover remains explicitly blocked.
-
---cutover-ready is intentionally stricter. It fails while the current AICIS
-source inventory is unverified, any verified source job remains pending, lacks
-a captured source schedule, has no repository implementation for an Edge
-Function target, or is missing an explicit activate/replace/retire decision.
+Default mode validates structural consistency and is allowed to pass while
+cutover blockers remain. --cutover-ready fails until every active verified
+source job is explicitly activate/replace/retire, every activation is represented
+in cutover SQL, and every target-only job is separately activation-approved.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -29,28 +24,20 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "migration" / "target" / "cutover" / "live-source-cron-decisions.json"
 CUTOVER_SQL = ROOT / "migration" / "target" / "cutover" / "001_activate_audited_cron.sql"
 FUNCTIONS_DIR = ROOT / "supabase" / "functions"
-
-ALLOWED_SOURCE_DECISIONS = {"pending", "activate", "replace", "retire"}
-ALLOWED_TARGET_DECISIONS = {"approved_target_only"}
 VERIFIED_SOURCE_STATUS = "verified_current_aicis_source"
+ALLOWED_SOURCE_DECISIONS = {"activate", "replace", "retire"}
 
 
 def scheduled_jobnames(sql: str) -> set[str]:
-    return set(
-        re.findall(
-            r"cron\s*\.\s*schedule\s*\(\s*'([^']+)'",
-            sql,
-            flags=re.IGNORECASE | re.MULTILINE,
-        )
+    return set(re.findall(r"cron\s*\.\s*schedule\s*\(\s*'([^']+)'", sql, re.I | re.M))
+
+
+def snapshot_md5(rows: list[list[object]]) -> str:
+    text = "\n".join(
+        f"{int(row[0])}\t{row[1]}\t{row[2]}\t{str(bool(row[3])).lower()}"
+        for row in rows
     )
-
-
-def edge_function_exists(target: str | None) -> bool | None:
-    if not target:
-        return False
-    if target.startswith("public."):
-        return None
-    return (FUNCTIONS_DIR / target / "index.ts").exists()
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
 def main() -> int:
@@ -60,117 +47,128 @@ def main() -> int:
 
     errors: list[str] = []
     blockers: list[str] = []
-    missing_repo_targets: list[str] = []
 
-    if not MANIFEST.exists():
-        print(f"FAIL: missing cron decision manifest: {MANIFEST.relative_to(ROOT)}")
-        return 1
-    if not CUTOVER_SQL.exists():
-        print(f"FAIL: missing cutover SQL: {CUTOVER_SQL.relative_to(ROOT)}")
+    if not MANIFEST.exists() or not CUTOVER_SQL.exists():
+        print("FAIL: missing cron migration control file")
         return 1
 
-    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    jobs = data.get("jobs", [])
-    observed_expected = data.get("observed_source_job_count")
-    source_inventory_status = data.get("source_inventory_status")
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    snapshot_rel = manifest.get("source_snapshot")
+    if not snapshot_rel:
+        print("FAIL: decision manifest does not reference a source snapshot")
+        return 1
+    snapshot_path = ROOT / snapshot_rel
+    if not snapshot_path.exists():
+        print(f"FAIL: source snapshot missing: {snapshot_rel}")
+        return 1
 
-    source_jobs = [j for j in jobs if j.get("origin") == "live_source"]
-    target_jobs = [j for j in jobs if j.get("origin") == "target_new"]
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    rows = snapshot.get("jobs", [])
+    source_status = manifest.get("source_inventory_status")
+    expected_count = manifest.get("observed_source_job_count")
+    expected_active = manifest.get("active_source_job_count")
 
-    source_names = [j.get("source_jobname") for j in source_jobs]
-    target_names = [j.get("target_jobname") for j in target_jobs]
+    names = [row[1] for row in rows if isinstance(row, list) and len(row) == 4]
+    active_rows = [row for row in rows if isinstance(row, list) and len(row) == 4 and row[3] is True]
+    active_names = {row[1] for row in active_rows}
 
-    if source_inventory_status != VERIFIED_SOURCE_STATUS:
-        blockers.append(
-            "current AICIS source cron inventory is not verified; cross-project/invalidated observations cannot satisfy parity"
-        )
+    if source_status != VERIFIED_SOURCE_STATUS:
+        blockers.append("current AICIS source cron inventory is not verified")
+    if len(rows) != expected_count or snapshot.get("cron_jobs") != expected_count:
+        errors.append(f"source job count mismatch: snapshot={len(rows)} manifest={expected_count}")
+    if len(active_rows) != expected_active or snapshot.get("active_cron_jobs") != expected_active:
+        errors.append(f"active source job count mismatch: snapshot={len(active_rows)} manifest={expected_active}")
+    if len(names) != len(set(names)):
+        errors.append("duplicate source job name in verified snapshot")
+    if snapshot.get("cron_schedule_md5") != snapshot_md5(rows):
+        errors.append("verified source cron schedule fingerprint mismatch")
+    if snapshot.get("lovable_project_id") != manifest.get("aicis_source_project_id"):
+        errors.append("source project identity mismatch between snapshot and decision manifest")
 
-    if observed_expected != len(source_jobs):
-        errors.append(
-            f"observed_source_job_count={observed_expected} but manifest contains {len(source_jobs)} live_source entries"
-        )
-    if len(source_names) != len(set(source_names)):
-        errors.append("duplicate live source jobname in manifest")
-    if len(target_names) != len(set(target_names)):
-        errors.append("duplicate target_new jobname in manifest")
+    decisions = manifest.get("source_decisions", [])
+    decision_by_source: dict[str, dict[str, object]] = {}
+    for decision in decisions:
+        source_name = decision.get("source_jobname")
+        if not source_name:
+            errors.append("source decision missing source_jobname")
+            continue
+        if source_name in decision_by_source:
+            errors.append(f"duplicate source decision: {source_name}")
+            continue
+        if source_name not in set(names):
+            errors.append(f"source decision references job absent from verified snapshot: {source_name}")
+        if decision.get("decision") not in ALLOWED_SOURCE_DECISIONS:
+            errors.append(f"{source_name}: invalid decision {decision.get('decision')!r}")
+        if decision.get("decision") in {"activate", "replace"}:
+            target_name = decision.get("target_jobname")
+            target_target = decision.get("target_target")
+            if not target_name or not target_target:
+                errors.append(f"{source_name}: activate/replace requires target_jobname and target_target")
+            elif not str(target_target).startswith("public.") and not (FUNCTIONS_DIR / str(target_target) / "index.ts").exists():
+                blockers.append(f"{source_name}: target implementation missing: {target_target}")
+        if decision.get("decision") == "retire" and not decision.get("rationale"):
+            errors.append(f"{source_name}: retire requires rationale")
+        decision_by_source[str(source_name)] = decision
 
-    for job in source_jobs:
-        name = job.get("source_jobname") or "<missing>"
-        target = job.get("source_target")
-        if not job.get("source_jobname"):
-            errors.append("live_source entry missing source_jobname")
-        if job.get("source_active") is not True:
-            errors.append(f"{name}: observed source job is not explicitly marked active=true")
-        decision = job.get("decision")
-        if decision not in ALLOWED_SOURCE_DECISIONS:
-            errors.append(f"{name}: invalid source decision {decision!r}")
-        if decision in {"activate", "replace"}:
-            if not job.get("target_jobname"):
-                errors.append(f"{name}: {decision} requires target_jobname")
-            if not job.get("target_target"):
-                errors.append(f"{name}: {decision} requires target_target")
-        if decision == "retire" and not job.get("rationale"):
-            errors.append(f"{name}: retire requires rationale")
+    unclassified_active = sorted(active_names - set(decision_by_source))
+    if unclassified_active:
+        blockers.append(f"{len(unclassified_active)} active source jobs remain unclassified")
 
-        implementation = edge_function_exists(target)
-        if implementation is False:
-            missing_repo_targets.append(f"{name}->{target}")
-            blockers.append(f"{name}: repository Edge Function target {target!r} is missing")
+    # Inactive source jobs do not require production activation, but a final
+    # cutover ledger should still explain them for complete scheduler parity.
+    inactive_names = set(names) - active_names
+    unclassified_inactive = sorted(inactive_names - set(decision_by_source))
+    if unclassified_inactive:
+        blockers.append(f"{len(unclassified_inactive)} inactive source jobs remain unclassified")
 
-        if decision == "pending":
-            blockers.append(f"{name}: decision pending")
-        if job.get("source_schedule") is None:
-            blockers.append(f"{name}: source schedule not yet captured")
-
+    target_jobs = manifest.get("target_new_jobs", [])
+    target_names: set[str] = set()
+    activation_approved_target: set[str] = set()
     for job in target_jobs:
-        name = job.get("target_jobname") or "<missing>"
+        name = job.get("target_jobname")
         target = job.get("target_target")
-        if not job.get("target_jobname"):
-            errors.append("target_new entry missing target_jobname")
-        if job.get("decision") not in ALLOWED_TARGET_DECISIONS:
-            errors.append(f"{name}: invalid target_new decision {job.get('decision')!r}")
-        if not target:
-            errors.append(f"{name}: target_new entry missing target_target")
-        elif not (FUNCTIONS_DIR / target / "index.ts").exists():
-            errors.append(f"{name}: approved target-only Edge Function {target!r} does not exist in repository")
-        if not job.get("rationale"):
-            errors.append(f"{name}: target_new entry missing rationale")
+        if not name or not target:
+            errors.append("target_new job missing name or target")
+            continue
+        if name in target_names:
+            errors.append(f"duplicate target_new job: {name}")
+        target_names.add(str(name))
+        if not (FUNCTIONS_DIR / str(target) / "index.ts").exists():
+            errors.append(f"target_new implementation missing: {target}")
+        if job.get("decision") != "approved_target_only":
+            errors.append(f"{name}: invalid target-only design decision")
+        if job.get("activation_approved") is True:
+            activation_approved_target.add(str(name))
+        else:
+            blockers.append(f"target-only job {name} is not activation-approved")
 
-    sql_jobs = scheduled_jobnames(CUTOVER_SQL.read_text(encoding="utf-8"))
-    approved_target_names = {
-        j.get("target_jobname")
-        for j in target_jobs
-        if j.get("decision") == "approved_target_only"
+    sql = CUTOVER_SQL.read_text(encoding="utf-8")
+    sql_jobs = scheduled_jobnames(sql)
+    activation_approved_source = {
+        str(d.get("target_jobname"))
+        for d in decisions
+        if d.get("decision") in {"activate", "replace"} and d.get("activation_approved") is True
     }
-    approved_source_names = {
-        j.get("target_jobname")
-        for j in source_jobs
-        if j.get("decision") in {"activate", "replace"}
-    }
-    approved_for_cutover = approved_target_names | approved_source_names
+    allowed_sql_jobs = activation_approved_source | activation_approved_target
 
-    unmanifested_sql_jobs = sorted(sql_jobs - approved_for_cutover)
-    if unmanifested_sql_jobs:
-        errors.append(
-            "cutover SQL schedules jobs without an approved manifest decision: "
-            + ", ".join(unmanifested_sql_jobs)
-        )
+    unexpected_sql = sorted(sql_jobs - allowed_sql_jobs)
+    if unexpected_sql:
+        errors.append("cutover SQL schedules unapproved jobs: " + ", ".join(unexpected_sql))
+    approved_but_unscheduled = sorted(allowed_sql_jobs - sql_jobs)
+    if approved_but_unscheduled:
+        errors.append("activation-approved jobs absent from cutover SQL: " + ", ".join(approved_but_unscheduled))
 
-    manifest_but_unscheduled = sorted(approved_for_cutover - sql_jobs)
-    if manifest_but_unscheduled:
-        errors.append(
-            "manifest approves target activation absent from cutover SQL: "
-            + ", ".join(manifest_but_unscheduled)
-        )
+    if not sql_jobs:
+        blockers.append("cutover SQL intentionally schedules zero jobs")
 
     print("AICIS live-source cron parity audit")
-    print(f"source_inventory_status={source_inventory_status}")
-    print(f"observed_live_source_jobs={len(source_jobs)}")
-    print(f"approved_target_only_jobs={len(target_jobs)}")
+    print(f"source_inventory_status={source_status}")
+    print(f"verified_source_jobs={len(rows)}")
+    print(f"verified_active_source_jobs={len(active_rows)}")
+    print(f"source_decisions={len(decisions)}")
+    print(f"unclassified_active_source_jobs={len(unclassified_active)}")
+    print(f"target_new_jobs={len(target_jobs)}")
     print(f"cutover_sql_scheduled_jobs={len(sql_jobs)}")
-    print(f"missing_repository_source_targets={len(missing_repo_targets)}")
-    if missing_repo_targets:
-        print("missing_repository_source_target_names=" + ",".join(sorted(missing_repo_targets)))
     print(f"cutover_blockers={len(blockers)}")
 
     if errors:
@@ -181,16 +179,13 @@ def main() -> int:
     if args.cutover_ready and blockers:
         for blocker in blockers:
             print(f"BLOCKER: {blocker}")
-        print("FAIL: live-source cron preservation is not cutover-ready")
+        print("FAIL: verified AICIS scheduler is not cutover-ready")
         return 1
 
     if blockers:
-        print(
-            "PASS: structural cron manifest is internally consistent; cutover remains blocked until "
-            "the current AICIS source inventory is verified and all required source jobs are classified"
-        )
+        print("PASS: verified source cron evidence is structurally consistent; cutover remains fail-closed")
     else:
-        print("PASS: live-source cron preservation decisions are complete")
+        print("PASS: source scheduler decisions and cutover activation are complete")
     return 0
 
 
