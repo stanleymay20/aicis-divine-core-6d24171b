@@ -1,178 +1,28 @@
 -- AICIS CUTOVER-ONLY TARGET ACTIVATION
 --
--- NEVER run during T0 restore, shadow validation, parity comparison, or while
--- the Lovable project is still the authoritative production writer.
+-- FAIL-CLOSED PLACEHOLDER.
 --
--- Guarded source refs:
---   psonnnuhjjskrdazrakk  - repository-declared source binding
---   itpwpnwzzitkelffttyx  - live Lovable runtime binding observed 2026-08-28
+-- Correct-source read-only inspection on 2026-08-28 established that the live
+-- AICIS scheduler contains 172 jobs, 171 active. The previous four-job
+-- activation wave was based on an incomplete/cross-project scheduler model and
+-- must not be used for production cutover.
 --
--- Preconditions:
---   1. migration/target/001_rebind_pipeline_cron.sql has quarantined all jobs.
---   2. Database/Auth/Storage/function parity gates pass.
---   3. Source application writes are frozen/minimized for the final checkpoint.
---   4. Target Vault secrets exist:
---        aicis_project_url
---        aicis_publishable_key
---        aicis_cron_secret
---   5. aicis_cron_secret matches target Edge Function CRON_SECRET.
+-- Verified source schedule snapshot:
+--   migration/source/aicis-cron-snapshot-20260828.json
+-- Decision ledger:
+--   migration/target/cutover/live-source-cron-decisions.json
 --
--- This first activation wave deliberately enables only caller paths whose
--- target authentication and schedules have been audited. All other restored
--- jobs remain inactive until separate review.
+-- This file intentionally schedules ZERO jobs until every verified source job
+-- has an explicit activate/replace/retire decision, required implementations
+-- are audited/deployed, source/target parity is proven, final delta is applied,
+-- and target writer activation is explicitly approved.
+--
+-- Do not weaken this guard merely to make a migration or CI check pass.
 
 DO $$
-DECLARE
-  project_url text;
-  publishable_key text;
-  cron_secret text;
 BEGIN
-  IF to_regprocedure('public.invoke_aicis_edge_function(text,jsonb)') IS NULL THEN
-    RAISE EXCEPTION 'AICIS target helper is missing; apply 001_rebind_pipeline_cron.sql first';
-  END IF;
-
-  SELECT decrypted_secret INTO project_url
-  FROM vault.decrypted_secrets
-  WHERE name = 'aicis_project_url'
-  ORDER BY created_at DESC
-  LIMIT 1;
-
-  SELECT decrypted_secret INTO publishable_key
-  FROM vault.decrypted_secrets
-  WHERE name = 'aicis_publishable_key'
-  ORDER BY created_at DESC
-  LIMIT 1;
-
-  SELECT decrypted_secret INTO cron_secret
-  FROM vault.decrypted_secrets
-  WHERE name = 'aicis_cron_secret'
-  ORDER BY created_at DESC
-  LIMIT 1;
-
-  IF project_url IS NULL OR btrim(project_url) = '' THEN
-    RAISE EXCEPTION 'aicis_project_url is missing';
-  END IF;
-
-  IF project_url LIKE '%psonnnuhjjskrdazrakk%'
-     OR project_url LIKE '%itpwpnwzzitkelffttyx%' THEN
-    RAISE EXCEPTION 'Refusing cutover: aicis_project_url points to a guarded source project';
-  END IF;
-
-  IF project_url NOT LIKE '%qpphncfgbhizvnovzivw%' THEN
-    RAISE EXCEPTION 'Refusing cutover: aicis_project_url does not identify the approved aicis-production target';
-  END IF;
-
-  IF publishable_key IS NULL OR btrim(publishable_key) = '' THEN
-    RAISE EXCEPTION 'aicis_publishable_key is missing';
-  END IF;
-
-  IF cron_secret IS NULL OR length(btrim(cron_secret)) < 32 THEN
-    RAISE EXCEPTION 'aicis_cron_secret is missing or too short';
-  END IF;
-
-  IF EXISTS (SELECT 1 FROM cron.job WHERE active) THEN
-    RAISE EXCEPTION 'Refusing cutover activation: target cron quarantine is not clean';
-  END IF;
-END;
-$$;
-
-SELECT cron.unschedule('pipeline-replay-drain-10min')
-WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pipeline-replay-drain-10min');
-SELECT cron.schedule(
-  'pipeline-replay-drain-10min',
-  '3,13,23,33,43,53 * * * *',
-  $$SELECT public.invoke_aicis_edge_function(
-      'pipeline-replay',
-      '{"lane":"country","limit":5000,"source":"pg_cron"}'::jsonb
-    );$$
-);
-
-SELECT cron.unschedule('pipeline-replay-translation-20min')
-WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pipeline-replay-translation-20min');
-SELECT cron.schedule(
-  'pipeline-replay-translation-20min',
-  '8,28,48 * * * *',
-  $$SELECT public.invoke_aicis_edge_function(
-      'pipeline-replay',
-      '{"lane":"translation","limit":3000,"source":"pg_cron"}'::jsonb
-    );$$
-);
-
-SELECT cron.unschedule('pipeline-replay-enrichment-hourly')
-WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pipeline-replay-enrichment-hourly');
-SELECT cron.schedule(
-  'pipeline-replay-enrichment-hourly',
-  '38 * * * *',
-  $$SELECT public.invoke_aicis_edge_function(
-      'pipeline-replay',
-      '{"lane":"enrichment","limit":2000,"source":"pg_cron"}'::jsonb
-    );$$
-);
-
-SELECT cron.unschedule('pns-global-performance-engine')
-WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pns-global-performance-engine');
-SELECT cron.schedule(
-  'pns-global-performance-engine',
-  '25 */6 * * *',
-  $$SELECT public.invoke_aicis_edge_function(
-      'drive-performance-engine-v2',
-      '{"batch_size":60,"trigger":"pg_cron"}'::jsonb
-    );$$
-);
-
-DO $$
-DECLARE
-  active_jobs bigint;
-  expected_jobs bigint;
-  unsafe_jobs bigint;
-  unexpected_jobs bigint;
-BEGIN
-  SELECT count(*) INTO active_jobs
-  FROM cron.job
-  WHERE active;
-
-  SELECT count(*) INTO expected_jobs
-  FROM cron.job
-  WHERE active
-    AND jobname IN (
-      'pipeline-replay-drain-10min',
-      'pipeline-replay-translation-20min',
-      'pipeline-replay-enrichment-hourly',
-      'pns-global-performance-engine'
-    )
-    AND command LIKE '%invoke_aicis_edge_function%';
-
-  SELECT count(*) INTO unsafe_jobs
-  FROM cron.job
-  WHERE active
-    AND (
-      command LIKE '%psonnnuhjjskrdazrakk%'
-      OR command LIKE '%itpwpnwzzitkelffttyx%'
-      OR command ILIKE '%anon_key%'
-      OR command ILIKE '%service_role_key%'
-      OR command ILIKE '%authorization%bearer%'
-    );
-
-  SELECT count(*) INTO unexpected_jobs
-  FROM cron.job
-  WHERE active
-    AND jobname NOT IN (
-      'pipeline-replay-drain-10min',
-      'pipeline-replay-translation-20min',
-      'pipeline-replay-enrichment-hourly',
-      'pns-global-performance-engine'
-    );
-
-  IF active_jobs <> 4 OR expected_jobs <> 4 THEN
-    RAISE EXCEPTION 'AICIS cutover activation mismatch: active=% expected-safe=%', active_jobs, expected_jobs;
-  END IF;
-
-  IF unsafe_jobs <> 0 THEN
-    RAISE EXCEPTION 'AICIS cutover activation contains % unsafe cron job(s)', unsafe_jobs;
-  END IF;
-
-  IF unexpected_jobs <> 0 THEN
-    RAISE EXCEPTION 'AICIS cutover activation enabled % unaudited cron job(s)', unexpected_jobs;
-  END IF;
+  RAISE EXCEPTION USING
+    MESSAGE = 'AICIS cutover blocked: verified live scheduler has 172 jobs and source cron decisions are incomplete',
+    HINT = 'Complete migration/target/cutover/live-source-cron-decisions.json from the verified AICIS cron snapshot, prove all migration gates, then generate a new audited activation SQL.';
 END;
 $$;
