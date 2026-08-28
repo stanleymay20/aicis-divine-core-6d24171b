@@ -17,7 +17,10 @@ TARGET = ROOT / "migration" / "target"
 QUARANTINE = TARGET / "001_rebind_pipeline_cron.sql"
 CUTOVER_DIR = TARGET / "cutover"
 APPROVED_TARGET_REF = "qpphncfgbhizvnovzivw"
-SOURCE_REF = "psonnnuhjjskrdazrakk"
+SOURCE_REFS = (
+    "psonnnuhjjskrdazrakk",  # repository-declared source binding
+    "itpwpnwzzitkelffttyx",  # live Lovable runtime binding observed 2026-08-28
+)
 
 
 def without_line_comments(text: str) -> str:
@@ -26,6 +29,12 @@ def without_line_comments(text: str) -> str:
 
 def has_schedule(text: str) -> bool:
     return re.search(r"\bcron\s*\.\s*schedule\s*\(", without_line_comments(text), re.I) is not None
+
+
+def require_source_guards(text: str, context: str, errors: list[str]) -> None:
+    for source_ref in SOURCE_REFS:
+        if source_ref not in text:
+            errors.append(f"{context} lacks explicit source-ref rejection for {source_ref}")
 
 
 errors: list[str] = []
@@ -47,8 +56,7 @@ else:
         errors.append("quarantine migration does not disable every active restored cron job")
     if "invoke_aicis_edge_function" not in quarantine_text:
         errors.append("quarantine migration is missing the target-safe Edge Function helper")
-    if SOURCE_REF not in quarantine_text:
-        errors.append("quarantine migration no longer contains the explicit Lovable-source rejection guard")
+    require_source_guards(quarantine_text, "quarantine migration", errors)
 
 cutover_files = sorted(CUTOVER_DIR.glob("*.sql")) if CUTOVER_DIR.exists() else []
 if not cutover_files:
@@ -61,8 +69,7 @@ for path in cutover_files:
         errors.append(f"cutover file contains no explicit cron activation: {path.relative_to(ROOT)}")
     if APPROVED_TARGET_REF not in text:
         errors.append(f"cutover file does not pin the approved target ref: {path.relative_to(ROOT)}")
-    if SOURCE_REF not in text:
-        errors.append(f"cutover file lacks explicit source-ref rejection: {path.relative_to(ROOT)}")
+    require_source_guards(text, f"cutover file {path.relative_to(ROOT)}", errors)
     if "invoke_aicis_edge_function" not in text:
         errors.append(f"cutover file bypasses the target-safe invocation helper: {path.relative_to(ROOT)}")
     if "if exists (select 1 from cron.job where active)" not in normalized:
@@ -71,6 +78,7 @@ for path in cutover_files:
 print("AICIS target cron quarantine audit")
 print(f"restore_phase_files={len(restore_files)}")
 print(f"cutover_files={len(cutover_files)}")
+print(f"guarded_source_refs={','.join(SOURCE_REFS)}")
 
 if errors:
     for error in errors:
@@ -78,4 +86,4 @@ if errors:
     sys.exit(1)
 
 print("PASS: restore-phase target SQL activates zero cron writers")
-print("PASS: cutover cron activation is isolated and target-pinned")
+print("PASS: cutover cron activation is isolated, target-pinned, and rejects every guarded source ref")
