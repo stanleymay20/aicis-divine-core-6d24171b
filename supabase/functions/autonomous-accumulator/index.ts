@@ -12,10 +12,11 @@
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 const FN = "autonomous-accumulator";
@@ -45,6 +46,9 @@ const PROVIDERS: {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireAdminOrTrustedWorker(req, corsHeaders);
+  if (auth.response) return auth.response;
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -53,7 +57,7 @@ serve(async (req) => {
   const URL = Deno.env.get("SUPABASE_URL")!;
   const start = Date.now();
 
-  const summary: any[] = [];
+  const summary: Array<Record<string, unknown>> = [];
 
   for (const p of PROVIDERS) {
     try {
@@ -67,28 +71,41 @@ serve(async (req) => {
       const { data: latest } = await q.maybeSingle();
 
       const value = latest?.[freshnessCol];
-      const lastTs = value ? new Date(value).getTime() : 0;
-      const ageHours = lastTs ? (Date.now() - lastTs) / 3600000 : 9999;
-      const overdue = ageHours > p.max_age_hours;
+      const lastTs = value ? new Date(value).getTime() : Number.NaN;
+      const hasObservedFreshness = Number.isFinite(lastTs);
+      const ageHours = hasObservedFreshness ? (Date.now() - lastTs) / 3600000 : null;
+      const overdue = ageHours != null ? ageHours > p.max_age_hours : false;
 
-      if (!overdue) {
-        summary.push({ provider: p.provider, status: "healthy", age_hours: +ageHours.toFixed(1) });
+      if (!hasObservedFreshness) {
+        summary.push({
+          provider: p.provider,
+          status: "unknown",
+          age_hours: null,
+          freshness_status: "no_observed_timestamp",
+          action: "withheld",
+        });
         continue;
       }
 
-      // Restart the ingestor (fire-and-forget with 25s timeout).
+      if (!overdue) {
+        summary.push({ provider: p.provider, status: "healthy", age_hours: +ageHours.toFixed(1), freshness_status: "observed" });
+        continue;
+      }
+
+      // Restart the ingestor only when observed freshness evidence proves it is overdue.
       const restartUrl = `${URL}/functions/v1/${p.fn}`;
       const resp = await fetch(restartUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SVC}` },
-        body: JSON.stringify({ trigger: "autonomous-accumulator" }),
+        body: JSON.stringify({ trigger: "autonomous-accumulator", trigger_semantics: "observed_freshness_overdue" }),
         signal: AbortSignal.timeout(25000),
-      }).catch((e) => ({ ok: false, status: 0, statusText: (e as Error).message } as any));
+      }).catch((e) => ({ ok: false, status: 0, statusText: (e as Error).message } as Response));
 
       summary.push({
         provider: p.provider,
         status: resp.ok ? "recovered" : "failed",
         age_hours: +ageHours.toFixed(1),
+        freshness_status: "observed",
         fn: p.fn,
         http: resp.status,
       });
@@ -99,15 +116,16 @@ serve(async (req) => {
 
   const recovered = summary.filter((s) => s.status === "recovered").length;
   const healthy = summary.filter((s) => s.status === "healthy").length;
+  const unknown = summary.filter((s) => s.status === "unknown").length;
   const failed = summary.filter((s) => s.status === "failed" || s.status === "error").length;
 
   await supabase.from("automation_logs").insert({
     job_name: FN,
-    status: failed > 0 ? "partial" : "success",
-    message: `accumulator: ${healthy} healthy, ${recovered} recovered, ${failed} failed in ${Date.now() - start}ms`,
+    status: failed > 0 ? "partial" : unknown > 0 ? "insufficient_evidence" : "success",
+    message: `accumulator: ${healthy} healthy, ${recovered} recovered, ${unknown} unknown, ${failed} failed in ${Date.now() - start}ms`,
   });
 
-  return new Response(JSON.stringify({ ok: true, summary, healthy, recovered, failed }), {
+  return new Response(JSON.stringify({ ok: failed === 0, summary, healthy, recovered, unknown, failed }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
