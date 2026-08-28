@@ -174,11 +174,12 @@ COMMENT ON FUNCTION public.lril_bridge_to_normalized() IS
 
 INSERT INTO public.audit_log (action, resource_type, resource_id, severity, metadata)
 VALUES (
-  'lril-truth-floor-v1',
+  'admin.settings_change',
   'epistemic-hardening',
-  'lril',
+  'lril-truth-floor-v1',
   'info',
   jsonb_build_object(
+    'change', 'lril-truth-floor-v1',
     'source_reliability_default_removed', true,
     'geo_confidence_default_removed', true,
     'event_severity_default_removed', true,
