@@ -42,20 +42,144 @@ type WorldBankMetric = {
 };
 
 type LegacySource = "performance_snapshots" | "conflict_signals" | "village_indicators" | "global_signals";
+type SeedEntity = { name: string; type: "company" | "commodity" | "sector"; category: string; iso3?: string };
 
 const INDICATOR_CATALOG: Record<string, string[]> = {
-  finance: ["NY.GDP.MKTP.CD", "NY.GDP.MKTP.KD.ZG", "NY.GDP.PCAP.CD", "FP.CPI.TOTL.ZG"],
-  trade: ["NE.EXP.GNFS.ZS", "NE.IMP.GNFS.ZS", "TX.VAL.MRCH.CD.WT", "TM.VAL.MRCH.CD.WT"],
-  labor: ["SL.UEM.TOTL.ZS", "SL.TLF.CACT.ZS", "SL.AGR.EMPL.ZS", "SL.IND.EMPL.ZS"],
-  demographics: ["SP.POP.TOTL", "SP.POP.GROW", "SP.DYN.LE00.IN", "SP.URB.TOTL.IN.ZS"],
-  health: ["SH.XPD.CHEX.GD.ZS", "SH.MED.BEDS.ZS", "SH.MED.PHYS.ZS", "SH.TBS.INCD"],
-  environment: ["EN.ATM.CO2E.PC", "AG.LND.FRST.ZS", "EG.FEC.RNEW.ZS", "AG.LND.AGRI.ZS"],
-  energy: ["EG.ELC.ACCS.ZS", "EG.USE.ELEC.KH.PC", "EG.ELC.RNEW.ZS", "EG.IMP.CONS.ZS"],
-  education: ["SE.PRM.ENRR", "SE.SEC.ENRR", "SE.TER.ENRR", "SE.ADT.LITR.ZS"],
-  technology: ["IT.NET.USER.ZS", "IT.CEL.SETS.P2", "GB.XPD.RSDV.GD.ZS", "IP.PAT.RESD"],
-  governance: ["GE.EST", "CC.EST", "RQ.EST", "RL.EST", "VA.EST", "PV.EST"],
+  finance: [
+    "NY.GDP.MKTP.CD", "NY.GDP.MKTP.KD.ZG", "NY.GDP.PCAP.CD", "NY.GDP.PCAP.KD.ZG",
+    "FP.CPI.TOTL.ZG", "BN.CAB.XOKA.GD.ZS", "GC.DOD.TOTL.GD.ZS", "GC.REV.XGRT.GD.ZS",
+    "GC.XPN.TOTL.GD.ZS", "GC.BAL.CASH.GD.ZS", "BX.KLT.DINV.WD.GD.ZS", "FM.LBL.BMNY.GD.ZS",
+    "BX.TRF.PWKR.DT.GD.ZS", "PA.NUS.FCRF", "FR.INR.RINR", "CM.MKT.LCAP.GD.ZS",
+    "FS.AST.DOMS.GD.ZS", "FB.CBK.BRWR.P3", "DT.DOD.DECT.GN.ZS", "DT.TDS.DECT.GN.ZS",
+  ],
+  trade: [
+    "NE.EXP.GNFS.ZS", "NE.IMP.GNFS.ZS", "TG.VAL.TOTL.GD.ZS", "BG.GSR.NFSV.GD.ZS",
+    "TX.VAL.MRCH.CD.WT", "TM.VAL.MRCH.CD.WT", "IC.EXP.DURS", "IC.IMP.DURS",
+    "IC.EXP.COST.CD", "IC.IMP.COST.CD", "TM.TAX.MRCH.WM.AR.ZS", "LP.LPI.OVRL.XQ",
+  ],
+  labor: [
+    "SL.UEM.TOTL.ZS", "SL.UEM.TOTL.FE.ZS", "SL.UEM.TOTL.MA.ZS", "SL.UEM.1524.ZS",
+    "SL.TLF.CACT.ZS", "SL.TLF.CACT.FE.ZS", "SL.AGR.EMPL.ZS", "SL.IND.EMPL.ZS",
+    "SL.SRV.EMPL.ZS", "SL.TLF.TOTL.IN", "SL.GDP.PCAP.EM.KD",
+  ],
+  demographics: [
+    "SP.POP.TOTL", "SP.POP.GROW", "SP.DYN.LE00.IN", "SP.DYN.LE00.FE.IN",
+    "SP.DYN.LE00.MA.IN", "SP.DYN.CBRT.IN", "SP.DYN.CDRT.IN", "SP.DYN.TFRT.IN",
+    "SP.URB.TOTL.IN.ZS", "SP.RUR.TOTL.ZS", "SP.POP.DPND", "SP.POP.65UP.TO.ZS",
+    "SP.POP.0014.TO.ZS", "SM.POP.NETM", "SP.DYN.IMRT.IN",
+  ],
+  health: [
+    "SH.XPD.CHEX.GD.ZS", "SH.XPD.CHEX.PC.CD", "SH.MED.BEDS.ZS", "SH.MED.PHYS.ZS",
+    "SH.IMM.IDPT", "SH.IMM.MEAS", "SH.STA.MMRT", "SH.DYN.MORT",
+    "SH.STA.STNT.ZS", "SH.STA.WASH.P5", "SH.HIV.INCD.TL.P3", "SH.TBS.INCD",
+    "SH.STA.SUIC.P5", "SH.ALC.PCAP.LI",
+  ],
+  environment: [
+    "EN.ATM.CO2E.PC", "EN.ATM.CO2E.KT", "EN.ATM.GHGT.KT.CE", "EN.ATM.PM25.MC.M3",
+    "AG.LND.FRST.ZS", "AG.LND.FRST.K2", "ER.H2O.FWST.ZS", "ER.H2O.FWTL.ZS",
+    "EG.FEC.RNEW.ZS", "EN.CLC.MDAT.ZS", "AG.LND.ARBL.ZS", "AG.LND.AGRI.ZS",
+  ],
+  energy: [
+    "EG.ELC.ACCS.ZS", "EG.ELC.ACCS.RU.ZS", "EG.ELC.ACCS.UR.ZS",
+    "EG.USE.PCAP.KG.OE", "EG.USE.ELEC.KH.PC", "EG.ELC.RNEW.ZS",
+    "EG.ELC.PETR.ZS", "EG.ELC.NUCL.ZS", "EG.ELC.HYRO.ZS", "EG.ELC.COAL.ZS",
+    "EG.USE.COMM.FO.ZS", "EG.IMP.CONS.ZS",
+  ],
+  education: [
+    "SE.PRM.ENRR", "SE.SEC.ENRR", "SE.TER.ENRR", "SE.ADT.LITR.ZS",
+    "SE.ADT.LITR.FE.ZS", "SE.XPD.TOTL.GD.ZS", "SE.PRM.CMPT.ZS",
+    "SE.SEC.CMPT.LO.ZS", "SE.PRM.TCHR", "SE.SEC.TCHR", "SE.PRM.UNER",
+  ],
+  technology: [
+    "IT.NET.USER.ZS", "IT.CEL.SETS.P2", "IT.NET.BBND.P2", "IT.NET.SECR.P6",
+    "GB.XPD.RSDV.GD.ZS", "IP.PAT.RESD", "IP.PAT.NRES", "IP.TMK.TOTL",
+    "TX.VAL.TECH.CD", "TX.VAL.TECH.MF.ZS",
+  ],
+  governance: [
+    "GE.EST", "CC.EST", "RQ.EST", "RL.EST", "VA.EST", "PV.EST",
+    "IQ.CPA.GNDR.XQ", "IQ.CPA.TRAN.XQ", "IC.REG.DURS", "IC.REG.PROC",
+    "IC.BUS.NREG", "IC.TAX.TOTL.CP.ZS",
+  ],
+  inequality: [
+    "SI.POV.GINI", "SI.POV.DDAY", "SI.POV.NAHC", "SI.POV.GAPS",
+    "SI.DST.10TH.10", "SI.DST.FRST.10", "SI.DST.05TH.20", "SI.DST.FRST.20",
+  ],
+  food: [
+    "AG.PRD.FOOD.XD", "AG.YLD.CREL.KG", "AG.PRD.CREL.MT", "AG.CON.FERT.ZS",
+    "SN.ITK.DEFC.ZS", "SN.ITK.DPTH", "AG.LND.IRIG.AG.ZS", "AG.LND.TRAC.ZS",
+  ],
 };
 const ALL_INDICATORS = Object.values(INDICATOR_CATALOG).flat();
+
+const SEEDED_ENTITIES: SeedEntity[] = [
+  { name: "United Nations", type: "company", category: "international_org" },
+  { name: "World Bank", type: "company", category: "international_org" },
+  { name: "International Monetary Fund", type: "company", category: "international_org" },
+  { name: "World Trade Organization", type: "company", category: "international_org" },
+  { name: "World Health Organization", type: "company", category: "international_org" },
+  { name: "International Labour Organization", type: "company", category: "international_org" },
+  { name: "Food and Agriculture Organization", type: "company", category: "international_org" },
+  { name: "UNESCO", type: "company", category: "international_org" },
+  { name: "UNICEF", type: "company", category: "international_org" },
+  { name: "UNHCR", type: "company", category: "international_org" },
+  { name: "International Atomic Energy Agency", type: "company", category: "international_org" },
+  { name: "Organization of the Petroleum Exporting Countries", type: "company", category: "international_org" },
+  { name: "African Union", type: "company", category: "regional_org" },
+  { name: "European Union", type: "company", category: "regional_org" },
+  { name: "Association of Southeast Asian Nations", type: "company", category: "regional_org" },
+  { name: "North Atlantic Treaty Organization", type: "company", category: "regional_org" },
+  { name: "European Central Bank", type: "company", category: "central_bank" },
+  { name: "Federal Reserve System", type: "company", category: "central_bank" },
+  { name: "Bank of England", type: "company", category: "central_bank" },
+  { name: "Bank of Japan", type: "company", category: "central_bank" },
+  { name: "People's Bank of China", type: "company", category: "central_bank" },
+  { name: "Reserve Bank of India", type: "company", category: "central_bank" },
+  { name: "International Red Cross", type: "company", category: "ngo" },
+  { name: "Médecins Sans Frontières", type: "company", category: "ngo" },
+  { name: "Amnesty International", type: "company", category: "ngo" },
+  { name: "Transparency International", type: "company", category: "ngo" },
+  { name: "Oxfam International", type: "company", category: "ngo" },
+  { name: "Greenpeace International", type: "company", category: "ngo" },
+  { name: "Apple Inc.", type: "company", category: "tech", iso3: "USA" },
+  { name: "Microsoft Corporation", type: "company", category: "tech", iso3: "USA" },
+  { name: "Amazon.com Inc.", type: "company", category: "tech", iso3: "USA" },
+  { name: "Alphabet Inc.", type: "company", category: "tech", iso3: "USA" },
+  { name: "Saudi Aramco", type: "company", category: "energy", iso3: "SAU" },
+  { name: "Walmart Inc.", type: "company", category: "retail", iso3: "USA" },
+  { name: "ExxonMobil", type: "company", category: "energy", iso3: "USA" },
+  { name: "Berkshire Hathaway", type: "company", category: "finance", iso3: "USA" },
+  { name: "NVIDIA Corporation", type: "company", category: "tech", iso3: "USA" },
+  { name: "Johnson & Johnson", type: "company", category: "pharma", iso3: "USA" },
+  { name: "JPMorgan Chase", type: "company", category: "finance", iso3: "USA" },
+  { name: "Samsung Electronics", type: "company", category: "tech", iso3: "KOR" },
+  { name: "Toyota Motor Corporation", type: "company", category: "automotive", iso3: "JPN" },
+  { name: "Tencent Holdings", type: "company", category: "tech", iso3: "CHN" },
+  { name: "Shell plc", type: "company", category: "energy", iso3: "GBR" },
+  { name: "Nestlé", type: "company", category: "food", iso3: "CHE" },
+  { name: "Roche Holding", type: "company", category: "pharma", iso3: "CHE" },
+  { name: "LVMH", type: "company", category: "luxury", iso3: "FRA" },
+  { name: "HSBC Holdings", type: "company", category: "finance", iso3: "GBR" },
+  { name: "Siemens AG", type: "company", category: "industrial", iso3: "DEU" },
+  { name: "BHP Group", type: "company", category: "mining", iso3: "AUS" },
+  { name: "Rio Tinto", type: "company", category: "mining", iso3: "GBR" },
+  { name: "Maersk", type: "company", category: "logistics", iso3: "DNK" },
+  { name: "Vale S.A.", type: "company", category: "mining", iso3: "BRA" },
+  { name: "Reliance Industries", type: "company", category: "conglomerate", iso3: "IND" },
+  ...[
+    "Crude Oil", "Natural Gas", "Coal", "Gold", "Silver", "Copper", "Iron Ore", "Aluminum", "Zinc", "Nickel", "Tin", "Lead",
+    "Platinum", "Palladium", "Wheat", "Corn", "Rice", "Soybeans", "Coffee", "Cocoa", "Sugar", "Cotton", "Palm Oil", "Rubber",
+    "Lumber", "Wool", "Beef", "Pork", "Poultry", "Lithium", "Cobalt", "Rare Earth Elements", "Uranium", "Titanium", "Fertilizer",
+    "Phosphate", "Potash", "Ammonia", "Urea", "LNG", "Ethanol", "Biodiesel", "Hydrogen", "Solar Panels", "Semiconductors",
+    "Microchips", "Steel", "Cement", "Glass",
+  ].map((name): SeedEntity => ({ name, type: "commodity", category: "commodity" })),
+  ...[
+    "Agriculture", "Mining", "Manufacturing", "Construction", "Utilities", "Wholesale Trade", "Retail Trade", "Transportation",
+    "Information Technology", "Financial Services", "Real Estate", "Professional Services", "Education Services", "Healthcare",
+    "Arts and Entertainment", "Accommodation and Food Services", "Public Administration", "Defense", "Energy", "Telecommunications",
+    "Pharmaceuticals", "Biotechnology", "Aerospace", "Automotive", "Consumer Electronics", "E-commerce", "Fintech", "Insurance",
+    "Logistics and Supply Chain", "Maritime Shipping",
+  ].map((name): SeedEntity => ({ name, type: "sector", category: "sector" })),
+];
 
 function jsonRes(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -112,8 +236,11 @@ async function seedCountries(supabase: DbClient) {
   if (!Array.isArray(payload) || !Array.isArray(payload[1])) throw new Error("Unexpected World Bank country payload");
 
   let seeded = 0;
+  let aliasesCreated = 0;
+  let externalIdsCreated = 0;
   let withheld = 0;
   const errors: string[] = [];
+
   for (const raw of payload[1] as WorldBankCountry[]) {
     const iso3 = asString(raw.id);
     const name = asString(raw.name);
@@ -123,7 +250,8 @@ async function seedCountries(supabase: DbClient) {
     }
     const lat = asNumber(raw.latitude);
     const lon = asNumber(raw.longitude);
-    const { error } = await supabase.from("canonical_entities").upsert({
+    const iso2 = asString(raw.iso2Code);
+    const { data: entity, error } = await supabase.from("canonical_entities").upsert({
       canonical_name: name,
       normalized_name: name.toLowerCase(),
       entity_type: "country",
@@ -133,6 +261,8 @@ async function seedCountries(supabase: DbClient) {
       display_name: name,
       source_count: 1,
       trust_score: null,
+      trust_score_semantics: "unmeasured",
+      evidence_status: "provider_supplied_identity_fields_not_independently_verified",
       metadata: {
         provider: "worldbank",
         provider_fields_observed: true,
@@ -140,14 +270,61 @@ async function seedCountries(supabase: DbClient) {
         region: raw.region?.value ?? null,
         income_level: raw.incomeLevel?.value ?? null,
         capital: raw.capitalCity ?? null,
-        iso2: raw.iso2Code ?? null,
+        iso2,
         wb_lending_type: raw.lendingType?.value ?? null,
       },
       last_resolved_at: null,
-    }, { onConflict: "entity_type,normalized_name" });
-    if (error) errors.push(`${iso3}: ${error.message}`); else seeded++;
+    }, { onConflict: "entity_type,normalized_name" }).select("id").single();
+    if (error || !entity?.id) {
+      errors.push(`${iso3}: ${error?.message ?? "country upsert returned no id"}`);
+      continue;
+    }
+    seeded++;
+
+    const aliases: Array<{ alias: string; alias_type: "iso_code" | "name" | "abbreviation" }> = [
+      { alias: iso3, alias_type: "iso_code" },
+      { alias: name.toLowerCase(), alias_type: "name" },
+    ];
+    if (iso2) aliases.push({ alias: iso2, alias_type: "iso_code" });
+    if (name.includes("(")) aliases.push({ alias: name.split("(")[0].trim(), alias_type: "abbreviation" });
+
+    for (const alias of aliases) {
+      const { error: aliasError } = await supabase.from("entity_aliases").upsert({
+        entity_id: entity.id,
+        alias: alias.alias,
+        alias_type: alias.alias_type,
+        source: "worldbank",
+        confidence: null,
+        confidence_semantics: "provider_supplied_alias_not_calibrated_probability",
+        verification_status: "provider_supplied_not_independently_verified",
+      }, { onConflict: "entity_id,alias,alias_type", ignoreDuplicates: true });
+      if (aliasError) errors.push(`${iso3} alias ${alias.alias}: ${aliasError.message}`); else aliasesCreated++;
+    }
+
+    const externalIds = [{ provider: "worldbank", external_id: iso3, external_type: "worldbank_country_id" }];
+    if (iso2) externalIds.push({ provider: "worldbank", external_id: iso2, external_type: "provider_iso2_code" });
+    for (const externalId of externalIds) {
+      const { error: externalIdError } = await supabase.from("entity_external_ids").upsert({
+        entity_id: entity.id,
+        ...externalId,
+        last_verified_at: null,
+        verification_status: "provider_supplied_not_independently_verified",
+        verification_method: "worldbank_country_payload",
+      }, { onConflict: "provider,external_id", ignoreDuplicates: true });
+      if (externalIdError) errors.push(`${iso3} external id ${externalId.external_id}: ${externalIdError.message}`); else externalIdsCreated++;
+    }
   }
-  return { ok: errors.length === 0, phase: "A", countries_seeded: seeded, withheld, errors: errors.slice(0, 20) };
+
+  return {
+    ok: errors.length === 0,
+    phase: "A",
+    countries_seeded: seeded,
+    aliases_created_or_existing: aliasesCreated,
+    external_ids_created_or_existing: externalIdsCreated,
+    withheld,
+    errors: errors.slice(0, 20),
+    semantics: "country identity breadth restored without assigning synthetic trust or identity confidence",
+  };
 }
 
 async function bulkIngest(supabase: DbClient, params: JsonObject) {
@@ -197,10 +374,13 @@ async function bulkIngest(supabase: DbClient, params: JsonObject) {
       value,
       unit: asString(raw.unit) ?? "",
       confidence: null,
+      confidence_semantics: "unmeasured",
       provenance_source: "worldbank",
       provenance_observed_at: null,
+      provenance_observed_at_semantics: "provider_period_only_no_observation_timestamp",
       dedup_key: `m:worldbank:${metricName}:${iso3}:${period}:${entityId}`,
       freshness_score: null,
+      freshness_semantics: "unmeasured",
       last_verified_at: null,
       metadata: {
         ingestion_status: "provider_fetch_succeeded",
@@ -233,6 +413,7 @@ async function bulkIngest(supabase: DbClient, params: JsonObject) {
     indicator,
     indicator_index: indicatorIndex,
     next_indicator_index: indicatorIndex + 1,
+    total_indicators: ALL_INDICATORS.length,
     records_inserted: inserted,
     withheld,
     semantics: "provider values preserved; confidence/freshness/verification withheld until measured",
@@ -248,17 +429,22 @@ async function promoteRegions(supabase: DbClient, params: JsonObject) {
   if (error) throw error;
 
   let promoted = 0;
+  const errors: string[] = [];
   for (const region of data ?? []) {
     if (!region.name || !region.country_iso3) continue;
-    const { error: insertError } = await supabase.from("canonical_entities").insert({
+    const normalizedName = `${region.name}, ${region.country_iso3}`.toLowerCase();
+    const { error: insertError } = await supabase.from("canonical_entities").upsert({
       canonical_name: `${region.name}, ${region.country_iso3}`,
+      normalized_name: normalizedName,
       entity_type: "city",
       iso3: null,
       lat: region.lat,
       lon: region.lon,
       display_name: region.name,
       trust_score: null,
+      trust_score_semantics: "unmeasured",
       source_count: 1,
+      evidence_status: "admin_region_source_record_present_identity_not_independently_verified",
       metadata: {
         admin_level: region.admin_level,
         country_iso3: region.country_iso3,
@@ -268,78 +454,143 @@ async function promoteRegions(supabase: DbClient, params: JsonObject) {
         trust_score_status: "unmeasured",
       },
       last_resolved_at: null,
-    });
-    if (!insertError) promoted++;
+    }, { onConflict: "entity_type,normalized_name" });
+    if (!insertError) promoted++; else errors.push(`${region.name}: ${insertError.message}`);
   }
 
   await supabase.from("backfill_state").upsert({
     key: "region_offset", value_int: offset + limit, updated_at: new Date().toISOString(),
   }, { onConflict: "key" });
-  return { ok: true, phase: "D", offset, limit, promoted, next_offset: offset + limit, has_more: (data?.length ?? 0) === limit };
+  return { ok: errors.length === 0, phase: "D", offset, limit, promoted, next_offset: offset + limit, has_more: (data?.length ?? 0) === limit, errors: errors.slice(0, 20) };
 }
 
 async function seedEntities(supabase: DbClient, params: JsonObject) {
   const entityClass = asString(params.entity_class) ?? "all";
-  const entities = [
-    { name: "United Nations", type: "company", category: "international_org" },
-    { name: "World Bank", type: "company", category: "international_org" },
-    { name: "International Monetary Fund", type: "company", category: "international_org" },
-    { name: "World Health Organization", type: "company", category: "international_org" },
-    { name: "African Union", type: "company", category: "regional_org" },
-    { name: "European Union", type: "company", category: "regional_org" },
-    { name: "Crude Oil", type: "commodity", category: "commodity" },
-    { name: "Natural Gas", type: "commodity", category: "commodity" },
-    { name: "Gold", type: "commodity", category: "commodity" },
-    { name: "Wheat", type: "commodity", category: "commodity" },
-    { name: "Agriculture", type: "sector", category: "sector" },
-    { name: "Energy", type: "sector", category: "sector" },
-    { name: "Financial Services", type: "sector", category: "sector" },
-    { name: "Healthcare", type: "sector", category: "sector" },
-  ];
+  let createdOrExisting = 0;
+  const errors: string[] = [];
 
-  let created = 0;
-  for (const entity of entities) {
+  for (const entity of SEEDED_ENTITIES) {
     const matchesClass = entityClass === "all"
       || (entityClass === "organizations" && entity.type === "company")
       || (entityClass === "commodities" && entity.type === "commodity")
       || (entityClass === "sectors" && entity.type === "sector");
     if (!matchesClass) continue;
-    const { error } = await supabase.from("canonical_entities").insert({
+
+    const { error } = await supabase.from("canonical_entities").upsert({
       canonical_name: entity.name,
       normalized_name: entity.name.toLowerCase(),
       entity_type: entity.type,
       display_name: entity.name,
+      iso3: entity.iso3 ?? null,
       trust_score: null,
+      trust_score_semantics: "unmeasured",
       source_count: 1,
-      metadata: { category: entity.category, provenance: "curated_seed", trust_score_status: "unmeasured" },
+      evidence_status: "curated_seed_identity_not_independently_verified",
+      metadata: {
+        category: entity.category,
+        provenance: "curated_seed",
+        trust_score_status: "unmeasured",
+        country_association_semantics: entity.iso3 ? "curated_headquarters_or_origin_hint_not_entity_confidence" : null,
+      },
       last_resolved_at: null,
-    });
-    if (!error) created++;
+    }, { onConflict: "entity_type,normalized_name", ignoreDuplicates: true });
+    if (!error) createdOrExisting++; else errors.push(`${entity.name}: ${error.message}`);
   }
-  return { ok: true, phase: "D2", entities_created: created, semantics: "curated identity seed; no calibrated trust score assigned" };
+
+  return {
+    ok: errors.length === 0,
+    phase: "D2",
+    entities_created_or_existing: createdOrExisting,
+    catalog_size: SEEDED_ENTITIES.length,
+    errors: errors.slice(0, 20),
+    semantics: "legacy catalog breadth restored as curated identity seeds; no calibrated trust score assigned",
+  };
 }
 
 async function generateLinks(supabase: DbClient, params: JsonObject) {
+  const linkType = asString(params.link_type) ?? "all";
   const limit = Math.min(5000, Math.max(1, Math.trunc(asNumber(params.limit) ?? 2000)));
-  const { data, error } = await supabase.from("normalized_metrics")
-    .select("id, entity_id").not("entity_id", "is", null).limit(limit);
-  if (error) throw error;
-  const rows = (data ?? []).filter((row) => row.entity_id).map((row) => ({
-    metric_id: row.id,
-    entity_id: row.entity_id,
-    link_role: "primary_entity",
-    confidence: null,
-  }));
-  if (rows.length > 0) {
-    const { error: upsertError } = await supabase.from("entity_metric_links")
-      .upsert(rows, { onConflict: "metric_id,entity_id,link_role", ignoreDuplicates: true });
-    if (upsertError) throw upsertError;
+  let linksCreatedOrExisting = 0;
+  const errors: string[] = [];
+
+  if (linkType === "all" || linkType === "metric_entity") {
+    const { data, error } = await supabase.from("normalized_metrics")
+      .select("id, entity_id").not("entity_id", "is", null).limit(limit);
+    if (error) throw error;
+    const rows = (data ?? []).filter((row) => row.entity_id).map((row) => ({
+      metric_id: row.id,
+      entity_id: row.entity_id,
+      link_role: "primary_entity",
+      confidence: null,
+      confidence_semantics: "deterministic_existing_foreign_key_association_not_probability",
+    }));
+    if (rows.length > 0) {
+      const { error: upsertError } = await supabase.from("entity_metric_links")
+        .upsert(rows, { onConflict: "metric_id,entity_id,link_role", ignoreDuplicates: true });
+      if (upsertError) errors.push(`metric_entity: ${upsertError.message}`); else linksCreatedOrExisting += rows.length;
+    }
   }
+
+  if (linkType === "all" || linkType === "metric_entity" || linkType === "metric_entity_iso3") {
+    const isoMap = await getCanonicalEntityMap(supabase);
+    const { data: cursorRow, error: cursorError } = await supabase.from("backfill_state")
+      .select("value_text").eq("key", "metric_entity_iso3_cursor").maybeSingle();
+    if (cursorError) throw cursorError;
+    const cursorTs = asIsoTimestamp(cursorRow?.value_text) ?? new Date().toISOString();
+
+    const { data: nullEntityMetrics, error: metricError } = await supabase.from("normalized_metrics")
+      .select("id, iso3, created_at")
+      .is("entity_id", null)
+      .not("iso3", "is", null)
+      .lte("created_at", cursorTs)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (metricError) throw metricError;
+
+    const candidates = (nullEntityMetrics ?? []).flatMap((metric) => {
+      const entityId = typeof metric.iso3 === "string" ? isoMap.get(metric.iso3) : undefined;
+      if (!entityId) return [];
+      return [{
+        metric_id: metric.id,
+        entity_id: entityId,
+        link_role: "country",
+        confidence: null,
+        confidence_semantics: "deterministic_exact_iso3_lookup_not_probability",
+      }];
+    });
+
+    if (candidates.length > 0) {
+      const { error: isoLinkError } = await supabase.from("entity_metric_links")
+        .upsert(candidates, { onConflict: "metric_id,entity_id,link_role", ignoreDuplicates: true });
+      if (isoLinkError) errors.push(`metric_entity_iso3: ${isoLinkError.message}`); else linksCreatedOrExisting += candidates.length;
+    }
+
+    if ((nullEntityMetrics?.length ?? 0) > 0) {
+      const oldest = nullEntityMetrics![nullEntityMetrics!.length - 1].created_at;
+      const oldestMs = typeof oldest === "string" ? Date.parse(oldest) : Number.NaN;
+      if (Number.isFinite(oldestMs)) {
+        await supabase.from("backfill_state").upsert({
+          key: "metric_entity_iso3_cursor",
+          value_text: new Date(oldestMs - 1).toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "key" });
+      }
+    } else {
+      await supabase.from("backfill_state").upsert({
+        key: "metric_entity_iso3_cursor",
+        value_text: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "key" });
+    }
+  }
+
   return {
-    ok: true,
+    ok: errors.length === 0,
     phase: "4",
-    links_created_or_existing: rows.length,
-    semantics: "deterministic foreign-key association; confidence withheld because no calibration evidence exists",
+    link_type: linkType,
+    links_created_or_existing: linksCreatedOrExisting,
+    errors: errors.slice(0, 20),
+    semantics: "foreign-key and exact-ISO3 associations are deterministic links; confidence remains unquantified",
   };
 }
 
@@ -373,11 +624,14 @@ async function unifyLegacy(supabase: DbClient, params: JsonObject) {
         entity_id: entityMap.get(iso3) ?? null,
         iso3,
         started_at: startedAt,
+        started_at_semantics: "legacy_source_created_at_preserved_as_event_time_unverified",
         severity: asNumber(row.conflict_intensity) === null ? null : Math.round(asNumber(row.conflict_intensity)! * 10),
         confidence: asNumber(row.confidence),
+        confidence_semantics: asNumber(row.confidence) === null ? "not_quantified" : "legacy_numeric_semantics_unverified",
         provenance_source: "conflict_signals",
         dedup_key: `e:aicis_legacy:conflict:${iso3}:${asString(row.region) ?? "unknown"}:${startedAt}`,
         freshness_score: null,
+        freshness_semantics: "not_measured",
         last_verified_at: asIsoTimestamp(row.updated_at),
         metadata: { legacy_semantics: "preserved_without_fallbacks", calibrated_probability: null },
       });
@@ -395,6 +649,7 @@ async function unifyLegacy(supabase: DbClient, params: JsonObject) {
       if (!startedAt) { withheld++; continue; }
       const regions = Array.isArray(row.affected_regions) ? row.affected_regions : [];
       const iso3 = asString(regions[0]);
+      const confidence = asNumber(row.confidence_score);
       rows.push({
         provider_name: "aicis_signals",
         event_type: asString(row.category) ?? "signal",
@@ -403,11 +658,14 @@ async function unifyLegacy(supabase: DbClient, params: JsonObject) {
         entity_id: iso3 ? entityMap.get(iso3) ?? null : null,
         iso3,
         started_at: startedAt,
+        started_at_semantics: asIsoTimestamp(row.detected_at) ? "legacy_detected_at_preserved_unverified" : "legacy_created_at_used_only_when_source_detected_at_absent_unverified",
         severity: asNumber(row.impact_score),
-        confidence: asNumber(row.confidence_score),
+        confidence,
+        confidence_semantics: confidence === null ? "not_quantified" : "legacy_numeric_semantics_unverified",
         provenance_source: "global_signals",
         dedup_key: `e:signals:${String(row.id ?? startedAt)}`,
         freshness_score: null,
+        freshness_semantics: "not_measured",
         last_verified_at: null,
         metadata: { legacy_semantics: "preserved_without_fallbacks", calibrated_probability: null },
       });
@@ -438,12 +696,14 @@ async function unifyLegacy(supabase: DbClient, params: JsonObject) {
 }
 
 async function getStatus(supabase: DbClient) {
-  const [entities, countries, metrics, events, links] = await Promise.all([
+  const [entities, countries, metrics, events, metricLinks, eventLinks, entityLinks] = await Promise.all([
     supabase.from("canonical_entities").select("*", { count: "exact", head: true }),
     supabase.from("canonical_entities").select("*", { count: "exact", head: true }).in("entity_type", ["country", "territory"]),
     supabase.from("normalized_metrics").select("*", { count: "exact", head: true }),
     supabase.from("normalized_events").select("*", { count: "exact", head: true }),
     supabase.from("entity_metric_links").select("*", { count: "exact", head: true }),
+    supabase.from("entity_event_links").select("*", { count: "exact", head: true }),
+    supabase.from("entity_links").select("*", { count: "exact", head: true }),
   ]);
   return {
     ok: true,
@@ -452,9 +712,15 @@ async function getStatus(supabase: DbClient) {
       countries_territories: countries.count ?? 0,
       metrics: metrics.count ?? 0,
       events: events.count ?? 0,
-      metric_links: links.count ?? 0,
+      metric_links: metricLinks.count ?? 0,
+      event_links: eventLinks.count ?? 0,
+      entity_links: entityLinks.count ?? 0,
     },
-    status_semantics: "observed database counts only; no readiness percentage implied",
+    catalog: {
+      world_bank_indicators: ALL_INDICATORS.length,
+      curated_entities: SEEDED_ENTITIES.length,
+    },
+    status_semantics: "observed database counts and configured catalog sizes only; no readiness percentage implied",
   };
 }
 
@@ -487,7 +753,7 @@ Deno.serve(async (req) => {
     await supabase.rpc("register_pipeline_heartbeat", {
       _pipeline_name: "planetary-backfill",
       _success: true,
-      _metadata: { action, epistemic_contract: "truth_floor_v1" },
+      _metadata: { action, epistemic_contract: "truth_floor_v1", functional_parity: "breadth_restoration_v1" },
     });
     return jsonRes(result);
   } catch (error) {
@@ -496,7 +762,7 @@ Deno.serve(async (req) => {
       _pipeline_name: "planetary-backfill",
       _success: false,
       _error: message,
-      _metadata: { action, epistemic_contract: "truth_floor_v1" },
+      _metadata: { action, epistemic_contract: "truth_floor_v1", functional_parity: "breadth_restoration_v1" },
     });
     return jsonRes({ error: message }, 500);
   }
