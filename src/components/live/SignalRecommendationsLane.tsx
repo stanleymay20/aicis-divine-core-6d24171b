@@ -17,17 +17,17 @@ interface SigRec {
   recommended_action: string;
   rationale: string | null;
   confidence: number | null;
-  confidence_semantics: string | null;
+  confidence_semantics?: string | null;
   urgency_score: number | null;
   impact_score: number | null;
   evidence_count: number | null;
-  evidence_count_semantics: string | null;
-  input_signal_score: number | null;
-  input_signal_score_semantics: string | null;
-  source_identifier_count: number | null;
-  independent_origin_count: number | null;
-  source_independence_status: string | null;
-  source_independence_semantics: string | null;
+  evidence_count_semantics?: string | null;
+  input_signal_score?: number | null;
+  input_signal_score_semantics?: string | null;
+  source_identifier_count?: number | null;
+  independent_origin_count?: number | null;
+  source_independence_status?: string | null;
+  source_independence_semantics?: string | null;
   suggested_time_to_action: string | null;
   generation_method: string;
   status: string;
@@ -61,7 +61,7 @@ export const SignalRecommendationsLane = ({ topN = 25 }: { topN?: number }) => {
         .order("created_at", { ascending: false })
         .limit(topN);
       if (error) throw error;
-      return (data ?? []) as SigRec[];
+      return (data ?? []) as unknown as SigRec[];
     },
     staleTime: 30_000,
   });
