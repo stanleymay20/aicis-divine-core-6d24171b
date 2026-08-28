@@ -10,6 +10,7 @@ const corsHeaders = {
 const LOOKBACK_DAYS = 30;
 const MIN_RECURRENCE = 3;
 const PATTERN_METHOD = "traversal_type_and_node_type_path_v1";
+const PATTERN_SEMANTICS = "deterministic_recurrence_pattern_not_causal_inference";
 const EFFECTIVENESS_SEMANTICS = "unmeasured_no_outcome_linkage";
 
 const TRAVERSAL_TO_PATTERN: Record<string, string> = {
@@ -113,6 +114,8 @@ serve(async (req) => {
         last_seen_at: group.lastSeenAt,
         historical_effectiveness: null,
         historical_outcomes: [],
+        effectiveness_semantics: EFFECTIVENESS_SEMANTICS,
+        pattern_semantics: PATTERN_SEMANTICS,
       }));
 
     if (patterns.length > 0) {
@@ -128,6 +131,7 @@ serve(async (req) => {
           patterns_upserted: patterns.length,
           method: PATTERN_METHOD,
           recurrence_threshold: MIN_RECURRENCE,
+          pattern_semantics: PATTERN_SEMANTICS,
           historical_effectiveness: null,
           effectiveness_semantics: EFFECTIVENESS_SEMANTICS,
         },
@@ -151,6 +155,7 @@ serve(async (req) => {
       ok: true,
       patterns_upserted: patterns.length,
       pattern_method: PATTERN_METHOD,
+      pattern_semantics: PATTERN_SEMANTICS,
       recurrence_threshold: MIN_RECURRENCE,
       historical_effectiveness: null,
       effectiveness_semantics: EFFECTIVENESS_SEMANTICS,
