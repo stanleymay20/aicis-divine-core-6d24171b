@@ -6,15 +6,33 @@ Move AICIS away from the Lovable-managed Supabase backend without losing databas
 
 ## Current source and target
 
-- Authoritative source until final cutover: Lovable-managed project `psonnnuhjjskrdazrakk`.
+- Authoritative production source until final cutover: the database attached to Lovable project `28b43e06-9231-4c54-bc18-a49be01a6516`.
+- Repository-declared Supabase source ref: `psonnnuhjjskrdazrakk` (`supabase/config.toml`).
+- **Observed live Lovable runtime ref (direct read-only SQL evidence, 2026-08-28): `itpwpnwzzitkelffttyx`.** The live database had 25 cron commands and 2 stored-function bodies referencing this ref, and zero live `cron.job`/`pg_proc` references to `psonnnuhjjskrdazrakk` at the checkpoint.
+- Until the identity divergence is fully explained, **both refs are guarded source identities**. Migration/cutover tooling must reject either ref on the independent target.
 - Independent target: `aicis-production`, project ref `qpphncfgbhizvnovzivw`.
 - Target organization: `stanleymay20's Org` (`pkypvduicdrzjcrbexcy`).
 - Target region: `eu-central-1`.
 - The target must remain isolated from production writers until restore and parity checks pass.
 
+### Live source inventory checkpoint — 2026-08-28
+
+Read-only SQL through the connected Lovable project established:
+
+- PostgreSQL `17.6`;
+- `210` public/application tables;
+- `172` Auth users;
+- `2` Storage buckets;
+- `45` Storage metadata objects;
+- `186` migration-history rows;
+- `26` cron jobs, all `26` active at the checkpoint;
+- largest observed public table by PostgreSQL live-row estimate: `metrics` at approximately `401,458` rows.
+
+These values are a live inventory checkpoint, not a completed backup. Exact final parity still requires validated export/restore artifacts and final-delta evidence.
+
 ## Non-negotiable rules
 
-1. The Lovable-managed project `psonnnuhjjskrdazrakk` remains the authoritative source until final cutover.
+1. The Lovable project database remains the authoritative production source until final cutover, regardless of which guarded source ref identifies a particular runtime binding.
 2. Never delete, reset, truncate, recreate, repoint, pause, or otherwise mutate the source merely to simplify migration.
 3. Never point the production frontend at the target until backup + restore + verification have passed.
 4. Never upload plaintext database dumps, inventories, or Storage archives to public GitHub or ordinary CI artifacts.
@@ -24,6 +42,7 @@ Move AICIS away from the Lovable-managed Supabase backend without losing databas
 8. Historical source-bound SQL is evidence. Preserve it; disable/rebind executable source-bound jobs on the target instead of deleting history.
 9. Do not replay all historical migrations blindly into a fresh Supabase project. Supabase-managed schemas require a controlled restore strategy.
 10. Quantivis infrastructure is unrelated and must never be used or modified for this migration.
+11. Do not infer the live source identity solely from `supabase/config.toml`; use direct runtime evidence and guard every observed source ref.
 
 ## Phase 0 — Emergency Lovable Cloud preservation
 
@@ -52,6 +71,12 @@ Current Lovable constraints that affect the migration plan:
 - never pause or remove Lovable Cloud before both database and Storage preservation are complete.
 
 The first completed export is the T0 preservation checkpoint. It protects accumulated intelligence even while the live source remains authoritative.
+
+### Read-only live SQL path now available
+
+The connected Lovable tooling can execute read-only SQL against the project's cloud PostgreSQL database without invoking the Lovable AI agent. This path is suitable for live inventory, row-count/checksum evidence, source-binding inspection and final-delta planning. It is **not by itself equivalent to a portable database backup**, because it does not expose a raw database archive, Auth password material, Storage object bytes, or all control-plane configuration.
+
+Use it to strengthen parity evidence while still requiring the official export (or legitimate direct database credentials) for T0 preservation.
 
 ### Fallback path only: direct-access preservation workflow
 
@@ -87,7 +112,7 @@ Do not claim T0 preservation PASS until the database artifact and Storage payloa
 
 ## Phase 2 — Build source inventory from the export
 
-The official export becomes the primary source inventory when direct live SQL access is unavailable.
+The official export becomes the primary preservation artifact; direct live SQL is complementary evidence.
 
 Inventory the export before restore and capture as much as its format supports:
 
@@ -98,7 +123,7 @@ Inventory the export before restore and capture as much as its format supports:
 - Storage metadata tables included in the export;
 - functions, triggers, RLS policies and grants;
 - migration history;
-- cron/pg_cron definitions, especially commands containing `psonnnuhjjskrdazrakk`;
+- cron/pg_cron definitions, especially commands containing either guarded source ref (`psonnnuhjjskrdazrakk` or `itpwpnwzzitkelffttyx`);
 - provider freshness and ingestion-history tables;
 - table row counts after a controlled restore/staging inspection;
 - important checksums and critical IDs/timestamps.
@@ -109,14 +134,15 @@ The export may not reproduce all project-level Lovable/Supabase configuration. S
 
 The independent target already exists as `aicis-production` (`qpphncfgbhizvnovzivw`) in `eu-central-1`.
 
-Verified clean target baseline at creation:
+Verified clean target baseline at creation and again before restore work:
 
 - status `ACTIVE_HEALTHY`;
 - PostgreSQL 17.6 family;
 - 0 public AICIS tables;
 - 0 Auth users;
 - 0 Storage buckets;
-- 0 Storage objects.
+- 0 Storage objects;
+- 0 target migration-history rows.
 
 Do not change production frontend environment variables yet.
 
@@ -142,7 +168,12 @@ If the exported SQL/archive tries to alter Supabase-managed roles, ownership, su
 
 ## Phase 5 — Target cron isolation
 
-Historical source migrations contain hard-coded references to `psonnnuhjjskrdazrakk`. Restoring them unchanged can create split-brain AICIS.
+Historical source migrations and the live Lovable runtime contain hard-coded source references. Restoring them unchanged can create split-brain AICIS.
+
+Guard both currently known source refs:
+
+- `psonnnuhjjskrdazrakk` — repository/config binding;
+- `itpwpnwzzitkelffttyx` — live runtime binding observed in source cron/function bodies.
 
 Use `migration/target/001_rebind_pipeline_cron.sql` only on the independent target and only after its required target Vault values are present:
 
@@ -152,13 +183,13 @@ Use `migration/target/001_rebind_pipeline_cron.sql` only on the independent targ
 
 `aicis_cron_secret` must match the target Edge Function secret `CRON_SECRET`. The publishable key is an API key and belongs in the `apikey` header; it must not be treated as a Bearer JWT.
 
-The restore-phase target migration is a **quarantine barrier**: it creates the target-safe invocation helper and disables **every restored cron job**, including jobs whose commands look harmless but call stored PostgreSQL wrappers that still contain the source ref. It intentionally activates zero schedules. During restore, shadow validation and parity, `cron.job` must have zero active writers. Audited schedules are enabled only after the final cutover gate by the explicitly separated `migration/target/cutover/001_activate_audited_cron.sql` file.
+The restore-phase target migration is a **quarantine barrier**: it creates the target-safe invocation helper and disables **every restored cron job**, including jobs whose commands look harmless but call stored PostgreSQL wrappers that still contain either source ref. It intentionally activates zero schedules. During restore, shadow validation and parity, `cron.job` must have zero active writers. Audited schedules are enabled only after the final cutover gate by the explicitly separated `migration/target/cutover/001_activate_audited_cron.sql` file.
 
 ## Phase 6 — Verification gate
 
-When direct source SQL is unavailable, parity must be measured against the validated T0/final export manifests and source-side UI/export evidence rather than pretending `AICIS_SOURCE_DATABASE_URL` exists.
+When portable direct source access is unavailable, parity must be measured against the validated T0/final export manifests plus live read-only source SQL evidence rather than pretending `AICIS_SOURCE_DATABASE_URL` exists.
 
-If direct source access later becomes legitimately available, `scripts/aicis-migration-verify.sh` can compare source and target directly using:
+If direct source credentials later become legitimately available, `scripts/aicis-migration-verify.sh` can compare source and target directly using:
 
 - `AICIS_SOURCE_DATABASE_URL`
 - `AICIS_TARGET_DATABASE_URL`
@@ -192,8 +223,8 @@ Required gates include:
 - target security/performance advisors are reviewed.
 
 ### Cron and bindings
-- no active target cron command points to `psonnnuhjjskrdazrakk`;
-- `scripts/audit-source-project-bindings.sh --strict` finds no executable source binding;
+- no active target cron command points to either guarded source ref;
+- `scripts/audit-source-project-bindings.sh --strict` finds no executable source binding for any guarded source ref;
 - historical migration/control references may remain as audit evidence;
 - `scripts/assert-lovable-pause-ready.sh qpphncfgbhizvnovzivw` passes only after `supabase/config.toml` is intentionally cut over.
 
