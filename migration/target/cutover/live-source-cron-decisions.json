@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-08-28",
+  "source_project_id": "28b43e06-9231-4c54-bc18-a49be01a6516",
+  "guarded_source_refs": [
+    "psonnnuhjjskrdazrakk",
+    "itpwpnwzzitkelffttyx"
+  ],
+  "observed_source_job_count": 26,
+  "notes": "Source job identities and endpoint targets were captured from read-only live Lovable cron inspection. Raw cron command bodies are intentionally not stored because they may embed credentials. Source schedules must be re-captured from a validated export or successful read-only query before any source job is approved for target activation.",
+  "jobs": [
+    {"origin":"live_source","source_jobname":"evaluate-outcomes-6h","source_target":"evaluate-outcomes","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"adaptive-calibration-12h","source_target":"adaptive-calibration","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"dataset-staleness-4h","source_target":"public.update_dataset_staleness","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"retention-cleanup-daily","source_target":"retention-cleanup","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"morning-brief-daily","source_target":"morning-brief","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"health-check-5m","source_target":"health-check","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"convergence-reconcile-6h","source_target":"convergence-reconcile","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"alert-monitor-15m","source_target":"alert-monitor","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"ingest_external_signals_hourly","source_target":"ingest-external-signals","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"connector-scheduler-every-5-min","source_target":"connector-scheduler","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"executive-orchestration-loop","source_target":"executive-orchestration","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"execution-intelligence-rollup","source_target":"execution-intelligence","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"aicis-auto-decisions-15m","source_target":"aicis-auto-decisions","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"aicis-evaluate-outcomes-hourly","source_target":"aicis-evaluate-outcomes","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"sync-aicis-bridge-6h","source_target":"sync-aicis-bridge","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"intel-relevance-every-10min","source_target":"intelligence-relevance-engine","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"intel-brief-advisory-every-30min","source_target":"intelligence-brief-generator","source_active":true,"source_schedule":null,"decision":"pending","evidence_note":"Command preview showed a CTE beginning with intelligence-brief-generator; full multi-call behavior must be recovered before classification."},
+    {"origin":"live_source","source_jobname":"intervention-priority-every-10m","source_target":"intervention-priority-engine","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"intervention-fatigue-daily","source_target":"intervention-fatigue-compute","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"executive-intelligence-daily","source_target":"executive-brief-generator","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"narrative-fusion-every-15m","source_target":"narrative-fusion-engine","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"compute-trust-metrics-daily","source_target":"compute-trust-metrics","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"graph-build-20m","source_target":"build-operational-graph","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"graph-topology-30m","source_target":"compute-graph-topology","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"graph-attention-45m","source_target":"compress-graph-attention","source_active":true,"source_schedule":null,"decision":"pending"},
+    {"origin":"live_source","source_jobname":"graph-patterns-6h","source_target":"detect-graph-memory-patterns","source_active":true,"source_schedule":null,"decision":"pending"},
+
+    {"origin":"target_new","target_jobname":"pipeline-replay-drain-10min","target_target":"pipeline-replay","decision":"approved_target_only","rationale":"Audited target-safe replay lane; not asserted to preserve a source cron job."},
+    {"origin":"target_new","target_jobname":"pipeline-replay-translation-20min","target_target":"pipeline-replay","decision":"approved_target_only","rationale":"Audited target-safe replay lane; not asserted to preserve a source cron job."},
+    {"origin":"target_new","target_jobname":"pipeline-replay-enrichment-hourly","target_target":"pipeline-replay","decision":"approved_target_only","rationale":"Audited target-safe replay lane; not asserted to preserve a source cron job."},
+    {"origin":"target_new","target_jobname":"pns-global-performance-engine","target_target":"drive-performance-engine-v2","decision":"approved_target_only","rationale":"Audited target-only performance driver; not asserted to preserve a source cron job."}
+  ]
+}
