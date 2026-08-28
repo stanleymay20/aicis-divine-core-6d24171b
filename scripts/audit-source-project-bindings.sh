@@ -4,9 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# Fail closed across both the repository-declared source ref and the live Lovable
-# runtime ref observed directly in cron.job/pg_proc on 2026-08-28. A single-ref
-# audit can produce a false PASS while another historical/live binding remains.
+# Fail closed across both forbidden destination refs, while preserving their
+# distinct evidence semantics:
+# - ps... is the verified current AICIS source runtime binding.
+# - it... is observed in legacy/external Quantivis bridge functions in the
+#   AICIS database and must never become an AICIS target destination.
 DEFAULT_SOURCE_REFS=(
   "psonnnuhjjskrdazrakk"
   "itpwpnwzzitkelffttyx"
@@ -49,7 +51,7 @@ scan_paths() {
 
 # Strict surface: code and deployable frontend assets that can make live calls.
 # Historical SQL is deliberately NOT included here because old migrations must
-# remain available as evidence and can legitimately contain source refs.
+# remain available as evidence and can legitimately contain guarded refs.
 scan_paths "$RUNTIME_TMP" \
   supabase/functions \
   src \
@@ -58,8 +60,8 @@ scan_paths "$RUNTIME_TMP" \
   vite.config.ts \
   netlify.toml
 
-# Informational evidence only. Target-only control SQL can also mention source
-# refs specifically to disable/reject restored source-bound jobs.
+# Informational evidence only. Target-only control SQL can also mention guarded
+# refs specifically to disable/reject restored source/external-bound jobs.
 scan_paths "$HISTORICAL_TMP" \
   supabase/migrations \
   migration/target \
@@ -81,8 +83,8 @@ RUNTIME_COUNT="$(wc -l < "$RUNTIME_TMP" | tr -d ' ')"
 HISTORICAL_COUNT="$(wc -l < "$HISTORICAL_TMP" | tr -d ' ')"
 CONFIG_COUNT="$(wc -l < "$CONFIG_TMP" | tr -d ' ')"
 
-echo "AICIS source-project binding audit"
-echo "source_project_refs=$(IFS=,; echo "${SOURCE_REFS[*]}")"
+echo "AICIS guarded-project binding audit"
+echo "guarded_project_refs=$(IFS=,; echo "${SOURCE_REFS[*]}")"
 echo "runtime_bindings=$RUNTIME_COUNT"
 echo "historical_or_control_bindings=$HISTORICAL_COUNT"
 echo "config_bindings=$CONFIG_COUNT"
@@ -92,17 +94,17 @@ if [[ "$RUNTIME_COUNT" -gt 0 ]]; then
   echo "Executable/runtime bindings:"
   cat "$RUNTIME_TMP"
   echo
-  echo "Destination cutover is blocked until every executable binding above is removed."
+  echo "Destination cutover is blocked until every executable guarded binding above is removed."
   if [[ "$STRICT" == "true" ]]; then
     exit 1
   fi
 else
-  echo "PASS: no executable source-project bindings found for any guarded source ref."
+  echo "PASS: no executable guarded-project bindings found."
 fi
 
 if [[ "$CONFIG_COUNT" -gt 0 ]]; then
   echo
-  echo "NOTICE: supabase/config.toml still references a guarded source project."
+  echo "NOTICE: supabase/config.toml still references a guarded project."
   echo "This is expected before target restore/smoke testing and must change before cutover."
 fi
 
