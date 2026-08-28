@@ -212,9 +212,16 @@ async function sha256Hex(buffer: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function requireUsableSemantics(query: any, column: string) {
-  query = query.not(column, "is", null);
-  for (const token of UNUSABLE_SEMANTIC_TOKENS) query = query.not(column, "ilike", `%${token}%`);
+function queryCall<T>(query: T, method: string, ...args: unknown[]): T {
+  const callable = query as unknown as Record<string, (...methodArgs: unknown[]) => T>;
+  const fn = callable[method];
+  if (typeof fn !== "function") throw new TypeError(`Query builder does not support ${method}`);
+  return fn(...args);
+}
+
+function requireUsableSemantics<T>(query: T, column: string): T {
+  query = queryCall(query, "not", column, "is", null);
+  for (const token of UNUSABLE_SEMANTIC_TOKENS) query = queryCall(query, "not", column, "ilike", `%${token}%`);
   return query;
 }
 
@@ -230,18 +237,18 @@ function validateSemanticFilters(spec: DatasetSpec, filters: z.infer<typeof Filt
   return null;
 }
 
-function applyFilters(query: any, spec: DatasetSpec, filters: z.infer<typeof FilterSchema>) {
-  if (filters.date_from && spec.dateCol) query = query.gte(spec.dateCol, filters.date_from);
-  if (filters.date_to && spec.dateCol) query = query.lte(spec.dateCol, filters.date_to);
-  if (filters.iso3 && spec.iso3Col) query = query.eq(spec.iso3Col, filters.iso3.toUpperCase());
-  if (filters.event_type && spec.typeCol) query = query.eq(spec.typeCol, filters.event_type);
-  if (filters.warning_kind && spec.warningKindCol) query = query.eq(spec.warningKindCol, filters.warning_kind);
+function applyFilters<T>(query: T, spec: DatasetSpec, filters: z.infer<typeof FilterSchema>): T {
+  if (filters.date_from && spec.dateCol) query = queryCall(query, "gte", spec.dateCol, filters.date_from);
+  if (filters.date_to && spec.dateCol) query = queryCall(query, "lte", spec.dateCol, filters.date_to);
+  if (filters.iso3 && spec.iso3Col) query = queryCall(query, "eq", spec.iso3Col, filters.iso3.toUpperCase());
+  if (filters.event_type && spec.typeCol) query = queryCall(query, "eq", spec.typeCol, filters.event_type);
+  if (filters.warning_kind && spec.warningKindCol) query = queryCall(query, "eq", spec.warningKindCol, filters.warning_kind);
 
   if (typeof filters.min_confidence === "number" && spec.confidenceCol && spec.confidenceSemanticsCol) {
     const value = spec.scoreScale === "pct100"
       ? Math.round(filters.min_confidence * 100)
       : filters.min_confidence;
-    query = query.gte(spec.confidenceCol, value);
+    query = queryCall(query, "gte", spec.confidenceCol, value);
     query = requireUsableSemantics(query, spec.confidenceSemanticsCol);
   }
 
@@ -249,7 +256,7 @@ function applyFilters(query: any, spec: DatasetSpec, filters: z.infer<typeof Fil
     const value = spec.scoreScale === "pct100"
       ? Math.round(filters.min_severity * 100)
       : filters.min_severity;
-    query = query.gte(spec.severityCol, value);
+    query = queryCall(query, "gte", spec.severityCol, value);
     query = requireUsableSemantics(query, spec.severitySemanticsCol);
   }
 

@@ -106,7 +106,7 @@ export default function SimulationPage() {
     onError: (error) => toast.error(String(error)),
   });
 
-  const rows = list.data?.rows ?? [];
+  const rows = useMemo(() => list.data?.rows ?? [], [list.data?.rows]);
   const kpis = useMemo(() => {
     if (rows.length === 0) return null;
     const p50Values = observedNumbers(rows.map((row) => row.p50));

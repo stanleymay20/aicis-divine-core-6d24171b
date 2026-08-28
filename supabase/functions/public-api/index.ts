@@ -12,6 +12,7 @@ const READ_SCOPE = "read";
 const WRITE_SCOPE = "write";
 const API_VERSION = "2.0";
 const EPISTEMIC_CONTRACT = "null_preserving_semantically_typed_v2";
+type SupabaseClientLike = ReturnType<typeof createClient>;
 const UNUSABLE_SEMANTIC_TOKENS = [
   "legacy",
   "unknown",
@@ -44,10 +45,17 @@ function semanticsUsable(value: unknown): boolean {
   return !UNUSABLE_SEMANTIC_TOKENS.some((token) => normalized.includes(token));
 }
 
-function requireUsableSemantics(query: any, column: string) {
-  query = query.not(column, "is", null);
+function queryCall<T>(query: T, method: string, ...args: unknown[]): T {
+  const callable = query as unknown as Record<string, (...methodArgs: unknown[]) => T>;
+  const fn = callable[method];
+  if (typeof fn !== "function") throw new TypeError(`Query builder does not support ${method}`);
+  return fn(...args);
+}
+
+function requireUsableSemantics<T>(query: T, column: string): T {
+  query = queryCall(query, "not", column, "is", null);
   for (const token of UNUSABLE_SEMANTIC_TOKENS) {
-    query = query.not(column, "ilike", `%${token}%`);
+    query = queryCall(query, "not", column, "ilike", `%${token}%`);
   }
   return query;
 }
@@ -284,7 +292,7 @@ serve(async (req) => {
   }
 });
 
-async function handleSignals(sb: any, url: URL) {
+async function handleSignals(sb: SupabaseClientLike, url: URL) {
   const limit = parseLimit(url, 20, 100);
   const category = url.searchParams.get("category");
   const minImpactRaw = url.searchParams.get("min_impact");
@@ -302,7 +310,7 @@ async function handleSignals(sb: any, url: URL) {
 
   const { data, error } = await query;
   if (error) throw error;
-  const normalized = (data ?? []).map((signal: any) => ({
+  const normalized = (data ?? []).map((signal) => ({
     id: signal.id,
     title: signal.title,
     category: signal.category,
@@ -330,7 +338,7 @@ async function handleSignals(sb: any, url: URL) {
   });
 }
 
-async function handleDecisions(sb: any, url: URL, req: Request) {
+async function handleDecisions(sb: SupabaseClientLike, url: URL, req: Request) {
   if (req.method === "POST") {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const signalSummary = typeof body.signal_summary === "string" ? body.signal_summary.trim() : "";
@@ -375,7 +383,7 @@ async function handleDecisions(sb: any, url: URL, req: Request) {
   return apiData(data ?? []);
 }
 
-async function handleOutcomes(sb: any, url: URL) {
+async function handleOutcomes(sb: SupabaseClientLike, url: URL) {
   const limit = parseLimit(url, 20, 100);
   const { data, error } = await sb.from("decision_outcome_log")
     .select("id,signal_title,action_taken,outcome_success,impact_score,roi_estimate,net_value,evidence_type,evidence_quality_score,criticality_tier,created_at")
@@ -383,7 +391,7 @@ async function handleOutcomes(sb: any, url: URL) {
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  const normalized = (data ?? []).map((outcome: any) => ({
+  const normalized = (data ?? []).map((outcome) => ({
     ...outcome,
     evidence_tier: outcome.criticality_tier ?? outcome.evidence_type ?? null,
     evidence_quality_semantics: "legacy_field_semantics_not_reclassified_by_public_api",
@@ -391,7 +399,7 @@ async function handleOutcomes(sb: any, url: URL) {
   return apiData(normalized);
 }
 
-async function handlePriorityDecisions(sb: any) {
+async function handlePriorityDecisions(sb: SupabaseClientLike) {
   let query = sb.from("global_signals")
     .select("id,title,category,impact_score,impact_score_semantics,urgency_score,urgency_score_semantics,confidence_score,confidence_score_semantics,affected_sectors,recommended_actions,affected_regions,latest_update_at,status")
     .in("status", ["confirmed", "pending_enrichment", "enriched"])
@@ -402,7 +410,7 @@ async function handlePriorityDecisions(sb: any) {
   const { data: signals, error } = await query;
   if (error) throw error;
 
-  const priorities = (signals ?? []).map((signal: any) => {
+  const priorities = (signals ?? []).map((signal) => {
     const urgency = semanticsUsable(signal.urgency_score_semantics) ? signal.urgency_score : null;
     const impact = semanticsUsable(signal.impact_score_semantics) ? signal.impact_score : null;
     const urgencyLevel = typeof urgency === "number" && urgency >= 80
@@ -432,7 +440,7 @@ async function handlePriorityDecisions(sb: any) {
   return apiData(priorities);
 }
 
-async function handleHealth(sb: any) {
+async function handleHealth(sb: SupabaseClientLike) {
   const { data: logs, error } = await sb.from("automation_logs")
     .select("status,executed_at")
     .order("executed_at", { ascending: false })
@@ -456,7 +464,7 @@ async function handleHealth(sb: any) {
       timestamp: new Date().toISOString(),
     });
   }
-  const errors = logs.filter((log: any) => log.status === "error").length;
+  const errors = logs.filter((log) => log.status === "error").length;
   return json({
     api_version: API_VERSION,
     status: errors > 3 ? "degraded_recent_window" : "operational_recent_window",
@@ -468,14 +476,14 @@ async function handleHealth(sb: any) {
   });
 }
 
-async function handleDomains(sb: any) {
+async function handleDomains(sb: SupabaseClientLike) {
   const { data, error } = await sb.from("country_performance_snapshots").select("domain").limit(1000);
   if (error) throw error;
-  const domains = [...new Set((data ?? []).map((row: any) => row.domain).filter(Boolean))];
+  const domains = [...new Set((data ?? []).map((row) => row.domain).filter(Boolean))];
   return apiData(domains);
 }
 
-async function handleMLPredictions(sb: any, url: URL) {
+async function handleMLPredictions(sb: SupabaseClientLike, url: URL) {
   const limit = parseLimit(url, 50, 200);
   const domain = url.searchParams.get("domain");
   const { data: latest, error: latestError } = await sb.from("risk_ml_predictions")
@@ -499,7 +507,7 @@ async function handleMLPredictions(sb: any, url: URL) {
   });
 }
 
-async function handlePropagation(sb: any, url: URL) {
+async function handlePropagation(sb: SupabaseClientLike, url: URL) {
   const limit = parseLimit(url, 50, 200);
   const domain = url.searchParams.get("domain");
   const { data: latest, error: latestError } = await sb.from("risk_propagation_score")
@@ -531,14 +539,14 @@ async function handlePropagation(sb: any, url: URL) {
   });
 }
 
-async function handleSimulations(sb: any, url: URL) {
+async function handleSimulations(sb: SupabaseClientLike, url: URL) {
   const limit = parseLimit(url, 20, 100);
   const { data, error } = await sb.from("simulation_runs")
     .select("id,scenario_name,shock_domain,shock_iso3,shock_magnitude,shock_direction,estimated_global_impact,affected_countries,created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  const normalized = (data ?? []).map((row: any) => ({
+  const normalized = (data ?? []).map((row) => ({
     id: row.id,
     scenario_name: row.scenario_name,
     shock_domain: row.shock_domain,
@@ -557,7 +565,7 @@ async function handleSimulations(sb: any, url: URL) {
   });
 }
 
-async function handleRiskRanking(sb: any, url: URL) {
+async function handleRiskRanking(sb: SupabaseClientLike, url: URL) {
   const limit = parseLimit(url, 50, 200);
   const domain = url.searchParams.get("domain");
   const { data: latest, error: latestError } = await sb.from("risk_ranking_predictions")
@@ -577,7 +585,7 @@ async function handleRiskRanking(sb: any, url: URL) {
   const { data, error } = await query;
   if (error) throw error;
 
-  const normalized = (data ?? []).map((row: any) => ({
+  const normalized = (data ?? []).map((row) => ({
     country_iso3: row.country_iso3,
     domain: row.domain,
     risk_score: row.evidence_status === "sufficient" ? row.risk_probability : null,

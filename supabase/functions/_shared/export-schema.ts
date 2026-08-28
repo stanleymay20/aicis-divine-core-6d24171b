@@ -36,6 +36,15 @@ export interface DecisionGradeSignal {
   export_generated_at: string;
 }
 
+type ExportSourceRow = Record<string, unknown>;
+
+function queryCall<T>(query: T, method: string, ...args: unknown[]): T {
+  const callable = query as unknown as Record<string, (...methodArgs: unknown[]) => T>;
+  const fn = callable[method];
+  if (typeof fn !== "function") throw new TypeError(`Query builder does not support ${method}`);
+  return fn(...args);
+}
+
 export interface ExportProfile {
   id: string;
   name: string;
@@ -89,7 +98,7 @@ export function toIso(d: unknown): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-function sourceUrls(row: any): string[] {
+function sourceUrls(row: ExportSourceRow): string[] {
   const values = new Set<string>();
 
   if (Array.isArray(row.source_urls)) {
@@ -100,7 +109,9 @@ function sourceUrls(row: any): string[] {
 
   if (Array.isArray(row.source_references)) {
     for (const reference of row.source_references) {
-      const url = reference && typeof reference === "object" ? reference.url : null;
+      const url = reference && typeof reference === "object" && "url" in reference
+        ? (reference as Record<string, unknown>).url
+        : null;
       if (typeof url === "string" && /^https?:\/\//i.test(url)) values.add(url);
     }
   }
@@ -112,14 +123,14 @@ function sourceUrls(row: any): string[] {
 // when their semantics are explicit and usable. The compatibility field name
 // `confidence_score` does not imply probability semantics.
 export function normalizeSignal(
-  row: any,
+  row: ExportSourceRow,
   profile: ExportProfile,
   recsByCountryDomain: Map<string, string[]>,
 ): DecisionGradeSignal {
   const country = Array.isArray(row.affected_countries) && row.affected_countries.length
     ? String(row.affected_countries[0]).toUpperCase()
     : null;
-  const domain = row.category ?? null;
+  const domain = typeof row.category === "string" ? row.category : null;
   const recs = profile.include_recommendations
     ? (recsByCountryDomain.get(`${country ?? ""}::${domain ?? ""}`) ?? [])
     : [];
@@ -149,11 +160,17 @@ export function normalizeSignal(
       urgency: typeof row.urgency_score_semantics === "string" ? row.urgency_score_semantics : null,
       impact: typeof row.impact_score_semantics === "string" ? row.impact_score_semantics : null,
     },
-    trend_direction: row.trend_direction ?? null,
-    affected_sectors: Array.isArray(row.affected_sectors) ? row.affected_sectors : [],
-    affected_entities: Array.isArray(row.affected_entities) ? row.affected_entities : [],
+    trend_direction: typeof row.trend_direction === "string" ? row.trend_direction : null,
+    affected_sectors: Array.isArray(row.affected_sectors)
+      ? row.affected_sectors.filter((value): value is string => typeof value === "string")
+      : [],
+    affected_entities: Array.isArray(row.affected_entities)
+      ? row.affected_entities.filter((value): value is string => typeof value === "string")
+      : [],
     why_it_matters: profile.include_explanations
-      ? (row.why_it_matters ?? row.summary ?? null)
+      ? (typeof row.why_it_matters === "string"
+        ? row.why_it_matters
+        : typeof row.summary === "string" ? row.summary : null)
       : null,
     recommended_actions: recs,
     source_urls: profile.include_raw_source ? sourceUrls(row) : [],
@@ -224,7 +241,7 @@ export function compressSignals(
   }
   const unique = [...byId.values()];
 
-  if (!opts.prefer_clusters) return { signals: unique, clusters: [] as any[] };
+  if (!opts.prefer_clusters) return { signals: unique, clusters: [] as Array<Record<string, unknown>> };
 
   const groups = new Map<string, DecisionGradeSignal[]>();
   const standalone: DecisionGradeSignal[] = [];
@@ -239,7 +256,7 @@ export function compressSignals(
     groups.get(key)!.push(signal);
   }
 
-  const clusters: any[] = [];
+  const clusters: Array<Record<string, unknown>> = [];
   for (const [key, group] of groups) {
     if (group.length === 1) {
       standalone.push(group[0]);
@@ -386,13 +403,13 @@ export async function sha256Hex(input: string | Uint8Array): Promise<string> {
     .join("");
 }
 
-export function rowsToCsv(cols: string[], rows: any[]): string {
+export function rowsToCsv(cols: string[], rows: Array<Record<string, unknown>>): string {
   const esc = (value: unknown) => {
     if (value === null || value === undefined) return "";
     let exportValue = value;
     if (typeof exportValue === "object") exportValue = JSON.stringify(exportValue);
     const text = String(exportValue);
-    return /[\",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
   const head = cols.map(esc).join(",");
   const body = rows.map((row) => cols.map((column) => esc(row[column])).join(",")).join("\n");
@@ -405,29 +422,29 @@ export const corsHeaders = {
   "Access-Control-Expose-Headers": "x-ratelimit-limit, x-ratelimit-remaining, x-schema-version, x-export-batch-id, x-next-cursor",
 };
 
-function requireUsableSemantics(q: any, column: string) {
-  q = q.not(column, "is", null);
+function requireUsableSemantics<T>(q: T, column: string): T {
+  q = queryCall(q, "not", column, "is", null);
   for (const token of UNUSABLE_SEMANTIC_TOKENS) {
-    q = q.not(column, "ilike", `%${token}%`);
+    q = queryCall(q, "not", column, "ilike", `%${token}%`);
   }
   return q;
 }
 
-export function applyProfileFilters<T>(q: any, profile: ExportProfile) {
-  if (profile.domains.length) q = q.in("category", profile.domains);
-  if (profile.countries.length) q = q.overlaps("affected_countries", profile.countries);
-  if (profile.regions.length) q = q.overlaps("affected_regions", profile.regions);
+export function applyProfileFilters<T>(q: T, profile: ExportProfile): T {
+  if (profile.domains.length) q = queryCall(q, "in", "category", profile.domains);
+  if (profile.countries.length) q = queryCall(q, "overlaps", "affected_countries", profile.countries);
+  if (profile.regions.length) q = queryCall(q, "overlaps", "affected_regions", profile.regions);
 
   if (profile.min_relevance_score > 0) {
-    q = q.gte("source_rank_score", profile.min_relevance_score);
+    q = queryCall(q, "gte", "source_rank_score", profile.min_relevance_score);
     q = requireUsableSemantics(q, "source_rank_score_semantics");
   }
   if (profile.min_confidence_score > 0) {
-    q = q.gte("confidence_score", profile.min_confidence_score);
+    q = queryCall(q, "gte", "confidence_score", profile.min_confidence_score);
     q = requireUsableSemantics(q, "confidence_score_semantics");
   }
   if (profile.min_urgency_score > 0) {
-    q = q.gte("urgency_score", profile.min_urgency_score);
+    q = queryCall(q, "gte", "urgency_score", profile.min_urgency_score);
     q = requireUsableSemantics(q, "urgency_score_semantics");
   }
   return q;
