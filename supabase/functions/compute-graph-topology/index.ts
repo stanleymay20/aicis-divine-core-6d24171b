@@ -4,8 +4,12 @@
 // probabilities, causal proof, evidence confidence, historical accuracy, or measured
 // reliability unless a dedicated governed field explicitly says otherwise.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { getCorsHeaders } from "../_shared/cors.ts";
 import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+};
 
 type NodeRow = {
   id: string;
@@ -32,7 +36,6 @@ const finite = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
 Deno.serve(async (req) => {
-  const corsHeaders = getCorsHeaders(req, "x-cron-secret");
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const auth = await requireAdminOrTrustedWorker(req, corsHeaders);
