@@ -2,330 +2,277 @@
 
 ## Objective
 
-Move AICIS away from the Lovable-managed Supabase backend without losing database rows, Auth identities, Storage objects, ingestion history, cron state, Edge Functions, or operational configuration.
+Move AICIS away from Lovable-managed backend infrastructure without losing database rows, Auth identities, Storage object bytes, ingestion history, scheduler state, Edge Function behavior, or operational configuration.
+
+## Critical source-identity correction — 2026-08-28
+
+The correct Lovable AICIS project is:
+
+- project ID: `3e68d974-d275-4a8c-8b33-e785fe8113c6`
+- project name: `aicis-divine-core`
+- published URL: `https://aicis-divine-core.lovable.app`
+- repository identity: `AICIS — AI Civilization Intelligence System`
+
+Lovable project `28b43e06-9231-4c54-bc18-a49be01a6516` is **Quantivis**, not AICIS. Read-only inspection of that project returns a Quantivis repository. Therefore every database/Auth/Storage/cron count previously attributed to AICIS solely through that project ID is invalidated for AICIS migration purposes.
+
+Specifically, the prior observations of 210 public tables, 172 Auth users, 2 Storage buckets, 45 Storage metadata objects, 186 migration-history rows, 26 active cron jobs, and runtime references to `itpwpnwzzitkelffttyx` are quarantined as cross-project evidence. They MUST NOT be used for AICIS restore, parity, scheduler activation, final-delta, or cutover decisions unless independently re-observed on the correct AICIS source.
+
+This correction is safety-critical: Quantivis infrastructure and data must never be copied into, modified for, or treated as the AICIS source.
 
 ## Current source and target
 
-- Authoritative production source until final cutover: the database attached to Lovable project `28b43e06-9231-4c54-bc18-a49be01a6516`.
-- Repository-declared Supabase source ref: `psonnnuhjjskrdazrakk` (`supabase/config.toml`).
-- **Observed live Lovable runtime ref (direct read-only SQL evidence, 2026-08-28): `itpwpnwzzitkelffttyx`.** The live database had 25 cron commands and 2 stored-function bodies referencing this ref, and zero live `cron.job`/`pg_proc` references to `psonnnuhjjskrdazrakk` at the checkpoint.
-- Until the identity divergence is fully explained, **both refs are guarded source identities**. Migration/cutover tooling must reject either ref on the independent target.
-- Independent target: `aicis-production`, project ref `qpphncfgbhizvnovzivw`.
-- Target organization: `stanleymay20's Org` (`pkypvduicdrzjcrbexcy`).
-- Target region: `eu-central-1`.
-- The target must remain isolated from production writers until restore and parity checks pass.
+### Correct AICIS source
 
-### Live source inventory checkpoint — 2026-08-28
+The authoritative production source remains the backend attached to Lovable project `3e68d974-d275-4a8c-8b33-e785fe8113c6` until a controlled cutover is completed.
 
-Read-only SQL through the connected Lovable project established:
+The repository currently declares Supabase project ref `psonnnuhjjskrdazrakk` in `supabase/config.toml`. That repository binding is historical/configuration evidence only; it does not by itself prove the active runtime database identity.
 
-- PostgreSQL `17.6`;
-- `210` public/application tables;
-- `172` Auth users;
-- `2` Storage buckets;
-- `45` Storage metadata objects;
-- `186` migration-history rows;
-- `26` cron jobs, all `26` active at the checkpoint;
-- largest observed public table by PostgreSQL live-row estimate: `metrics` at approximately `401,458` rows.
+The previously observed runtime ref `itpwpnwzzitkelffttyx` is now quarantined because that observation came through the wrong Lovable project. Keep defensive guards against stale source refs where they already exist, but do not describe `itpwpnwzzitkelffttyx` as proven AICIS runtime identity until it is independently observed on the correct AICIS project.
 
-These values are a live inventory checkpoint, not a completed backup. Exact final parity still requires validated export/restore artifacts and final-delta evidence.
+At the latest check, the correct AICIS Lovable project reports its database as enabled, but SQL connectivity is unavailable. Source counts, exact cron schedules, Auth counts and Storage counts are therefore **unknown**, not zero and not inherited from Quantivis.
+
+### Independent target
+
+- project: `aicis-production`
+- project ref: `qpphncfgbhizvnovzivw`
+- organization: `pkypvduicdrzjcrbexcy`
+- region: `eu-central-1`
+- status: `ACTIVE_HEALTHY`
+
+Latest verified target baseline:
+
+- 0 public application base tables
+- 0 Auth users
+- 0 Storage buckets
+- 0 Storage objects
+- target writers OFF
+
+The target must remain isolated from production writers until all migration gates pass.
 
 ## Non-negotiable rules
 
-1. The Lovable project database remains the authoritative production source until final cutover, regardless of which guarded source ref identifies a particular runtime binding.
-2. Never delete, reset, truncate, recreate, repoint, pause, or otherwise mutate the source merely to simplify migration.
-3. Never point the production frontend at the target until backup + restore + verification have passed.
-4. Never upload plaintext database dumps, inventories, or Storage archives to public GitHub or ordinary CI artifacts.
-5. Secrets are recreated in target secret stores; secret values are never committed to Git or printed in logs.
-6. Lovable credits/agent runs are not used for implementation or migration.
-7. A failed comparison blocks cutover.
-8. Historical source-bound SQL is evidence. Preserve it; disable/rebind executable source-bound jobs on the target instead of deleting history.
-9. Do not replay all historical migrations blindly into a fresh Supabase project. Supabase-managed schemas require a controlled restore strategy.
-10. Quantivis infrastructure is unrelated and must never be used or modified for this migration.
-11. Do not infer the live source identity solely from `supabase/config.toml`; use direct runtime evidence and guard every observed source ref.
+1. Never use Quantivis data, Auth, Storage, cron, secrets, source IDs or infrastructure as AICIS migration evidence.
+2. Never delete, truncate, reset, recreate, repoint, pause or mutate the AICIS source merely to simplify migration.
+3. Never enable target writers before source preservation, restore, Auth, Storage, function deployment, parity and final-delta gates are proven.
+4. Never infer missing timestamps, confidence, freshness, schedules, counts or identities.
+5. Never copy source secrets. Provision fresh target secrets.
+6. Never upload plaintext production dumps or Storage payloads to public GitHub or ordinary CI artifacts.
+7. Historical source-bound SQL is evidence. Quarantine executable bindings on the target rather than erasing history.
+8. A failed or incomplete comparison blocks cutover.
+9. Do not blindly replay all historical migrations into a managed Supabase target without restore-order and managed-schema review.
+10. CI success is necessary but does not prove migration parity or production readiness.
 
-## Phase 0 — Emergency Lovable Cloud preservation
+## Gate 0 — Correct source identity
 
-A Lovable Cloud backend does not behave like a Supabase project owned directly in the user's Supabase organization. Do not make the migration wait for a direct source database URL or service-role key that Lovable Cloud may not expose.
+Before any T0 claim, prove that all source observations come from Lovable project `3e68d974-d275-4a8c-8b33-e785fe8113c6`.
 
-### Primary T0 preservation path: official Lovable export
+Required evidence:
 
-Use the Lovable UI manually. This does not require using Lovable's AI builder.
+- project metadata identifies `aicis-divine-core`;
+- repository/file identity is AICIS;
+- database queries or export originate from that same project;
+- no Quantivis project ID or source data is used as AICIS source evidence.
 
-1. Open the AICIS project.
-2. Go to **Cloud → Overview → Advanced settings**.
-3. Under **Export project data**, choose **Export data**.
-4. On the **Database** card choose **Export → Start export**.
-5. When Lovable reports that the export is ready, download the database export from **Cloud → Storage**.
-6. Separately download the actual Storage files/buckets from **Cloud → Storage**.
-7. Preserve the downloaded artifacts outside the Lovable project itself and compute checksums before any restore.
+`migration/source/live-source-checkpoint-20260828.json` version 2 records the correction and invalidates the earlier cross-project checkpoint.
 
-Current Lovable constraints that affect the migration plan:
+## Gate 1 — Immutable T0 preservation
 
-- the database export contains database structure and data;
-- the database export is limited to 5 GB;
-- a new export can be requested only once per 24 hours;
-- Storage object bytes are separate from the database export;
-- Edge Function source code and secret values are not part of the database export;
-- usable user passwords are not exported, so password reset/reauthentication must be planned unless the actual export provides a supported equivalent;
-- never pause or remove Lovable Cloud before both database and Storage preservation are complete.
+Preferred path: official Lovable project-data export from the **correct AICIS project**.
 
-The first completed export is the T0 preservation checkpoint. It protects accumulated intelligence even while the live source remains authoritative.
+Preserve separately:
 
-### Read-only live SQL path now available
+- database structure and data;
+- Auth material provided by the supported export path;
+- Storage metadata;
+- actual Storage object bytes;
+- Edge Function source from canonical GitHub `main`;
+- scheduler definitions/schedules;
+- configuration inventory without secret values.
 
-The connected Lovable tooling can execute read-only SQL against the project's cloud PostgreSQL database without invoking the Lovable AI agent. This path is suitable for live inventory, row-count/checksum evidence, source-binding inspection and final-delta planning. It is **not by itself equivalent to a portable database backup**, because it does not expose a raw database archive, Auth password material, Storage object bytes, or all control-plane configuration.
+For each artifact record:
 
-Use it to strengthen parity evidence while still requiring the official export (or legitimate direct database credentials) for T0 preservation.
-
-### Fallback path only: direct-access preservation workflow
-
-The repository also contains `.github/workflows/data-preservation.yml`, `scripts/aicis-source-inventory.sh`, `scripts/aicis-backup.sh`, and `scripts/aicis-storage-backup.mjs`.
-
-Use that path **only if legitimate direct source credentials become available without Lovable credits or source mutation**. Its environment-secret names are:
-
-- `AICIS_SOURCE_DATABASE_URL`
-- `AICIS_SOURCE_SUPABASE_URL`
-- `AICIS_SOURCE_SERVICE_ROLE_KEY`
-- `AICIS_BACKUP_PASSPHRASE`
-
-Do not ask for these values in chat. The workflow must fail closed when they are absent.
-
-## Phase 1 — Validate the exported preservation artifacts
-
-Before restoring anything, validate the downloaded database export without printing row contents.
-
-Use `scripts/aicis-lovable-export-validate.sh <database-export-path> [output-directory]`.
-
-The validator must record at minimum:
-
-- source export filename and byte size;
+- source project identity;
+- filename/type;
+- byte size;
 - SHA-256 checksum;
-- detected archive/file type;
-- whether `pg_restore --list` can parse it as a PostgreSQL archive;
-- a schema/object manifest when the format supports it;
-- warnings when the format requires a different restore path.
+- creation/export time;
+- validation result.
 
-For Storage, create a separate file manifest containing relative path, byte size and SHA-256 for every downloaded object. Database preservation and Storage preservation are both required.
+Do not call a read-only SQL inventory a backup. Do not call T0 complete until recoverable database and Storage payloads exist and are checksummed.
 
-Do not claim T0 preservation PASS until the database artifact and Storage payloads have been downloaded and checksummed.
+The repository contains `.github/workflows/data-preservation.yml` and backup scripts for legitimate direct-source credentials. That workflow has not yet produced a proven preservation artifact and must fail closed if required secrets are absent.
 
-## Phase 2 — Build source inventory from the export
+## Gate 2 — Source inventory
 
-The official export becomes the primary preservation artifact; direct live SQL is complementary evidence.
+After correct AICIS source access or export becomes available, capture:
 
-Inventory the export before restore and capture as much as its format supports:
-
-- PostgreSQL version metadata if present;
-- schemas, extensions and custom types;
-- public/application tables;
-- Auth tables and identity records included in the export;
-- Storage metadata tables included in the export;
-- functions, triggers, RLS policies and grants;
+- PostgreSQL version;
+- schemas/extensions/custom types;
+- public/application table set and row counts;
+- Auth users/identities relevant to application relationships;
+- Storage buckets, object metadata and object bytes;
+- functions/triggers/RLS/grants;
 - migration history;
-- cron/pg_cron definitions, especially commands containing either guarded source ref (`psonnnuhjjskrdazrakk` or `itpwpnwzzitkelffttyx`);
-- provider freshness and ingestion-history tables;
-- table row counts after a controlled restore/staging inspection;
-- important checksums and critical IDs/timestamps.
+- pg_cron jobs, exact schedules and command targets;
+- provider freshness and ingestion history;
+- critical IDs/timestamps/checksums;
+- source-bound URLs/project refs in executable objects.
 
-The export may not reproduce all project-level Lovable/Supabase configuration. Secrets, external Auth provider settings, Edge Function deployment state, Storage object bytes and other control-plane configuration must be inventoried/recreated separately.
+Unknown values stay unknown until observed.
 
-## Phase 3 — Independent target baseline
+## Gate 3 — Controlled target restore
 
-The independent target already exists as `aicis-production` (`qpphncfgbhizvnovzivw`) in `eu-central-1`.
+Restore into `qpphncfgbhizvnovzivw` only after a valid T0 exists.
 
-Verified clean target baseline at creation and again before restore work:
+Restore categories deliberately:
 
-- status `ACTIVE_HEALTHY`;
-- PostgreSQL 17.6 family;
-- 0 public AICIS tables;
-- 0 Auth users;
-- 0 Storage buckets;
-- 0 Storage objects;
-- 0 target migration-history rows.
+1. application schemas/extensions/types;
+2. application data preserving IDs/timestamps;
+3. Auth identities using a supported migration path;
+4. Storage metadata using a target-compatible path;
+5. Storage object bytes with path/size/checksum verification;
+6. Edge Functions from audited canonical GitHub source;
+7. fresh target secrets;
+8. Auth redirect/provider configuration;
+9. scheduler definitions in disabled/quarantined state.
 
-Do not change production frontend environment variables yet.
+Immediately after restore, prove zero active target writers.
 
-## Phase 4 — Controlled database restore
+## Gate 4 — Auth
 
-Do **not** blindly replay historical migrations or overwrite Supabase-managed internals.
+Required proof:
 
-Determine the export format first, then follow current Supabase logical restore guidance appropriate to that format. Prefer a Session pooler/direct database connection intended for migration work rather than transaction-mode pooling.
+- intended source/export identity count matches target;
+- user UUID relationships remain intact;
+- protected routes work;
+- login/reauthentication or password-reset path is proven;
+- refresh/logout behavior works;
+- no source session is assumed valid merely because IDs were preserved.
 
-Restore by category and verify after each stage:
+## Gate 5 — Storage
 
-1. **Extensions and custom/application schemas** — match required extensions first, then restore application schema and data while preserving IDs and timestamps.
-2. **Auth** — preserve user UUIDs, identities, memberships and application foreign-key relationships. Because Lovable's export does not promise portable passwords, plan a controlled password-reset/reauthentication path. Existing source JWT sessions must not be assumed valid on the target.
-3. **Storage metadata** — restore only in a way compatible with the target's managed Storage service.
-4. **Storage object bytes** — upload/copy the separately downloaded object payloads and verify path/size/checksum parity.
-5. **Edge Functions** — deploy repository functions only after reviewing each function's intended JWT/custom-auth policy.
-6. **Secrets** — recreate required target runtime/provider secrets securely; do not recreate obsolete Lovable credentials such as `LOVABLE_API_KEY`.
-7. **Auth configuration** — reproduce required redirect URLs/provider settings separately.
-8. **Cron/schedulers** — keep all restored source-bound schedules disabled until explicitly rebound to target-only endpoints.
-9. **External callbacks/webhooks** — repoint only after target validation.
+Required proof:
 
-If the exported SQL/archive tries to alter Supabase-managed roles, ownership, subscriptions, or system objects, stop and split the restore into a safer controlled application/Auth/Storage migration instead of forcing it through.
+- bucket set matches intended source/export set;
+- object paths match;
+- object counts match;
+- critical and aggregate byte counts match;
+- checksums match for preserved objects;
+- target read/write policies work as intended.
 
-## Phase 5 — Target cron isolation
+Storage control-plane health is not object-byte parity.
 
-Historical source migrations and the live Lovable runtime contain hard-coded source references. Restoring them unchanged can create split-brain AICIS.
+## Gate 6 — Secrets and Edge Functions
 
-Guard both currently known source refs:
+Provision fresh target values for required provider/runtime secrets. Never copy obsolete Lovable credentials simply because they existed historically.
 
-- `psonnnuhjjskrdazrakk` — repository/config binding;
-- `itpwpnwzzitkelffttyx` — live runtime binding observed in source cron/function bodies.
+For every required function prove:
 
-Use `migration/target/001_rebind_pipeline_cron.sql` only on the independent target and only after its required target Vault values are present:
-
-- `aicis_project_url`
-- `aicis_publishable_key`
-- `aicis_cron_secret`
-
-`aicis_cron_secret` must match the target Edge Function secret `CRON_SECRET`. The publishable key is an API key and belongs in the `apikey` header; it must not be treated as a Bearer JWT.
-
-The restore-phase target migration is a **quarantine barrier**: it creates the target-safe invocation helper and disables **every restored cron job**, including jobs whose commands look harmless but call stored PostgreSQL wrappers that still contain either source ref. It intentionally activates zero schedules. During restore, shadow validation and parity, `cron.job` must have zero active writers. Audited schedules are enabled only after the final cutover gate by the explicitly separated `migration/target/cutover/001_activate_audited_cron.sql` file.
-
-## Phase 6 — Verification gate
-
-When portable direct source access is unavailable, parity must be measured against the validated T0/final export manifests plus live read-only source SQL evidence rather than pretending `AICIS_SOURCE_DATABASE_URL` exists.
-
-If direct source credentials later become legitimately available, `scripts/aicis-migration-verify.sh` can compare source and target directly using:
-
-- `AICIS_SOURCE_DATABASE_URL`
-- `AICIS_TARGET_DATABASE_URL`
-
-Required gates include:
-
-### Database
-- intended source/export table set = target table set;
-- exact row counts match at the final checkpoint;
-- critical IDs and timestamps are preserved;
-- critical checksums match.
-
-### Auth
-- exported/source identity count = target identity count;
-- user UUIDs/identity relationships are intact;
-- application foreign keys to Auth users remain intact;
-- login or password-reset flow, protected routes, refresh behavior and logout work on target.
-
-### Storage
-- bucket count matches;
-- object count matches;
-- total/critical bytes match;
-- object paths and critical checksums match;
-- read/write policies work as intended.
-
-### Functions and security
-- every required runtime function is deployed;
-- `verify_jwt`/custom authentication matches intended callers;
+- canonical implementation exists;
+- relative imports resolve;
+- auth model matches actual executable callers;
 - privileged functions are not anonymously callable;
-- provider-neutral AI calls work without Lovable;
-- target security/performance advisors are reviewed.
+- missing evidence remains NULL/unknown where appropriate;
+- deterministic heuristics are not described as calibrated probabilities or verified causal truth;
+- function is deployed successfully on target.
 
-### Cron and bindings
-- no active target cron command points to either guarded source ref;
-- `scripts/audit-source-project-bindings.sh --strict` finds no executable source binding for any guarded source ref;
-- historical migration/control references may remain as audit evidence;
-- `scripts/assert-lovable-pause-ready.sh qpphncfgbhizvnovzivw` passes only after `supabase/config.toml` is intentionally cut over.
+## Gate 7 — Scheduler parity
 
-## Phase 7 — Shadow validation and final-delta strategy
+The previous 26-job manifest was based on Quantivis and has been quarantined. It is not an AICIS source scheduler inventory.
 
-A T0 Lovable export is not zero-data-loss while the source continues receiving writes.
+`migration/target/cutover/live-source-cron-decisions.json` version 2 therefore contains zero verified AICIS live-source jobs until the correct source can be inventoried.
 
-After the initial target restore:
+Do not infer schedules from names such as `-5m`, `-daily` or `-6h`. Exact schedules must come from correct-source evidence.
 
-- keep production writers on the source;
-- keep target writers disabled or safely isolated;
-- validate target reads/Auth/Storage/functions without causing duplicate external side effects;
-- compare provider/domain counts and freshness;
-- design the final delta around the source capabilities actually available.
+Target-only jobs may remain designed in cutover SQL, but none may be activated merely because the source inventory is missing. `scripts/audit-live-cron-parity.py --cutover-ready` must fail while `source_inventory_status` is not `verified_current_aicis_source`.
 
-Because Lovable limits full exports to once per 24 hours, the preferred final cutover pattern is:
+## Gate 8 — Parity
 
-1. restore and validate T0 well before cutover;
+Before final cutover compare the validated source/export checkpoint against target.
+
+Required categories:
+
+- table/schema/object set;
+- exact or explicitly scoped row counts;
+- critical checksums;
+- Auth identity relationships;
+- Storage object bytes;
+- function deployment set;
+- security/RLS expectations;
+- scheduler set and exact schedules;
+- provider freshness;
+- source-bound executable references.
+
+No parity claim may use the invalidated Quantivis checkpoint.
+
+## Gate 9 — Final delta and write freeze
+
+T0 is not zero-data-loss if the source continues receiving writes.
+
+For cutover:
+
+1. validate target while source remains authoritative;
 2. choose a controlled cutover window;
-3. stop or minimize **application-level source writes** without pausing/removing Lovable Cloud;
-4. request/download the final permissible export or capture a proven incremental delta through supported data-export/API mechanisms;
-5. apply the final delta to target;
-6. prove parity at the cutover checkpoint;
-7. execute the cutover-only scheduler activation (`migration/target/cutover/001_activate_audited_cron.sql`) and enable target writers;
+3. stop/minimize application-level source writes using a proven procedure;
+4. capture a final supported export/incremental delta;
+5. apply delta to target;
+6. prove final parity;
+7. enable only audited target schedulers/writers;
 8. switch frontend/runtime to target;
 9. prove no new source writes occur.
 
-Do not claim zero-data-loss unless the final-delta/write-freeze procedure is proven.
+If a final delta cannot be proven, zero-data-loss cutover remains blocked.
 
-## Phase 8 — Frontend and runtime cutover
+## Gate 10 — Runtime cutover
 
-The Netlify frontend expects exactly:
+Only after all prior gates pass:
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- point production frontend to target URL/publishable key;
+- configure target Auth redirects;
+- deploy current canonical GitHub `main`;
+- verify browser/network traffic contains no operational Lovable/source endpoint;
+- intentionally update `supabase/config.toml` to the target project ref;
+- run pause-readiness and source-binding audits;
+- prove exactly one active production writer.
 
-Never expose a service-role/secret key to the frontend.
+## Gate 11 — Lovable independence proof
 
-Only after target restore, Auth, Storage, functions and parity pass:
-
-1. configure Netlify production environment values for `qpphncfgbhizvnovzivw`;
-2. update target Auth redirect URLs/callbacks;
-3. deploy current GitHub `main`;
-4. verify browser/network traffic contains no operational source or Lovable endpoints;
-5. update `supabase/config.toml` project ID to `qpphncfgbhizvnovzivw` and commit it to `main`;
-6. run static and live pause-readiness gates.
-
-## Phase 9 — Production write and provider-freshness proof
-
-After runtime switches to the target, create or observe a controlled new production event.
+AICIS is independent only when it is truthful to say that Lovable can become unavailable without stopping normal operation.
 
 Prove:
 
-- the event appears on the target;
-- the event does **not** appear on the source;
-- downstream target pipelines process it;
-- each active provider creates fresh target records on its expected cadence;
-- target logs contain the expected executions/errors/retries.
-
-There must be exactly one active production writer after cutover.
-
-## Phase 10 — Lovable-pause test
-
-Do not delete the source. Simulate source unavailability operationally and verify AICIS without relying on it:
-
-- frontend loads with no source/Lovable calls;
-- Auth login/session/protected routes/logout work;
-- database reads/writes and RLS work;
-- Storage reads/writes work where applicable;
-- critical Edge Functions run on target;
-- target cron jobs execute;
-- provider-neutral AI works;
-- active ingestion providers remain fresh;
-- decision/intelligence pipelines continue;
-- target logs populate;
-- no source writes occur.
-
-AICIS is independent only when it is truthful to say: **if Lovable Cloud disappeared now, AICIS would continue operating.**
-
-## Phase 11 — Post-cutover disaster recovery
-
-Keep the Lovable source intact as a historical fallback during the observation period; do not delete it merely because the UI works.
-
-Establish target production recovery with:
-
-- Supabase backups appropriate to the Pro plan;
-- encrypted independent database backup;
-- Storage object preservation;
-- periodic restore drills;
-- documented RPO/RTO;
-- credentials recovery procedure;
-- provider secret-name inventory;
-- database-size and backup-health monitoring.
+- frontend availability;
+- Auth;
+- database reads/writes and RLS;
+- Storage reads/writes;
+- critical Edge Functions;
+- schedulers;
+- provider ingestion freshness;
+- decision/intelligence pipelines;
+- logs/observability;
+- no source writes or runtime dependencies.
 
 ## Rollback
 
-If a critical target validation fails after cutover:
+If target validation fails after cutover:
 
 - disable target writers;
-- restore frontend routing to the known-good source if the source is still available;
+- route production back to the known-good AICIS source only if it remains available and consistent;
 - re-enable source writers only if they were deliberately disabled;
-- investigate the mismatch.
+- investigate mismatch before another attempt.
 
-Never attempt rollback by overwriting the known-good source with target data.
+Never roll back by overwriting the known-good source with target data.
+
+## Current status
+
+- Correct AICIS Lovable project identity: proven at project/repository level.
+- Correct AICIS source database inventory: blocked/unavailable.
+- Portable T0 database backup: not proven.
+- Storage-byte preservation: not proven.
+- Independent target: healthy and intentionally empty.
+- Target writers: OFF.
+- Auth/Storage/function parity: not proven.
+- Final delta: not proven.
+- Cutover: BLOCKED.
+
+The next priority is to regain read-only/export access to the correct AICIS source, capture an immutable T0, and only then begin controlled target restore.
