@@ -1,48 +1,27 @@
 {
-  "schema_version": 2,
-  "observed_at": "2026-08-28",
+  "schema_version": 3,
+  "observed_at": "2026-08-28T17:21:22Z",
   "aicis_source_project_id": "3e68d974-d275-4a8c-8b33-e785fe8113c6",
-  "source_inventory_status": "blocked_unverified_current_aicis_source",
-  "observed_source_job_count": 0,
-  "notes": "Previous live cron observations were obtained through Lovable project 28b43e06-9231-4c54-bc18-a49be01a6516. Read-only repository inspection proved that project is Quantivis, not AICIS. Those cron identities are quarantined below and MUST NOT be used for AICIS parity, target scheduling, source-count claims, or cutover decisions. The correct AICIS project is 3e68d974-d275-4a8c-8b33-e785fe8113c6. Exact AICIS source cron inventory remains unknown until read-only database access or a validated export becomes available.",
+  "source_inventory_status": "verified_current_aicis_source",
+  "source_snapshot": "migration/source/aicis-cron-snapshot-20260828.json",
+  "observed_source_job_count": 172,
+  "active_source_job_count": 171,
+  "source_decisions": [],
+  "source_decision_status": "not_started_for_verified_172_job_inventory",
+  "notes": "The verified AICIS source scheduler inventory contains 172 jobs (171 active). Every source job must receive an explicit activate/replace/retire decision before cutover. The three pipeline-replay jobs previously labelled target_new are now known to exist in the live AICIS source with exactly observed schedules, so their prior target-only classification is revoked. Raw source command bodies remain excluded from Git because they may contain credentials.",
   "invalidated_cross_project_observations": {
     "project_id": "28b43e06-9231-4c54-bc18-a49be01a6516",
     "project_identity": "Quantivis",
     "job_count": 26,
-    "job_names": [
-      "evaluate-outcomes-6h",
-      "adaptive-calibration-12h",
-      "dataset-staleness-4h",
-      "retention-cleanup-daily",
-      "morning-brief-daily",
-      "health-check-5m",
-      "convergence-reconcile-6h",
-      "alert-monitor-15m",
-      "ingest_external_signals_hourly",
-      "connector-scheduler-every-5-min",
-      "executive-orchestration-loop",
-      "execution-intelligence-rollup",
-      "aicis-auto-decisions-15m",
-      "aicis-evaluate-outcomes-hourly",
-      "sync-aicis-bridge-6h",
-      "intel-relevance-every-10min",
-      "intel-brief-advisory-every-30min",
-      "intervention-priority-every-10m",
-      "intervention-fatigue-daily",
-      "executive-intelligence-daily",
-      "narrative-fusion-every-15m",
-      "compute-trust-metrics-daily",
-      "graph-build-20m",
-      "graph-topology-30m",
-      "graph-attention-45m",
-      "graph-patterns-6h"
-    ],
     "use_for_aicis_migration": false
   },
-  "jobs": [
-    {"origin":"target_new","target_jobname":"pipeline-replay-drain-10min","target_target":"pipeline-replay","decision":"approved_target_only","rationale":"Audited target-safe replay lane; not asserted to preserve a source cron job."},
-    {"origin":"target_new","target_jobname":"pipeline-replay-translation-20min","target_target":"pipeline-replay","decision":"approved_target_only","rationale":"Audited target-safe replay lane; not asserted to preserve a source cron job."},
-    {"origin":"target_new","target_jobname":"pipeline-replay-enrichment-hourly","target_target":"pipeline-replay","decision":"approved_target_only","rationale":"Audited target-safe replay lane; not asserted to preserve a source cron job."},
-    {"origin":"target_new","target_jobname":"pns-global-performance-engine","target_target":"drive-performance-engine-v2","decision":"approved_target_only","rationale":"Audited target-only performance driver; not asserted to preserve a source cron job."}
+  "target_new_jobs": [
+    {
+      "target_jobname": "pns-global-performance-engine",
+      "target_target": "drive-performance-engine-v2",
+      "decision": "approved_target_only",
+      "schedule": "25 */6 * * *",
+      "rationale": "Audited target-only performance driver. This job name is absent from the verified AICIS source cron snapshot, but activation must still wait for complete source scheduler classification and all migration gates."
+    }
   ]
 }
