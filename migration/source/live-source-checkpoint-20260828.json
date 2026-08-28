@@ -1,46 +1,45 @@
 {
-  "checkpoint_version": 1,
+  "checkpoint_version": 2,
   "observation_date": "2026-08-28",
-  "observation_mode": "read_only_lovable_project_sql",
-  "lovable_project_id": "28b43e06-9231-4c54-bc18-a49be01a6516",
-  "authoritative_source_status": "live_production_source_until_cutover",
+  "observation_mode": "identity_reconciliation_after_read_only_project_inspection",
+  "aicis_lovable_project_id": "3e68d974-d275-4a8c-8b33-e785fe8113c6",
+  "aicis_project_identity_evidence": {
+    "project_name": "aicis-divine-core",
+    "published_url": "https://aicis-divine-core.lovable.app",
+    "repository_readme_identity": "AICIS — AI Civilization Intelligence System"
+  },
+  "invalidated_project_id": "28b43e06-9231-4c54-bc18-a49be01a6516",
+  "invalidated_project_identity": "Quantivis",
+  "authoritative_source_status": "AICIS source database inventory not yet proven after project-identity correction",
   "guarded_source_refs": {
     "repository_declared": "psonnnuhjjskrdazrakk",
-    "live_runtime_observed": "itpwpnwzzitkelffttyx",
-    "identity_divergence_status": "unresolved_guard_both"
+    "previous_runtime_observed": "itpwpnwzzitkelffttyx",
+    "identity_divergence_status": "previous runtime observation quarantined because it was obtained through the wrong Lovable project identity; do not treat it as AICIS source evidence until independently re-observed on the AICIS project"
   },
   "database": {
-    "postgres_version": "17.6",
-    "public_table_count": 210,
-    "public_schema_md5": "8a77a338a4b553fb4348726376a13a54",
-    "public_function_count": 83,
-    "public_functions_md5": "7a6aecd043f7c4b90896690078e85c0f",
-    "public_rls_policy_count": 476,
-    "public_policies_md5": "cfdaf78969d028e2dd4a21cc974f7cee",
-    "extension_count": 9,
-    "extensions_md5": "3fe0a8550380a1554befe1280af305bb",
-    "migration_history_rows": 186
+    "postgres_version": null,
+    "public_table_count": null,
+    "public_schema_md5": null,
+    "public_function_count": null,
+    "public_functions_md5": null,
+    "public_rls_policy_count": null,
+    "public_policies_md5": null,
+    "extension_count": null,
+    "extensions_md5": null,
+    "migration_history_rows": null
   },
   "auth": {
-    "user_count": 172
+    "user_count": null
   },
   "storage": {
-    "bucket_count": 2,
-    "metadata_object_count": 45,
+    "bucket_count": null,
+    "metadata_object_count": null,
     "object_bytes_preserved": false
   },
   "scheduler": {
-    "cron_job_count": 26,
-    "active_cron_job_count": 26,
-    "live_runtime_ref_cron_mentions": 25,
-    "repository_declared_ref_cron_mentions": 0,
-    "live_runtime_ref_function_body_mentions": 2,
-    "repository_declared_ref_function_body_mentions": 0
-  },
-  "largest_observed_public_table_estimate": {
-    "table": "metrics",
-    "estimated_live_rows": 401458,
-    "semantics": "pg_stat_user_tables estimate_not_exact_parity_count"
+    "cron_job_count": null,
+    "active_cron_job_count": null,
+    "source_schedule_inventory_status": "unknown_pending_correct_aicis_source_access"
   },
   "target": {
     "project_ref": "qpphncfgbhizvnovzivw",
@@ -53,7 +52,9 @@
     "writers_enabled": false
   },
   "gate_status": {
+    "correct_source_identity": "proven_at_lovable_project_level",
     "portable_database_export": "not_yet_proven",
+    "source_database_inventory": "blocked_until_correct_aicis_database_access",
     "storage_object_bytes_export": "not_yet_proven",
     "target_restore": "not_started",
     "auth_parity": "not_started",
@@ -62,10 +63,15 @@
     "final_delta": "not_started",
     "cutover": "blocked"
   },
+  "invalidated_prior_observations": {
+    "reason": "The previously recorded Lovable project ID resolves to a Quantivis repository, not AICIS. Therefore the prior counts of 210 public tables, 172 Auth users, 2 Storage buckets, 45 Storage objects, 186 migrations and 26 active cron jobs are quarantined and must not be used for AICIS restore/parity decisions.",
+    "prior_counts_retained_as_audit_history_only": true
+  },
   "notes": [
-    "This checkpoint contains metadata and cryptographic fingerprints only; it is not a database backup.",
-    "No source write was performed to create this checkpoint.",
+    "This checkpoint supersedes checkpoint_version 1.",
+    "No Quantivis database, Auth, Storage, cron or function observation may be used as AICIS source evidence.",
+    "No source write was performed during identity reconciliation.",
     "No target writer was enabled.",
-    "The official Lovable database export or legitimate direct database backup remains required for T0 preservation."
+    "The correct AICIS Lovable project database currently reports enabled but SQL connectivity remains unavailable; a portable T0 or legitimate direct backup is still required."
   ]
 }
