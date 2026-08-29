@@ -160,6 +160,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<PageBoundary><Landing /></PageBoundary>} />
                 <Route path="/app" element={<PageBoundary><Index /></PageBoundary>} />
+                <Route path="/index" element={<PageBoundary><Index /></PageBoundary>} />
                 <Route path="/auth" element={<PageBoundary><Auth /></PageBoundary>} />
                 <Route path="/terms" element={<Lazy><Terms /></Lazy>} />
                 <Route path="/privacy" element={<Lazy><Privacy /></Lazy>} />
