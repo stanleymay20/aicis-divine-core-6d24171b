@@ -84,6 +84,11 @@ jobs:
         continue-on-error: true
         run: python3 scripts/audit-migration-view-replacements.py
 
+      - name: Prediction truth-floor invariants
+        id: prediction_truth_floor
+        continue-on-error: true
+        run: python3 scripts/audit-prediction-truth-floor.py
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
@@ -141,6 +146,7 @@ jobs:
           echo "Deferred privileged-auth manifest: ${{ steps.deferred_auth.outcome }}"
           echo "Secret-name inventory: ${{ steps.secret_inventory.outcome }}"
           echo "Migration view replacement safety: ${{ steps.migration_views.outcome }}"
+          echo "Prediction truth-floor: ${{ steps.prediction_truth_floor.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
@@ -156,6 +162,7 @@ jobs:
           [ "${{ steps.deferred_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.secret_inventory.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.migration_views.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.prediction_truth_floor.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
