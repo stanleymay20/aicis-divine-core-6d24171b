@@ -132,6 +132,7 @@ Deno.serve(async (req) => {
       case "verify_evidence": {
         requireUuid(body.external_outcome_id, "external_outcome_id");
         requireText(body.verification_method, "verification_method");
+        await requireWorkflowRole(supabase, auth.user.id, "evidence_verifier");
 
         const { data, error } = await supabase.rpc("verify_aicis_model_external_evidence_v7", {
           p_external_outcome_id: body.external_outcome_id,
@@ -146,6 +147,7 @@ Deno.serve(async (req) => {
         if (body.resolved_binary_outcome !== 0 && body.resolved_binary_outcome !== 1) {
           throw new Error("resolved_binary_outcome must be 0 or 1");
         }
+        await requireWorkflowRole(supabase, auth.user.id, "outcome_resolver");
 
         // Resolver identity is derived from authenticated admin identity, never
         // accepted from a caller-controlled resolver string.
@@ -164,9 +166,24 @@ Deno.serve(async (req) => {
         throw new Error("unsupported operation");
     }
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "evidence governance operation failed" }, 400);
+    const message = error instanceof Error ? error.message : "evidence governance operation failed";
+    const status = message.startsWith("workflow role ") ? 403 : 400;
+    return json({ error: message }, status);
   }
 });
+
+async function requireWorkflowRole(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  role: "evidence_verifier" | "outcome_resolver",
+): Promise<void> {
+  const { data, error } = await supabase.rpc("aicis_user_has_model_evidence_workflow_role_v7", {
+    p_user_id: userId,
+    p_role: role,
+  });
+  if (error) throw error;
+  if (data !== true) throw new Error(`workflow role ${role} is required`);
+}
 
 function requireText(value: unknown, field: string): asserts value is string {
   if (typeof value !== "string" || value.trim() === "") {
