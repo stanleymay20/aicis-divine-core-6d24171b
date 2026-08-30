@@ -134,9 +134,10 @@ Deno.serve(async (req) => {
         requireText(body.verification_method, "verification_method");
         await requireWorkflowRole(supabase, auth.user.id, "evidence_verifier");
 
-        const { data, error } = await supabase.rpc("verify_aicis_model_external_evidence_v7", {
+        const { data, error } = await supabase.rpc("verify_aicis_model_external_evidence_v9", {
           p_external_outcome_id: body.external_outcome_id,
           p_verification_method: body.verification_method,
+          p_actor_user_id: auth.user.id,
         });
         if (error) throw error;
         return json({ operation: body.operation, result: data });
@@ -149,13 +150,10 @@ Deno.serve(async (req) => {
         }
         await requireWorkflowRole(supabase, auth.user.id, "outcome_resolver");
 
-        // Resolver identity is derived from authenticated admin identity, never
-        // accepted from a caller-controlled resolver string.
-        const resolver = `admin-user:${auth.user.id}`;
-        const { data, error } = await supabase.rpc("resolve_aicis_model_outcome_v7", {
+        const { data, error } = await supabase.rpc("resolve_aicis_model_outcome_v9", {
           p_external_outcome_id: body.external_outcome_id,
           p_resolved_binary_outcome: body.resolved_binary_outcome,
-          p_resolver: resolver,
+          p_actor_user_id: auth.user.id,
           p_resolution_evidence: body.resolution_evidence ?? {},
         });
         if (error) throw error;
