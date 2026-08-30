@@ -98,15 +98,34 @@ export default function ExportCenter() {
     staleTime: 30_000,
   });
 
+  // supabase.functions.invoke() collapses any non-2xx into a generic
+  // "non-2xx status code" message. Read the JSON body so the governed
+  // reason (e.g. missing export role) reaches the operator.
+  const invokeExport = async (body: Record<string, unknown>, fallback: string) => {
+    const { data, error } = await supabase.functions.invoke("export-aicis-dataset", { body });
+    if (error) {
+      let detail = error.message;
+      const res = (error as { context?: Response }).context;
+      if (res && typeof res.text === "function") {
+        try {
+          const parsed = JSON.parse(await res.clone().text());
+          if (parsed?.error) detail = String(parsed.error);
+        } catch {
+          /* keep transport-level message */
+        }
+      }
+      throw new Error(detail);
+    }
+    if (!data?.ok) throw new Error(data?.error || fallback);
+    return data;
+  };
+
   const previewMut = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("export-aicis-dataset", {
-        body: { action: "preview", dataset_name: dataset, filters: buildFilters() },
-      });
-      if (error) throw new Error(error.message);
-      if (!data?.ok) throw new Error(data?.error || "Preview failed");
-      return data;
-    },
+    mutationFn: () =>
+      invokeExport(
+        { action: "preview", dataset_name: dataset, filters: buildFilters() },
+        "Preview failed",
+      ),
     onSuccess: (d) => {
       setPreviewCount(d.estimated_row_count);
       toast({
@@ -118,14 +137,12 @@ export default function ExportCenter() {
   });
 
   const exportMut = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("export-aicis-dataset", {
-        body: { action: "export", dataset_name: dataset, format, filters: buildFilters(), limit, gzip: gzipOn },
-      });
-      if (error) throw new Error(error.message);
-      if (!data?.ok) throw new Error(data?.error || "Export failed");
-      return data;
-    },
+    mutationFn: () =>
+      invokeExport(
+        { action: "export", dataset_name: dataset, format, filters: buildFilters(), limit, gzip: gzipOn },
+        "Export failed",
+      ),
+
     onSuccess: (data) => {
       const ratio = data.compression_ratio && data.compression_ratio > 1
         ? ` · gzip ${data.compression_ratio}×` : "";
