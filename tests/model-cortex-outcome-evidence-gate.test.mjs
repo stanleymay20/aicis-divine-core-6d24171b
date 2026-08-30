@@ -33,6 +33,10 @@ const writersV7Path = new URL(
   "../supabase/migrations/20260830210000_model_cortex_governed_evidence_writers_v7.sql",
   import.meta.url,
 );
+const rolesV8Path = new URL(
+  "../supabase/migrations/20260830211000_model_cortex_evidence_workflow_roles_v8.sql",
+  import.meta.url,
+);
 
 test("Model Cortex outcome path uses sealed evidence and full-population database metrics", async () => {
   const source = await readFile(outcomePath, "utf8");
@@ -151,11 +155,26 @@ test("governed v7 writers establish server-authoritative evidence lifecycle", as
   assert.doesNotMatch(source, /GRANT EXECUTE[\s\S]{0,200}TO authenticated/);
 });
 
-test("evidence governance edge derives resolver identity from authenticated admin", async () => {
+test("evidence workflow roles enforce separation of duties and grant nobody by migration", async () => {
+  const source = await readFile(rolesV8Path, "utf8");
+
+  assert.match(source, /aicis_model_evidence_workflow_roles/);
+  assert.match(source, /evidence_verifier/);
+  assert.match(source, /outcome_resolver/);
+  assert.match(source, /one user cannot simultaneously hold evidence_verifier and outcome_resolver/);
+  assert.match(source, /aicis_user_has_model_evidence_workflow_role_v7/);
+  assert.doesNotMatch(source, /INSERT INTO public\.aicis_model_evidence_workflow_roles/);
+  assert.doesNotMatch(source, /GRANT .* TO authenticated/);
+});
+
+test("evidence governance edge derives resolver identity and requires workflow roles", async () => {
   const source = await readFile(governPath, "utf8");
 
   assert.match(source, /requireAdminUser/);
   assert.match(source, /admin-user:\$\{auth\.user\.id\}/);
+  assert.match(source, /aicis_user_has_model_evidence_workflow_role_v7/);
+  assert.match(source, /evidence_verifier/);
+  assert.match(source, /outcome_resolver/);
   assert.match(source, /seal_aicis_model_prediction_target_v7/);
   assert.match(source, /create_aicis_prediction_evidence_artifact_v7/);
   assert.match(source, /record_aicis_model_external_evidence_v7/);
