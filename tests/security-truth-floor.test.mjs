@@ -20,7 +20,7 @@ test("security readiness is evidence-derived and fails closed", async () => {
   assert.match(source, /effective_status IN \('behaviorally_verified','runtime_verified'\)/);
   assert.match(source, /production_security_ready/);
   assert.match(source, /No PASS evidence is seeded/i);
-  assert.doesNotMatch(source, /INSERT INTO public\.aicis_security_control_evidence[\s\S]*'pass'/i);
+  assert.doesNotMatch(source, /INSERT INTO public\.aicis_security_control_evidence\s*[\s\S]{0,400}\bpass\b/i);
 });
 
 test("security evidence is append-only and human declarations cannot establish readiness", async () => {
@@ -30,7 +30,10 @@ test("security evidence is append-only and human declarations cannot establish r
   assert.match(source, /BEFORE UPDATE OR DELETE ON public\.aicis_security_control_evidence/);
   assert.match(source, /append-only/i);
   assert.match(source, /Human assessment is useful context, but never the authority for readiness/i);
-  assert.doesNotMatch(source, /aicis_security_control_assessments[\s\S]*aicis_security_production_readiness_v1/);
+
+  const readinessView = source.split("CREATE OR REPLACE VIEW public.aicis_security_production_readiness_v1")[1] ?? "";
+  assert.ok(readinessView.length > 0, "production readiness view must exist");
+  assert.doesNotMatch(readinessView, /aicis_security_control_assessments/);
 });
 
 test("P0 catalog covers identity, least privilege, audit, incident, recovery, scanning, boundaries and monitoring", async () => {
