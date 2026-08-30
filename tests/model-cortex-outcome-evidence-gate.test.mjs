@@ -37,6 +37,10 @@ const rolesV8Path = new URL(
   "../supabase/migrations/20260830211000_model_cortex_evidence_workflow_roles_v8.sql",
   import.meta.url,
 );
+const separationV9Path = new URL(
+  "../supabase/migrations/20260830212000_model_cortex_database_enforced_separation_v9.sql",
+  import.meta.url,
+);
 
 test("Model Cortex outcome path uses sealed evidence and full-population database metrics", async () => {
   const source = await readFile(outcomePath, "utf8");
@@ -167,18 +171,31 @@ test("evidence workflow roles enforce separation of duties and grant nobody by m
   assert.doesNotMatch(source, /GRANT .* TO authenticated/);
 });
 
-test("evidence governance edge derives resolver identity and requires workflow roles", async () => {
+test("database v9 prevents service-role bypass of verifier and resolver roles", async () => {
+  const source = await readFile(separationV9Path, "utf8");
+
+  assert.match(source, /REVOKE EXECUTE ON FUNCTION public\.verify_aicis_model_external_evidence_v7/);
+  assert.match(source, /REVOKE EXECUTE ON FUNCTION public\.resolve_aicis_model_outcome_v7/);
+  assert.match(source, /verify_aicis_model_external_evidence_v9/);
+  assert.match(source, /resolve_aicis_model_outcome_v9/);
+  assert.match(source, /evidence_verifier/);
+  assert.match(source, /outcome_resolver/);
+  assert.match(source, /p_actor_user_id/);
+  assert.match(source, /v_resolver := 'admin-user:' \|\| p_actor_user_id::text/);
+});
+
+test("evidence governance edge derives actor identity and delegates to role-enforced RPCs", async () => {
   const source = await readFile(governPath, "utf8");
 
   assert.match(source, /requireAdminUser/);
-  assert.match(source, /admin-user:\$\{auth\.user\.id\}/);
   assert.match(source, /aicis_user_has_model_evidence_workflow_role_v7/);
   assert.match(source, /evidence_verifier/);
   assert.match(source, /outcome_resolver/);
   assert.match(source, /seal_aicis_model_prediction_target_v7/);
   assert.match(source, /create_aicis_prediction_evidence_artifact_v7/);
   assert.match(source, /record_aicis_model_external_evidence_v7/);
-  assert.match(source, /verify_aicis_model_external_evidence_v7/);
-  assert.match(source, /resolve_aicis_model_outcome_v7/);
-  assert.doesNotMatch(source, /resolver:/);
+  assert.match(source, /verify_aicis_model_external_evidence_v9/);
+  assert.match(source, /resolve_aicis_model_outcome_v9/);
+  assert.match(source, /p_actor_user_id: auth\.user\.id/);
+  assert.doesNotMatch(source, /p_resolver:/);
 });
