@@ -4,6 +4,7 @@ import test from "node:test";
 
 const outcomePath = new URL("../supabase/functions/cognitive-model-outcome/index.ts", import.meta.url);
 const promotePath = new URL("../supabase/functions/cognitive-model-promote/index.ts", import.meta.url);
+const governPath = new URL("../supabase/functions/cognitive-model-evidence-govern/index.ts", import.meta.url);
 const gateV1Path = new URL(
   "../supabase/migrations/20260830183000_model_cortex_verified_outcome_gate_v1.sql",
   import.meta.url,
@@ -26,6 +27,10 @@ const metricsV5Path = new URL(
 );
 const targetV6Path = new URL(
   "../supabase/migrations/20260830202000_model_cortex_server_sealed_target_v6.sql",
+  import.meta.url,
+);
+const writersV7Path = new URL(
+  "../supabase/migrations/20260830210000_model_cortex_governed_evidence_writers_v7.sql",
   import.meta.url,
 );
 
@@ -128,4 +133,33 @@ test("target contract issuance time and fingerprint are server-authoritative", a
   assert.match(source, /NEW\.target_fingerprint_sha256 := public\.aicis_model_target_fingerprint/);
   assert.match(source, /caller must not be able to backdate issued_at/i);
   assert.match(source, /forecast_horizon_at cannot precede server-sealed issuance time/);
+});
+
+test("governed v7 writers establish server-authoritative evidence lifecycle", async () => {
+  const source = await readFile(writersV7Path, "utf8");
+
+  assert.match(source, /seal_aicis_model_prediction_target_v7/);
+  assert.match(source, /create_aicis_prediction_evidence_artifact_v7/);
+  assert.match(source, /record_aicis_model_external_evidence_v7/);
+  assert.match(source, /verify_aicis_model_external_evidence_v7/);
+  assert.match(source, /resolve_aicis_model_outcome_v7/);
+  assert.match(source, /p_observed_at < v_contract\.issued_at/);
+  assert.match(source, /v_artifact\.artifact_sha256/);
+  assert.match(source, /verification_status = 'verified'/);
+  assert.match(source, /v_contract\.target_definition/);
+  assert.match(source, /TO service_role/);
+  assert.doesNotMatch(source, /GRANT EXECUTE[\s\S]{0,200}TO authenticated/);
+});
+
+test("evidence governance edge derives resolver identity from authenticated admin", async () => {
+  const source = await readFile(governPath, "utf8");
+
+  assert.match(source, /requireAdminUser/);
+  assert.match(source, /admin-user:\$\{auth\.user\.id\}/);
+  assert.match(source, /seal_aicis_model_prediction_target_v7/);
+  assert.match(source, /create_aicis_prediction_evidence_artifact_v7/);
+  assert.match(source, /record_aicis_model_external_evidence_v7/);
+  assert.match(source, /verify_aicis_model_external_evidence_v7/);
+  assert.match(source, /resolve_aicis_model_outcome_v7/);
+  assert.doesNotMatch(source, /resolver:/);
 });
