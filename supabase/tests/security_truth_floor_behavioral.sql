@@ -83,14 +83,18 @@ SELECT pg_temp.assert_true(
   'a current failure must dominate current passing evidence'
 );
 
--- 5. Security evidence must be immutable even to the simulated Supabase
--- service_role (BYPASSRLS). The trigger must block UPDATE and DELETE.
+-- 5. Security evidence must be immutable through two independent controls:
+--    a) service_role receives no UPDATE/DELETE table grants; and
+--    b) the append-only trigger still blocks a privileged table owner.
+-- BYPASSRLS does not imply SQL UPDATE/DELETE privilege, so a permission-denied
+-- error is a correct first-line defense and must not be misclassified as a test failure.
 DO $$
 DECLARE
   evidence_id uuid;
+  before_details jsonb;
   blocked boolean := false;
 BEGIN
-  SELECT id INTO evidence_id
+  SELECT id, details INTO evidence_id, before_details
   FROM public.aicis_security_control_evidence
   WHERE control_key = 'nist-ac-6'
   ORDER BY created_at
@@ -101,11 +105,18 @@ BEGIN
     UPDATE public.aicis_security_control_evidence
       SET details = '{"tampered":true}'::jsonb
       WHERE id = evidence_id;
-  EXCEPTION WHEN OTHERS THEN
-    blocked := position('append-only' in SQLERRM) > 0;
+  EXCEPTION WHEN insufficient_privilege THEN
+    blocked := true;
+  WHEN OTHERS THEN
+    blocked := position('permission denied' in SQLERRM) > 0
+      OR position('append-only' in SQLERRM) > 0;
   END;
 
-  PERFORM pg_temp.assert_true(blocked, 'service_role update of security evidence must be blocked by append-only trigger');
+  PERFORM pg_temp.assert_true(blocked, 'service_role update of security evidence must be denied');
+  PERFORM pg_temp.assert_true(
+    (SELECT details FROM public.aicis_security_control_evidence WHERE id = evidence_id) = before_details,
+    'failed service_role update must leave security evidence unchanged'
+  );
 END;
 $$;
 
@@ -123,11 +134,51 @@ BEGIN
   BEGIN
     EXECUTE 'SET LOCAL ROLE service_role';
     DELETE FROM public.aicis_security_control_evidence WHERE id = evidence_id;
-  EXCEPTION WHEN OTHERS THEN
-    blocked := position('append-only' in SQLERRM) > 0;
+  EXCEPTION WHEN insufficient_privilege THEN
+    blocked := true;
+  WHEN OTHERS THEN
+    blocked := position('permission denied' in SQLERRM) > 0
+      OR position('append-only' in SQLERRM) > 0;
   END;
 
-  PERFORM pg_temp.assert_true(blocked, 'service_role delete of security evidence must be blocked by append-only trigger');
+  PERFORM pg_temp.assert_true(blocked, 'service_role delete of security evidence must be denied');
+  PERFORM pg_temp.assert_true(
+    EXISTS (SELECT 1 FROM public.aicis_security_control_evidence WHERE id = evidence_id),
+    'failed service_role delete must preserve security evidence'
+  );
+END;
+$$;
+
+-- Prove the second line of defense independently as the table owner. Even an
+-- identity with native table UPDATE/DELETE privilege must hit the append-only trigger.
+DO $$
+DECLARE
+  evidence_id uuid;
+  update_blocked boolean := false;
+  delete_blocked boolean := false;
+BEGIN
+  SELECT id INTO evidence_id
+  FROM public.aicis_security_control_evidence
+  WHERE control_key = 'nist-ac-6'
+  ORDER BY created_at
+  LIMIT 1;
+
+  BEGIN
+    UPDATE public.aicis_security_control_evidence
+      SET details = '{"owner_tampered":true}'::jsonb
+      WHERE id = evidence_id;
+  EXCEPTION WHEN OTHERS THEN
+    update_blocked := position('append-only' in SQLERRM) > 0;
+  END;
+
+  BEGIN
+    DELETE FROM public.aicis_security_control_evidence WHERE id = evidence_id;
+  EXCEPTION WHEN OTHERS THEN
+    delete_blocked := position('append-only' in SQLERRM) > 0;
+  END;
+
+  PERFORM pg_temp.assert_true(update_blocked, 'table owner update must be blocked by append-only trigger');
+  PERFORM pg_temp.assert_true(delete_blocked, 'table owner delete must be blocked by append-only trigger');
 END;
 $$;
 
