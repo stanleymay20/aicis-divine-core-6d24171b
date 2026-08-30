@@ -24,14 +24,15 @@ test("historical ML rows fail closed without governed knowledge-time proof", asy
   assert.doesNotMatch(source, /SET knowledge_time_status = 'verified_leakage_safe'/);
 });
 
-test("training exporter schema currently disagrees with inference contract and remains a tracked defect", async () => {
+test("training export and inference use the same source-controlled country/date contract", async () => {
   const exporter = await readFile(exporterPath, "utf8");
   const inference = await readFile(inferencePath, "utf8");
 
-  // This is intentionally a truth-floor tripwire. Do not silently 'fix' it until
-  // the actual source table schema is proven. The mismatch must remain visible.
-  assert.match(exporter, /training_dataset:[\s\S]*iso3Col: "iso3"/);
-  assert.match(exporter, /training_dataset:[\s\S]*dateCol: "feature_window_end"/);
+  assert.match(exporter, /training_dataset:[\s\S]*iso3Col: "country_iso3"/);
+  assert.match(exporter, /training_dataset:[\s\S]*dateCol: "snapshot_date"/);
+  assert.match(exporter, /knowledge_time_requires_governed_lineage_proof/);
   assert.match(inference, /country_iso3: string \| null/);
   assert.match(inference, /snapshot_date: string \| null/);
+  assert.doesNotMatch(exporter, /training_dataset:[\s\S]*iso3Col: "iso3"/);
+  assert.doesNotMatch(exporter, /training_dataset:[\s\S]*dateCol: "feature_window_end"/);
 });
