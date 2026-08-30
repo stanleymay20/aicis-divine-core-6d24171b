@@ -24,6 +24,10 @@ const metricsV5Path = new URL(
   "../supabase/migrations/20260830201000_model_cortex_metrics_artifact_contract_v5.sql",
   import.meta.url,
 );
+const targetV6Path = new URL(
+  "../supabase/migrations/20260830202000_model_cortex_server_sealed_target_v6.sql",
+  import.meta.url,
+);
 
 test("Model Cortex outcome path uses sealed evidence and full-population database metrics", async () => {
   const source = await readFile(outcomePath, "utf8");
@@ -113,4 +117,15 @@ test("full-population metrics fingerprint the canonical evidence artifact bindin
   assert.match(source, /canonical_artifact_binding_required', true/);
   assert.match(source, /population_truncated', false/);
   assert.doesNotMatch(source, /LIMIT 5000/i);
+});
+
+test("target contract issuance time and fingerprint are server-authoritative", async () => {
+  const source = await readFile(targetV6Path, "utf8");
+
+  assert.match(source, /v_now := clock_timestamp\(\)/);
+  assert.match(source, /NEW\.issued_at := v_now/);
+  assert.match(source, /NEW\.created_at := v_now/);
+  assert.match(source, /NEW\.target_fingerprint_sha256 := public\.aicis_model_target_fingerprint/);
+  assert.match(source, /caller must not be able to backdate issued_at/i);
+  assert.match(source, /forecast_horizon_at cannot precede server-sealed issuance time/);
 });
