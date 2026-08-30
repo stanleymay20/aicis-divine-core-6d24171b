@@ -16,6 +16,14 @@ const promotionV3Path = new URL(
   "../supabase/migrations/20260830193000_model_cortex_atomic_promotion_v3.sql",
   import.meta.url,
 );
+const artifactV4Path = new URL(
+  "../supabase/migrations/20260830200000_model_cortex_evidence_artifact_binding_v4.sql",
+  import.meta.url,
+);
+const metricsV5Path = new URL(
+  "../supabase/migrations/20260830201000_model_cortex_metrics_artifact_contract_v5.sql",
+  import.meta.url,
+);
 
 test("Model Cortex outcome path uses sealed evidence and full-population database metrics", async () => {
   const source = await readFile(outcomePath, "utf8");
@@ -77,5 +85,32 @@ test("atomic promotion v3 cannot use cached or truncated evidence and cannot wea
   assert.match(source, /FOR UPDATE/);
   assert.match(source, /INSERT INTO public\.aicis_cognitive_events/);
   assert.match(source, /Any audit failure rolls the entire promotion back/);
+  assert.doesNotMatch(source, /LIMIT 5000/i);
+});
+
+test("canonical evidence artifacts are server-hashed, immutable, and required by the truth gate", async () => {
+  const source = await readFile(artifactV4Path, "utf8");
+
+  assert.match(source, /CREATE TABLE IF NOT EXISTS public\.aicis_prediction_evidence_artifacts/);
+  assert.match(source, /aicis_prediction_evidence_artifact_sha256/);
+  assert.match(source, /server-recomputed canonical evidence hash/);
+  assert.match(source, /canonical prediction evidence artifacts are immutable/);
+  assert.match(source, /evidence_artifact_id uuid/);
+  assert.match(source, /canonical-artifact-v1/);
+  assert.match(source, /evidence_sha256 does not match server-recomputed canonical artifact hash/);
+  assert.match(source, /externally_verified_target_resolution_v2_canonical_artifact/);
+  assert.match(source, /JOIN public\.aicis_prediction_evidence_artifacts a/);
+  assert.match(source, /e\.evidence_sha256 = a\.artifact_sha256/);
+});
+
+test("full-population metrics fingerprint the canonical evidence artifact binding", async () => {
+  const source = await readFile(metricsV5Path, "utf8");
+
+  assert.match(source, /external_evidence_artifact_id/);
+  assert.match(source, /evidence_binding_version/);
+  assert.match(source, /external_verified_target_resolution_v3_canonical_artifact/);
+  assert.match(source, /v5_full_population_artifact_bound/);
+  assert.match(source, /canonical_artifact_binding_required', true/);
+  assert.match(source, /population_truncated', false/);
   assert.doesNotMatch(source, /LIMIT 5000/i);
 });
