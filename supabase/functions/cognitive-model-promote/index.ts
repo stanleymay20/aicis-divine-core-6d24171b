@@ -2,7 +2,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAdminUser } from "../_shared/auth.ts";
 
 const FN = "cognitive-model-promote";
-const PROMOTION_POLICY = "baseline-gate-v2-direct-metrics-explicit-confirmation";
+const PROMOTION_POLICY = "baseline-gate-v3-verified-outcomes-explicit-confirmation";
+const REQUIRED_EVALUATION_METHOD = "externally_verified_target_resolution_probability_metrics_v3";
+const REQUIRED_EVIDENCE_POLICY = "external_verified_target_resolution_v1";
+const REQUIRED_EVALUATION_SCOPE = "model_domain_modality_task";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -31,12 +34,15 @@ type RegistryRow = {
 type CompetencyRow = {
   model_id: string;
   sample_size: number;
+  verified_sample_size: number | null;
   brier_score: number | string | null;
   brier_score_semantics: string | null;
   ece: number | string | null;
   ece_semantics: string | null;
   evaluation_status: string | null;
   evaluation_method: string | null;
+  evaluation_evidence_policy: string | null;
+  evaluation_scope: string | null;
 };
 
 Deno.serve(async (req) => {
@@ -76,7 +82,9 @@ Deno.serve(async (req) => {
 
     const { data: competencyData, error: competencyError } = await supabase
       .from("aicis_model_competency")
-      .select("model_id,sample_size,brier_score,brier_score_semantics,ece,ece_semantics,evaluation_status,evaluation_method")
+      .select(
+        "model_id,sample_size,verified_sample_size,brier_score,brier_score_semantics,ece,ece_semantics,evaluation_status,evaluation_method,evaluation_evidence_policy,evaluation_scope",
+      )
       .in("model_id", [challenger.id, baseline.id])
       .eq("domain", domain)
       .eq("modality", body.modality)
@@ -95,28 +103,43 @@ Deno.serve(async (req) => {
     const maximumCalibrationRegression = body.maximum_calibration_regression ?? 0.01;
     const reasons: string[] = [];
 
-    if (challengerMetric.sample_size < minimumSamples) {
-      reasons.push(`insufficient challenger sample size ${challengerMetric.sample_size}/${minimumSamples}`);
+    if (!hasRecognizedVerifiedEvaluation(challengerMetric)) {
+      reasons.push("challenger lacks the recognized externally verified target-resolution evaluation contract");
     }
-    if (baselineMetric.sample_size < minimumSamples) {
-      reasons.push(`insufficient baseline sample size ${baselineMetric.sample_size}/${minimumSamples}`);
+    if (!hasRecognizedVerifiedEvaluation(baselineMetric)) {
+      reasons.push("baseline lacks the recognized externally verified target-resolution evaluation contract");
     }
-    if (!hasUsableEvaluation(challengerMetric) || !hasUsableEvaluation(baselineMetric)) {
-      reasons.push("challenger and baseline require non-legacy direct-metric evaluation semantics");
+
+    const challengerVerifiedSamples = integerNonNegativeOrNull(challengerMetric.verified_sample_size);
+    const baselineVerifiedSamples = integerNonNegativeOrNull(baselineMetric.verified_sample_size);
+    if (challengerVerifiedSamples === null || challengerVerifiedSamples !== challengerMetric.sample_size) {
+      reasons.push("challenger sample_size is not proven equal to verified_sample_size");
     }
+    if (baselineVerifiedSamples === null || baselineVerifiedSamples !== baselineMetric.sample_size) {
+      reasons.push("baseline sample_size is not proven equal to verified_sample_size");
+    }
+    if ((challengerVerifiedSamples ?? 0) < minimumSamples) {
+      reasons.push(`insufficient verified challenger sample size ${challengerVerifiedSamples ?? 0}/${minimumSamples}`);
+    }
+    if ((baselineVerifiedSamples ?? 0) < minimumSamples) {
+      reasons.push(`insufficient verified baseline sample size ${baselineVerifiedSamples ?? 0}/${minimumSamples}`);
+    }
+
     if (
       challengerMetric.evaluation_method !== baselineMetric.evaluation_method ||
+      challengerMetric.evaluation_evidence_policy !== baselineMetric.evaluation_evidence_policy ||
+      challengerMetric.evaluation_scope !== baselineMetric.evaluation_scope ||
       challengerMetric.brier_score_semantics !== baselineMetric.brier_score_semantics ||
       challengerMetric.ece_semantics !== baselineMetric.ece_semantics
     ) {
-      reasons.push("challenger and baseline metrics are not method/semantics comparable");
+      reasons.push("challenger and baseline metrics are not method/evidence/scope/semantics comparable");
     }
 
     const baselineBrier = numericNonNegativeOrNull(baselineMetric.brier_score);
     const challengerBrier = numericNonNegativeOrNull(challengerMetric.brier_score);
     let relativeBrierImprovement: number | null = null;
     if (baselineBrier === null || challengerBrier === null || baselineBrier <= 0) {
-      reasons.push("comparable Brier evidence is unavailable");
+      reasons.push("comparable externally verified Brier evidence is unavailable");
     } else {
       relativeBrierImprovement = (baselineBrier - challengerBrier) / baselineBrier;
       if (relativeBrierImprovement < minimumBrierImprovement) {
@@ -130,7 +153,7 @@ Deno.serve(async (req) => {
     const challengerEce = numericUnitOrNull(challengerMetric.ece);
     let calibrationImprovement: number | null = null;
     if (baselineEce === null || challengerEce === null) {
-      reasons.push("comparable ECE evidence is unavailable");
+      reasons.push("comparable externally verified ECE evidence is unavailable");
     } else {
       calibrationImprovement = baselineEce - challengerEce;
       if (calibrationImprovement < -maximumCalibrationRegression) {
@@ -157,6 +180,10 @@ Deno.serve(async (req) => {
             promoted_task: body.task,
             promoted_at: now,
             promotion_policy: PROMOTION_POLICY,
+            evaluation_method: REQUIRED_EVALUATION_METHOD,
+            evaluation_evidence_policy: REQUIRED_EVIDENCE_POLICY,
+            evaluation_scope: REQUIRED_EVALUATION_SCOPE,
+            verified_sample_size: challengerVerifiedSamples,
             explicit_admin_confirmation: true,
             minimum_relative_brier_improvement_policy: minimumBrierImprovement,
             maximum_calibration_regression_policy: maximumCalibrationRegression,
@@ -185,12 +212,17 @@ Deno.serve(async (req) => {
         modality: body.modality,
         task: body.task,
         high_consequence: Boolean(body.high_consequence),
+        challenger_verified_sample_size: challengerVerifiedSamples,
+        baseline_verified_sample_size: baselineVerifiedSamples,
         relative_brier_improvement: relativeBrierImprovement,
         calibration_improvement: calibrationImprovement,
         eligible,
         confirmation_requested: confirmationRequested,
         promoted,
         promotion_policy: PROMOTION_POLICY,
+        required_evaluation_method: REQUIRED_EVALUATION_METHOD,
+        required_evidence_policy: REQUIRED_EVIDENCE_POLICY,
+        required_evaluation_scope: REQUIRED_EVALUATION_SCOPE,
         threshold_semantics: "operator_policy_thresholds_not_statistical_significance",
         reasons,
       },
@@ -204,9 +236,14 @@ Deno.serve(async (req) => {
       promoted,
       challenger: `${challenger.model_key}@${challenger.version}`,
       baseline: `${baseline.model_key}@${baseline.version}`,
+      challenger_verified_sample_size: challengerVerifiedSamples,
+      baseline_verified_sample_size: baselineVerifiedSamples,
       relative_brier_improvement: relativeBrierImprovement,
       calibration_improvement: calibrationImprovement,
       promotion_policy: PROMOTION_POLICY,
+      required_evaluation_method: REQUIRED_EVALUATION_METHOD,
+      required_evidence_policy: REQUIRED_EVIDENCE_POLICY,
+      required_evaluation_scope: REQUIRED_EVALUATION_SCOPE,
       threshold_semantics: "operator_policy_thresholds_not_statistical_significance",
       reasons,
     }), { headers: { ...cors, "content-type": "application/json" } });
@@ -233,27 +270,32 @@ function validatePolicyThresholds(body: PromotionRequest): void {
   }
 }
 
-function hasUsableEvaluation(row: CompetencyRow): boolean {
-  return hasUsableSemantics(row.brier_score_semantics) &&
-    hasUsableSemantics(row.ece_semantics) &&
-    hasUsableSemantics(row.evaluation_method) &&
-    hasUsableSemantics(row.evaluation_status);
+function hasRecognizedVerifiedEvaluation(row: CompetencyRow): boolean {
+  return row.evaluation_method === REQUIRED_EVALUATION_METHOD &&
+    row.evaluation_evidence_policy === REQUIRED_EVIDENCE_POLICY &&
+    row.evaluation_scope === REQUIRED_EVALUATION_SCOPE &&
+    row.evaluation_status !== null &&
+    (
+      row.evaluation_status === "partial_externally_verified_probabilistic_evaluation" ||
+      row.evaluation_status === "externally_verified_probabilistic_outcomes_evaluated_v3"
+    ) &&
+    hasExactMetricSemantics(row.brier_score_semantics, "externally_verified_target_resolved_binary_outcomes") &&
+    hasExactMetricSemantics(row.ece_semantics, "externally_verified_target_resolved_binary_outcomes");
 }
 
-function hasUsableSemantics(value: string | null): boolean {
-  if (!value) return false;
-  const normalized = value.toLowerCase();
-  return !normalized.includes("legacy") &&
-    !normalized.includes("unknown") &&
-    !normalized.includes("unverified") &&
-    !normalized.includes("unspecified") &&
-    !normalized.includes("pending");
+function hasExactMetricSemantics(value: string | null, requiredMarker: string): boolean {
+  return Boolean(value && value.includes(requiredMarker));
 }
 
 function numericNonNegativeOrNull(value: number | string | null): number | null {
   if (value === null) return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function integerNonNegativeOrNull(value: number | string | null): number | null {
+  const numeric = numericNonNegativeOrNull(value);
+  return numeric !== null && Number.isInteger(numeric) ? numeric : null;
 }
 
 function numericUnitOrNull(value: number | string | null): number | null {
