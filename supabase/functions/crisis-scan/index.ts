@@ -4,6 +4,7 @@ import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse }
 import { aiChat, AiProviderError } from "../_shared/ai-gateway.ts";
 
 const FN = "crisis-scan";
+type SupabaseClientType = ReturnType<typeof createClient>;
 
 type SignalRow = {
   id: string;
@@ -13,6 +14,20 @@ type SignalRow = {
   urgency_score: number | null;
 };
 
+type CrisisFocus = {
+  region: string;
+  severity: number;
+  evidence_signal_count: number;
+  evidence_signal_ids: string[];
+};
+
+type CrisisAssessment = {
+  kind: string;
+  region: string;
+  details: string | null;
+  focus: CrisisFocus;
+} | null;
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -21,7 +36,7 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    let supabaseClient: any;
+    let supabaseClient: SupabaseClientType;
     let userId = "system-cron";
 
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "___";
@@ -55,7 +70,7 @@ serve(async (req) => {
     };
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    async function deriveFocus(kind: string) {
+    async function deriveFocus(kind: string): Promise<CrisisFocus | null> {
       const { data, error } = await supabaseClient
         .from("global_signals")
         .select("id, affected_regions, geo_admin0_iso3, impact_score, urgency_score")
@@ -101,8 +116,6 @@ serve(async (req) => {
     const HARD_DEADLINE_MS = 50000;
     const deadlineExceeded = () => (Date.now() - start) > HARD_DEADLINE_MS;
 
-    // Fail fast if the configured provider is unavailable. The deterministic
-    // evidence pipeline still runs and emits crisis decisions without AI.
     try {
       await aiChat({
         messages: [{ role: "user", content: "Reply with OK." }],
@@ -116,7 +129,7 @@ serve(async (req) => {
       });
     }
 
-    const aiPromises = crisisTypes.map(async (kind) => {
+    const aiPromises: Array<Promise<CrisisAssessment>> = crisisTypes.map(async (kind) => {
       const focus = await deriveFocus(kind);
       if (!focus) return null;
       const region = focus.region;
@@ -158,7 +171,7 @@ serve(async (req) => {
     const remainingMs = Math.max(1, HARD_DEADLINE_MS - (Date.now() - start));
     const aiResults = await Promise.race([
       Promise.allSettled(aiPromises),
-      new Promise<PromiseSettledResult<any>[]>((resolve) =>
+      new Promise<PromiseSettledResult<CrisisAssessment>[]>((resolve) =>
         setTimeout(() => resolve(crisisTypes.map(() => ({ status: "rejected", reason: "deadline" } as PromiseRejectedResult))), remainingMs),
       ),
     ]);
