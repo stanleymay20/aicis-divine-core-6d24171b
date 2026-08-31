@@ -8,7 +8,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type Row = Record<string, any>;
+type RowValue = string | number | boolean | null | undefined | string[];
+type Row = Record<string, RowValue>;
+type SupabaseClientType = ReturnType<typeof createClient>;
 
 type QueryContext = {
   alerts: Row[];
@@ -31,6 +33,8 @@ type DashboardCard = {
   source: string;
   division: string;
 };
+
+type HistoryItem = { role?: unknown; content?: unknown };
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -55,7 +59,7 @@ serve(async (req) => {
     .select("role")
     .eq("user_id", ctx.user.id);
 
-  if (!roles?.some((r: Row) => ["admin", "operator", "analyst"].includes(r.role))) {
+  if (!roles?.some((r: Row) => ["admin", "operator", "analyst"].includes(String(r.role)))) {
     return json({ error: "Forbidden", reason: "role_required" }, 403);
   }
 
@@ -182,7 +186,7 @@ serve(async (req) => {
   }
 });
 
-async function gatherContext(supabase: any, query: string): Promise<QueryContext> {
+async function gatherContext(supabase: SupabaseClientType, query: string): Promise<QueryContext> {
   const [alerts, crises, incidents, intel, health, food, energy, metrics, countryList] = await Promise.all([
     supabase.from("alerts").select("*").order("created_at", { ascending: false }).limit(25),
     supabase.from("crisis_events").select("*").order("opened_at", { ascending: false }).limit(20),
@@ -237,10 +241,12 @@ async function gatherContext(supabase: any, query: string): Promise<QueryContext
   };
 }
 
-function sanitizeHistory(history: any[]) {
+function sanitizeHistory(history: unknown[]) {
   return history.slice(-8).flatMap((item) => {
-    if (!item || !["user", "assistant"].includes(item.role) || typeof item.content !== "string") return [];
-    return [{ role: item.role as "user" | "assistant", content: item.content.slice(0, 2000) }];
+    if (!item || typeof item !== "object") return [];
+    const candidate = item as HistoryItem;
+    if (!["user", "assistant"].includes(String(candidate.role)) || typeof candidate.content !== "string") return [];
+    return [{ role: candidate.role as "user" | "assistant", content: candidate.content.slice(0, 2000) }];
   });
 }
 
@@ -325,7 +331,7 @@ function identifyDivisions(context: QueryContext): string[] {
 function generateGuidance(context: QueryContext) {
   const guidance: Array<Record<string, string>> = [];
   if (context.crises.some((c) => Number(c.severity || 0) >= 8)) guidance.push({ priority: "critical", domain: "Crisis", title: "Escalate verified crisis monitoring", description: "High-severity crisis evidence is present.", actionable: "Review the underlying crisis records and corroborating sources before operational action." });
-  if (context.alerts.some((a) => ["critical", "high"].includes(a.severity))) guidance.push({ priority: "high", domain: "Security", title: "Review high-severity alerts", description: "High-severity alert records are present.", actionable: "Validate freshness, provenance, and corroboration before escalation." });
+  if (context.alerts.some((a) => ["critical", "high"].includes(String(a.severity)))) guidance.push({ priority: "high", domain: "Security", title: "Review high-severity alerts", description: "High-severity alert records are present.", actionable: "Validate freshness, provenance, and corroboration before escalation." });
   if (!guidance.length) guidance.push({ priority: "low", domain: "Intelligence", title: "Maintain evidence monitoring", description: "No high-severity condition was established by the loaded evidence.", actionable: "Continue ingestion and refresh stale or missing providers." });
   return guidance;
 }
