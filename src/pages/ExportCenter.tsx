@@ -18,6 +18,8 @@ type DatasetKey = "local_events" | "early_warnings" | "geo_audit"
                 | "country_corrections" | "normalized_events" | "training_dataset"
                 | "global_signals";
 
+type ExportFormat = "csv" | "json" | "ndjson";
+
 const DATASETS: { key: DatasetKey; label: string; description: string; tier: "public"|"private"|"training" }[] = [
   { key: "global_signals",      label: "Global Signals (raw)",     description: "All ingested signals — wires, recoveries, official sources. The richest planetary feed.", tier: "private" },
   { key: "local_events",        label: "Local Reality Events",     description: "Geo-localized events with severity, confidence, evidence chain", tier: "private" },
@@ -56,7 +58,7 @@ export default function ExportCenter() {
   const qc = useQueryClient();
 
   const [dataset, setDataset] = useState<DatasetKey>("global_signals");
-  const [format, setFormat] = useState<"csv"|"json"|"ndjson">("csv");
+  const [format, setFormat] = useState<ExportFormat>("csv");
   const [iso3, setIso3] = useState("");
   const [eventType, setEventType] = useState("");
   const [warningKind, setWarningKind] = useState("");
@@ -251,7 +253,7 @@ export default function ExportCenter() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="format">Format</Label>
-                <Select value={format} onValueChange={(v) => setFormat(v as any)}>
+                <Select value={format} onValueChange={(value) => setFormat(value as ExportFormat)}>
                   <SelectTrigger id="format"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="csv">CSV</SelectItem>
