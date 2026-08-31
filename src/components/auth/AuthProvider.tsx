@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { AuthContext } from "@/contexts/AuthContext";
 import { decodeAuthTokenClaims, tokenClaimsContainAuthMethod } from "@/lib/authTokenClaims";
 
@@ -18,6 +18,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      // Public routes must remain renderable if deployment configuration is
+      // missing, while every authenticated route sees auth as unavailable and
+      // therefore fails closed through ProtectedRoute.
+      initialValidationComplete.current = true;
+      setSession(null);
+      setUser(null);
+      setUnavailable(true);
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
     let validationGeneration = 0;
 
@@ -196,6 +208,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setSession(null);
+      setUser(null);
+      setUnavailable(true);
+      navigate("/auth", { replace: true });
+      return;
+    }
+
     try {
       const { error } = await supabase.auth.signOut({ scope: "global" });
       if (error) throw error;
