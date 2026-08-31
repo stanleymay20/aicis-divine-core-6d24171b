@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
 import { aiChat, AiProviderError } from "../_shared/ai-gateway.ts";
 
@@ -35,31 +36,22 @@ serve(async (req) => {
   const start = Date.now();
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    let supabaseClient: SupabaseClientType;
-    let userId = "system-cron";
+    const auth = await requireAdminOrTrustedWorker(req);
+    if (auth.response) return auth.response;
 
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "___";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "___";
-    const isSystemCall = !authHeader || authHeader.includes(anonKey) || authHeader.includes(serviceRoleKey);
+    const adminUser = auth.user as { id?: string } | null;
+    const userId = auth.via === "admin" && adminUser?.id
+      ? adminUser.id
+      : auth.via === "cron"
+      ? "system-cron"
+      : "system-service-role";
 
-    if (!isSystemCall) {
-      supabaseClient = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-        { global: { headers: { Authorization: authHeader ?? "" } } },
-      );
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-      if (authError || !user) throw new Error("Unauthorized");
-      userId = user.id;
-    } else {
-      supabaseClient = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      );
-    }
+    const supabaseClient: SupabaseClientType = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
 
-    structuredLog("info", FN, "Starting crisis scan", { user_id: userId });
+    structuredLog("info", FN, "Starting crisis scan", { auth_via: auth.via, user_id: userId });
 
     const crisisTypes = ["weather", "seismic", "outage", "health"];
     const KIND_CATEGORIES: Record<string, string[]> = {
