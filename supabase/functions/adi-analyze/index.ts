@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
+import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
+import { resilientCall, structuredLog, handleCors, errorResponse, jsonResponse, corsHeaders } from "../_shared/resilience.ts";
 import { aiChat } from "../_shared/ai-gateway.ts";
 
 const FN = "adi-analyze";
@@ -15,26 +16,21 @@ serve(async (req) => {
   const start = Date.now();
 
   try {
-    const authHeader = req.headers.get("Authorization");
+    const auth = await requireUserOrTrustedWorker(req, corsHeaders);
+    if (auth.response) return auth.response;
+
+    const userId = auth.via === "user" && auth.ctx?.user?.id
+      ? String(auth.ctx.user.id)
+      : auth.via === "cron"
+      ? "system-cron"
+      : "system-service-role";
+
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceRoleKey);
 
-    let userId = "system";
-    const isServiceRoleCall = !!authHeader && !!serviceRoleKey && authHeader.includes(serviceRoleKey);
-    if (authHeader && !isServiceRoleCall) {
-      const anonClient = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-        { global: { headers: { Authorization: authHeader } } },
-      );
-      const { data: { user }, error } = await anonClient.auth.getUser();
-      if (error || !user) throw new Error("Unauthorized");
-      userId = user.id;
-    }
-
     const body = await req.json().catch(() => ({}));
     const { mode = "auto", signal_id, domain, region, custom_query } = body;
-    structuredLog("info", FN, `ADI analysis: mode=${mode}`, { userId, domain, region });
+    structuredLog("info", FN, `ADI analysis: mode=${mode}`, { auth_via: auth.via, userId, domain, region });
 
     let signals: any[] = [];
     if (mode === "manual" && typeof custom_query === "string" && custom_query.trim()) {
@@ -204,7 +200,7 @@ serve(async (req) => {
               projection_90d: { stability_delta: clamp(sc.stability_delta_90d, -100, 100, 0), estimate_type: "simulated_not_observed" },
               confidence: clamp(sc.confidence, 0, 80, 40) / 100,
               reasoning_md: `${String(sc.reasoning || "").slice(0, 3000)}\n\n> SIMULATION ONLY: hypothetical sensitivity estimate, not an observed or validated forecast.`,
-              created_by: userId !== "system" ? userId : null,
+              created_by: userId.startsWith("system-") ? null : userId,
             });
           }
         } else {
@@ -216,10 +212,10 @@ serve(async (req) => {
     await supabase.from("system_logs").insert({
       action: "adi_analysis",
       division: "adi",
-      user_id: userId !== "system" ? userId : null,
+      user_id: userId.startsWith("system-") ? null : userId,
       log_level: "info",
       result: `Generated ${decisions.length} shadow-mode decision analyses`,
-      metadata: { decisions_count: decisions.length, mode, execution_time_ms: Date.now() - start, output_class: "shadow_mode_hypothesis" },
+      metadata: { decisions_count: decisions.length, mode, execution_time_ms: Date.now() - start, output_class: "shadow_mode_hypothesis", auth_via: auth.via },
     });
 
     structuredLog("info", FN, `Complete: ${decisions.length} decisions`, undefined, start);
