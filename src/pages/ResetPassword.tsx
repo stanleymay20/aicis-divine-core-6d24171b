@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,28 @@ import { useToast } from "@/hooks/use-toast";
 import { Shield, Loader2 } from "lucide-react";
 
 const MIN_NEW_PASSWORD_LENGTH = 12;
+
+type RecoveryClaims = {
+  sub?: string;
+  amr?: Array<{ method?: string }>;
+};
+
+const decodeValidatedAccessTokenClaims = (accessToken: string): RecoveryClaims | null => {
+  const parts = accessToken.split(".");
+  if (parts.length !== 3) return null;
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const json = decodeURIComponent(
+      Array.from(atob(padded), (char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`).join(""),
+    );
+    const claims = JSON.parse(json) as RecoveryClaims;
+    return claims && typeof claims === "object" ? claims : null;
+  } catch {
+    return null;
+  }
+};
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -22,9 +45,7 @@ const ResetPassword = () => {
   useEffect(() => {
     let mounted = true;
     let verified = false;
-    const hash = new URLSearchParams(window.location.hash.slice(1));
-    const query = new URLSearchParams(window.location.search);
-    const carriesRecoveryIntent = hash.get("type") === "recovery" || query.get("type") === "recovery" || query.has("code");
+    let validationInFlight = false;
 
     const acceptRecovery = () => {
       if (!mounted) return;
@@ -33,14 +54,43 @@ const ResetPassword = () => {
       setIsRecovery(true);
     };
 
+    const validateRecoverySession = async (candidate: Session | null) => {
+      if (!candidate || validationInFlight || verified) return;
+      validationInFlight = true;
+
+      try {
+        // getSession() is storage-backed and is never sufficient authorization here.
+        // Server-confirm the exact access token first, then inspect only claims from
+        // that same validated token. A normal signed-in session cannot become a
+        // recovery session merely because the URL resembles a reset link.
+        const { data, error } = await supabase.auth.getUser(candidate.access_token);
+        if (!mounted || error || !data.user) return;
+
+        const claims = decodeValidatedAccessTokenClaims(candidate.access_token);
+        const recoveryBearing = Array.isArray(claims?.amr)
+          && claims.amr.some((entry) => entry?.method === "recovery");
+        const sameSubject = claims?.sub === data.user.id && candidate.user.id === data.user.id;
+
+        if (recoveryBearing && sameSubject) acceptRecovery();
+      } catch {
+        // Fail closed. The timeout below surfaces a neutral invalid/expired state.
+      } finally {
+        validationInFlight = false;
+      }
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" && session) acceptRecovery();
+      if ((event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") && session) {
+        // Keep auth network calls outside the auth callback itself.
+        window.setTimeout(() => void validateRecoverySession(session), 0);
+      }
     });
 
+    // This call only discovers a candidate session. It never grants reset access.
+    // The candidate must pass getUser() server validation and carry recovery AMR.
     void supabase.auth.getSession()
-      .then(({ data: { session }, error }) => {
-        if (!mounted || error || !session || !carriesRecoveryIntent) return;
-        acceptRecovery();
+      .then(({ data: { session } }) => {
+        if (mounted && session) void validateRecoverySession(session);
       })
       .catch(() => undefined);
 
@@ -57,7 +107,7 @@ const ResetPassword = () => {
 
   const handleReset = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (loading) return;
+    if (loading || !isRecovery) return;
 
     if (password !== confirmPassword) {
       toast({ title: "Passwords don't match", description: "Please ensure both passwords are identical.", variant: "destructive" });
@@ -75,6 +125,26 @@ const ResetPassword = () => {
 
     setLoading(true);
     try {
+      // Re-verify immediately before the credential mutation. Recovery access can
+      // expire or be revoked while the reset form is open.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Recovery session expired. Request a new reset link.");
+
+      const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
+      const claims = decodeValidatedAccessTokenClaims(session.access_token);
+      const recoveryBearing = Array.isArray(claims?.amr)
+        && claims.amr.some((entry) => entry?.method === "recovery");
+      const sameSubject = Boolean(
+        !userError
+        && userData.user
+        && claims?.sub === userData.user.id
+        && session.user.id === userData.user.id,
+      );
+
+      if (!recoveryBearing || !sameSubject) {
+        throw new Error("Recovery authorization is no longer valid. Request a new reset link.");
+      }
+
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
@@ -138,7 +208,7 @@ const ResetPassword = () => {
             <Input id="confirmPassword" type="password" autoComplete="new-password" placeholder="••••••••••••" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
           </div>
 
-          <Button type="submit" className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber" disabled={loading}>
+          <Button type="submit" className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber" disabled={loading || !isRecovery}>
             {loading ? "Updating..." : "Update Password"}
           </Button>
         </form>
