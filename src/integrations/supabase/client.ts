@@ -3,14 +3,22 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim();
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
+const configuredUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+const configuredPublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
 
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error(
-    'AICIS frontend authentication is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY for this deployment.',
-  );
-}
+/**
+ * Deployment truth flag. Authenticated AICIS surfaces must fail closed when the
+ * browser deployment has not been given its Supabase URL/publishable key, but a
+ * missing deployment secret must not crash the public landing page at module
+ * evaluation time.
+ */
+export const isSupabaseConfigured = Boolean(configuredUrl && configuredPublishableKey);
+
+// createClient requires syntactically valid values even when the deployment is
+// intentionally unconfigured. The .invalid origin is reserved and cannot resolve;
+// callers that require authentication check isSupabaseConfigured before use.
+const SUPABASE_URL = configuredUrl ?? 'https://aicis-unconfigured.invalid';
+const SUPABASE_PUBLISHABLE_KEY = configuredPublishableKey ?? 'aicis-unconfigured-public-key';
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
