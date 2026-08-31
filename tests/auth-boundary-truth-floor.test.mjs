@@ -12,13 +12,15 @@ const sharedAuthPath = new URL("../supabase/functions/_shared/auth.ts", import.m
 const crisisScanPath = new URL("../supabase/functions/crisis-scan/index.ts", import.meta.url);
 const adiAnalyzePath = new URL("../supabase/functions/adi-analyze/index.ts", import.meta.url);
 
-test("demo mode can never substitute for authentication", async () => {
+test("user-controlled demo state can never weaken authentication, role, or tier authorization", async () => {
   const source = await readFile(protectedRoutePath, "utf8");
 
   assert.match(source, /if \(!user\) \{/);
-  assert.doesNotMatch(source, /!user\s*&&\s*!isDemo/);
-  assert.doesNotMatch(source, /if \(needsRoleCheck && isDemo\)/);
-  assert.match(source, /Authentication is an absolute boundary/);
+  assert.match(source, /const needsTierCheck = requiredTier !== "free"/);
+  assert.match(source, /roleMeetsRequirement\(roles, requiredRole\)/);
+  assert.doesNotMatch(source, /useDemoMode/);
+  assert.doesNotMatch(source, /\bisDemo\b/);
+  assert.match(source, /User-controlled presentation state[\s\S]*may never weaken any of them/);
 });
 
 test("persisted and newly issued sessions are server-verified before protected UI unlocks", async () => {
