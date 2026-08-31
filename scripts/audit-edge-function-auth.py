@@ -7,6 +7,11 @@ verification. Therefore every Edge Function that can obtain
 SUPABASE_SERVICE_ROLE_KEY must establish an explicit trust boundary in-function
 (user/admin/tier auth, cron secret, API-key validation, webhook/signature
 verification, etc.).
+
+This audit also rejects known dangerous control-flow patterns. A file does not
+become safe merely because it contains getUser() somewhere: missing credentials
+must never select a privileged execution path, and secrets must never be
+validated with substring matching.
 """
 
 from __future__ import annotations
@@ -44,6 +49,23 @@ WEBHOOK_OR_SIGNATURE_MARKERS = (
     "x-webhook-signature",
     "verifySignature(",
     "verifyHmac(",
+)
+
+# These patterns are authorization defects even if another auth marker appears
+# elsewhere in the same source file.
+DANGEROUS_PRIVILEGED_AUTH_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "missing_authorization_selects_system_path",
+        re.compile(r"\bisSystemCall\s*=\s*[^;\n]*!\s*authHeader", re.I),
+    ),
+    (
+        "authorization_secret_substring_match",
+        re.compile(
+            r"\b(?:authHeader|authorization)\s*\.\s*(?:includes|contains)\s*\(\s*"
+            r"(?:serviceRoleKey|service_role_key|anonKey|anon_key)",
+            re.I,
+        ),
+    ),
 )
 
 
@@ -102,12 +124,21 @@ def has_caller_validation(source: str) -> bool:
     )
 
 
+def dangerous_auth_findings(source: str) -> list[str]:
+    return [
+        finding
+        for finding, pattern in DANGEROUS_PRIVILEGED_AUTH_PATTERNS
+        if pattern.search(source)
+    ]
+
+
 def main() -> int:
     config = parse_config(CONFIG.read_text(encoding="utf-8"))
     function_paths = sorted(FUNCTIONS.glob("*/index.ts"))
 
     privileged_guarded: list[str] = []
     privileged_unguarded: list[str] = []
+    privileged_dangerous: list[str] = []
     nonprivileged_public_or_gateway: list[str] = []
     verify_jwt_false_privileged: list[str] = []
     verify_jwt_true_or_default_privileged: list[str] = []
@@ -124,6 +155,9 @@ def main() -> int:
                 verify_jwt_true_or_default_privileged.append(name)
             else:
                 verify_jwt_false_privileged.append(name)
+
+            findings = dangerous_auth_findings(source)
+            privileged_dangerous.extend(f"{name}:{finding}" for finding in findings)
 
             if guarded:
                 privileged_guarded.append(name)
@@ -142,6 +176,7 @@ def main() -> int:
     print(f"service_role_functions={len(privileged_guarded) + len(privileged_unguarded)}")
     print(f"privileged_guarded={len(privileged_guarded)}")
     print(f"privileged_unguarded={len(privileged_unguarded)}")
+    print(f"privileged_dangerous_patterns={len(privileged_dangerous)}")
     print(f"service_role_verify_jwt_false={len(verify_jwt_false_privileged)}")
     print(f"service_role_verify_jwt_true_or_default={len(verify_jwt_true_or_default_privileged)}")
     print(f"verify_jwt_false_nonprivileged_review={len(nonprivileged_public_or_gateway)}")
@@ -149,6 +184,8 @@ def main() -> int:
 
     if privileged_guarded:
         print("guarded=" + ",".join(privileged_guarded))
+    if privileged_dangerous:
+        print("HIGH_RISK_PRIVILEGED_AUTH_PATTERN=" + ",".join(privileged_dangerous))
     if nonprivileged_public_or_gateway:
         print("public_or_nonprivileged=" + ",".join(nonprivileged_public_or_gateway))
     if configured_missing_source:
@@ -156,13 +193,15 @@ def main() -> int:
 
     if privileged_unguarded:
         print("HIGH_RISK_PRIVILEGED_UNGUARDED=" + ",".join(privileged_unguarded))
+
+    if privileged_unguarded or privileged_dangerous:
         print(
-            "FAIL: service-role Edge Functions require explicit caller validation; "
-            "gateway verify_jwt alone is not a privileged authorization boundary."
+            "FAIL: service-role Edge Functions require fail-closed caller validation; "
+            "auth markers cannot excuse missing-credential privileged paths or substring secret checks."
         )
         return 1
 
-    print("PASS: every service-role Edge Function has an explicit caller trust boundary.")
+    print("PASS: every service-role Edge Function has an explicit fail-closed caller trust boundary.")
     return 0
 
 
