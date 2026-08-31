@@ -58,17 +58,18 @@ export const ProtectedRoute = ({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Demo mode may bypass commercial tier checks for read-only previews, but it
-  // must never grant operational/admin privileges.
+  // Authentication is an absolute boundary. Demo mode is user-controlled UI
+  // state and may never create an authenticated principal. Once authenticated,
+  // demo mode may relax commercial tier checks for read-only previews only.
   const needsTierCheck = requiredTier !== "free" && !isDemo;
   const needsRoleCheck = Boolean(requiredRole);
-  const checkingTier = needsTierCheck && tierLoading;
-  const checkingRole = needsRoleCheck && !isDemo && rolesLoading;
+  const checkingTier = Boolean(user) && needsTierCheck && tierLoading;
+  const checkingRole = Boolean(user) && needsRoleCheck && rolesLoading;
 
   useEffect(() => {
     if (authLoading || unavailable) return;
 
-    if (!user && !isDemo) {
+    if (!user) {
       navigate("/auth", {
         replace: true,
         state: { from: `${location.pathname}${location.search}${location.hash}` },
@@ -76,13 +77,8 @@ export const ProtectedRoute = ({
       return;
     }
 
-    if (needsRoleCheck && isDemo) {
-      navigate("/command-center", { replace: true });
-      return;
-    }
-
     if (needsRoleCheck && !rolesLoading && !roleMeetsRequirement(roles, requiredRole)) {
-      navigate("/command-center", {
+      navigate("/world", {
         replace: true,
         state: { accessDenied: true, requiredRole, from: location.pathname },
       });
@@ -103,7 +99,6 @@ export const ProtectedRoute = ({
     authLoading,
     unavailable,
     user,
-    isDemo,
     needsTierCheck,
     needsRoleCheck,
     tierLoading,
@@ -126,15 +121,15 @@ export const ProtectedRoute = ({
           <Shield className="h-10 w-10 text-primary mx-auto" />
           <h1 className="text-xl font-semibold text-foreground">Authentication is temporarily unavailable</h1>
           <p className="text-sm text-muted-foreground">
-            Your session was preserved. Retry when the secure backend is available.
+            Access is paused because AICIS cannot currently verify the authentication service. Your local session has not been promoted to trusted access.
           </p>
           <Button type="button" onClick={() => window.location.reload()}>Retry authentication</Button>
         </div>
       </div>
     );
   }
-  if (!user && !isDemo) return null;
-  if (needsRoleCheck && (isDemo || !roleMeetsRequirement(roles, requiredRole))) return null;
+  if (!user) return null;
+  if (needsRoleCheck && !roleMeetsRequirement(roles, requiredRole)) return null;
   if (needsTierCheck && !tierMeetsRequirement(tier, requiredTier)) return null;
 
   return <>{children}</>;
