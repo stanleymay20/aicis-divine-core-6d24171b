@@ -54,6 +54,11 @@ export default function WorldWorkspace() {
         <section className="relative min-h-[48vh] overflow-hidden border-b border-border/60 xl:min-h-0 xl:border-b-0 xl:border-r">
           <GlobalMap
             className="h-full min-h-[48vh] xl:min-h-0"
+            showSelectionOverlay={false}
+            showQuickActions={false}
+            showLegend={false}
+            showStatusBadge={false}
+            compactControls
             onCountrySelect={(country) => {
               setSelectedCountry(country);
               setActiveTab("Summary");
@@ -85,9 +90,12 @@ export default function WorldWorkspace() {
                 </p>
               </div>
               {selectedCountry?.overall_score != null && (
-                <Badge variant={selectedCountry.overall_score >= 60 ? "destructive" : "outline"} className="shrink-0 font-mono text-[10px]">
-                  {Math.round(selectedCountry.overall_score)}/100
-                </Badge>
+                <div className="shrink-0 text-right">
+                  <div className="mb-1 text-[8px] uppercase tracking-[0.12em] text-muted-foreground">Vulnerability</div>
+                  <Badge variant={selectedCountry.overall_score >= 60 ? "destructive" : "outline"} className="font-mono text-[10px]" title="Latest mapped vulnerability score">
+                    {Math.round(selectedCountry.overall_score)}/100
+                  </Badge>
+                </div>
               )}
             </div>
           </div>
