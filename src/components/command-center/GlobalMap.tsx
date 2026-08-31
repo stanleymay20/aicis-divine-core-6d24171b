@@ -40,10 +40,27 @@ interface GlobalMapProps {
   onCountrySelect?: (country: CountryData) => void;
   className?: string;
   isMobile?: boolean;
+  showSelectionOverlay?: boolean;
+  showQuickActions?: boolean;
+  showLegend?: boolean;
+  showStatusBadge?: boolean;
+  compactControls?: boolean;
 }
 
 export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
-  ({ onCountrySelect, className, isMobile }, ref) => {
+  (
+    {
+      onCountrySelect,
+      className,
+      isMobile,
+      showSelectionOverlay = true,
+      showQuickActions = true,
+      showLegend = true,
+      showStatusBadge = true,
+      compactControls = false,
+    },
+    ref,
+  ) => {
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<maplibregl.Map | null>(null);
     const [mapLoaded, setMapLoaded] = useState(false);
@@ -58,13 +75,15 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
       map: map.current,
       isMapLoaded: mapLoaded,
       onIncidentClick: (incident) => {
-        setSelectedCountry({
+        const selected: CountryData = {
           country: incident.country || "Unknown",
           iso3: "",
           latitude: incident.latitude,
           longitude: incident.longitude,
           overall_score: incident.severity,
-        });
+        };
+        setSelectedCountry(selected);
+        onCountrySelect?.(selected);
       },
     });
 
@@ -203,11 +222,11 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           setSelectedCountry(data);
           onCountrySelect?.(data);
           map.current?.flyTo({
-  center: [data.longitude, data.latitude],
-  zoom: 5,
-  duration: 2000,
-  essential: true,
-});
+            center: [data.longitude, data.latitude],
+            zoom: 5,
+            duration: 2000,
+            essential: true,
+          });
         });
 
         new maplibregl.Marker({ element: el })
@@ -292,14 +311,14 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
     }));
 
     return (
-      <div className={cn("relative w-full h-full", className)}>
+      <div className={cn("relative h-full w-full", className)}>
         <div ref={mapContainer} className="absolute inset-0" />
 
         {isSpinning && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/40 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-4">
               <Globe
-                className="w-16 h-16 text-primary animate-spin"
+                className="h-16 w-16 animate-spin text-primary"
                 style={{ animationDuration: "0.8s" }}
               />
               <span className="text-sm font-orbitron text-primary animate-pulse">
@@ -311,14 +330,18 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
 
         <div
           className={cn(
-            "absolute flex flex-col gap-1 z-20",
-            isMobile ? "bottom-24 right-2" : "bottom-28 left-4",
+            "absolute z-20 flex flex-col gap-1",
+            isMobile
+              ? "bottom-20 right-2"
+              : compactControls
+                ? "bottom-3 left-3"
+                : "bottom-28 left-4",
           )}
         >
           <Button
             variant="secondary"
             size="icon"
-            className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
+            className={cn("border border-primary/20 bg-card/90 backdrop-blur-sm", compactControls ? "h-8 w-8" : "h-9 w-9")}
             onClick={() => map.current?.zoomIn()}
             aria-label="Zoom in"
           >
@@ -327,7 +350,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           <Button
             variant="secondary"
             size="icon"
-            className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
+            className={cn("border border-primary/20 bg-card/90 backdrop-blur-sm", compactControls ? "h-8 w-8" : "h-9 w-9")}
             onClick={() => map.current?.zoomOut()}
             aria-label="Zoom out"
           >
@@ -336,7 +359,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           <Button
             variant="secondary"
             size="icon"
-            className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
+            className={cn("border border-primary/20 bg-card/90 backdrop-blur-sm", compactControls ? "h-8 w-8" : "h-9 w-9")}
             onClick={resetView}
             aria-label="Reset map view"
           >
@@ -345,7 +368,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           <Button
             variant={activeLayer === "networks" ? "default" : "secondary"}
             size="icon"
-            className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
+            className={cn("border border-primary/20 bg-card/90 backdrop-blur-sm", compactControls ? "h-8 w-8" : "h-9 w-9")}
             onClick={() =>
               setActiveLayer((layer) => (layer === "networks" ? "vulnerability" : "networks"))
             }
@@ -355,11 +378,11 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           </Button>
           {!isMobile && (
             <>
-              <div className="w-full h-px bg-border my-1" />
+              <div className="my-1 h-px w-full bg-border" />
               <Button
                 variant={showSatellite ? "default" : "secondary"}
                 size="icon"
-                className="h-9 w-9 bg-card/90 backdrop-blur-sm border border-primary/20"
+                className={cn("border border-primary/20 bg-card/90 backdrop-blur-sm", compactControls ? "h-8 w-8" : "h-9 w-9")}
                 onClick={() => setShowSatellite((visible) => !visible)}
                 aria-label="Toggle satellite imagery"
               >
@@ -369,8 +392,8 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           )}
         </div>
 
-        {!isMobile && (
-          <div className="absolute top-20 left-4 z-20 bg-card/90 backdrop-blur-sm rounded-lg border border-primary/20 p-2 max-w-[340px]">
+        {!isMobile && showQuickActions && (
+          <div className="absolute left-4 top-20 z-20 max-w-[340px] rounded-lg border border-primary/20 bg-card/90 p-2 backdrop-blur-sm">
             <QuickActions
               activeLayer={activeLayer}
               onAction={(action) => {
@@ -385,8 +408,8 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
         )}
 
         {isMobile && activeLayer === "networks" && !selectedCountry && (
-          <div className="absolute top-3 left-3 z-20">
-            <Badge variant="secondary" className="bg-card/90 backdrop-blur-sm border-primary/20 gap-1.5">
+          <div className="absolute left-3 top-3 z-20">
+            <Badge variant="secondary" className="gap-1.5 border-primary/20 bg-card/90 backdrop-blur-sm">
               {networkLayer.loading ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
@@ -399,11 +422,14 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           </div>
         )}
 
-        {!isMobile && (
-          <div className="absolute bottom-28 right-4 p-3 bg-card/90 backdrop-blur-sm rounded-lg border border-primary/20 z-20 w-64">
-            <div className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+        {!isMobile && showLegend && (
+          <div className={cn(
+            "absolute right-4 z-20 w-64 rounded-lg border border-primary/20 bg-card/90 p-3 backdrop-blur-sm",
+            compactControls ? "bottom-3" : "bottom-28",
+          )}>
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
               <Layers className="h-3 w-3 text-primary" />
-              {activeLayer === "networks" ? "Network Layer" : "Data Layers"}
+              {activeLayer === "networks" ? "Network layer" : "Vulnerability layer"}
             </div>
 
             {activeLayer === "networks" ? (
@@ -431,8 +457,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                     No sampled measured entity relationships are currently projectable geographically.
                   </div>
                 )}
-
-                <div className="pt-1 border-t border-border space-y-1.5">
+                <div className="space-y-1.5 border-t border-border pt-1">
                   {[
                     { color: "bg-amber-500", label: "Borders" },
                     { color: "bg-violet-400", label: "Trade" },
@@ -447,13 +472,12 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                     </div>
                   ))}
                 </div>
-
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-slate-100 border border-slate-900" />
+                  <div className="h-2 w-2 rounded-full border border-slate-900 bg-slate-100" />
                   <span>Destination; faded = country-level placement</span>
                 </div>
                 {selectedCountry?.iso3 && (
-                  <div className="pt-1 border-t border-border flex justify-between gap-2">
+                  <div className="flex justify-between gap-2 border-t border-border pt-1">
                     <span>{selectedCountry.country} connections</span>
                     <span className="font-mono text-foreground">{networkLayer.selectedConnections}</span>
                   </div>
@@ -464,8 +488,8 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
               </div>
             ) : (
               <div className="space-y-1.5">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
-                  Risk Level
+                <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Vulnerability score
                 </div>
                 {[
                   { color: "hsl(142 76% 45%)", label: "Low (0-30)" },
@@ -474,16 +498,16 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
                   { color: "hsl(0 84% 60%)", label: "Critical (71+)" },
                 ].map(({ color, label }) => (
                   <div key={label} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ background: color }} />
+                    <div className="h-3 w-3 rounded-full" style={{ background: color }} />
                     <span className="text-[10px] text-muted-foreground">{label}</span>
                   </div>
                 ))}
-                <div className="w-full h-px bg-border my-2" />
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">
+                <div className="my-2 h-px w-full bg-border" />
+                <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                   Incidents
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
+                  <div className="h-3 w-3 animate-pulse rounded-full bg-destructive" />
                   <span className="text-[10px] text-muted-foreground">Live ({incidentCount})</span>
                 </div>
               </div>
@@ -491,14 +515,14 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           </div>
         )}
 
-        {selectedCountry && !isSpinning && (
+        {showSelectionOverlay && selectedCountry && !isSpinning && (
           <div className={cn(
-            "absolute top-4 right-4 w-72 p-4 bg-card/95 backdrop-blur-sm rounded-lg border border-primary/20 z-20 animate-fade-in",
+            "absolute right-4 top-4 z-20 w-72 animate-fade-in rounded-lg border border-primary/20 bg-card/95 p-4 backdrop-blur-sm",
             isMobile && "max-w-[calc(100%-2rem)]",
           )}>
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3 flex items-center justify-between">
               <h3 className="font-orbitron font-bold">{selectedCountry.country}</h3>
-              <Badge>{selectedCountry.iso3}</Badge>
+              {selectedCountry.iso3 && <Badge>{selectedCountry.iso3}</Badge>}
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -509,7 +533,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
               </div>
               {selectedCountry.overall_score !== undefined && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Risk Score</span>
+                  <span className="text-muted-foreground">Vulnerability score</span>
                   <Badge variant={selectedCountry.overall_score >= 60 ? "destructive" : "default"}>
                     {selectedCountry.overall_score.toFixed(0)}/100
                   </Badge>
@@ -525,7 +549,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
             <Button
               variant="ghost"
               size="sm"
-              className="w-full mt-3"
+              className="mt-3 w-full"
               onClick={() => setSelectedCountry(null)}
             >
               Close
@@ -533,25 +557,28 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           </div>
         )}
 
-        {!isMobile && (
-          <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20">
+        {!isMobile && showStatusBadge && (
+          <div className={cn(
+            "absolute left-1/2 z-20 -translate-x-1/2",
+            compactControls ? "bottom-3" : "bottom-28",
+          )}>
             <Badge
               variant="secondary"
-              className="bg-card/90 backdrop-blur-sm border-primary/20 py-1.5 px-3"
+              className="border-primary/20 bg-card/90 px-3 py-1.5 backdrop-blur-sm"
             >
-              <Globe className="h-3 w-3 mr-1.5" />
+              <Globe className="mr-1.5 h-3 w-3" />
               <span className="font-orbitron">{ALL_COUNTRIES.length}</span>
-              <span className="text-muted-foreground mx-1">countries</span>
-              <span className="w-px h-3 bg-border mx-2" />
-              <Crosshair className="h-3 w-3 mr-1.5 text-success" />
+              <span className="mx-1 text-muted-foreground">countries</span>
+              <span className="mx-2 h-3 w-px bg-border" />
+              <Crosshair className="mr-1.5 h-3 w-3 text-success" />
               <span className="font-orbitron">{countryData.length}</span>
-              <span className="text-muted-foreground ml-1">monitored</span>
+              <span className="ml-1 text-muted-foreground">monitored</span>
               {activeLayer === "networks" && (
                 <>
-                  <span className="w-px h-3 bg-border mx-2" />
-                  <Network className="h-3 w-3 mr-1.5 text-primary" />
+                  <span className="mx-2 h-3 w-px bg-border" />
+                  <Network className="mr-1.5 h-3 w-3 text-primary" />
                   <span className="font-orbitron">{networkLayer.projectedEdges}</span>
-                  <span className="text-muted-foreground ml-1">displayed links</span>
+                  <span className="ml-1 text-muted-foreground">displayed links</span>
                 </>
               )}
             </Badge>
