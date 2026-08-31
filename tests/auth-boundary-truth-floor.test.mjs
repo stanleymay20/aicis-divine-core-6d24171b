@@ -4,7 +4,7 @@ import test from "node:test";
 
 const protectedRoutePath = new URL("../src/components/auth/ProtectedRoute.tsx", import.meta.url);
 const authPagePath = new URL("../src/pages/Auth.tsx", import.meta.url);
-const authProviderPath = new URL("../src/hooks/useAuth.tsx", import.meta.url);
+const authProviderPath = new URL("../src/components/auth/AuthProvider.tsx", import.meta.url);
 const resetPath = new URL("../src/pages/ResetPassword.tsx", import.meta.url);
 
 test("demo mode can never substitute for authentication", async () => {
@@ -40,6 +40,7 @@ test("auth redirects fail to the World workspace and reject suspicious external-
   assert.match(source, /return "\/world"/);
   assert.match(source, /value\.startsWith\("\/\/"\)/);
   assert.match(source, /value\.includes\("\\\\"\)/);
+  assert.match(source, /containsControlCharacter\(value\)/);
 });
 
 test("password recovery requires a recovery-bearing validated session and closes it after reset", async () => {
