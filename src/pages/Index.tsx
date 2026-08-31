@@ -10,15 +10,15 @@ const Index = () => {
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        navigate('/auth', { replace: true });
+        navigate("/auth", { replace: true });
       } else {
-        // Enterprise landing: authenticated users now enter the full command center.
-        navigate('/command-center', { replace: true });
+        // Branch UX reconstruction: authenticated users enter the map-first World workspace.
+        // The legacy command center remains available at /command-center.
+        navigate("/world", { replace: true });
       }
     }
   }, [user, loading, navigate]);
 
-  // Always show loading spinner — this page is a redirect gate
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
@@ -28,8 +28,8 @@ const Index = () => {
             <Globe2 className="h-7 w-7 text-primary-foreground" />
           </div>
         </div>
-        <div className="text-foreground text-lg font-semibold">Loading AICIS Command Center…</div>
-        <div className="text-muted-foreground text-sm">Preparing enterprise planetary intelligence</div>
+        <div className="text-foreground text-lg font-semibold">Loading AICIS World…</div>
+        <div className="text-muted-foreground text-sm">Preparing the planetary intelligence workspace</div>
       </div>
     </div>
   );
