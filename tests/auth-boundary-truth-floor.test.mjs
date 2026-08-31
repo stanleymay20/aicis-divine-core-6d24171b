@@ -7,6 +7,7 @@ const authPagePath = new URL("../src/pages/Auth.tsx", import.meta.url);
 const authProviderPath = new URL("../src/components/auth/AuthProvider.tsx", import.meta.url);
 const supabaseClientPath = new URL("../src/integrations/supabase/client.ts", import.meta.url);
 const resetPath = new URL("../src/pages/ResetPassword.tsx", import.meta.url);
+const tokenClaimsPath = new URL("../src/lib/authTokenClaims.ts", import.meta.url);
 const sharedAuthPath = new URL("../supabase/functions/_shared/auth.ts", import.meta.url);
 const crisisScanPath = new URL("../supabase/functions/crisis-scan/index.ts", import.meta.url);
 const adiAnalyzePath = new URL("../supabase/functions/adi-analyze/index.ts", import.meta.url);
@@ -20,13 +21,27 @@ test("demo mode can never substitute for authentication", async () => {
   assert.match(source, /Authentication is an absolute boundary/);
 });
 
-test("initial persisted sessions are server-verified before protected UI unlocks", async () => {
+test("persisted and newly issued sessions are server-verified before protected UI unlocks", async () => {
   const source = await readFile(authProviderPath, "utf8");
 
   assert.match(source, /getUser\(candidate\.access_token\)/);
   assert.match(source, /event === "INITIAL_SESSION"/);
   assert.match(source, /validateInitialSession\(nextSession\)/);
+  assert.match(source, /event === "SIGNED_IN"/);
+  assert.match(source, /beginValidation\(nextSession, true\)/);
+  assert.match(source, /claims\?\.sub === data\.user\.id/);
   assert.match(source, /signOut\(\{ scope: "local" \}\)/);
+});
+
+test("recovery credentials are isolated from normal application authorization", async () => {
+  const source = await readFile(authProviderPath, "utf8");
+
+  assert.match(source, /event === "PASSWORD_RECOVERY"/);
+  assert.match(source, /isolateRecoverySession\(\)/);
+  assert.match(source, /tokenClaimsContainAuthMethod\(claims, "recovery"\)/);
+  assert.match(source, /setSession\(null\)/);
+  assert.match(source, /setUser\(null\)/);
+  assert.doesNotMatch(source, /PASSWORD_RECOVERY"\]\s*\.includes\(event\)[\s\S]*applyTrustedSession/);
 });
 
 test("browser auth uses PKCE and URL session detection", async () => {
@@ -55,14 +70,21 @@ test("auth redirects fail to the World workspace and reject suspicious external-
   assert.match(source, /containsControlCharacter\(value\)/);
 });
 
+test("JWT claims decoder explicitly requires prior token validation", async () => {
+  const source = await readFile(tokenClaimsPath, "utf8");
+
+  assert.match(source, /Callers MUST cryptographically\/server-validate the exact token first/);
+  assert.match(source, /tokenClaimsContainAuthMethod/);
+});
+
 test("password recovery requires a server-validated recovery-bearing token and rechecks before mutation", async () => {
   const source = await readFile(resetPath, "utf8");
 
   assert.match(source, /PASSWORD_RECOVERY/);
   assert.match(source, /getSession\(\)/);
   assert.match(source, /getUser\(candidate\.access_token\)/);
-  assert.match(source, /decodeValidatedAccessTokenClaims\(candidate\.access_token\)/);
-  assert.match(source, /entry\?\.method === "recovery"/);
+  assert.match(source, /decodeAuthTokenClaims\(candidate\.access_token\)/);
+  assert.match(source, /tokenClaimsContainAuthMethod\(claims, "recovery"\)/);
   assert.match(source, /claims\?\.sub === data\.user\.id/);
   assert.match(source, /getUser\(session\.access_token\)/);
   assert.match(source, /if \(!recoveryBearing \|\| !sameSubject\)/);
