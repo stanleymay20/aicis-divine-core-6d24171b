@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthContext } from "@/contexts/AuthContext";
+import { decodeAuthTokenClaims, tokenClaimsContainAuthMethod } from "@/lib/authTokenClaims";
 
 const isNetworkError = (error: unknown) =>
   error instanceof TypeError ||
@@ -18,6 +19,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     let mounted = true;
+    let validationGeneration = 0;
 
     const clearSession = () => {
       if (!mounted) return;
@@ -27,24 +29,44 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     };
 
-    const applyTrustedSession = (nextSession: Session | null) => {
+    const isolateRecoverySession = () => {
       if (!mounted) return;
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
+      // Supabase keeps the recovery credential internally so /reset-password can
+      // use it, but the application AuthContext deliberately exposes no normal
+      // user/session. Recovery possession is not general AICIS authorization.
+      setSession(null);
+      setUser(null);
       setUnavailable(false);
       setLoading(false);
     };
 
-    const validateInitialSession = async (candidate: Session | null) => {
-      if (!candidate) {
-        initialValidationComplete.current = true;
+    const applyTrustedSession = (candidate: Session, verifiedUser: User) => {
+      if (!mounted) return;
+      setSession({ ...candidate, user: verifiedUser });
+      setUser(verifiedUser);
+      setUnavailable(false);
+      setLoading(false);
+    };
+
+    const rejectInvalidSession = async () => {
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } finally {
         clearSession();
+      }
+    };
+
+    const validateSessionCandidate = async (candidate: Session | null, generation: number) => {
+      if (!candidate) {
+        if (mounted && generation === validationGeneration) clearSession();
         return;
       }
 
       try {
+        // Never trust the user object loaded from browser storage. Validate the
+        // exact access token with the Auth server before exposing it to routes.
         const { data, error } = await supabase.auth.getUser(candidate.access_token);
-        if (!mounted) return;
+        if (!mounted || generation !== validationGeneration) return;
 
         if (error || !data.user) {
           if (isNetworkError(error)) {
@@ -53,16 +75,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             return;
           }
 
-          initialValidationComplete.current = true;
-          await supabase.auth.signOut({ scope: "local" });
-          clearSession();
+          await rejectInvalidSession();
           return;
         }
 
-        initialValidationComplete.current = true;
-        applyTrustedSession({ ...candidate, user: data.user });
+        const claims = decodeAuthTokenClaims(candidate.access_token);
+        const sameSubject = claims?.sub === data.user.id && candidate.user.id === data.user.id;
+        if (!sameSubject) {
+          await rejectInvalidSession();
+          return;
+        }
+
+        if (tokenClaimsContainAuthMethod(claims, "recovery")) {
+          isolateRecoverySession();
+          return;
+        }
+
+        applyTrustedSession(candidate, data.user);
       } catch (error) {
-        if (!mounted) return;
+        if (!mounted || generation !== validationGeneration) return;
 
         if (isNetworkError(error)) {
           setUnavailable(true);
@@ -70,27 +101,55 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
-        initialValidationComplete.current = true;
-        await supabase.auth.signOut({ scope: "local" });
-        clearSession();
+        await rejectInvalidSession();
       }
+    };
+
+    const beginValidation = (candidate: Session | null, clearWhileValidating: boolean) => {
+      const generation = ++validationGeneration;
+      if (clearWhileValidating && mounted) {
+        setSession(null);
+        setUser(null);
+        setUnavailable(false);
+        setLoading(true);
+      }
+      void validateSessionCandidate(candidate, generation);
+    };
+
+    const validateInitialSession = (candidate: Session | null) => {
+      initialValidationComplete.current = true;
+      beginValidation(candidate, true);
     };
 
     const handleAuthChange = (event: AuthChangeEvent, nextSession: Session | null) => {
       if (event === "INITIAL_SESSION") {
-        if (!initialValidationComplete.current) void validateInitialSession(nextSession);
+        if (!initialValidationComplete.current) validateInitialSession(nextSession);
         return;
       }
 
       if (event === "SIGNED_OUT") {
         initialValidationComplete.current = true;
+        validationGeneration += 1;
         clearSession();
         return;
       }
 
-      if (["SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED", "PASSWORD_RECOVERY"].includes(event)) {
+      if (event === "PASSWORD_RECOVERY") {
         initialValidationComplete.current = true;
-        applyTrustedSession(nextSession);
+        validationGeneration += 1;
+        isolateRecoverySession();
+        return;
+      }
+
+      if (event === "SIGNED_IN") {
+        initialValidationComplete.current = true;
+        beginValidation(nextSession, true);
+        return;
+      }
+
+      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+        initialValidationComplete.current = true;
+        beginValidation(nextSession, false);
       }
     };
 
@@ -100,10 +159,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (initialValidationComplete.current) return;
       void supabase.auth.getSession()
         .then(({ data: { session: candidate } }) => {
-          if (!initialValidationComplete.current) void validateInitialSession(candidate);
+          if (!initialValidationComplete.current) validateInitialSession(candidate);
         })
         .catch((error) => {
           if (!mounted) return;
+          initialValidationComplete.current = true;
           setUnavailable(isNetworkError(error));
           setLoading(false);
         });
@@ -112,23 +172,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible" || !initialValidationComplete.current) return;
 
-      void supabase.auth.getUser()
-        .then(({ data, error }) => {
+      // getSession only discovers the current candidate. validateSessionCandidate
+      // server-confirms it and preserves the recovery-session isolation boundary.
+      void supabase.auth.getSession()
+        .then(({ data: { session: candidate } }) => {
           if (!mounted) return;
-
-          if (error || !data.user) {
-            if (isNetworkError(error)) {
-              setUnavailable(true);
-              return;
-            }
-
-            void supabase.auth.signOut({ scope: "local" });
-            clearSession();
-            return;
-          }
-
-          setUser(data.user);
-          setUnavailable(false);
+          beginValidation(candidate, false);
         })
         .catch((error) => {
           if (mounted && isNetworkError(error)) setUnavailable(true);
@@ -139,6 +188,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return () => {
       mounted = false;
+      validationGeneration += 1;
       window.clearTimeout(bootstrapTimer);
       subscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
