@@ -162,7 +162,7 @@ jobs:
           [ "${{ steps.live_cron_parity.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.edge_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.edge_portability.outcome }}" = "success" ] || FAILED=1
-          [ "${{ steps.deferred_auth.outcome.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.deferred_auth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.secret_inventory.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.migration_views.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.prediction_truth_floor.outcome }}" = "success" ] || FAILED=1
