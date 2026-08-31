@@ -214,12 +214,12 @@ async function gatherContext(supabase: any, query: string): Promise<QueryContext
     vulnerabilities = result.data || [];
   }
 
-  const locationTerms = countries.flatMap((c: Row) => [c.country_name, c.name, c.iso3]).filter(Boolean).map((x: any) => String(x).toLowerCase());
+  const locationTerms: string[] = countries.flatMap((c: Row) => [c.country_name, c.name, c.iso3]).filter(Boolean).map((x: unknown) => String(x).toLowerCase());
   const filterRelevant = (rows: Row[]) => {
     if (locationTerms.length === 0) return rows;
     return rows.filter((row) => {
       const haystack = JSON.stringify(row).toLowerCase();
-      return locationTerms.some((term) => haystack.includes(term));
+      return locationTerms.some((term: string) => haystack.includes(term));
     });
   };
 

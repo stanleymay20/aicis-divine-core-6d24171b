@@ -19,8 +19,14 @@ function fromB64(value: string): Uint8Array {
   return bytes;
 }
 
+function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 async function sha256Hex(data: Uint8Array): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", asArrayBuffer(data)));
   return Array.from(digest).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -104,17 +110,17 @@ serve(async (req) => {
 
     const publicKey = await crypto.subtle.importKey(
       "raw",
-      fromB64(keyRow.public_key),
+      asArrayBuffer(fromB64(keyRow.public_key)),
       "Ed25519",
       false,
       ["verify"],
     );
     const signatureBytes = fromB64(signatureB64);
-    let valid = await crypto.subtle.verify("Ed25519", publicKey, signatureBytes, currentBytes);
+    let valid = await crypto.subtle.verify("Ed25519", publicKey, asArrayBuffer(signatureBytes), asArrayBuffer(currentBytes));
     let signatureScheme = CURRENT_SCHEME;
 
     if (!valid && legacyPayloadBytes) {
-      valid = await crypto.subtle.verify("Ed25519", publicKey, signatureBytes, legacyPayloadBytes);
+      valid = await crypto.subtle.verify("Ed25519", publicKey, asArrayBuffer(signatureBytes), asArrayBuffer(legacyPayloadBytes));
       if (valid) signatureScheme = LEGACY_SCHEME;
     }
 
