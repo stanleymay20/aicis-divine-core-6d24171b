@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,12 +11,28 @@ import { useAuth } from "@/hooks/useAuth";
 
 const NEXT_PATH_KEY = "aicis.auth.next";
 const GOOGLE_OAUTH_ENABLED = import.meta.env.VITE_ENABLE_GOOGLE_OAUTH === "true";
+const MIN_NEW_PASSWORD_LENGTH = 12;
+
+const containsControlCharacter = (value: string) =>
+  Array.from(value).some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
 
 const safeNextPath = (value: unknown): string => {
-  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
-    return "/command-center";
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\") ||
+    containsControlCharacter(value)
+  ) {
+    return "/world";
   }
-  return value === "/auth" || value.startsWith("/reset-password") ? "/command-center" : value;
+
+  const pathname = value.split(/[?#]/, 1)[0];
+  if (pathname === "/auth" || pathname.startsWith("/reset-password")) return "/world";
+  return value;
 };
 
 const authErrorMessage = (error: unknown) => {
@@ -50,50 +65,79 @@ const Auth = () => {
     }
   }, [authLoading, navigate, nextPath, user]);
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAuth = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (loading) return;
     setLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+
       if (isReset) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
           redirectTo: `${window.location.origin}/reset-password`,
         });
         if (error) throw error;
         toast({
-          title: "Password Reset Email Sent",
-          description: "Check your email for the reset link.",
+          title: "Password reset requested",
+          description: "If the address is eligible, a recovery link will arrive shortly.",
         });
         setIsReset(false);
+        setIsLogin(true);
       } else if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
         if (error) throw error;
-        toast({
-          title: "Access Granted",
-          description: "Welcome to AICIS",
-        });
+        toast({ title: "Access granted", description: "Welcome to AICIS" });
       } else {
+        if (password.length < MIN_NEW_PASSWORD_LENGTH) {
+          throw new Error(`New passwords must be at least ${MIN_NEW_PASSWORD_LENGTH} characters.`);
+        }
         const { error } = await supabase.auth.signUp({
-          email,
+          email: normalizedEmail,
           password,
           options: {
-            data: { full_name: fullName },
+            data: { full_name: fullName.trim() },
             emailRedirectTo: `${window.location.origin}/auth?next=${encodeURIComponent(nextPath)}`,
           },
         });
         if (error) throw error;
         toast({
-          title: "Registration Successful",
-          description: "Check your email to verify your account.",
+          title: "Registration received",
+          description: "Check your email for the verification link if confirmation is required.",
         });
       }
     } catch (error: unknown) {
       toast({
-        title: "Authentication Failed",
+        title: "Authentication failed",
         description: authErrorMessage(error),
         variant: "destructive",
       });
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (loading) return;
+    setLoading(true);
+
+    try {
+      sessionStorage.setItem(NEXT_PATH_KEY, nextPath);
+      const redirectTo = `${window.location.origin}/auth?next=${encodeURIComponent(nextPath)}`;
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+      if (error) throw error;
+      if (!data.url) throw new Error("Google sign-in did not return a secure authorization URL.");
+      window.location.assign(data.url);
+    } catch (error: unknown) {
+      sessionStorage.removeItem(NEXT_PATH_KEY);
+      toast({
+        title: "Google sign-in failed",
+        description: authErrorMessage(error),
+        variant: "destructive",
+      });
       setLoading(false);
     }
   };
@@ -107,171 +151,62 @@ const Auth = () => {
 
       <Card className="w-full max-w-md p-8 bg-card/50 backdrop-blur-sm border-primary/20 relative z-10">
         <div className="flex flex-col items-center mb-6">
-          <img
-            src={aicisLogo}
-            alt="AICIS"
-            className="h-20 w-20 object-contain mb-4 drop-shadow-[0_0_20px_hsl(var(--primary))]"
-          />
-          <h1 className="text-3xl font-orbitron font-bold text-primary text-glow-cyber">
-            AICIS
-          </h1>
-          <p className="text-muted-foreground mt-2 text-center">
-            AI-Assisted Civilization Intelligence System
-          </p>
+          <img src={aicisLogo} alt="AICIS" className="h-20 w-20 object-contain mb-4 drop-shadow-[0_0_20px_hsl(var(--primary))]" />
+          <h1 className="text-3xl font-orbitron font-bold text-primary text-glow-cyber">AICIS</h1>
+          <p className="text-muted-foreground mt-2 text-center">AI-Assisted Civilization Intelligence System</p>
         </div>
 
         <form onSubmit={handleAuth} className="space-y-6">
           {!isLogin && !isReset && (
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name</Label>
-              <Input
-                id="fullName"
-                type="text"
-                placeholder="Your full name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required={!isLogin}
-                className="bg-input border-border"
-              />
+              <Input id="fullName" type="text" autoComplete="name" placeholder="Your full name" value={fullName} onChange={(event) => setFullName(event.target.value)} required className="bg-input border-border" />
             </div>
           )}
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="bg-input border-border"
-            />
+            <Input id="email" type="email" inputMode="email" autoComplete="email" placeholder="you@company.com" value={email} onChange={(event) => setEmail(event.target.value)} required className="bg-input border-border" />
           </div>
 
           {!isReset && (
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="bg-input border-border"
-              />
+              <Input id="password" type="password" autoComplete={isLogin ? "current-password" : "new-password"} placeholder="••••••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={isLogin ? 6 : MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
+              {!isLogin && <p className="text-xs text-muted-foreground">Use at least {MIN_NEW_PASSWORD_LENGTH} characters for new accounts.</p>}
             </div>
           )}
 
-          <Button
-            type="submit"
-            className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber"
-            disabled={loading}
-          >
-            {loading
-              ? "Processing..."
-              : isReset
-                ? "Send Reset Link"
-                : isLogin
-                  ? "Sign In"
-                  : "Create Account"}
+          <Button type="submit" className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber" disabled={loading || authLoading}>
+            {loading ? "Processing..." : isReset ? "Send Reset Link" : isLogin ? "Sign In" : "Create Account"}
           </Button>
 
           {GOOGLE_OAUTH_ENABLED && !isReset && (
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border" />
+            <>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
+                <div className="relative flex justify-center text-xs uppercase"><span className="bg-card/50 px-2 text-muted-foreground">Or continue with</span></div>
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card/50 px-2 text-muted-foreground">Or continue with</span>
-              </div>
-            </div>
-          )}
-
-          {GOOGLE_OAUTH_ENABLED && !isReset && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full border-border hover:bg-accent"
-              disabled={loading}
-              onClick={async () => {
-                setLoading(true);
-                try {
-                  sessionStorage.setItem(NEXT_PATH_KEY, nextPath);
-                  const result = await lovable.auth.signInWithOAuth("google", {
-                    redirect_uri: window.location.origin,
-                  });
-                  if (result.error) {
-                    throw result.error;
-                  }
-                  if (result.redirected) return;
-
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (!session) {
-                    throw new Error("Google sign-in did not create a valid session.");
-                  }
-                  const { data: { user: oauthUser }, error } = await supabase.auth.getUser();
-                  if (error || !oauthUser) {
-                    throw error ?? new Error("Google sign-in did not create a valid session.");
-                  }
-                  sessionStorage.removeItem(NEXT_PATH_KEY);
-                  navigate(nextPath, { replace: true });
-                } catch (error: unknown) {
-                  toast({
-                    title: "Google Sign-In Failed",
-                    description: authErrorMessage(error),
-                    variant: "destructive",
-                  });
-                } finally {
-                  setLoading(false);
-                }
-              }}
-            >
-              <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 0 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
-              Sign in with Google
-            </Button>
+              <Button type="button" variant="outline" className="w-full border-border hover:bg-accent" disabled={loading || authLoading} onClick={handleGoogleSignIn}>
+                Sign in with Google
+              </Button>
+            </>
           )}
 
           {!GOOGLE_OAUTH_ENABLED && !isReset && (
-            <p className="text-center text-xs text-muted-foreground">
-              Google sign-in is temporarily unavailable while the independent authentication provider is being configured.
-            </p>
+            <p className="text-center text-xs text-muted-foreground">Google sign-in is unavailable until the configured Supabase project has the provider enabled.</p>
           )}
 
           <div className="flex flex-col gap-2">
-            {!isReset && (
+            {!isReset ? (
               <>
-                <button
-                  type="button"
-                  onClick={() => { setIsReset(true); setIsLogin(false); }}
-                  className="w-full text-center text-sm text-primary hover:underline font-medium"
-                >
-                  Forgot password?
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsLogin(!isLogin)}
-                  className="w-full text-center text-sm text-muted-foreground hover:text-primary transition-colors"
-                >
+                <button type="button" onClick={() => { setIsReset(true); setIsLogin(false); setPassword(""); }} className="w-full text-center text-sm text-primary hover:underline font-medium">Forgot password?</button>
+                <button type="button" onClick={() => { setIsLogin(!isLogin); setPassword(""); }} className="w-full text-center text-sm text-muted-foreground hover:text-primary transition-colors">
                   {isLogin ? "Need an account? Register" : "Already have an account? Sign in"}
                 </button>
               </>
-            )}
-            {isReset && (
-              <button
-                type="button"
-                onClick={() => { setIsReset(false); setIsLogin(true); }}
-                className="w-full text-center text-sm text-muted-foreground hover:text-primary transition-colors"
-              >
-                ← Back to sign in
-              </button>
+            ) : (
+              <button type="button" onClick={() => { setIsReset(false); setIsLogin(true); }} className="w-full text-center text-sm text-muted-foreground hover:text-primary transition-colors">← Back to sign in</button>
             )}
           </div>
         </form>

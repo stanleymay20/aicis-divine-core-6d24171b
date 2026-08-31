@@ -12,7 +12,7 @@ const FN = "batch-village-inference";
 const REGIONS_PER_BATCH = 50;
 const NASA_TIMEOUT_MS = 10_000;
 
-type SupabaseClientType = any;
+type SupabaseClientType = ReturnType<typeof createClient>;
 
 type Region = {
   id: string;
