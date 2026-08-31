@@ -25,17 +25,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # actions/checkout v4, pinned to immutable commit verified 2026-08-31.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        # github/codeql-action v3, pinned to immutable commit behind v3 on 2026-08-31.
+        uses: github/codeql-action/init@6f5948dfacef28e207b48d0905cf90c03365536d
         with:
           languages: javascript-typescript
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@6f5948dfacef28e207b48d0905cf90c03365536d
 
       - name: Analyze
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@6f5948dfacef28e207b48d0905cf90c03365536d
         with:
           category: "/language:javascript-typescript"
