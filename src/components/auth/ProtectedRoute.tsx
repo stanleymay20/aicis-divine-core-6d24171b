@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useDemoMode } from "@/contexts/DemoModeContext";
 import {
   AccessTier,
   tierMeetsRequirement,
@@ -15,7 +14,7 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   /** Minimum commercial access tier. */
   requiredTier?: AccessTier;
-  /** Minimum operational role. Role checks are never bypassed by demo mode. */
+  /** Minimum operational role. */
   requiredRole?: "admin" | "operator" | "analyst";
 }
 
@@ -52,16 +51,15 @@ export const ProtectedRoute = ({
   requiredRole,
 }: ProtectedRouteProps) => {
   const { user, loading: authLoading, unavailable } = useAuth();
-  const { isDemo } = useDemoMode();
   const { tier, loading: tierLoading } = useUserTier();
   const { roles, isLoading: rolesLoading } = useUserRoles();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Authentication is an absolute boundary. Demo mode is user-controlled UI
-  // state and may never create an authenticated principal. Once authenticated,
-  // demo mode may relax commercial tier checks for read-only previews only.
-  const needsTierCheck = requiredTier !== "free" && !isDemo;
+  // Authentication, commercial entitlement, and operational authorization are
+  // independent fail-closed boundaries. User-controlled presentation state
+  // (including Demo Mode) may never weaken any of them.
+  const needsTierCheck = requiredTier !== "free";
   const needsRoleCheck = Boolean(requiredRole);
   const checkingTier = Boolean(user) && needsTierCheck && tierLoading;
   const checkingRole = Boolean(user) && needsRoleCheck && rolesLoading;
