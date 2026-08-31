@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { User, Session } from "@supabase/supabase-js";
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 
 interface AuthState {
   user: User | null;
@@ -15,23 +15,28 @@ const AuthContext = createContext<AuthState | null>(null);
 
 const isNetworkError = (error: unknown) =>
   error instanceof TypeError ||
-  (error instanceof Error && /failed to fetch|network|load failed/i.test(error.message));
+  (error instanceof Error && /failed to fetch|network|load failed|fetch/i.test(error.message));
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
+  const initialValidationComplete = useRef(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     let mounted = true;
 
-    // Apply session state synchronously. Never await another auth method here:
-    // the Supabase client holds an internal lock during sign-in, so calling
-    // getUser()/getSession() from inside the callback can deadlock and leave
-    // the UI stuck on "Processing...".
-    const applySession = (nextSession: Session | null) => {
+    const clearSession = () => {
+      if (!mounted) return;
+      setSession(null);
+      setUser(null);
+      setUnavailable(false);
+      setLoading(false);
+    };
+
+    const applyTrustedSession = (nextSession: Session | null) => {
       if (!mounted) return;
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
@@ -39,76 +44,140 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, nextSession) => {
-        applySession(nextSession);
+    const validateInitialSession = async (candidate: Session | null) => {
+      if (!candidate) {
+        initialValidationComplete.current = true;
+        clearSession();
+        return;
       }
-    );
 
-    void supabase.auth.getSession()
-      .then(({ data: { session: existing } }) => applySession(existing))
-      .catch((error) => {
+      try {
+        const { data, error } = await supabase.auth.getUser(candidate.access_token);
         if (!mounted) return;
-        setUnavailable(isNetworkError(error));
-        setLoading(false);
-      });
 
-    // Background validation (outside the auth callback) — clears definitively
-    // rejected tokens without blocking navigation into the app.
-    const validate = () => {
-      void supabase.auth.getUser()
-        .then(async ({ data, error }) => {
-          if (!mounted || !error) return;
+        if (error || !data.user) {
           if (isNetworkError(error)) {
             setUnavailable(true);
+            setLoading(false);
             return;
           }
-          if (!data?.user) {
-            await supabase.auth.signOut({ scope: "local" });
-            if (!mounted) return;
-            setSession(null);
-            setUser(null);
-          }
+
+          initialValidationComplete.current = true;
+          await supabase.auth.signOut({ scope: "local" });
+          clearSession();
+          return;
+        }
+
+        initialValidationComplete.current = true;
+        applyTrustedSession({ ...candidate, user: data.user });
+      } catch (error) {
+        if (!mounted) return;
+
+        if (isNetworkError(error)) {
+          setUnavailable(true);
+          setLoading(false);
+          return;
+        }
+
+        initialValidationComplete.current = true;
+        await supabase.auth.signOut({ scope: "local" });
+        clearSession();
+      }
+    };
+
+    const handleAuthChange = (event: AuthChangeEvent, nextSession: Session | null) => {
+      // INITIAL_SESSION comes from browser storage and therefore cannot unlock
+      // protected UI until the token is verified against Supabase Auth.
+      if (event === "INITIAL_SESSION") {
+        if (!initialValidationComplete.current) void validateInitialSession(nextSession);
+        return;
+      }
+
+      if (event === "SIGNED_OUT") {
+        initialValidationComplete.current = true;
+        clearSession();
+        return;
+      }
+
+      // These events follow an Auth server operation (sign-in, refresh, user
+      // update, recovery) and carry the resulting authenticated session.
+      if (["SIGNED_IN", "TOKEN_REFRESHED", "USER_UPDATED", "PASSWORD_RECOVERY"].includes(event)) {
+        initialValidationComplete.current = true;
+        applyTrustedSession(nextSession);
+      }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthChange);
+
+    // Bounded fallback for clients that delay INITIAL_SESSION. The stored token
+    // still goes through getUser(access_token) before access is granted.
+    const bootstrapTimer = window.setTimeout(() => {
+      if (initialValidationComplete.current) return;
+      void supabase.auth.getSession()
+        .then(({ data: { session: candidate } }) => {
+          if (!initialValidationComplete.current) void validateInitialSession(candidate);
         })
-        .catch(() => {
-          if (mounted) setUnavailable(true);
+        .catch((error) => {
+          if (!mounted) return;
+          setUnavailable(isNetworkError(error));
+          setLoading(false);
+        });
+    }, 250);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || !initialValidationComplete.current) return;
+
+      void supabase.auth.getUser()
+        .then(({ data, error }) => {
+          if (!mounted) return;
+
+          if (error || !data.user) {
+            if (isNetworkError(error)) {
+              setUnavailable(true);
+              return;
+            }
+
+            void supabase.auth.signOut({ scope: "local" });
+            clearSession();
+            return;
+          }
+
+          setUser(data.user);
+          setUnavailable(false);
+        })
+        .catch((error) => {
+          if (mounted && isNetworkError(error)) setUnavailable(true);
         });
     };
 
-    const validateTimer = window.setTimeout(validate, 1200);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void supabase.auth.getSession()
-          .then(({ data: { session: current } }) => {
-            if (mounted && current) applySession(current);
-          })
-          .catch(() => {
-            if (mounted) setUnavailable(true);
-          });
-      }
-    };
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       mounted = false;
-      window.clearTimeout(validateTimer);
+      window.clearTimeout(bootstrapTimer);
       subscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error && isNetworkError(error)) {
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "global" });
+      if (error) throw error;
+    } catch {
+      // A network failure must never leave a browser credential behind.
       await supabase.auth.signOut({ scope: "local" });
+    } finally {
+      setSession(null);
+      setUser(null);
+      setUnavailable(false);
+      navigate("/auth", { replace: true });
     }
-    navigate('/auth');
   }, [navigate]);
 
   const value = useMemo(
     () => ({ user, session, loading, unavailable, signOut }),
-    [user, session, loading, unavailable, signOut]
+    [user, session, loading, unavailable, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
