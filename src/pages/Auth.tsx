@@ -13,13 +13,19 @@ const NEXT_PATH_KEY = "aicis.auth.next";
 const GOOGLE_OAUTH_ENABLED = import.meta.env.VITE_ENABLE_GOOGLE_OAUTH === "true";
 const MIN_NEW_PASSWORD_LENGTH = 12;
 
+const containsControlCharacter = (value: string) =>
+  Array.from(value).some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+
 const safeNextPath = (value: unknown): string => {
   if (
     typeof value !== "string" ||
     !value.startsWith("/") ||
     value.startsWith("//") ||
     value.includes("\\") ||
-    /[\u0000-\u001f\u007f]/.test(value)
+    containsControlCharacter(value)
   ) {
     return "/world";
   }
