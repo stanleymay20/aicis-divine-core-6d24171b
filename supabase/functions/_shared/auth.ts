@@ -13,6 +13,53 @@ const bearerToken = (req: Request) => {
   return value.replace(/^[Bb]earer\s+/, "");
 };
 
+export type AuthenticatorAssuranceLevel = "aal1" | "aal2" | null;
+
+type ValidatedJwtClaims = {
+  sub?: string;
+  aal?: string;
+  amr?: Array<{ method?: string; timestamp?: number }>;
+};
+
+/**
+ * Decode claims only after the exact token has been validated by Supabase Auth.
+ * This function does not verify signatures and must never be used independently
+ * as an authentication boundary.
+ */
+function decodeValidatedJwtClaims(token: string): ValidatedJwtClaims | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const claims = JSON.parse(new TextDecoder().decode(bytes)) as ValidatedJwtClaims;
+    return claims && typeof claims === "object" ? claims : null;
+  } catch {
+    return null;
+  }
+}
+
+function validatedTokenAssurance(token: string, validatedUserId: string): AuthenticatorAssuranceLevel {
+  const claims = decodeValidatedJwtClaims(token);
+  if (!claims || claims.sub !== validatedUserId) return null;
+  return claims.aal === "aal2" ? "aal2" : claims.aal === "aal1" ? "aal1" : null;
+}
+
+function mfaRequiredResponse(headers: Record<string, string>) {
+  return new Response(
+    JSON.stringify({
+      error: "Forbidden",
+      reason: "mfa_required",
+      required_aal: "aal2",
+      message: "This privileged action requires multi-factor authentication.",
+    }),
+    { status: 403, headers },
+  );
+}
+
 export async function requireCronSecret(
   req: Request,
   extraHeaders: Record<string, string> = {},
@@ -81,6 +128,7 @@ export async function requireAdminUser(
   if (!authHeader || !token) {
     return {
       user: null,
+      aal: null as AuthenticatorAssuranceLevel,
       response: new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers,
@@ -99,6 +147,7 @@ export async function requireAdminUser(
   if (error || !data?.user) {
     return {
       user: null,
+      aal: null as AuthenticatorAssuranceLevel,
       response: new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers,
@@ -113,6 +162,7 @@ export async function requireAdminUser(
   if (!isAdmin) {
     return {
       user: data.user,
+      aal: validatedTokenAssurance(token, data.user.id),
       response: new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers,
@@ -120,13 +170,18 @@ export async function requireAdminUser(
     };
   }
 
-  return { user: data.user, response: null };
+  const aal = validatedTokenAssurance(token, data.user.id);
+  if (aal !== "aal2") {
+    return { user: data.user, aal, response: mfaRequiredResponse(headers) };
+  }
+
+  return { user: data.user, aal, response: null };
 }
 
 /**
  * Privileged scheduled jobs may be called either by a trusted cron secret or
- * by an authenticated administrator. This keeps scheduled execution possible
- * without making service-role mutations public.
+ * by an authenticated AAL2 administrator. This keeps scheduled execution
+ * possible without weakening the human administrator boundary.
  */
 export async function requireAdminOrCron(
   req: Request,
@@ -149,7 +204,7 @@ export async function requireAdminOrCron(
 }
 
 // ──────────────────────────────────────────────────────────────────
-// User auth + tier gating (for intelligence endpoints)
+// User auth + tier/AAL gating (for intelligence endpoints)
 // ──────────────────────────────────────────────────────────────────
 
 export type AccessTier = "free" | "sovereign" | "enterprise";
@@ -163,12 +218,12 @@ const TIER_RANK: Record<AccessTier, number> = {
 export interface UserAuthContext {
   user: any;
   tier: AccessTier;
+  aal: AuthenticatorAssuranceLevel;
 }
 
 /**
- * Validates the Authorization header (Bearer JWT) and returns either
- *   { ctx: { user, tier }, response: null } on success, or
- *   { ctx: null, response: Response } with status 401 on failure.
+ * Validates the exact Authorization bearer token with Supabase Auth, validates
+ * subject binding, and returns a fail-closed user context.
  */
 export async function requireUser(
   req: Request,
@@ -206,6 +261,17 @@ export async function requireUser(
     };
   }
 
+  const aal = validatedTokenAssurance(token, data.user.id);
+  if (!aal) {
+    return {
+      ctx: null,
+      response: new Response(
+        JSON.stringify({ error: "Unauthorized", reason: "invalid_token_subject_or_assurance_claims" }),
+        { status: 401, headers },
+      ),
+    };
+  }
+
   const admin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -233,7 +299,24 @@ export async function requireUser(
     tier = "free";
   }
 
-  return { ctx: { user: data.user, tier }, response: null };
+  return { ctx: { user: data.user, tier, aal }, response: null };
+}
+
+/**
+ * Like requireUser, but additionally enforces an AAL2 user session.
+ */
+export async function requireAal2User(
+  req: Request,
+  extraCorsHeaders: Record<string, string> = {},
+): Promise<{ ctx: UserAuthContext | null; response: Response | null }> {
+  const { ctx, response } = await requireUser(req, extraCorsHeaders);
+  if (response || !ctx) return { ctx: null, response };
+
+  if (ctx.aal !== "aal2") {
+    return { ctx: null, response: mfaRequiredResponse(authHeaders(extraCorsHeaders)) };
+  }
+
+  return { ctx, response: null };
 }
 
 /**
@@ -268,10 +351,9 @@ export async function requireTier(
 }
 
 /**
- * Global privileged workers accept only an authenticated administrator, the
- * independently configured CRON_SECRET, or an exact service-role Bearer token.
- * The service-role path preserves trusted Edge-to-Edge SDK calls without
- * treating an anon JWT as authorization.
+ * Global privileged workers accept only an AAL2 administrator, the independently
+ * configured CRON_SECRET, or an exact service-role Bearer token. Machine paths
+ * are checked before the human admin path and never masquerade as user sessions.
  */
 function hasServiceRoleBearer(req: Request): boolean {
   const expected = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
