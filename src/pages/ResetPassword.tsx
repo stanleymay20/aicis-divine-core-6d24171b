@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { decodeAuthTokenClaims, tokenClaimsContainAuthMethod } from "@/lib/authTokenClaims";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,28 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Shield, Loader2 } from "lucide-react";
 
 const MIN_NEW_PASSWORD_LENGTH = 12;
-
-type RecoveryClaims = {
-  sub?: string;
-  amr?: Array<{ method?: string }>;
-};
-
-const decodeValidatedAccessTokenClaims = (accessToken: string): RecoveryClaims | null => {
-  const parts = accessToken.split(".");
-  if (parts.length !== 3) return null;
-
-  try {
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-    const json = decodeURIComponent(
-      Array.from(atob(padded), (char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`).join(""),
-    );
-    const claims = JSON.parse(json) as RecoveryClaims;
-    return claims && typeof claims === "object" ? claims : null;
-  } catch {
-    return null;
-  }
-};
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -66,9 +45,8 @@ const ResetPassword = () => {
         const { data, error } = await supabase.auth.getUser(candidate.access_token);
         if (!mounted || error || !data.user) return;
 
-        const claims = decodeValidatedAccessTokenClaims(candidate.access_token);
-        const recoveryBearing = Array.isArray(claims?.amr)
-          && claims.amr.some((entry) => entry?.method === "recovery");
+        const claims = decodeAuthTokenClaims(candidate.access_token);
+        const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery");
         const sameSubject = claims?.sub === data.user.id && candidate.user.id === data.user.id;
 
         if (recoveryBearing && sameSubject) acceptRecovery();
@@ -131,9 +109,8 @@ const ResetPassword = () => {
       if (!session) throw new Error("Recovery session expired. Request a new reset link.");
 
       const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
-      const claims = decodeValidatedAccessTokenClaims(session.access_token);
-      const recoveryBearing = Array.isArray(claims?.amr)
-        && claims.amr.some((entry) => entry?.method === "recovery");
+      const claims = decodeAuthTokenClaims(session.access_token);
+      const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery");
       const sameSubject = Boolean(
         !userError
         && userData.user
