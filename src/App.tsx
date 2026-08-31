@@ -23,6 +23,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
+const WorldWorkspace = lazy(() => import("./pages/WorldWorkspace"));
 const PlanetaryCommandCenter = lazy(() => import("./pages/PlanetaryCommandCenter"));
 const MorningBrief = lazy(() => import("./pages/MorningBrief"));
 const LiveCommandFeed = lazy(() => import("./pages/LiveCommandFeed"));
@@ -169,6 +170,7 @@ const App = () => (
                 <Route path="/status" element={<Lazy><Status /></Lazy>} />
                 <Route path="/upgrade" element={<Lazy><Upgrade /></Lazy>} />
 
+                <Route path="/world" element={<Shell><WorldWorkspace /></Shell>} />
                 <Route path="/command-center" element={<Shell><PlanetaryCommandCenter /></Shell>} />
                 <Route path="/spatial-cockpit" element={<Protected><SpatialCockpit /></Protected>} />
                 <Route path="/cockpit" element={<Protected><SpatialCockpit /></Protected>} />
