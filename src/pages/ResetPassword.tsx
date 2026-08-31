@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Loader2 } from "lucide-react";
+
+const MIN_NEW_PASSWORD_LENGTH = 12;
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -18,45 +20,54 @@ const ResetPassword = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.hash.slice(1));
+    let mounted = true;
+    let verified = false;
+    const hash = new URLSearchParams(window.location.hash.slice(1));
     const query = new URLSearchParams(window.location.search);
-    if (params.get("type") === "recovery" || query.get("type") === "recovery") {
+    const carriesRecoveryIntent = hash.get("type") === "recovery" || query.get("type") === "recovery" || query.has("code");
+
+    const acceptRecovery = () => {
+      if (!mounted) return;
+      verified = true;
+      setVerificationFailed(false);
       setIsRecovery(true);
-    }
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setIsRecovery(true);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" && session) acceptRecovery();
     });
 
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && (params.get("type") === "recovery" || query.get("type") === "recovery")) {
-        setIsRecovery(true);
-      }
-    });
+    void supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (!mounted || error || !session || !carriesRecoveryIntent) return;
+        acceptRecovery();
+      })
+      .catch(() => undefined);
 
-    const timeout = window.setTimeout(() => setVerificationFailed(true), 8000);
+    const timeout = window.setTimeout(() => {
+      if (mounted && !verified) setVerificationFailed(true);
+    }, 8000);
+
     return () => {
+      mounted = false;
       window.clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, []);
 
-  const handleReset = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (loading) return;
 
     if (password !== confirmPassword) {
-      toast({
-        title: "Passwords don't match",
-        description: "Please ensure both passwords are identical.",
-        variant: "destructive",
-      });
+      toast({ title: "Passwords don't match", description: "Please ensure both passwords are identical.", variant: "destructive" });
       return;
     }
 
-    if (password.length < 6) {
+    if (password.length < MIN_NEW_PASSWORD_LENGTH) {
       toast({
         title: "Password too short",
-        description: "Password must be at least 6 characters.",
+        description: `Use at least ${MIN_NEW_PASSWORD_LENGTH} characters for the new password.`,
         variant: "destructive",
       });
       return;
@@ -67,18 +78,14 @@ const ResetPassword = () => {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
-      toast({
-        title: "Password Updated",
-        description: "Your password has been reset successfully. Redirecting...",
-      });
+      const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
+      if (signOutError) await supabase.auth.signOut({ scope: "local" });
 
-      setTimeout(() => navigate("/"), 2000);
-    } catch (error: any) {
-      toast({
-        title: "Reset Failed",
-        description: error.message || "Failed to update password.",
-        variant: "destructive",
-      });
+      toast({ title: "Password updated", description: "Sign in again with your new password." });
+      navigate("/auth", { replace: true });
+    } catch (error: unknown) {
+      const description = error instanceof Error ? error.message : "Failed to update password.";
+      toast({ title: "Reset failed", description, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -93,11 +100,13 @@ const ResetPassword = () => {
             {verificationFailed ? "This recovery link is invalid or has expired." : "Verifying recovery link..."}
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            If nothing happens,{" "}
-            <button onClick={() => navigate("/auth")} className="text-primary hover:underline">
-              return to login
-            </button>
+            {verificationFailed ? "Request a new password-reset email from the sign-in page." : "AICIS is validating the recovery session before allowing a credential change."}
           </p>
+          {verificationFailed && (
+            <Button type="button" variant="outline" className="mt-4" onClick={() => navigate("/auth", { replace: true })}>
+              Return to sign in
+            </Button>
+          )}
         </Card>
       </div>
     );
@@ -114,55 +123,24 @@ const ResetPassword = () => {
             <Shield className="h-8 w-8 text-primary-foreground" />
           </div>
           <h2 className="text-2xl font-orbitron font-bold text-primary">Set New Password</h2>
-          <p className="text-muted-foreground mt-2 text-center text-sm">
-            Enter your new password below
-          </p>
+          <p className="text-muted-foreground mt-2 text-center text-sm">Recovery session verified</p>
         </div>
 
         <form onSubmit={handleReset} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="password">New Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              className="bg-input border-border"
-            />
+            <Input id="password" type="password" autoComplete="new-password" placeholder="••••••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
+            <p className="text-xs text-muted-foreground">Use at least {MIN_NEW_PASSWORD_LENGTH} characters.</p>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm Password</Label>
-            <Input
-              id="confirmPassword"
-              type="password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              minLength={6}
-              className="bg-input border-border"
-            />
+            <Input id="confirmPassword" type="password" autoComplete="new-password" placeholder="••••••••••••" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
           </div>
 
-          <Button
-            type="submit"
-            className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber"
-            disabled={loading}
-          >
+          <Button type="submit" className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber" disabled={loading}>
             {loading ? "Updating..." : "Update Password"}
           </Button>
-
-          <button
-            type="button"
-            onClick={() => navigate("/auth")}
-            className="w-full text-center text-sm text-muted-foreground hover:text-primary transition-colors"
-          >
-            ← Back to login
-          </button>
         </form>
       </Card>
     </div>
