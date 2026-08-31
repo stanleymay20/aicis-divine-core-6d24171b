@@ -334,7 +334,7 @@ export async function requireUserOrTrustedWorker(
 }
 
 export async function enforceRateLimit(options: {
-  supabase: ReturnType<typeof createClient>;
+  supabase: any;
   req: Request;
   route: string;
   limit?: number;
@@ -391,7 +391,7 @@ export async function enforceRateLimit(options: {
 }
 
 export async function recordPipelineHealth(options: {
-  supabase: ReturnType<typeof createClient>;
+  supabase: any;
   jobName: string;
   status: "started" | "success" | "partial" | "failed" | "degraded";
   source?: string;

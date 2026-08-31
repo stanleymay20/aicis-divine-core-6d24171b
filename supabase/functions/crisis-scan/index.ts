@@ -5,6 +5,14 @@ import { aiChat, AiProviderError } from "../_shared/ai-gateway.ts";
 
 const FN = "crisis-scan";
 
+type SignalRow = {
+  id: string;
+  affected_regions: unknown;
+  geo_admin0_iso3: string | null;
+  impact_score: number | null;
+  urgency_score: number | null;
+};
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -13,7 +21,7 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    let supabaseClient;
+    let supabaseClient: any;
     let userId = "system-cron";
 
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "___";
@@ -24,7 +32,7 @@ serve(async (req) => {
       supabaseClient = createClient(
         Deno.env.get("SUPABASE_URL") ?? "",
         Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-        { global: { headers: { Authorization: authHeader! } } },
+        { global: { headers: { Authorization: authHeader ?? "" } } },
       );
       const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
       if (authError || !user) throw new Error("Unauthorized");
@@ -67,23 +75,23 @@ serve(async (req) => {
       const top = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
       if (!top) return null;
 
-      const focused = data.filter((row) => {
+      const focused = (data as SignalRow[]).filter((row: SignalRow) => {
         const keys: string[] = Array.isArray(row.affected_regions) && row.affected_regions.length
           ? row.affected_regions as string[]
           : (row.geo_admin0_iso3 ? [row.geo_admin0_iso3 as string] : []);
         return keys.includes(top[0]);
       });
-      const avg = (fn: (row: any) => number) =>
-        focused.reduce((sum, row) => sum + (fn(row) || 0), 0) / Math.max(1, focused.length);
+      const avg = (fn: (row: SignalRow) => number) =>
+        focused.reduce((sum: number, row: SignalRow) => sum + (fn(row) || 0), 0) / Math.max(1, focused.length);
       const severity = Math.max(0, Math.min(10,
-        Math.round((0.6 * avg((row) => row.impact_score) + 0.4 * avg((row) => row.urgency_score)) / 10),
+        Math.round((0.6 * avg((row: SignalRow) => row.impact_score ?? 0) + 0.4 * avg((row: SignalRow) => row.urgency_score ?? 0)) / 10),
       ));
 
       return {
         region: top[0],
         severity,
         evidence_signal_count: focused.length,
-        evidence_signal_ids: focused.slice(0, 25).map((row) => row.id),
+        evidence_signal_ids: focused.slice(0, 25).map((row: SignalRow) => row.id),
       };
     }
 

@@ -97,7 +97,7 @@ serve(async (req) => {
 
       try {
         const subscription = await stripe.subscriptions.retrieve(org.stripe_subscription_id);
-        const subscriptionItem = subscription.items.data.find((item) => item.price.id === priceId);
+        const subscriptionItem = subscription.items.data.find((item: { price: { id: string } }) => item.price.id === priceId);
         if (!subscriptionItem) {
           skipped += records.length;
           errors.push({ group: metricKey, reason: "subscription_item_not_found" });
