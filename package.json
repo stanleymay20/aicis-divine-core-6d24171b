@@ -10,8 +10,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck",
-    "verify": "npm run lint && npm run typecheck && npm run build"
+    "test:forensic": "node --test tests/*.test.mjs",
+    "test": "npm run typecheck && npm run test:forensic",
+    "verify": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

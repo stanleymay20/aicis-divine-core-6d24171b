@@ -138,9 +138,11 @@ const DATASETS: Record<string, DatasetSpec> = {
   training_dataset: {
     table: "training_dataset_aicis",
     columns: ["*"],
-    datasetSemantics: "raw_training_feature_rows_interpret_through_dataset_manifest_and_feature_lineage",
-    iso3Col: "iso3",
-    dateCol: "feature_window_end",
+    datasetSemantics: "raw_training_feature_rows_country_iso3_snapshot_date_knowledge_time_requires_governed_lineage_proof",
+    // Source-controlled inference and immutable training manifests agree on these
+    // names. Keep the export contract aligned instead of inventing aliases.
+    iso3Col: "country_iso3",
+    dateCol: "snapshot_date",
     idCol: "id",
   },
   global_signals: {

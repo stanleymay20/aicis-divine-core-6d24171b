@@ -1,8 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAdminUser } from "../_shared/auth.ts";
 
-const FN = "cognitive-model-promote";
-const PROMOTION_POLICY = "baseline-gate-v2-direct-metrics-explicit-confirmation";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -14,29 +12,9 @@ type PromotionRequest = {
   domain?: string;
   modality: string;
   task: string;
-  high_consequence?: boolean;
   minimum_relative_brier_improvement?: number;
   maximum_calibration_regression?: number;
   confirm_promotion?: boolean;
-};
-
-type RegistryRow = {
-  id: string;
-  model_key: string;
-  version: string;
-  production_approved: boolean;
-  metadata: Record<string, unknown> | null;
-};
-
-type CompetencyRow = {
-  model_id: string;
-  sample_size: number;
-  brier_score: number | string | null;
-  brier_score_semantics: string | null;
-  ece: number | string | null;
-  ece_semantics: string | null;
-  evaluation_status: string | null;
-  evaluation_method: string | null;
 };
 
 Deno.serve(async (req) => {
@@ -52,164 +30,37 @@ Deno.serve(async (req) => {
     if (body.challenger_model_id === body.baseline_model_id) {
       throw new Error("challenger and baseline must be different models");
     }
-    validatePolicyThresholds(body);
+    validateTighteningOnlyInputs(body);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const domain = body.domain ?? "general";
 
-    const { data: registryData, error: registryError } = await supabase
-      .from("aicis_model_registry")
-      .select("id,model_key,version,production_approved,metadata")
-      .in("id", [body.challenger_model_id, body.baseline_model_id]);
-    if (registryError) throw registryError;
-
-    const registry = (registryData ?? []) as RegistryRow[];
-    const challenger = registry.find((row) => row.id === body.challenger_model_id);
-    const baseline = registry.find((row) => row.id === body.baseline_model_id);
-    if (!challenger || !baseline) throw new Error("challenger or baseline model not found");
-    if (baseline.metadata?.role !== "baseline") {
-      throw new Error("baseline_model_id must reference a registered baseline model");
-    }
-
-    const { data: competencyData, error: competencyError } = await supabase
-      .from("aicis_model_competency")
-      .select("model_id,sample_size,brier_score,brier_score_semantics,ece,ece_semantics,evaluation_status,evaluation_method")
-      .in("model_id", [challenger.id, baseline.id])
-      .eq("domain", domain)
-      .eq("modality", body.modality)
-      .eq("task", body.task);
-    if (competencyError) throw competencyError;
-
-    const competency = (competencyData ?? []) as CompetencyRow[];
-    const challengerMetric = competency.find((row) => row.model_id === challenger.id);
-    const baselineMetric = competency.find((row) => row.model_id === baseline.id);
-    if (!challengerMetric || !baselineMetric) {
-      throw new Error("both challenger and baseline require matching competency evaluations");
-    }
-
-    const minimumSamples = body.high_consequence ? 250 : 75;
-    const minimumBrierImprovement = body.minimum_relative_brier_improvement ?? 0.05;
-    const maximumCalibrationRegression = body.maximum_calibration_regression ?? 0.01;
-    const reasons: string[] = [];
-
-    if (challengerMetric.sample_size < minimumSamples) {
-      reasons.push(`insufficient challenger sample size ${challengerMetric.sample_size}/${minimumSamples}`);
-    }
-    if (baselineMetric.sample_size < minimumSamples) {
-      reasons.push(`insufficient baseline sample size ${baselineMetric.sample_size}/${minimumSamples}`);
-    }
-    if (!hasUsableEvaluation(challengerMetric) || !hasUsableEvaluation(baselineMetric)) {
-      reasons.push("challenger and baseline require non-legacy direct-metric evaluation semantics");
-    }
-    if (
-      challengerMetric.evaluation_method !== baselineMetric.evaluation_method ||
-      challengerMetric.brier_score_semantics !== baselineMetric.brier_score_semantics ||
-      challengerMetric.ece_semantics !== baselineMetric.ece_semantics
-    ) {
-      reasons.push("challenger and baseline metrics are not method/semantics comparable");
-    }
-
-    const baselineBrier = numericNonNegativeOrNull(baselineMetric.brier_score);
-    const challengerBrier = numericNonNegativeOrNull(challengerMetric.brier_score);
-    let relativeBrierImprovement: number | null = null;
-    if (baselineBrier === null || challengerBrier === null || baselineBrier <= 0) {
-      reasons.push("comparable Brier evidence is unavailable");
-    } else {
-      relativeBrierImprovement = (baselineBrier - challengerBrier) / baselineBrier;
-      if (relativeBrierImprovement < minimumBrierImprovement) {
-        reasons.push(
-          `Brier improvement ${(relativeBrierImprovement * 100).toFixed(1)}% is below policy threshold ${(minimumBrierImprovement * 100).toFixed(1)}%`,
-        );
-      }
-    }
-
-    const baselineEce = numericUnitOrNull(baselineMetric.ece);
-    const challengerEce = numericUnitOrNull(challengerMetric.ece);
-    let calibrationImprovement: number | null = null;
-    if (baselineEce === null || challengerEce === null) {
-      reasons.push("comparable ECE evidence is unavailable");
-    } else {
-      calibrationImprovement = baselineEce - challengerEce;
-      if (calibrationImprovement < -maximumCalibrationRegression) {
-        reasons.push(`calibration regressed by ${Math.abs(calibrationImprovement).toFixed(4)}`);
-      }
-    }
-
-    const eligible = reasons.length === 0;
-    const confirmationRequested = body.confirm_promotion === true;
-    const promoted = eligible && confirmationRequested;
-
-    if (promoted && !challenger.production_approved) {
-      const now = new Date().toISOString();
-      const { error: updateError } = await supabase
-        .from("aicis_model_registry")
-        .update({
-          production_approved: true,
-          updated_at: now,
-          metadata: {
-            ...(challenger.metadata ?? {}),
-            promoted_against: baseline.model_key,
-            promoted_domain: domain,
-            promoted_modality: body.modality,
-            promoted_task: body.task,
-            promoted_at: now,
-            promotion_policy: PROMOTION_POLICY,
-            explicit_admin_confirmation: true,
-            minimum_relative_brier_improvement_policy: minimumBrierImprovement,
-            maximum_calibration_regression_policy: maximumCalibrationRegression,
-          },
-        })
-        .eq("id", challenger.id);
-      if (updateError) throw updateError;
-    }
-
-    const now = new Date().toISOString();
-    await supabase.from("aicis_cognitive_events").insert({
-      event_type: promoted ? "model.promoted" : "model.promotion_evaluated",
-      epistemic_status: "derived",
-      confidence: null,
-      confidence_semantics: "not_issued_promotion_policy_decision_is_not_epistemic_confidence",
-      occurred_at: now,
-      observed_at: now,
-      time_semantics: "promotion_evaluation_time",
-      producer: FN,
-      payload: {
-        challenger_model_id: challenger.id,
-        challenger_model_key: challenger.model_key,
-        baseline_model_id: baseline.id,
-        baseline_model_key: baseline.model_key,
-        domain,
-        modality: body.modality,
-        task: body.task,
-        high_consequence: Boolean(body.high_consequence),
-        relative_brier_improvement: relativeBrierImprovement,
-        calibration_improvement: calibrationImprovement,
-        eligible,
-        confirmation_requested: confirmationRequested,
-        promoted,
-        promotion_policy: PROMOTION_POLICY,
-        threshold_semantics: "operator_policy_thresholds_not_statistical_significance",
-        reasons,
-      },
-      provenance: [],
+    // Promotion authority lives in one database transaction. The RPC:
+    // - loads the exact server-governed scope policy;
+    // - rejects any attempt to weaken policy floors;
+    // - derives high-consequence status server-side;
+    // - recomputes full-population current verified metrics and fingerprints;
+    // - locks registry/policy rows;
+    // - updates the model registry and writes the governance audit event atomically.
+    const { data, error } = await supabase.rpc("promote_aicis_model_cortex_atomic_v4", {
+      p_challenger_model_id: body.challenger_model_id,
+      p_baseline_model_id: body.baseline_model_id,
+      p_domain: body.domain ?? "general",
+      p_modality: body.modality,
+      p_task: body.task,
+      p_confirm_promotion: body.confirm_promotion === true,
+      p_requested_minimum_relative_brier_improvement:
+        body.minimum_relative_brier_improvement ?? null,
+      p_requested_maximum_calibration_regression:
+        body.maximum_calibration_regression ?? null,
     });
+    if (error) throw error;
 
-    return new Response(JSON.stringify({
-      eligible,
-      confirmation_required: eligible && !confirmationRequested,
-      confirmation_requested: confirmationRequested,
-      promoted,
-      challenger: `${challenger.model_key}@${challenger.version}`,
-      baseline: `${baseline.model_key}@${baseline.version}`,
-      relative_brier_improvement: relativeBrierImprovement,
-      calibration_improvement: calibrationImprovement,
-      promotion_policy: PROMOTION_POLICY,
-      threshold_semantics: "operator_policy_thresholds_not_statistical_significance",
-      reasons,
-    }), { headers: { ...cors, "content-type": "application/json" } });
+    return new Response(JSON.stringify(data), {
+      headers: { ...cors, "content-type": "application/json" },
+    });
   } catch (error) {
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "model promotion failed" }),
@@ -218,45 +69,21 @@ Deno.serve(async (req) => {
   }
 });
 
-function validatePolicyThresholds(body: PromotionRequest): void {
+function validateTighteningOnlyInputs(body: PromotionRequest): void {
   if (
     body.minimum_relative_brier_improvement !== undefined &&
-    (!Number.isFinite(body.minimum_relative_brier_improvement) || body.minimum_relative_brier_improvement < -1 || body.minimum_relative_brier_improvement > 1)
+    (!Number.isFinite(body.minimum_relative_brier_improvement) ||
+      body.minimum_relative_brier_improvement < 0 ||
+      body.minimum_relative_brier_improvement > 1)
   ) {
-    throw new Error("minimum_relative_brier_improvement must be finite between -1 and 1");
+    throw new Error("minimum_relative_brier_improvement must be finite between 0 and 1");
   }
   if (
     body.maximum_calibration_regression !== undefined &&
-    (!Number.isFinite(body.maximum_calibration_regression) || body.maximum_calibration_regression < 0 || body.maximum_calibration_regression > 1)
+    (!Number.isFinite(body.maximum_calibration_regression) ||
+      body.maximum_calibration_regression < 0 ||
+      body.maximum_calibration_regression > 1)
   ) {
     throw new Error("maximum_calibration_regression must be finite between 0 and 1");
   }
-}
-
-function hasUsableEvaluation(row: CompetencyRow): boolean {
-  return hasUsableSemantics(row.brier_score_semantics) &&
-    hasUsableSemantics(row.ece_semantics) &&
-    hasUsableSemantics(row.evaluation_method) &&
-    hasUsableSemantics(row.evaluation_status);
-}
-
-function hasUsableSemantics(value: string | null): boolean {
-  if (!value) return false;
-  const normalized = value.toLowerCase();
-  return !normalized.includes("legacy") &&
-    !normalized.includes("unknown") &&
-    !normalized.includes("unverified") &&
-    !normalized.includes("unspecified") &&
-    !normalized.includes("pending");
-}
-
-function numericNonNegativeOrNull(value: number | string | null): number | null {
-  if (value === null) return null;
-  const numeric = Number(value);
-  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
-}
-
-function numericUnitOrNull(value: number | string | null): number | null {
-  const numeric = numericNonNegativeOrNull(value);
-  return numeric !== null && numeric <= 1 ? numeric : null;
 }
