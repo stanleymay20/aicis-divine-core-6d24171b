@@ -5,6 +5,7 @@ import test from "node:test";
 const protectedRoutePath = new URL("../src/components/auth/ProtectedRoute.tsx", import.meta.url);
 const authPagePath = new URL("../src/pages/Auth.tsx", import.meta.url);
 const authProviderPath = new URL("../src/components/auth/AuthProvider.tsx", import.meta.url);
+const supabaseClientPath = new URL("../src/integrations/supabase/client.ts", import.meta.url);
 const resetPath = new URL("../src/pages/ResetPassword.tsx", import.meta.url);
 const sharedAuthPath = new URL("../supabase/functions/_shared/auth.ts", import.meta.url);
 const crisisScanPath = new URL("../supabase/functions/crisis-scan/index.ts", import.meta.url);
@@ -28,6 +29,14 @@ test("initial persisted sessions are server-verified before protected UI unlocks
   assert.match(source, /signOut\(\{ scope: "local" \}\)/);
 });
 
+test("browser auth uses PKCE and URL session detection", async () => {
+  const source = await readFile(supabaseClientPath, "utf8");
+
+  assert.match(source, /flowType:\s*['"]pkce['"]/);
+  assert.match(source, /detectSessionInUrl:\s*true/);
+  assert.match(source, /persistSession:\s*true/);
+});
+
 test("frontend OAuth uses the configured Supabase auth provider, not Lovable auth", async () => {
   const source = await readFile(authPagePath, "utf8");
 
@@ -46,14 +55,20 @@ test("auth redirects fail to the World workspace and reject suspicious external-
   assert.match(source, /containsControlCharacter\(value\)/);
 });
 
-test("password recovery requires a recovery-bearing validated session and closes it after reset", async () => {
+test("password recovery requires a server-validated recovery-bearing token and rechecks before mutation", async () => {
   const source = await readFile(resetPath, "utf8");
 
   assert.match(source, /PASSWORD_RECOVERY/);
-  assert.match(source, /carriesRecoveryIntent/);
   assert.match(source, /getSession\(\)/);
+  assert.match(source, /getUser\(candidate\.access_token\)/);
+  assert.match(source, /decodeValidatedAccessTokenClaims\(candidate\.access_token\)/);
+  assert.match(source, /entry\?\.method === "recovery"/);
+  assert.match(source, /claims\?\.sub === data\.user\.id/);
+  assert.match(source, /getUser\(session\.access_token\)/);
+  assert.match(source, /if \(!recoveryBearing \|\| !sameSubject\)/);
   assert.match(source, /signOut\(\{ scope: "global" \}\)/);
   assert.match(source, /MIN_NEW_PASSWORD_LENGTH = 12/);
+  assert.doesNotMatch(source, /carriesRecoveryIntent/);
 });
 
 test("trusted worker secrets are compared exactly, never by substring", async () => {
