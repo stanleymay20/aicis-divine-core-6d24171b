@@ -112,7 +112,7 @@ BEGIN
     EXECUTE 'SET LOCAL ROLE service_role';
     PERFORM public.resolve_aicis_model_outcome_v9(
       v_external,
-      1,
+      1::smallint,
       v_verifier,
       '{"source":"behavioral"}'::jsonb
     );
@@ -130,7 +130,7 @@ BEGIN
   SELECT * INTO v_resolution
   FROM public.resolve_aicis_model_outcome_v9(
     v_external,
-    1,
+    1::smallint,
     v_resolver,
     '{"source":"behavioral"}'::jsonb
   );
