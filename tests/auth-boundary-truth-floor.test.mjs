@@ -6,6 +6,9 @@ const protectedRoutePath = new URL("../src/components/auth/ProtectedRoute.tsx", 
 const authPagePath = new URL("../src/pages/Auth.tsx", import.meta.url);
 const authProviderPath = new URL("../src/components/auth/AuthProvider.tsx", import.meta.url);
 const resetPath = new URL("../src/pages/ResetPassword.tsx", import.meta.url);
+const sharedAuthPath = new URL("../supabase/functions/_shared/auth.ts", import.meta.url);
+const crisisScanPath = new URL("../supabase/functions/crisis-scan/index.ts", import.meta.url);
+const adiAnalyzePath = new URL("../supabase/functions/adi-analyze/index.ts", import.meta.url);
 
 test("demo mode can never substitute for authentication", async () => {
   const source = await readFile(protectedRoutePath, "utf8");
@@ -51,4 +54,29 @@ test("password recovery requires a recovery-bearing validated session and closes
   assert.match(source, /getSession\(\)/);
   assert.match(source, /signOut\(\{ scope: "global" \}\)/);
   assert.match(source, /MIN_NEW_PASSWORD_LENGTH = 12/);
+});
+
+test("trusted worker secrets are compared exactly, never by substring", async () => {
+  const source = await readFile(sharedAuthPath, "utf8");
+
+  assert.match(source, /providedCron === expectedCron/);
+  assert.match(source, /provided === expected/);
+  assert.doesNotMatch(source, /\.includes\(expected/);
+});
+
+test("crisis-scan cannot turn missing authorization into a privileged system call", async () => {
+  const source = await readFile(crisisScanPath, "utf8");
+
+  assert.match(source, /requireAdminOrTrustedWorker\(req\)/);
+  assert.doesNotMatch(source, /isSystemCall\s*=\s*[^;\n]*!\s*authHeader/i);
+  assert.doesNotMatch(source, /authHeader\s*\.\s*includes\s*\(\s*(?:serviceRoleKey|anonKey)/i);
+});
+
+test("ADI requires a real user or an exact trusted-worker credential before service-role access", async () => {
+  const source = await readFile(adiAnalyzePath, "utf8");
+
+  assert.match(source, /requireUserOrTrustedWorker\(req, corsHeaders\)/);
+  assert.match(source, /if \(auth\.response\) return auth\.response/);
+  assert.doesNotMatch(source, /authHeader\s*\.\s*includes\s*\(\s*serviceRoleKey/i);
+  assert.doesNotMatch(source, /if \(authHeader && !isServiceRoleCall\)/);
 });
