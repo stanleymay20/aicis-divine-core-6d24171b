@@ -1,9 +1,6 @@
-const NON_GROUND_TRUTH_LABEL_SOURCES = new Set([
-  "model_score",
-  "heuristic_score",
-  "derived_score",
-  "synthetic",
-  "legacy_unknown",
+const ALLOWED_GROUND_TRUTH_LABEL_SOURCES = new Set([
+  "observed_future_metric",
+  "forecast_ground_truth",
 ]);
 
 const VERIFIED_EVIDENCE_STATUSES = new Set([
@@ -15,6 +12,8 @@ const VERIFIED_EVIDENCE_STATUSES = new Set([
 
 const EXAMPLE_KINDS = new Set(["state_transition", "forecast_outcome"]);
 const SHA256_RE = /^[0-9a-f]{64}$/;
+const HOUR_MS = 60 * 60 * 1000;
+const HORIZON_TOLERANCE_MS = 1000;
 
 export const WORLD_MODEL_CONTRACT_VERSION = "aicis-world-model-training-v1";
 
@@ -32,6 +31,24 @@ function hasText(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function cloneAndDeepFreeze(value, seen = new WeakMap()) {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+
+  const clone = Array.isArray(value) ? [] : {};
+  seen.set(value, clone);
+
+  if (Array.isArray(value)) {
+    for (const item of value) clone.push(cloneAndDeepFreeze(item, seen));
+  } else {
+    for (const [key, item] of Object.entries(value)) {
+      clone[key] = cloneAndDeepFreeze(item, seen);
+    }
+  }
+
+  return Object.freeze(clone);
+}
+
 export function evaluateTrainingCandidate(candidate) {
   const reasons = [];
 
@@ -47,11 +64,13 @@ export function evaluateTrainingCandidate(candidate) {
   const cutoffAt = parseTimestamp(candidate.historical_cutoff_at);
   const horizonEndAt = parseTimestamp(candidate.label_horizon_end_at);
   const labelObservedAt = parseTimestamp(candidate.label_observed_at);
+  const knowledgeTimeVerifiedAt = parseTimestamp(candidate.knowledge_time_verified_at);
 
   if (observedAt === null) reasons.push("observed_at_missing_or_invalid");
   if (cutoffAt === null) reasons.push("historical_cutoff_at_missing_or_invalid");
   if (horizonEndAt === null) reasons.push("label_horizon_end_at_missing_or_invalid");
   if (labelObservedAt === null) reasons.push("label_observed_at_missing_or_invalid");
+  if (knowledgeTimeVerifiedAt === null) reasons.push("knowledge_time_verified_at_missing_or_invalid");
 
   if (observedAt !== null && cutoffAt !== null && cutoffAt < observedAt) {
     reasons.push("historical_cutoff_predates_observation");
@@ -85,13 +104,11 @@ export function evaluateTrainingCandidate(candidate) {
     reasons.push("label_value_invalid");
   }
 
-  if (
-    hasText(candidate.label_source) &&
-    NON_GROUND_TRUTH_LABEL_SOURCES.has(candidate.label_source.trim().toLowerCase())
-  ) {
+  if (!hasText(candidate.label_source)) {
+    reasons.push("label_source_missing");
+  } else if (!ALLOWED_GROUND_TRUTH_LABEL_SOURCES.has(candidate.label_source.trim().toLowerCase())) {
     reasons.push("label_source_not_ground_truth");
   }
-  if (!hasText(candidate.label_source)) reasons.push("label_source_missing");
 
   if (!hasText(candidate.evidence_status)) {
     reasons.push("evidence_status_missing");
@@ -111,8 +128,17 @@ export function evaluateTrainingCandidate(candidate) {
     reasons.push("source_names_invalid");
   }
 
-  if (candidate.is_synthetic === true) reasons.push("synthetic_candidate_forbidden");
-  if (candidate.is_backfilled_without_provenance === true) reasons.push("unprovenanced_backfill_forbidden");
+  if (candidate.is_synthetic === true) {
+    reasons.push("synthetic_candidate_forbidden");
+  } else if (candidate.is_synthetic !== false) {
+    reasons.push("synthetic_status_not_explicitly_false");
+  }
+
+  if (candidate.is_backfilled_without_provenance === true) {
+    reasons.push("unprovenanced_backfill_forbidden");
+  } else if (candidate.is_backfilled_without_provenance !== false) {
+    reasons.push("backfill_provenance_status_not_explicitly_false");
+  }
 
   if (candidate.realized_impact !== null && candidate.realized_impact !== undefined) {
     if (!isFiniteNumber(candidate.realized_impact)) reasons.push("realized_impact_invalid");
@@ -121,12 +147,26 @@ export function evaluateTrainingCandidate(candidate) {
   if (candidate.example_kind === "forecast_outcome") {
     if (!hasText(candidate.forecast_id)) reasons.push("forecast_id_missing");
     const forecastCreatedAt = parseTimestamp(candidate.forecast_created_at);
+    const forecastHorizonHours = candidate.forecast_horizon_hours;
+
     if (forecastCreatedAt === null) {
       reasons.push("forecast_created_at_missing_or_invalid");
     } else {
       if (cutoffAt !== null && forecastCreatedAt < cutoffAt) reasons.push("forecast_predates_historical_cutoff");
+      if (horizonEndAt !== null && forecastCreatedAt >= horizonEndAt) {
+        reasons.push("forecast_not_before_target_horizon_end");
+      }
       if (labelObservedAt !== null && labelObservedAt <= forecastCreatedAt) {
         reasons.push("label_not_strictly_after_forecast");
+      }
+    }
+
+    if (!isFiniteNumber(forecastHorizonHours) || forecastHorizonHours <= 0) {
+      reasons.push("forecast_horizon_hours_invalid");
+    } else if (forecastCreatedAt !== null && horizonEndAt !== null) {
+      const declaredEndAt = forecastCreatedAt + forecastHorizonHours * HOUR_MS;
+      if (Math.abs(declaredEndAt - horizonEndAt) > HORIZON_TOLERANCE_MS) {
+        reasons.push("forecast_horizon_inconsistent_with_target_end");
       }
     }
 
@@ -151,27 +191,27 @@ export function buildAdmittedTrainingExample(candidate) {
     throw error;
   }
 
-  return Object.freeze({
+  const admitted = {
     contract_version: WORLD_MODEL_CONTRACT_VERSION,
     example_kind: candidate.example_kind,
-    observation: Object.freeze({
+    observation: {
       id: candidate.observation_id,
       observed_at: candidate.observed_at,
       historical_cutoff_at: candidate.historical_cutoff_at,
       domain: candidate.domain ?? null,
-      regions: Array.isArray(candidate.regions) ? [...candidate.regions] : [],
+      regions: Array.isArray(candidate.regions) ? candidate.regions : [],
       raw_features: candidate.raw_features ?? {},
       derived_features: candidate.derived_features ?? {},
-    }),
+    },
     forecast: candidate.example_kind === "forecast_outcome"
-      ? Object.freeze({
+      ? {
           id: candidate.forecast_id,
           created_at: candidate.forecast_created_at,
-          horizon_hours: candidate.forecast_horizon_hours ?? null,
+          horizon_hours: candidate.forecast_horizon_hours,
           probability: candidate.forecast_probability ?? null,
-        })
+        }
       : null,
-    ground_truth: Object.freeze({
+    ground_truth: {
       id: candidate.label_id,
       label_value: candidate.label_value ?? null,
       realized_outcome: candidate.realized_outcome ?? null,
@@ -180,14 +220,17 @@ export function buildAdmittedTrainingExample(candidate) {
       observed_at: candidate.label_observed_at,
       label_source: candidate.label_source,
       evidence_status: candidate.evidence_status,
-    }),
-    provenance: Object.freeze({
-      source_record_ids: [...candidate.source_record_ids],
-      source_names: [...candidate.source_names],
+    },
+    provenance: {
+      source_record_ids: candidate.source_record_ids,
+      source_names: candidate.source_names,
       knowledge_time_status: candidate.knowledge_time_status,
       knowledge_time_proof_version: candidate.knowledge_time_proof_version,
       knowledge_time_proof_sha256: candidate.knowledge_time_proof_sha256,
+      knowledge_time_verified_at: candidate.knowledge_time_verified_at,
       knowledge_time_verification_method: candidate.knowledge_time_verification_method,
-    }),
-  });
+    },
+  };
+
+  return cloneAndDeepFreeze(admitted);
 }
