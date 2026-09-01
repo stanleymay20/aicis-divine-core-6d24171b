@@ -37,7 +37,7 @@ function validBinaryTask(overrides = {}) {
       split_policy: "knowledge_time_bounded_rolling_origin",
       minimum_forecast_origins: 6,
       test_data_policy: "future_only_after_model_selection",
-      modes: ["retrospective_rolling_origin", "shadow_or_prospective"],
+      modes: ["retrospective_rolling_origin", "prospective_sealed"],
     },
     calibration: {
       required: true,
@@ -62,7 +62,7 @@ function validBinaryTask(overrides = {}) {
     },
     ledger: {
       immutable_after_seal: true,
-      seal_before_resolution_window_opens: true,
+      seal_before_target_period_evidence: true,
       required_hashes: [
         "data_manifest_hash",
         "feature_manifest_hash",
@@ -92,6 +92,14 @@ test("rejects random or generic temporal splitting", () => {
   const result = validateForecastTask(task);
   assert.equal(result.valid, false);
   assert.ok(result.reasons.includes("evaluation_split_policy_must_be_knowledge_time_bounded_rolling_origin"));
+});
+
+test("requires sealed prospective evaluation rather than an ambiguous shadow substitute", () => {
+  const task = validBinaryTask();
+  task.evaluation.modes = ["retrospective_rolling_origin", "shadow_only"];
+  const result = validateForecastTask(task);
+  assert.equal(result.valid, false);
+  assert.ok(result.reasons.includes("evaluation_mode_missing:prospective_sealed"));
 });
 
 test("requires mandatory simple baselines before advanced models can claim skill", () => {
@@ -130,13 +138,15 @@ test("requires fail-closed abstention triggers", () => {
   assert.ok(result.reasons.includes("abstention_trigger_missing:excessive_model_disagreement"));
 });
 
-test("requires immutable sealed forecasts with reproducibility hashes", () => {
+test("requires immutable forecasts sealed before target-period evidence can enter", () => {
   const task = validBinaryTask();
   task.ledger.immutable_after_seal = false;
+  task.ledger.seal_before_target_period_evidence = false;
   task.ledger.required_hashes = ["git_commit_sha"];
   const result = validateForecastTask(task);
   assert.equal(result.valid, false);
   assert.ok(result.reasons.includes("ledger_must_be_immutable_after_seal"));
+  assert.ok(result.reasons.includes("ledger_must_seal_before_target_period_evidence"));
   assert.ok(result.reasons.includes("ledger_hash_missing:data_manifest_hash"));
   assert.ok(result.reasons.includes("ledger_hash_missing:feature_manifest_hash"));
   assert.ok(result.reasons.includes("ledger_hash_missing:model_artifact_hash"));
