@@ -92,6 +92,11 @@ jobs:
         continue-on-error: true
         run: python3 scripts/audit-prediction-truth-floor.py
 
+      - name: World-model training admission truth floor
+        id: world_model_truth
+        continue-on-error: true
+        run: node --test tests/world-model-training-contract.test.mjs
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
@@ -150,6 +155,7 @@ jobs:
           echo "Secret-name inventory: ${{ steps.secret_inventory.outcome }}"
           echo "Migration view replacement safety: ${{ steps.migration_views.outcome }}"
           echo "Prediction truth-floor: ${{ steps.prediction_truth_floor.outcome }}"
+          echo "World-model training truth floor: ${{ steps.world_model_truth.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
@@ -166,6 +172,7 @@ jobs:
           [ "${{ steps.secret_inventory.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.migration_views.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.prediction_truth_floor.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.world_model_truth.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
