@@ -42,7 +42,7 @@ const PROPER_PRIMARY_SCORES = {
   count: new Set(["crps", "log_score"]),
   continuous: new Set(["crps", "log_score"]),
   time_to_event: new Set(["log_score", "negative_log_likelihood"]),
-  event_sequence: new Set(["log_score", "negative_log_likelihood", "long_horizon_event_score"]),
+  event_sequence: new Set(["log_score", "negative_log_likelihood"]),
   graph_link: new Set(["brier", "log_loss"]),
   ranking: new Set(["log_loss", "brier"]),
 };
@@ -74,7 +74,7 @@ const REQUIRED_LEDGER_HASHES = new Set([
 
 const REQUIRED_EVALUATION_MODES = new Set([
   "retrospective_rolling_origin",
-  "shadow_or_prospective",
+  "prospective_sealed",
 ]);
 
 export const SCIENTIFIC_FORECASTING_PROTOCOL = Object.freeze({
@@ -251,8 +251,8 @@ function validateLedger(task, reasons) {
     return;
   }
   if (ledger.immutable_after_seal !== true) reasons.push("ledger_must_be_immutable_after_seal");
-  if (ledger.seal_before_resolution_window_opens !== true) {
-    reasons.push("ledger_must_seal_before_resolution_window_opens");
+  if (ledger.seal_before_target_period_evidence !== true) {
+    reasons.push("ledger_must_seal_before_target_period_evidence");
   }
   const hashes = normalizedStringSet(ledger.required_hashes);
   for (const hashField of REQUIRED_LEDGER_HASHES) {
