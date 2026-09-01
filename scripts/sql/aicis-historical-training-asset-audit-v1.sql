@@ -128,16 +128,28 @@ FROM public.normalized_metrics;
 
 -- ---------------------------------------------------------------------------
 -- F. Forecast/outcome corpus. A forecast is not training truth until an outcome
---    exists and was validated after the forecast was created.
+--    exists and validation occurred only after the declared forecast window
+--    fully closed. Early validation can contain target-period information and is
+--    deliberately excluded rather than counted as usable truth.
 -- ---------------------------------------------------------------------------
 SELECT
   COUNT(*) AS total_forecasts,
   COUNT(*) FILTER (WHERE fgt.forecast_id IS NOT NULL) AS forecasts_with_ground_truth,
   COUNT(*) FILTER (
     WHERE fgt.forecast_id IS NOT NULL
-      AND fgt.validated_at > pf.created_at
+      AND pf.forecast_window_hours IS NOT NULL
+      AND pf.forecast_window_hours > 0
+      AND fgt.validated_at >= pf.created_at + make_interval(hours => pf.forecast_window_hours)
       AND NULLIF(btrim(fgt.realized_outcome), '') IS NOT NULL
   ) AS temporally_valid_ground_truth_pairs,
+  COUNT(*) FILTER (
+    WHERE fgt.forecast_id IS NOT NULL
+      AND (
+        pf.forecast_window_hours IS NULL
+        OR pf.forecast_window_hours <= 0
+        OR fgt.validated_at < pf.created_at + make_interval(hours => pf.forecast_window_hours)
+      )
+  ) AS ground_truth_pairs_not_post_horizon_verified,
   MIN(pf.created_at) AS earliest_forecast,
   MAX(pf.created_at) AS latest_forecast,
   MIN(fgt.validated_at) FILTER (WHERE fgt.forecast_id IS NOT NULL) AS earliest_validation,
