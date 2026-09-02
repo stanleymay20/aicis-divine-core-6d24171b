@@ -15,20 +15,30 @@ const CANDIDATE_PATH = new URL(
   "../scripts/sql/forecast-task-registry-ledgers-v1.candidate.sql",
   import.meta.url,
 );
+const HARDENING_PATH = new URL(
+  "../scripts/sql/forecast-task-registry-ledgers-v1.hardening.sql",
+  import.meta.url,
+);
 
 async function candidateSql() {
-  return readFile(CANDIDATE_PATH, "utf8");
+  const [base, hardening] = await Promise.all([
+    readFile(CANDIDATE_PATH, "utf8"),
+    readFile(HARDENING_PATH, "utf8"),
+  ]);
+  return `${base}\n\n${hardening}`;
 }
 
-test("controlled forecast registry/ledger schema candidate passes the static truth floor", async () => {
+test("controlled forecast registry/ledger schema bundle passes the static truth floor", async () => {
   const sql = await candidateSql();
   assert.deepEqual(auditScientificForecastLedgerSchema(sql), { ok: true, reasons: [] });
   assert.equal(assertScientificForecastLedgerSchema(sql), true);
 });
 
-test("candidate remains outside supabase/migrations until generated through the required workflow", () => {
-  assert.equal(CANDIDATE_PATH.pathname.includes("/scripts/sql/"), true);
-  assert.equal(CANDIDATE_PATH.pathname.includes("/supabase/migrations/"), false);
+test("schema bundle remains outside supabase/migrations until generated through the required workflow", () => {
+  for (const path of [CANDIDATE_PATH, HARDENING_PATH]) {
+    assert.equal(path.pathname.includes("/scripts/sql/"), true);
+    assert.equal(path.pathname.includes("/supabase/migrations/"), false);
+  }
 });
 
 test("prospective scientific issuance time is the database seal, never caller historical origin", () => {
@@ -131,7 +141,7 @@ test("rejects removal of exact registered horizon enforcement", async () => {
 });
 
 test("rejects caller-controlled resolution time", async () => {
-  const sql = (await candidateSql()).replace(
+  const sql = (await candidateSql()).replaceAll(
     "NEW.resolved_at := clock_timestamp();",
     "NEW.resolved_at := NEW.resolved_at;",
   );
@@ -140,8 +150,25 @@ test("rejects caller-controlled resolution time", async () => {
   assert.ok(result.reasons.includes("database_authoritative_resolution_time_missing"));
 });
 
-test("rejects removal of consecutive resolution version enforcement", async () => {
+test("requires advisory serialization that does not need forecast-ledger UPDATE privilege", async () => {
   const sql = (await candidateSql()).replace(
+    "PERFORM pg_advisory_xact_lock(hashtextextended(NEW.forecast_id::text, 0));",
+    "PERFORM 1;",
+  );
+  const result = auditScientificForecastLedgerSchema(sql);
+  assert.equal(result.ok, false);
+  assert.ok(result.reasons.includes("resolution_advisory_serialization_lock_missing"));
+});
+
+test("rejects a later row-update lock that would defeat least-privilege hardening", async () => {
+  const sql = `${await candidateSql()}\nSELECT * FROM public.scientific_forecast_ledger_v1 FOR UPDATE;\n`;
+  const result = auditScientificForecastLedgerSchema(sql);
+  assert.equal(result.ok, false);
+  assert.ok(result.reasons.includes("row_update_lock_reintroduced_after_advisory_hardening"));
+});
+
+test("rejects removal of consecutive resolution version enforcement", async () => {
+  const sql = (await candidateSql()).replaceAll(
     "IF NEW.resolution_version <> v_last_version + 1 THEN",
     "IF false THEN",
   );
