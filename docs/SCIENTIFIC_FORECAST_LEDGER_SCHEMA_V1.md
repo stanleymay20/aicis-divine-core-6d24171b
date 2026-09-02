@@ -58,6 +58,14 @@ For `retrospective_backtest`, the insert is rejected unless the target window ha
 
 The target-window end must exactly equal the registered task horizon calculated from the target-window start.
 
+### Scientific issuance-time semantics
+
+For **prospective** evidence, `sealed_at` is the authoritative scientific issuance timestamp. A caller-supplied `forecast_origin` may represent a logical model/evidence anchor, but it must never be used to claim that a prospective prediction was issued earlier than the database can prove. Prospective lead-time, prospective evaluation and promotion evidence must therefore use the database seal timestamp.
+
+For **retrospective_backtest** evidence, the historical `forecast_origin` remains the evaluation origin, because the row is explicitly labelled as a reconstruction and cannot be counted as prospective evidence.
+
+The executable helper `scripts/scientific-forecast-evidence-semantics-v1.mjs` fail-closes these semantics: prospective issuance resolves to `sealed_at`, retrospective issuance resolves to `forecast_origin`, and prospective evidence without a valid database seal cannot be treated as scientific prospective evidence.
+
 ## Immutable reproducibility evidence
 
 Every forecast binds:
@@ -100,7 +108,7 @@ The trigger and validation functions are not `SECURITY DEFINER`, and direct EXEC
 
 ## CI truth floor
 
-`tests/scientific-forecast-ledger-schema-v1.test.mjs` and `scripts/audit-scientific-forecast-ledger-schema-v1.mjs` reject candidate changes that weaken critical constraints, including:
+`tests/scientific-forecast-ledger-schema-v1.test.mjs`, `scripts/audit-scientific-forecast-ledger-schema-v1.mjs`, and `scripts/scientific-forecast-evidence-semantics-v1.mjs` reject or expose changes that weaken critical constraints, including:
 
 - `SECURITY DEFINER`;
 - `GRANT ALL`;
@@ -109,6 +117,8 @@ The trigger and validation functions are not `SECURITY DEFINER`, and direct EXEC
 - missing RLS/revokes;
 - missing protocol validator;
 - missing prospective seal/horizon guards;
+- treating caller historical `forecast_origin` as prospective issuance proof;
+- prospective evidence without a valid database seal timestamp;
 - caller-controlled resolution time;
 - missing resolution ordering/authority controls;
 - missing task immutability.
