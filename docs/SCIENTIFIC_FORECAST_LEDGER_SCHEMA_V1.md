@@ -39,9 +39,15 @@ A task is inserted only as a draft. The database independently reproduces the no
 - immutable ledger hash requirements;
 - predictive-not-causal claim semantics.
 
+The mandatory hardening override also preserves **JSON scalar type fidelity**. Protocol integers must be JSON numbers, protocol booleans must be JSON booleans, and string fields must be genuine JSON strings. Textual lookalikes such as `"30"` for a horizon or `"true"` for a boolean do not satisfy the database protocol contract.
+
 A draft can be edited. Once approved, its scientific definition and approval evidence become immutable. Changes require a new semantic task version. An approved task can only be retired; it cannot be silently reverted or reactivated.
 
 Approval does **not** activate an operational model.
+
+### Validator execution boundary
+
+The registry CHECK constraint invokes `validate_scientific_forecast_task_spec_v1(jsonb)` as the inserting role. The ordered hardening bundle therefore revokes function execution from `PUBLIC`, `anon`, and `authenticated`, then grants only the minimum required `EXECUTE` privilege to `service_role`. Removing that service-role EXECUTE grant makes legitimate registry inserts fail and is rejected by CI; exposing the validator to public/API roles is not required.
 
 ## Forecast evidence classes
 
@@ -105,13 +111,13 @@ A new source revision creates a new resolution row. Existing evidence is never r
 
 ## Data API boundary
 
-All three tables enable RLS, but v1 creates no `anon` or `authenticated` policy and grants them no privileges. Table privileges are explicitly revoked from `PUBLIC`, `anon`, `authenticated` and `service_role`, then only the minimum service-role privileges are granted back:
+All three tables enable RLS, but v1 creates no `anon` or `authenticated` policy and grants them no table privileges. Table privileges are explicitly revoked from `PUBLIC`, `anon`, `authenticated` and `service_role`, then only the minimum service-role table privileges are granted back:
 
 - task registry — SELECT / INSERT / UPDATE;
 - forecast ledger — SELECT / INSERT;
 - resolution ledger — SELECT / INSERT.
 
-The trigger and validation functions are not `SECURITY DEFINER`, and direct EXECUTE is revoked from public/API roles.
+The trigger and validation functions are not `SECURITY DEFINER`. Trigger-function direct EXECUTE remains revoked from API roles. The task-spec validator is the one deliberate exception to a blanket service-role function revoke because its CHECK constraint must execute as the service-side inserting role; only `service_role` receives EXECUTE on that validator.
 
 ## CI truth floor
 
@@ -123,6 +129,8 @@ The trigger and validation functions are not `SECURITY DEFINER`, and direct EXEC
 - UPDATE/DELETE grants on sealed ledgers;
 - missing RLS/revokes;
 - missing protocol validator;
+- missing or ineffective service-role EXECUTE on the CHECK-constraint validator;
+- JSON strings masquerading as protocol numbers or booleans;
 - missing prospective seal/horizon guards;
 - treating caller historical `forecast_origin` as prospective issuance proof;
 - prospective evidence without a valid database seal timestamp;
@@ -140,7 +148,7 @@ Before this candidate can become deployable schema, the next database execution 
 
 1. generate a migration using the sanctioned Supabase migration workflow from the ordered schema bundle;
 2. execute the migration in an isolated local/development database, not production;
-3. run behavioral database tests for all lifecycle, least-privilege, concurrency and append-only constraints;
+3. run behavioral database tests for all lifecycle, validator-permission, JSON-type, least-privilege, concurrency and append-only constraints;
 4. run Supabase security/performance advisors and resolve material findings;
 5. commit the generated migration and exact behavioral evidence in a separate controlled PR;
 6. keep all production forecast writers disabled until later prospective-forecast gates explicitly authorize them.
