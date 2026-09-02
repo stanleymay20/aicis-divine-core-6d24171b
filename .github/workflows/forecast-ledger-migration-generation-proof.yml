@@ -1,0 +1,52 @@
+name: Forecast Ledger Migration Generation Proof
+
+on:
+  push:
+    branches:
+      - feat/forecast-ledger-migration-v1
+    paths:
+      - '.github/workflows/forecast-ledger-migration-generation-proof.yml'
+      - 'scripts/sql/forecast-task-registry-ledgers-v1.candidate.sql'
+      - 'scripts/sql/forecast-task-registry-ledgers-v1.hardening.sql'
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Generate migration path with pinned Supabase CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Verify pinned Supabase CLI and command surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@2.116.0 --version
+          npx --yes supabase@2.116.0 migration --help >/dev/null
+          npx --yes supabase@2.116.0 migration new --help >/dev/null
+
+      - name: Build ordered schema bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            scripts/sql/forecast-task-registry-ledgers-v1.candidate.sql \
+            scripts/sql/forecast-task-registry-ledgers-v1.hardening.sql \
+            > /tmp/forecast-task-registry-ledgers-v1.sql
+          echo "SOURCE_BUNDLE_SHA256=$(sha256sum /tmp/forecast-task-registry-ledgers-v1.sql | awk '{print $1}')"
+
+      - name: Generate migration using Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes supabase@2.116.0 migration new forecast_task_registry_ledgers_v1 \
+            < /tmp/forecast-task-registry-ledgers-v1.sql
+          GENERATED="$(find supabase/migrations -maxdepth 1 -type f -name '*_forecast_task_registry_ledgers_v1.sql' | sort | tail -n 1)"
+          test -n "$GENERATED"
+          cmp -s "$GENERATED" /tmp/forecast-task-registry-ledgers-v1.sql
+          echo "GENERATED_MIGRATION_PATH=$GENERATED"
+          echo "GENERATED_MIGRATION_SHA256=$(sha256sum "$GENERATED" | awk '{print $1}')"
