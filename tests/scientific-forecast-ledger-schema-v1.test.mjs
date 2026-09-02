@@ -6,6 +6,10 @@ import {
   assertScientificForecastLedgerSchema,
   auditScientificForecastLedgerSchema,
 } from "../scripts/audit-scientific-forecast-ledger-schema-v1.mjs";
+import {
+  evaluateScientificForecastEvidenceChronology,
+  scientificIssuanceTime,
+} from "../scripts/scientific-forecast-evidence-semantics-v1.mjs";
 
 const CANDIDATE_PATH = new URL(
   "../scripts/sql/forecast-task-registry-ledgers-v1.candidate.sql",
@@ -25,6 +29,61 @@ test("controlled forecast registry/ledger schema candidate passes the static tru
 test("candidate remains outside supabase/migrations until generated through the required workflow", () => {
   assert.equal(CANDIDATE_PATH.pathname.includes("/scripts/sql/"), true);
   assert.equal(CANDIDATE_PATH.pathname.includes("/supabase/migrations/"), false);
+});
+
+test("prospective scientific issuance time is the database seal, never caller historical origin", () => {
+  const record = {
+    evidence_class: "prospective_shadow",
+    forecast_origin: "2026-08-01T00:00:00.000Z",
+    sealed_at: "2026-09-02T04:20:00.000Z",
+    knowledge_cutoff: "2026-08-01T00:00:00.000Z",
+    target_window_start: "2026-09-02T05:00:00.000Z",
+    target_window_end: "2026-10-02T05:00:00.000Z",
+  };
+
+  assert.equal(scientificIssuanceTime(record), record.sealed_at);
+  assert.deepEqual(evaluateScientificForecastEvidenceChronology(record), { valid: true, reasons: [] });
+});
+
+test("retrospective scientific issuance time remains the historical forecast origin", () => {
+  const record = {
+    evidence_class: "retrospective_backtest",
+    forecast_origin: "2025-01-01T00:00:00.000Z",
+    sealed_at: "2026-09-02T04:20:00.000Z",
+    knowledge_cutoff: "2024-12-31T23:59:59.000Z",
+    target_window_start: "2025-01-01T00:00:00.000Z",
+    target_window_end: "2025-01-31T00:00:00.000Z",
+  };
+
+  assert.equal(scientificIssuanceTime(record), record.forecast_origin);
+  assert.deepEqual(evaluateScientificForecastEvidenceChronology(record), { valid: true, reasons: [] });
+});
+
+test("prospective evidence fails closed without a database seal timestamp", () => {
+  assert.throws(
+    () => scientificIssuanceTime({
+      evidence_class: "prospective_shadow",
+      forecast_origin: "2020-01-01T00:00:00.000Z",
+    }),
+    (error) => {
+      assert.equal(error.code, "AICIS_FORECAST_EVIDENCE_SEMANTICS_REJECTED");
+      assert.equal(error.reason, "prospective_database_seal_time_missing_or_invalid");
+      return true;
+    },
+  );
+});
+
+test("prospective chronology rejects sealing after the target window starts", () => {
+  const result = evaluateScientificForecastEvidenceChronology({
+    evidence_class: "prospective_shadow",
+    forecast_origin: "2026-09-02T04:00:00.000Z",
+    knowledge_cutoff: "2026-09-02T03:59:00.000Z",
+    sealed_at: "2026-09-02T05:01:00.000Z",
+    target_window_start: "2026-09-02T05:00:00.000Z",
+    target_window_end: "2026-10-02T05:00:00.000Z",
+  });
+  assert.equal(result.valid, false);
+  assert.ok(result.reasons.includes("scientific_issuance_after_target_window_start"));
 });
 
 test("rejects SECURITY DEFINER in executable schema code", async () => {
