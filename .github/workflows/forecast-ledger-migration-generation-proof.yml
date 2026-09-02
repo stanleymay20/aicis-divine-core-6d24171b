@@ -50,3 +50,11 @@ jobs:
           cmp -s "$GENERATED" /tmp/forecast-task-registry-ledgers-v1.sql
           echo "GENERATED_MIGRATION_PATH=$GENERATED"
           echo "GENERATED_MIGRATION_SHA256=$(sha256sum "$GENERATED" | awk '{print $1}')"
+
+      - name: Upload generated migration evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: forecast-ledger-generated-migration-${{ github.run_id }}
+          path: supabase/migrations/*_forecast_task_registry_ledgers_v1.sql
+          if-no-files-found: error
+          retention-days: 7
