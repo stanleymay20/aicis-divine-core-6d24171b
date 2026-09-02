@@ -28,18 +28,19 @@ export function auditScientificForecastLedgerSchema(sql) {
   }
 
   const reasons = [];
+  const stripped = stripSqlComments(sql);
   const normalized = normalize(sql);
 
-  if (/\bsecurity\s+definer\b/i.test(stripSqlComments(sql))) {
+  if (/\bsecurity\s+definer\b/i.test(stripped)) {
     reasons.push("security_definer_forbidden");
   }
-  if (/\bgrant\s+all\b/i.test(stripSqlComments(sql))) {
+  if (/\bgrant\s+all\b/i.test(stripped)) {
     reasons.push("grant_all_forbidden");
   }
-  if (/\bgrant\s+[^;]+\s+to\s+(anon|authenticated)\b/i.test(stripSqlComments(sql))) {
+  if (/\bgrant\s+[^;]+\s+to\s+(anon|authenticated)\b/i.test(stripped)) {
     reasons.push("anon_or_authenticated_grant_forbidden");
   }
-  if (/\bgrant\s+[^;]*(update|delete)[^;]*on\s+table\s+public\.scientific_forecast_(ledger|resolution_ledger)_v1\b/i.test(stripSqlComments(sql))) {
+  if (/\bgrant\s+[^;]*(update|delete)[^;]*on\s+table\s+public\.scientific_forecast_(ledger|resolution_ledger)_v1\b/i.test(stripped)) {
     reasons.push("sealed_ledger_mutation_grant_forbidden");
   }
 
@@ -198,10 +199,17 @@ export function auditScientificForecastLedgerSchema(sql) {
   );
   requireFragment(
     normalized,
-    "for update",
-    "resolution_serialization_lock_missing",
+    "pg_advisory_xact_lock(hashtextextended(new.forecast_id::text, 0))",
+    "resolution_advisory_serialization_lock_missing",
     reasons,
   );
+  const advisoryLockIndex = normalized.lastIndexOf(
+    "pg_advisory_xact_lock(hashtextextended(new.forecast_id::text, 0))",
+  );
+  const rowUpdateLockIndex = normalized.lastIndexOf("for update");
+  if (rowUpdateLockIndex > advisoryLockIndex) {
+    reasons.push("row_update_lock_reintroduced_after_advisory_hardening");
+  }
   requireFragment(
     normalized,
     "new.resolution_version <> v_last_version + 1",
@@ -233,7 +241,7 @@ export function auditScientificForecastLedgerSchema(sql) {
     reasons,
   );
 
-  const createPolicyForGovernanceTables = /create\s+policy[^;]+on\s+public\.scientific_forecast_(tasks|ledger|resolution_ledger)_v1/i.test(stripSqlComments(sql));
+  const createPolicyForGovernanceTables = /create\s+policy[^;]+on\s+public\.scientific_forecast_(tasks|ledger|resolution_ledger)_v1/i.test(stripped);
   if (createPolicyForGovernanceTables) reasons.push("data_api_policy_for_governance_tables_forbidden_v1");
 
   return { ok: reasons.length === 0, reasons };
