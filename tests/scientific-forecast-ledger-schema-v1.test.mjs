@@ -96,6 +96,43 @@ test("prospective chronology rejects sealing after the target window starts", ()
   assert.ok(result.reasons.includes("scientific_issuance_after_target_window_start"));
 });
 
+test("requires service-role EXECUTE on the CHECK-constraint protocol validator", async () => {
+  const sql = (await candidateSql()).replace(
+    "GRANT EXECUTE ON FUNCTION public.validate_scientific_forecast_task_spec_v1(jsonb)\n  TO service_role;",
+    "",
+  );
+  const result = auditScientificForecastLedgerSchema(sql);
+  assert.equal(result.ok, false);
+  assert.ok(result.reasons.includes("validator_service_role_execute_grant_missing"));
+});
+
+test("validator EXECUTE must remain effective after the final revoke", async () => {
+  const sql = `${await candidateSql()}\nREVOKE ALL ON FUNCTION public.validate_scientific_forecast_task_spec_v1(jsonb) FROM service_role;\n`;
+  const result = auditScientificForecastLedgerSchema(sql);
+  assert.equal(result.ok, false);
+  assert.ok(result.reasons.includes("validator_service_role_execute_not_effective_after_revoke"));
+});
+
+test("requires a genuine JSON number for the forecast horizon", async () => {
+  const sql = (await candidateSql()).replace(
+    "jsonb_typeof(p_spec#>'{horizon,value}') IS DISTINCT FROM 'number'\n     OR ",
+    "",
+  );
+  const result = auditScientificForecastLedgerSchema(sql);
+  assert.equal(result.ok, false);
+  assert.ok(result.reasons.includes("horizon_json_number_type_guard_missing"));
+});
+
+test("requires a genuine JSON boolean for calibration.required", async () => {
+  const sql = (await candidateSql()).replace(
+    "jsonb_typeof(p_spec#>'{calibration,required}') IS DISTINCT FROM 'boolean'\n     OR ",
+    "",
+  );
+  const result = auditScientificForecastLedgerSchema(sql);
+  assert.equal(result.ok, false);
+  assert.ok(result.reasons.includes("calibration_required_json_boolean_type_guard_missing"));
+});
+
 test("rejects SECURITY DEFINER in executable schema code", async () => {
   const sql = (await candidateSql()).replace(
     "LANGUAGE plpgsql\nIMMUTABLE",
