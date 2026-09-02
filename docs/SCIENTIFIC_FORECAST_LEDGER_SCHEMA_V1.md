@@ -4,7 +4,12 @@ Status: **controlled schema candidate — not applied and not a migration**
 
 Protocol binding: `aicis-scientific-forecasting-protocol-v1`
 
-Candidate SQL: `scripts/sql/forecast-task-registry-ledgers-v1.candidate.sql`
+Ordered schema bundle:
+
+1. `scripts/sql/forecast-task-registry-ledgers-v1.candidate.sql`
+2. `scripts/sql/forecast-task-registry-ledgers-v1.hardening.sql`
+
+The hardening fragment is mandatory and must be applied after the base candidate. The CI truth floor audits the ordered bundle, not the base file in isolation.
 
 ## Purpose
 
@@ -89,10 +94,12 @@ Resolution rows are append-only and versioned. The database:
 - owns `resolved_at` using `clock_timestamp()`;
 - rejects resolution before the target window closes;
 - requires the registered task's ground-truth authority/class/revision policy;
-- serializes resolution inserts per forecast;
+- serializes resolution inserts per forecast using a transaction-scoped advisory lock;
 - requires resolution versions to advance consecutively;
 - prevents a first resolution from being labelled `revised`;
 - requires later changes after a final/revised outcome to be recorded as another revision.
+
+The advisory-lock hardening is deliberate. The immutable forecast ledger gives `service_role` no UPDATE privilege, so resolution serialization must not rely on `SELECT ... FOR UPDATE`. The mandatory hardening fragment replaces that initial implementation with `pg_advisory_xact_lock(...)`, preserving concurrency safety without weakening least privilege.
 
 A new source revision creates a new resolution row. Existing evidence is never rewritten.
 
@@ -120,18 +127,20 @@ The trigger and validation functions are not `SECURITY DEFINER`, and direct EXEC
 - treating caller historical `forecast_origin` as prospective issuance proof;
 - prospective evidence without a valid database seal timestamp;
 - caller-controlled resolution time;
+- missing advisory serialization hardening;
+- a later reintroduction of row-update locking after the advisory hardening;
 - missing resolution ordering/authority controls;
 - missing task immutability.
 
 ## Migration gate
 
-This SQL is deliberately **not** placed under `supabase/migrations` because the required Supabase CLI migration-generation path is not available in the current runtime. A timestamp will not be invented merely to make the repository look complete.
+This ordered SQL bundle is deliberately **not** placed under `supabase/migrations` because the required Supabase CLI migration-generation path is not available in the current runtime. A timestamp will not be invented merely to make the repository look complete.
 
 Before this candidate can become deployable schema, the next database execution stage must:
 
-1. generate a migration using the sanctioned Supabase migration workflow;
+1. generate a migration using the sanctioned Supabase migration workflow from the ordered schema bundle;
 2. execute the migration in an isolated local/development database, not production;
-3. run behavioral database tests for all lifecycle and append-only constraints;
+3. run behavioral database tests for all lifecycle, least-privilege, concurrency and append-only constraints;
 4. run Supabase security/performance advisors and resolve material findings;
 5. commit the generated migration and exact behavioral evidence in a separate controlled PR;
 6. keep all production forecast writers disabled until later prospective-forecast gates explicitly authorize them.
