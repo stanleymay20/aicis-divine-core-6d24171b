@@ -30,13 +30,13 @@ DECLARE
   v_calibration_min integer;
   v_promotion_min integer;
 BEGIN
-  IF p_spec IS NULL OR jsonb_typeof(p_spec) <> 'object' THEN
+  IF p_spec IS NULL OR jsonb_typeof(p_spec) IS DISTINCT FROM 'object' THEN
     RETURN false;
   END IF;
 
-  IF p_spec->>'protocol_version' <> 'aicis-scientific-forecasting-protocol-v1'
-     OR p_spec->>'knowledge_time_policy' <> 'verified_point_in_time_v1'
-     OR p_spec->>'claim_semantics' <> 'predictive_not_causal_without_identification' THEN
+  IF p_spec->>'protocol_version' IS DISTINCT FROM 'aicis-scientific-forecasting-protocol-v1'
+     OR p_spec->>'knowledge_time_policy' IS DISTINCT FROM 'verified_point_in_time_v1'
+     OR p_spec->>'claim_semantics' IS DISTINCT FROM 'predictive_not_causal_without_identification' THEN
     RETURN false;
   END IF;
 
@@ -47,32 +47,32 @@ BEGIN
     RETURN false;
   END IF;
 
-  IF p_spec->>'geography_level' NOT IN ('grid','city','admin1','country','region','global','entity','network') THEN
+  IF COALESCE(p_spec->>'geography_level', '') NOT IN ('grid','city','admin1','country','region','global','entity','network') THEN
     RETURN false;
   END IF;
 
   v_target_type := p_spec#>>'{target,type}';
-  IF v_target_type NOT IN ('binary','count','continuous','time_to_event','event_sequence','graph_link','ranking')
+  IF COALESCE(v_target_type, '') NOT IN ('binary','count','continuous','time_to_event','event_sequence','graph_link','ranking')
      OR btrim(COALESCE(p_spec#>>'{target,definition}', '')) = ''
      OR btrim(COALESCE(p_spec#>>'{target,outcome_field}', '')) = '' THEN
     RETURN false;
   END IF;
 
   IF COALESCE(p_spec#>>'{horizon,value}', '') !~ '^[1-9][0-9]*$'
-     OR p_spec#>>'{horizon,unit}' NOT IN ('hours','days') THEN
+     OR COALESCE(p_spec#>>'{horizon,unit}', '') NOT IN ('hours','days') THEN
     RETURN false;
   END IF;
 
   IF btrim(COALESCE(p_spec#>>'{resolution,authority}', '')) = ''
      OR btrim(COALESCE(p_spec#>>'{resolution,outcome_query}', '')) = ''
-     OR p_spec#>>'{resolution,authority_class}' NOT IN (
+     OR COALESCE(p_spec#>>'{resolution,authority_class}', '') NOT IN (
        'official_statistics',
        'governed_event_dataset',
        'primary_source',
        'independently_adjudicated',
        'registered_operational_outcome'
      )
-     OR p_spec#>>'{resolution,revision_policy}' NOT IN (
+     OR COALESCE(p_spec#>>'{resolution,revision_policy}', '') NOT IN (
        'first_release',
        'latest_available',
        'final_vintage',
@@ -82,7 +82,7 @@ BEGIN
   END IF;
 
   v_baselines := p_spec->'baseline_suite';
-  IF jsonb_typeof(v_baselines) <> 'array' OR jsonb_array_length(v_baselines) = 0 THEN
+  IF jsonb_typeof(v_baselines) IS DISTINCT FROM 'array' OR jsonb_array_length(v_baselines) = 0 THEN
     RETURN false;
   END IF;
 
@@ -101,43 +101,47 @@ BEGIN
       IF NOT (v_baselines @> '["recurrence","frequency"]'::jsonb) THEN RETURN false; END IF;
     WHEN 'ranking' THEN
       IF NOT (v_baselines @> '["prior_rank","frequency"]'::jsonb) THEN RETURN false; END IF;
+    ELSE
+      RETURN false;
   END CASE;
 
   v_primary_metric := p_spec#>>'{metrics,primary}';
-  IF jsonb_typeof(p_spec#>'{metrics,secondary}') <> 'array' THEN
+  IF jsonb_typeof(p_spec#>'{metrics,secondary}') IS DISTINCT FROM 'array' THEN
     RETURN false;
   END IF;
   CASE v_target_type
     WHEN 'binary' THEN
-      IF v_primary_metric NOT IN ('brier','log_loss') THEN RETURN false; END IF;
+      IF COALESCE(v_primary_metric, '') NOT IN ('brier','log_loss') THEN RETURN false; END IF;
     WHEN 'count' THEN
-      IF v_primary_metric NOT IN ('crps','log_score') THEN RETURN false; END IF;
+      IF COALESCE(v_primary_metric, '') NOT IN ('crps','log_score') THEN RETURN false; END IF;
     WHEN 'continuous' THEN
-      IF v_primary_metric NOT IN ('crps','log_score') THEN RETURN false; END IF;
+      IF COALESCE(v_primary_metric, '') NOT IN ('crps','log_score') THEN RETURN false; END IF;
     WHEN 'time_to_event' THEN
-      IF v_primary_metric NOT IN ('log_score','negative_log_likelihood') THEN RETURN false; END IF;
+      IF COALESCE(v_primary_metric, '') NOT IN ('log_score','negative_log_likelihood') THEN RETURN false; END IF;
     WHEN 'event_sequence' THEN
-      IF v_primary_metric NOT IN ('log_score','negative_log_likelihood') THEN RETURN false; END IF;
+      IF COALESCE(v_primary_metric, '') NOT IN ('log_score','negative_log_likelihood') THEN RETURN false; END IF;
     WHEN 'graph_link' THEN
-      IF v_primary_metric NOT IN ('brier','log_loss') THEN RETURN false; END IF;
+      IF COALESCE(v_primary_metric, '') NOT IN ('brier','log_loss') THEN RETURN false; END IF;
     WHEN 'ranking' THEN
-      IF v_primary_metric NOT IN ('log_loss','brier') THEN RETURN false; END IF;
+      IF COALESCE(v_primary_metric, '') NOT IN ('log_loss','brier') THEN RETURN false; END IF;
+    ELSE
+      RETURN false;
   END CASE;
 
-  IF p_spec#>>'{evaluation,split_policy}' <> 'knowledge_time_bounded_rolling_origin'
-     OR p_spec#>>'{evaluation,test_data_policy}' <> 'future_only_after_model_selection'
+  IF p_spec#>>'{evaluation,split_policy}' IS DISTINCT FROM 'knowledge_time_bounded_rolling_origin'
+     OR p_spec#>>'{evaluation,test_data_policy}' IS DISTINCT FROM 'future_only_after_model_selection'
      OR COALESCE(p_spec#>>'{evaluation,minimum_forecast_origins}', '') !~ '^[1-9][0-9]*$' THEN
     RETURN false;
   END IF;
   v_min_origins := (p_spec#>>'{evaluation,minimum_forecast_origins}')::integer;
   IF v_min_origins < 3 THEN RETURN false; END IF;
   v_modes := p_spec#>'{evaluation,modes}';
-  IF jsonb_typeof(v_modes) <> 'array'
+  IF jsonb_typeof(v_modes) IS DISTINCT FROM 'array'
      OR NOT (v_modes @> '["retrospective_rolling_origin","prospective_sealed"]'::jsonb) THEN
     RETURN false;
   END IF;
 
-  IF p_spec#>>'{calibration,required}' <> 'true'
+  IF p_spec#>>'{calibration,required}' IS DISTINCT FROM 'true'
      OR btrim(COALESCE(p_spec#>>'{calibration,method_policy}', '')) = ''
      OR COALESCE(p_spec#>>'{calibration,minimum_resolved_forecasts_for_claim}', '') !~ '^[1-9][0-9]*$' THEN
     RETURN false;
@@ -145,28 +149,28 @@ BEGIN
   v_calibration_min := (p_spec#>>'{calibration,minimum_resolved_forecasts_for_claim}')::integer;
   IF v_calibration_min < 100 THEN RETURN false; END IF;
 
-  IF p_spec#>>'{abstention,enabled}' <> 'true' THEN RETURN false; END IF;
+  IF p_spec#>>'{abstention,enabled}' IS DISTINCT FROM 'true' THEN RETURN false; END IF;
   v_abstention_triggers := p_spec#>'{abstention,triggers}';
-  IF jsonb_typeof(v_abstention_triggers) <> 'array'
+  IF jsonb_typeof(v_abstention_triggers) IS DISTINCT FROM 'array'
      OR NOT (v_abstention_triggers @> '["knowledge_time_unverified","source_coverage_insufficient","calibration_insufficient","severe_distribution_shift","excessive_model_disagreement"]'::jsonb) THEN
     RETURN false;
   END IF;
 
-  IF p_spec#>>'{promotion,no_auto_promotion}' <> 'true'
-     OR p_spec#>>'{promotion,requires_positive_skill_vs_mandatory_baselines}' <> 'true'
-     OR p_spec#>>'{promotion,requires_prospective_evidence_for_operational_use}' <> 'true'
+  IF p_spec#>>'{promotion,no_auto_promotion}' IS DISTINCT FROM 'true'
+     OR p_spec#>>'{promotion,requires_positive_skill_vs_mandatory_baselines}' IS DISTINCT FROM 'true'
+     OR p_spec#>>'{promotion,requires_prospective_evidence_for_operational_use}' IS DISTINCT FROM 'true'
      OR COALESCE(p_spec#>>'{promotion,minimum_resolved_forecasts_for_operational_use}', '') !~ '^[1-9][0-9]*$' THEN
     RETURN false;
   END IF;
   v_promotion_min := (p_spec#>>'{promotion,minimum_resolved_forecasts_for_operational_use}')::integer;
   IF v_promotion_min < 100 THEN RETURN false; END IF;
 
-  IF p_spec#>>'{ledger,immutable_after_seal}' <> 'true'
-     OR p_spec#>>'{ledger,seal_before_target_period_evidence}' <> 'true' THEN
+  IF p_spec#>>'{ledger,immutable_after_seal}' IS DISTINCT FROM 'true'
+     OR p_spec#>>'{ledger,seal_before_target_period_evidence}' IS DISTINCT FROM 'true' THEN
     RETURN false;
   END IF;
   v_ledger_hashes := p_spec#>'{ledger,required_hashes}';
-  IF jsonb_typeof(v_ledger_hashes) <> 'array'
+  IF jsonb_typeof(v_ledger_hashes) IS DISTINCT FROM 'array'
      OR NOT (v_ledger_hashes @> '["data_manifest_hash","feature_manifest_hash","model_artifact_hash","git_commit_sha"]'::jsonb) THEN
     RETURN false;
   END IF;
@@ -492,6 +496,8 @@ BEGIN
     END IF;
   ELSIF NEW.evidence_class = 'prospective_operational' THEN
     RAISE EXCEPTION 'prospective operational evidence is quarantined until a separate operational-promotion control is implemented';
+  ELSE
+    RAISE EXCEPTION 'unsupported evidence class %', NEW.evidence_class;
   END IF;
 
   RETURN NEW;
@@ -551,6 +557,10 @@ BEGIN
   IF v_last_version > 0 AND v_last_status IN ('final','revised') AND NEW.resolution_status <> 'revised' THEN
     RAISE EXCEPTION 'a final/revised resolution can only be superseded by a revised resolution';
   END IF;
+
+  -- The database owns resolution time. A caller cannot submit an outcome early
+  -- while forging a future resolved_at that falls after the target window.
+  NEW.resolved_at := clock_timestamp();
 
   IF NEW.resolved_at < v_forecast.target_window_end THEN
     RAISE EXCEPTION 'forecast % cannot resolve before its target window closes', NEW.forecast_id;
