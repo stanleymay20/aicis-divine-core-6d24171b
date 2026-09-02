@@ -107,7 +107,7 @@ test("requires service-role EXECUTE on the CHECK-constraint protocol validator",
 });
 
 test("validator EXECUTE must remain effective after the final revoke", async () => {
-  const sql = `${await candidateSql()}\nREVOKE ALL ON FUNCTION public.validate_scientific_forecast_task_spec_v1(jsonb) FROM service_role;\n`;
+  const sql = `${await candidateSql()}\nREVOKE ALL ON FUNCTION public.validate_scientific_forecast_task_spec_v1(jsonb) FROM PUBLIC, anon, authenticated, service_role;\n`;
   const result = auditScientificForecastLedgerSchema(sql);
   assert.equal(result.ok, false);
   assert.ok(result.reasons.includes("validator_service_role_execute_not_effective_after_revoke"));
