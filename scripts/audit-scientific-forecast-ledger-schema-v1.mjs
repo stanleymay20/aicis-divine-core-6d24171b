@@ -50,9 +50,11 @@ export function auditScientificForecastLedgerSchema(sql) {
     "protocol_binding_missing",
     reasons,
   );
+  const validatorSignature =
+    "create or replace function public.validate_scientific_forecast_task_spec_v1(p_spec jsonb)";
   requireFragment(
     normalized,
-    "create or replace function public.validate_scientific_forecast_task_spec_v1(p_spec jsonb)",
+    validatorSignature,
     "database_protocol_validator_missing",
     reasons,
   );
@@ -92,6 +94,41 @@ export function auditScientificForecastLedgerSchema(sql) {
     "required_abstention_triggers_missing",
     reasons,
   );
+
+  // The effective (last) validator override must preserve JSON scalar types.
+  const lastValidatorIndex = normalized.lastIndexOf(validatorSignature);
+  const strictTypeFragments = [
+    ["jsonb_typeof(p_spec#>'{horizon,value}') is distinct from 'number'", "horizon_json_number_type_guard_missing"],
+    ["jsonb_typeof(p_spec#>'{evaluation,minimum_forecast_origins}') is distinct from 'number'", "evaluation_min_origins_json_number_type_guard_missing"],
+    ["jsonb_typeof(p_spec#>'{calibration,required}') is distinct from 'boolean'", "calibration_required_json_boolean_type_guard_missing"],
+    ["p_spec#>'{calibration,required}' is distinct from 'true'::jsonb", "calibration_required_strict_true_guard_missing"],
+    ["jsonb_typeof(p_spec#>'{calibration,minimum_resolved_forecasts_for_claim}') is distinct from 'number'", "calibration_sample_json_number_type_guard_missing"],
+    ["jsonb_typeof(p_spec#>'{abstention,enabled}') is distinct from 'boolean'", "abstention_enabled_json_boolean_type_guard_missing"],
+    ["jsonb_typeof(p_spec#>'{promotion,no_auto_promotion}') is distinct from 'boolean'", "promotion_no_auto_json_boolean_type_guard_missing"],
+    ["jsonb_typeof(p_spec#>'{promotion,minimum_resolved_forecasts_for_operational_use}') is distinct from 'number'", "promotion_sample_json_number_type_guard_missing"],
+    ["jsonb_typeof(p_spec#>'{ledger,immutable_after_seal}') is distinct from 'boolean'", "ledger_immutable_json_boolean_type_guard_missing"],
+    ["jsonb_typeof(p_spec#>'{ledger,seal_before_target_period_evidence}') is distinct from 'boolean'", "ledger_seal_policy_json_boolean_type_guard_missing"],
+  ];
+  for (const [fragment, reason] of strictTypeFragments) {
+    const index = normalized.lastIndexOf(fragment);
+    if (index < lastValidatorIndex) reasons.push(reason);
+  }
+
+  const validatorGrant =
+    "grant execute on function public.validate_scientific_forecast_task_spec_v1(jsonb) to service_role";
+  requireFragment(
+    normalized,
+    validatorGrant,
+    "validator_service_role_execute_grant_missing",
+    reasons,
+  );
+  const validatorRevoke =
+    "revoke all on function public.validate_scientific_forecast_task_spec_v1(jsonb) from public, anon, authenticated, service_role";
+  const lastValidatorRevokeIndex = normalized.lastIndexOf(validatorRevoke);
+  const lastValidatorGrantIndex = normalized.lastIndexOf(validatorGrant);
+  if (lastValidatorGrantIndex <= lastValidatorRevokeIndex) {
+    reasons.push("validator_service_role_execute_not_effective_after_revoke");
+  }
 
   for (const table of REQUIRED_TABLES) {
     requireFragment(normalized, `create table ${table}`, `table_missing:${table}`, reasons);
