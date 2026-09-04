@@ -5,11 +5,29 @@ const ALLOWED_RUNTIMES = new Set(["vllm", "sglang"]);
 const SHA256_RE = /^[a-f0-9]{64}$/i;
 const DIGEST_RE = /^sha256:[a-f0-9]{64}$/i;
 const REVISION_RE = /^[a-f0-9]{40}$/i;
+const EXACT_VERSION_RE = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$/;
+
+export const REQUIRED_SOVEREIGN_RUNTIME_BENCHMARK_DIMENSIONS = Object.freeze([
+  "structured_output_validity",
+  "grounded_task_accuracy",
+  "unsupported_assertion_rate",
+  "abstention_behavior",
+  "prompt_injection_resistance",
+  "latency",
+  "throughput",
+  "memory_footprint",
+  "failure_recovery",
+]);
 
 export function evaluateSovereignRuntimeCandidate(candidate) {
   const reasons = [];
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-    return Object.freeze({ admissible: false, benchmark_locked: false, reasons: ["candidate_missing_or_invalid"] });
+    return Object.freeze({
+      admissible: false,
+      benchmark_locked: false,
+      reasons: Object.freeze(["candidate_missing_or_invalid"]),
+      benchmark_lock_reasons: Object.freeze(["candidate_not_admissible"]),
+    });
   }
 
   if (candidate.contract_version !== AICIS_SOVEREIGN_RUNTIME_CONTRACT_VERSION) {
@@ -23,17 +41,25 @@ export function evaluateSovereignRuntimeCandidate(candidate) {
   }
 
   const primary = candidate.runtime?.primary;
-  if (!primary || !ALLOWED_RUNTIMES.has(primary.name)) reasons.push("primary_runtime_missing_or_invalid");
-  if (primary?.protocol !== "openai-compatible") reasons.push("primary_runtime_protocol_invalid");
-  if (!new Set(["private", "loopback"]).has(primary?.network_boundary)) reasons.push("runtime_network_boundary_not_private");
-  if (primary?.public_ingress !== false) reasons.push("runtime_public_ingress_forbidden");
+  validateRuntimeBoundary(primary, "primary", reasons);
   if (primary?.name === "vllm" && primary?.reverse_proxy_required !== true) {
-    reasons.push("vllm_reverse_proxy_required");
+    reasons.push("vllm_reverse_proxy_required:primary");
   }
   if (primary?.name === "vllm" && primary?.deny_unproxied_inference_endpoints !== true) {
-    reasons.push("vllm_unproxied_inference_must_be_denied");
+    reasons.push("vllm_unproxied_inference_must_be_denied:primary");
   }
-  if (hasMutableLatestTag(primary?.container_image)) reasons.push("mutable_latest_container_tag_forbidden");
+
+  const secondary = candidate.runtime?.secondary;
+  if (secondary) {
+    validateRuntimeBoundary(secondary, "secondary", reasons);
+    if (secondary.benchmark_only !== true) reasons.push("secondary_runtime_must_be_benchmark_only");
+    if (secondary.name === "vllm" && secondary.reverse_proxy_required !== true) {
+      reasons.push("vllm_reverse_proxy_required:secondary");
+    }
+    if (secondary.name === "vllm" && secondary.deny_unproxied_inference_endpoints !== true) {
+      reasons.push("vllm_unproxied_inference_must_be_denied:secondary");
+    }
+  }
 
   const network = candidate.network_policy;
   if (network?.model_server_public_ingress !== false) reasons.push("model_server_public_ingress_forbidden");
@@ -57,16 +83,20 @@ export function evaluateSovereignRuntimeCandidate(candidate) {
   if (gate?.automatic_promotion !== false) reasons.push("automatic_promotion_forbidden");
   if (gate?.deterministic_baseline_required !== true) reasons.push("deterministic_baseline_required");
   if (gate?.scientific_forecast_claims_from_llm_forbidden !== true) reasons.push("llm_scientific_forecast_claims_must_be_forbidden");
+  const configuredDimensions = new Set(Array.isArray(gate?.required_dimensions) ? gate.required_dimensions : []);
+  for (const dimension of REQUIRED_SOVEREIGN_RUNTIME_BENCHMARK_DIMENSIONS) {
+    if (!configuredDimensions.has(dimension)) reasons.push(`required_benchmark_dimension_missing:${dimension}`);
+  }
 
-  const structuralReasons = [...new Set(reasons)];
+  const structuralReasons = Object.freeze([...new Set(reasons)]);
   const admissible = structuralReasons.length === 0;
-  const lockReasons = admissible ? benchmarkLockReasons(candidate) : ["candidate_not_admissible"];
+  const lockReasons = Object.freeze(admissible ? benchmarkLockReasons(candidate) : ["candidate_not_admissible"]);
 
   return Object.freeze({
     admissible,
     benchmark_locked: admissible && candidate.status === "benchmark_locked" && lockReasons.length === 0,
     reasons: structuralReasons,
-    benchmark_lock_reasons: Object.freeze(lockReasons),
+    benchmark_lock_reasons: lockReasons,
   });
 }
 
@@ -84,16 +114,24 @@ export function assertBenchmarkLocked(candidate) {
   return deepFreeze(structuredClone(candidate));
 }
 
+function validateRuntimeBoundary(runtime, role, reasons) {
+  if (!runtime || !ALLOWED_RUNTIMES.has(runtime.name)) reasons.push(`${role}_runtime_missing_or_invalid`);
+  if (runtime?.protocol !== "openai-compatible") reasons.push(`${role}_runtime_protocol_invalid`);
+  if (!new Set(["private", "loopback"]).has(runtime?.network_boundary)) {
+    reasons.push(`${role}_runtime_network_boundary_not_private`);
+  }
+  if (runtime?.public_ingress !== false) reasons.push(`${role}_runtime_public_ingress_forbidden`);
+  if (hasMutableLatestTag(runtime?.container_image)) reasons.push(`${role}_runtime_mutable_latest_container_tag_forbidden`);
+}
+
 function benchmarkLockReasons(candidate) {
   const reasons = [];
   if (candidate.status !== "benchmark_locked") reasons.push("status_not_benchmark_locked");
 
   const runtimes = [candidate.runtime?.primary, candidate.runtime?.secondary].filter(Boolean);
   for (const runtime of runtimes) {
-    if (!runtime.version || typeof runtime.version !== "string") {
-      reasons.push(`runtime_version_unpinned:${runtime.name ?? "unknown"}`);
-    } else if (isMutableVersion(runtime.version)) {
-      reasons.push(`runtime_version_mutable:${runtime.name ?? "unknown"}`);
+    if (!EXACT_VERSION_RE.test(String(runtime.version ?? ""))) {
+      reasons.push(`runtime_version_not_exact:${runtime.name ?? "unknown"}`);
     }
     if (!DIGEST_RE.test(String(runtime.container_digest ?? ""))) {
       reasons.push(`runtime_container_digest_unpinned:${runtime.name ?? "unknown"}`);
@@ -117,11 +155,6 @@ function hasMutableLatestTag(image) {
   if (typeof image !== "string" || !image) return false;
   const withoutDigest = image.split("@")[0];
   return /:latest$/i.test(withoutDigest);
-}
-
-function isMutableVersion(version) {
-  const normalized = String(version ?? "").trim().toLowerCase();
-  return normalized === "latest" || normalized === "main" || normalized === "master" || normalized === "nightly" || normalized === "dev";
 }
 
 function deepFreeze(value) {
