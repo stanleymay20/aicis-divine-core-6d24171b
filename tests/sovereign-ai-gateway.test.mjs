@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 
 import {
   AICIS_SOVEREIGN_AI_POLICY_VERSION,
@@ -15,6 +16,17 @@ function expectPolicyError(fn, code) {
     assert.equal(error.code, code);
     return true;
   });
+}
+
+function collectTypeScriptFiles(root) {
+  const files = [];
+  for (const entry of readdirSync(root)) {
+    const path = join(root, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) files.push(...collectTypeScriptFiles(path));
+    else if (stat.isFile() && path.endsWith(".ts")) files.push(path);
+  }
+  return files;
 }
 
 test("requires an explicit AI operating mode", () => {
@@ -153,4 +165,31 @@ test("gateway source contains no implicit OpenAI or GPT fallback", () => {
   assert.match(source, /AICIS_AI_MODE/);
   assert.match(source, /AICIS_SOVEREIGN_MODEL_HOSTS/);
   assert.match(source, /evaluateAiRoute/);
+});
+
+test("Edge Functions cannot bypass the shared gateway through model transport secrets or legacy defaults", () => {
+  const root = "supabase/functions";
+  const gatewayPath = "supabase/functions/_shared/ai-gateway.ts";
+  const forbiddenOutsideGateway = [
+    "AICIS_MODEL_ENDPOINT",
+    "AICIS_MODEL_API_KEY",
+    "api.openai.com",
+    "gpt-4o-mini",
+    "/chat/completions",
+  ];
+
+  const violations = [];
+  for (const path of collectTypeScriptFiles(root)) {
+    const normalized = relative(".", path).replaceAll("\\", "/");
+    if (normalized === gatewayPath) continue;
+    const source = readFileSync(path, "utf8");
+    for (const token of forbiddenOutsideGateway) {
+      if (source.includes(token)) violations.push(`${normalized}: ${token}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+
+  const relevanceSource = readFileSync("supabase/functions/score-relevance/index.ts", "utf8");
+  assert.match(relevanceSource, /import \{ aiChat \} from "\.\.\/_shared\/ai-gateway\.ts"/);
 });
