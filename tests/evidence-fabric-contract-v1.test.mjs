@@ -166,6 +166,12 @@ function verifiedBundle(overrides = {}) {
   };
   if (Object.prototype.hasOwnProperty.call(overrides, "transform")) bundle.transform = overrides.transform;
   if (Object.prototype.hasOwnProperty.call(overrides, "cutoff_at")) bundle.cutoff_at = overrides.cutoff_at;
+  if (Object.prototype.hasOwnProperty.call(overrides, "additional_artifacts")) {
+    bundle.evidence_artifacts = [sourceArtifact, ...overrides.additional_artifacts];
+  }
+  if (Object.prototype.hasOwnProperty.call(overrides, "evidence_artifacts")) {
+    bundle.evidence_artifacts = overrides.evidence_artifacts;
+  }
   return bundle;
 }
 
@@ -464,9 +470,116 @@ test("verified bundle requires the assessment manifest to contain the exact link
   const result = evaluateVerifiedEvidenceBundle(verifiedBundle({
     assessment: { evidence_manifest: [manifestEntry(unrelated)] },
   }));
-  assert.equal(result.admissible, true);
+  assert.equal(result.admissible, false);
   assert.equal(result.verified, false);
   assert.ok(result.reasons.includes("assessment_evidence_set_missing_linked_artifact"));
+  assert.ok(result.reasons.includes(`assessment_manifest_artifact_not_supplied:${SECOND_ARTIFACT_ID}`));
+});
+
+test("independent corroboration cannot be created by a phantom second manifest entry", () => {
+  const secondArtifact = artifact({
+    id: SECOND_ARTIFACT_ID,
+    artifact_sha256: SHA_D,
+    source_id: "independent-source-record-2",
+    source_independence_key: "origin:independent-primary-2",
+  });
+  const result = evaluateVerifiedEvidenceBundle(verifiedBundle({
+    assessment: {
+      assessment_method: "independent_source_corroboration",
+      evidence_manifest: [manifestEntry(), manifestEntry(secondArtifact)],
+    },
+  }));
+  assert.equal(result.admissible, false);
+  assert.equal(result.verified, false);
+  assert.ok(result.reasons.includes(`assessment_manifest_artifact_not_supplied:${SECOND_ARTIFACT_ID}`));
+});
+
+test("independent corroboration verifies only when every manifest artifact is supplied and externally admissible", () => {
+  const secondArtifact = artifact({
+    id: SECOND_ARTIFACT_ID,
+    artifact_sha256: SHA_D,
+    source_id: "independent-source-record-2",
+    source_independence_key: "origin:independent-primary-2",
+  });
+  const result = evaluateVerifiedEvidenceBundle(verifiedBundle({
+    assessment: {
+      assessment_method: "independent_source_corroboration",
+      evidence_manifest: [manifestEntry(), manifestEntry(secondArtifact)],
+    },
+    additional_artifacts: [secondArtifact],
+  }));
+  assert.equal(result.admissible, true);
+  assert.equal(result.verified, true);
+});
+
+test("manifest evidence must itself be verified external evidence", () => {
+  const unverifiedSecond = artifact({
+    id: SECOND_ARTIFACT_ID,
+    artifact_sha256: SHA_D,
+    source_id: "independent-source-record-2",
+    source_independence_key: "origin:independent-primary-2",
+    knowledge_time: null,
+    knowledge_time_status: "unverified",
+    knowledge_time_verified_at: null,
+  });
+  const result = evaluateVerifiedEvidenceBundle(verifiedBundle({
+    assessment: {
+      assessment_method: "independent_source_corroboration",
+      evidence_manifest: [manifestEntry(), manifestEntry(unverifiedSecond)],
+    },
+    additional_artifacts: [unverifiedSecond],
+  }));
+  assert.equal(result.admissible, false);
+  assert.equal(result.verified, false);
+  assert.ok(result.reasons.includes(`assessment_manifest_artifact_not_verified_external:${SECOND_ARTIFACT_ID}`));
+});
+
+test("assessment knowledge time cannot precede any artifact used in its evidence manifest", () => {
+  const lateSecond = artifact({
+    id: SECOND_ARTIFACT_ID,
+    artifact_sha256: SHA_D,
+    source_id: "independent-source-record-2",
+    source_independence_key: "origin:independent-primary-2",
+    published_at: "2026-09-04T10:15:00Z",
+    knowledge_time: "2026-09-04T10:15:00Z",
+    retrieved_at: "2026-09-04T10:20:00Z",
+    first_observed_at: "2026-09-04T10:20:00Z",
+    knowledge_time_verified_at: "2026-09-04T10:21:00Z",
+  });
+  const result = evaluateVerifiedEvidenceBundle(verifiedBundle({
+    assessment: {
+      assessment_method: "independent_source_corroboration",
+      evidence_manifest: [manifestEntry(), manifestEntry(lateSecond)],
+    },
+    additional_artifacts: [lateSecond],
+  }));
+  assert.equal(result.admissible, false);
+  assert.equal(result.verified, false);
+  assert.ok(result.reasons.includes(`assessment_precedes_manifest_artifact_knowledge:${SECOND_ARTIFACT_ID}`));
+});
+
+test("historical cutoff applies to every artifact in the assessment manifest", () => {
+  const lateSecond = artifact({
+    id: SECOND_ARTIFACT_ID,
+    artifact_sha256: SHA_D,
+    source_id: "independent-source-record-2",
+    source_independence_key: "origin:independent-primary-2",
+    published_at: "2026-09-04T10:08:00Z",
+    knowledge_time: "2026-09-04T10:08:00Z",
+    retrieved_at: "2026-09-04T10:09:00Z",
+    first_observed_at: "2026-09-04T10:09:00Z",
+    knowledge_time_verified_at: "2026-09-04T10:09:30Z",
+  });
+  const result = evaluateVerifiedEvidenceBundle(verifiedBundle({
+    assessment: {
+      assessment_method: "independent_source_corroboration",
+      evidence_manifest: [manifestEntry(), manifestEntry(lateSecond)],
+    },
+    additional_artifacts: [lateSecond],
+    cutoff_at: "2026-09-04T10:05:00Z",
+  }));
+  assert.equal(result.verified, false);
+  assert.ok(result.reasons.includes(`assessment_manifest_artifact_after_cutoff:${SECOND_ARTIFACT_ID}`));
 });
 
 test("unrelated or non-supporting claim-artifact links cannot verify a claim", () => {
