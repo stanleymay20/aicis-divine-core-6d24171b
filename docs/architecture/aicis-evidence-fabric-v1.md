@@ -11,7 +11,7 @@ Evidence Fabric v1 defines that chain without turning provenance metadata into a
 ```text
 Source / Provider
       ↓
-Immutable Artifact
+Immutable Artifact + Origin Group
       ↓
 Transformation Activity
       ↓
@@ -54,6 +54,7 @@ Evidence Fabric v1 does **not** treat legacy `data_provenance.confidence`, `qual
 Represents one exact source artifact or source record revision. It records:
 
 - source identity/class/provider;
+- governed `source_independence_key` when an origin group can be established;
 - source and canonical URI when available;
 - license/media type;
 - SHA-256 artifact identity;
@@ -65,6 +66,8 @@ Represents one exact source artifact or source record revision. It records:
 - optional C2PA and STIX interoperability metadata.
 
 Corrections create new artifact revisions. They do not overwrite history.
+
+A `source_independence_key` identifies the underlying origin group for corroboration. It is deliberately distinct from URL, publisher name, feed record ID, and provider record ID. Two outlets carrying the same wire-service story, copied press release, shared sensor upstream, or republished dataset may have different `source_id` values while sharing one independence key. Missing independence information may remain as metadata, but such an artifact cannot qualify as verified external evidence in the v1 admission contract.
 
 ### 2. Transformation run
 
@@ -113,13 +116,15 @@ Verification is separate from extraction. Assessments are immutable and record:
 - assessor identity/type;
 - canonical evidence manifest;
 - evidence-set SHA-256;
-- artifact count and independently identified source count;
+- artifact count and independently identified **origin-group** count;
 - assessment knowledge time;
 - optional quantified confidence with explicit semantics.
 
-The evidence manifest contains exact `{artifact_id, artifact_sha256, source_id}` entries. Its canonical SHA-256 is recomputed by the admission contract. Declared artifact/source counts must equal the manifest-derived counts, so a caller cannot establish “two independent sources” by setting a numeric counter alone.
+The evidence manifest contains exact `{artifact_id, artifact_sha256, source_id, source_independence_key}` entries. Its canonical SHA-256 is recomputed by the admission contract. Changing the artifact identity, record identity, or source-origin grouping changes the evidence-set identity. Declared artifact/source counts must equal manifest-derived counts, so a caller cannot establish “two independent sources” by setting a numeric counter alone.
 
-`independent_source_corroboration` requires at least two distinct source identities in the bound evidence manifest.
+`independent_source_corroboration` requires at least two distinct `source_independence_key` values in the bound evidence manifest. Merely having two URLs, publishers, API records, or news articles is insufficient. If two records derive from one common origin, they count as one source for corroboration.
+
+The independence key is a governed grouping attribute, not a probability or a truth score. Future source-registry work should record how each grouping was established and support audit/revision when syndication or common upstream lineage is discovered.
 
 Model-assisted and rule-based assessments can support review, but Evidence Fabric v1 does not allow either to independently establish verified truth. A model cannot verify its own extraction merely by assigning a confidence score.
 
@@ -150,7 +155,7 @@ Evidence Fabric v1 has no default source reliability, quality, freshness, or con
 
 A missing number remains `NULL`.
 
-A numeric confidence can be stored only with explicit usable semantics. Labels containing legacy, unknown, unspecified, unverified, or not-quantified semantics are not admitted as quantified confidence. Provenance integrity and source identity are never converted into invented probabilities.
+A numeric confidence can be stored only with explicit usable semantics. Labels containing legacy, unknown, unspecified, unverified, or not-quantified semantics are not admitted as quantified confidence. Provenance integrity, source identity, and source independence grouping are never converted into invented probabilities.
 
 ## Standards interoperability
 
@@ -199,9 +204,11 @@ Evidence Fabric v1 does **not** claim:
 - the candidate schema is deployed;
 - existing historical AICIS rows have been re-admitted;
 - source reliability has been calibrated;
+- every `source_independence_key` is already historically audited;
+- distinct publishers automatically imply independent evidence;
 - C2PA/STIX metadata proves truth;
 - a model or deterministic rule can independently verify its own extracted claims;
 - any world-model training set is now automatically leakage-safe;
 - evidence-manifest admission replaces future database-level or staging integrity testing.
 
-Deployment and historical backfill require separate source-controlled migrations, restore completeness proof, security review, and exact-SHA staging evidence.
+Deployment and historical backfill require separate source-controlled migrations, restore completeness proof, source-independence audit, security review, and exact-SHA staging evidence.
