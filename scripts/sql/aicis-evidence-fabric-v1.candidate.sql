@@ -1,6 +1,6 @@
 -- AICIS Intelligence Source & Evidence Fabric v1
 -- CONTROLLED SCHEMA CANDIDATE ONLY.
--- This file is intentionally NOT under supabase/migrations and does not deploy anything.
+-- This file is intentionally a non-migration schema candidate and does not deploy anything.
 --
 -- Purpose:
 --   preserve immutable evidence identity and lineage from source artifact -> transform -> claim
@@ -66,12 +66,14 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_artifacts_v1 (
     c2pa_manifest_sha256 IS NULL OR c2pa_manifest_sha256 ~ '^[0-9a-fA-F]{64}$'
   ),
   stix_object_id text,
+  synthetic boolean NOT NULL DEFAULT false,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (valid_time_end IS NULL OR valid_time_start IS NULL OR valid_time_end >= valid_time_start),
   CHECK (published_at IS NULL OR knowledge_time IS NULL OR published_at <= knowledge_time),
   CHECK (knowledge_time IS NULL OR knowledge_time <= retrieved_at),
   CHECK (knowledge_time IS NULL OR knowledge_time <= first_observed_at),
+  CHECK (knowledge_time_verified_at IS NULL OR knowledge_time IS NULL OR knowledge_time_verified_at >= knowledge_time),
   CHECK (
     knowledge_time_status <> 'verified_leakage_safe'
     OR (knowledge_time IS NOT NULL AND knowledge_time_verified_at IS NOT NULL)
@@ -80,10 +82,11 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_artifacts_v1 (
     c2pa_status <> 'manifest_verified'
     OR c2pa_manifest_sha256 IS NOT NULL
   ),
-  CHECK (supersedes_artifact_id IS NULL OR supersedes_artifact_id <> id),
-  UNIQUE (artifact_sha256, source_id, COALESCE(revision_id, ''))
+  CHECK (supersedes_artifact_id IS NULL OR supersedes_artifact_id <> id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_aicis_evidence_artifact_revision_v1
+  ON public.aicis_evidence_artifacts_v1(artifact_sha256, source_id, revision_id) NULLS NOT DISTINCT;
 CREATE INDEX IF NOT EXISTS idx_aicis_evidence_artifacts_source_v1
   ON public.aicis_evidence_artifacts_v1(source_id, published_at DESC NULLS LAST, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_aicis_evidence_artifacts_hash_v1
@@ -180,7 +183,13 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_claims_v1 (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (valid_to IS NULL OR valid_from IS NULL OR valid_to >= valid_from),
-  CHECK (confidence IS NULL OR (confidence_semantics IS NOT NULL AND length(btrim(confidence_semantics)) > 0)),
+  CHECK (
+    confidence IS NULL OR (
+      confidence_semantics IS NOT NULL
+      AND length(btrim(confidence_semantics)) > 0
+      AND confidence_semantics !~* '(legacy|unknown|unspecified|unverified|not_quantified)'
+    )
+  ),
   CHECK (
     claim_origin NOT IN ('extracted', 'derived')
     OR transform_run_id IS NOT NULL
@@ -238,6 +247,8 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_claim_assessments_v1 (
   )),
   assessor_id text NOT NULL,
   evidence_set_sha256 text NOT NULL CHECK (evidence_set_sha256 ~ '^[0-9a-fA-F]{64}$'),
+  evidence_artifact_count integer NOT NULL CHECK (evidence_artifact_count >= 1),
+  independent_source_count integer NOT NULL CHECK (independent_source_count >= 1),
   assessment_knowledge_time timestamptz NOT NULL,
   confidence numeric CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
   confidence_semantics text,
@@ -246,7 +257,17 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_claim_assessments_v1 (
   assessed_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (assessment_knowledge_time <= assessed_at),
-  CHECK (confidence IS NULL OR (confidence_semantics IS NOT NULL AND length(btrim(confidence_semantics)) > 0))
+  CHECK (
+    confidence IS NULL OR (
+      confidence_semantics IS NOT NULL
+      AND length(btrim(confidence_semantics)) > 0
+      AND confidence_semantics !~* '(legacy|unknown|unspecified|unverified|not_quantified)'
+    )
+  ),
+  CHECK (
+    assessment_method <> 'independent_source_corroboration'
+    OR independent_source_count >= 2
+  )
 );
 
 CREATE INDEX IF NOT EXISTS idx_aicis_evidence_claim_assessments_claim_v1
@@ -275,17 +296,26 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_fact_lineage_v1 (
     'resolves'
   )),
   created_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (source_claim_id IS NOT NULL OR source_artifact_id IS NOT NULL),
-  UNIQUE (fact_type, fact_id, source_claim_id, source_artifact_id, lineage_role)
+  CHECK (source_claim_id IS NOT NULL OR source_artifact_id IS NOT NULL)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_aicis_evidence_fact_lineage_v1
+  ON public.aicis_evidence_fact_lineage_v1(
+    fact_type,
+    fact_id,
+    source_claim_id,
+    source_artifact_id,
+    lineage_role
+  ) NULLS NOT DISTINCT;
 CREATE INDEX IF NOT EXISTS idx_aicis_evidence_fact_lineage_fact_v1
   ON public.aicis_evidence_fact_lineage_v1(fact_type, fact_id);
 
 -- Legacy provenance is preserved for audit/migration, but it is explicitly not promoted
 -- into verified Evidence Fabric state. In particular, old default confidence/quality values
 -- are not carried into this compatibility view as admissible quantitative evidence.
-CREATE OR REPLACE VIEW public.v_aicis_legacy_provenance_unverified_v1 AS
+CREATE OR REPLACE VIEW public.v_aicis_legacy_provenance_unverified_v1
+WITH (security_invoker = true)
+AS
 SELECT
   dp.id AS legacy_provenance_id,
   dp.fact_type,
@@ -346,6 +376,7 @@ REVOKE ALL ON public.aicis_evidence_claims_v1 FROM anon, authenticated;
 REVOKE ALL ON public.aicis_evidence_claim_artifacts_v1 FROM anon, authenticated;
 REVOKE ALL ON public.aicis_evidence_claim_assessments_v1 FROM anon, authenticated;
 REVOKE ALL ON public.aicis_evidence_fact_lineage_v1 FROM anon, authenticated;
+REVOKE ALL ON public.v_aicis_legacy_provenance_unverified_v1 FROM anon, authenticated;
 
 GRANT SELECT, INSERT ON public.aicis_evidence_artifacts_v1 TO service_role;
 GRANT SELECT, INSERT ON public.aicis_evidence_transform_runs_v1 TO service_role;
