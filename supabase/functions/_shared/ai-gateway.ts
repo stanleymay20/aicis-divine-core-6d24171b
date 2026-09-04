@@ -69,7 +69,8 @@ const DEFAULT_TIMEOUT_MS = 15000;
  * - AICIS_AI_MODE, AICIS_MODEL_ENDPOINT, and AICIS_MODEL_NAME are explicit.
  * - sovereign mode permits only local/private or explicitly allowlisted hosts.
  * - sovereign mode never silently falls back to an external provider.
- * - public sovereign endpoints require authentication.
+ * - public sovereign endpoints require HTTPS and authentication.
+ * - provider redirects are never followed automatically across the trust boundary.
  * - provider credentials are read from server-side secrets only and are never
  *   returned in route telemetry.
  *
@@ -146,6 +147,7 @@ export async function aiChat(request: AiChatRequest): Promise<AiChatResult> {
     response = await fetch(endpoint!, {
       method: "POST",
       signal: AbortSignal.timeout(timeoutMs),
+      redirect: "manual",
       headers,
       body: JSON.stringify(body),
     });
@@ -156,6 +158,15 @@ export async function aiChat(request: AiChatRequest): Promise<AiChatResult> {
       provider,
       undefined,
       "provider_request_failed",
+    );
+  }
+
+  if (response.status >= 300 && response.status < 400) {
+    throw new AiProviderError(
+      "AI provider redirects are forbidden; configure the final approved endpoint directly",
+      provider,
+      response.status,
+      "provider_redirect_forbidden",
     );
   }
 
