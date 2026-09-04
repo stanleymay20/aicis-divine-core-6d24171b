@@ -10,6 +10,8 @@ import {
   parseSovereignHostAllowlist,
 } from "../supabase/functions/_shared/ai-sovereignty.mjs";
 
+const LEGACY_EXTERNAL_HOST = ["api", "openai", "com"].join(".");
+
 function expectPolicyError(fn, code) {
   assert.throws(fn, (error) => {
     assert.equal(error instanceof AiSovereigntyPolicyError, true);
@@ -91,6 +93,19 @@ test("rejects an arbitrary public endpoint in sovereign mode", () => {
   );
 });
 
+test("requires HTTPS for a public allowlisted sovereign endpoint", () => {
+  const sovereignHosts = parseSovereignHostAllowlist("models.aicis.example");
+  expectPolicyError(
+    () => evaluateAiRoute({
+      mode: "sovereign",
+      endpoint: "http://models.aicis.example/v1/chat/completions",
+      sovereignHosts,
+      apiKeyPresent: true,
+    }),
+    "public_sovereign_endpoint_requires_https",
+  );
+});
+
 test("requires authentication for an allowlisted public sovereign endpoint", () => {
   const sovereignHosts = parseSovereignHostAllowlist("models.aicis.example");
   expectPolicyError(
@@ -156,15 +171,17 @@ test("forbids credentials embedded in the endpoint URL", () => {
   );
 });
 
-test("gateway source contains no implicit OpenAI or GPT fallback", () => {
+test("gateway source contains no implicit external or GPT fallback and rejects redirects", () => {
   const source = readFileSync("supabase/functions/_shared/ai-gateway.ts", "utf8");
-  assert.equal(source.includes("api.openai.com"), false);
+  assert.equal(source.includes(LEGACY_EXTERNAL_HOST), false);
   assert.equal(source.includes("gpt-4o-mini"), false);
   assert.equal(source.includes("DEFAULT_ENDPOINT"), false);
   assert.equal(source.includes("DEFAULT_MODEL"), false);
   assert.match(source, /AICIS_AI_MODE/);
   assert.match(source, /AICIS_SOVEREIGN_MODEL_HOSTS/);
   assert.match(source, /evaluateAiRoute/);
+  assert.match(source, /redirect:\s*"manual"/);
+  assert.match(source, /provider_redirect_forbidden/);
 });
 
 test("Edge Functions cannot bypass the shared gateway through model transport secrets or legacy defaults", () => {
@@ -173,7 +190,7 @@ test("Edge Functions cannot bypass the shared gateway through model transport se
   const forbiddenOutsideGateway = [
     "AICIS_MODEL_ENDPOINT",
     "AICIS_MODEL_API_KEY",
-    "api.openai.com",
+    LEGACY_EXTERNAL_HOST,
     "gpt-4o-mini",
     "/chat/completions",
   ];
