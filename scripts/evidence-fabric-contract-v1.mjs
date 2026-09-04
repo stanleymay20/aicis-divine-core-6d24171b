@@ -429,6 +429,15 @@ export function evaluateVerifiedEvidenceBundle({
   if (cutoff_at !== null && !cutoff) reasons.push("cutoff_at_invalid");
 
   for (const manifestEntry of canonicalManifest ?? []) {
+    const supportingLink = suppliedLinks.some((candidateLink) =>
+      normalizeOptionalUuid(candidateLink?.claim_id) === normalizeOptionalUuid(claim?.id) &&
+      normalizeOptionalUuid(candidateLink?.artifact_id) === manifestEntry.artifact_id &&
+      new Set(["source_of", "supports"]).has(candidateLink?.relationship));
+    if (!supportingLink) {
+      reasons.push(`assessment_manifest_artifact_missing_supporting_link:${manifestEntry.artifact_id}`);
+      manifestLinksAdmissible = false;
+    }
+
     const supplied = suppliedById.get(manifestEntry.artifact_id);
     if (!supplied) {
       reasons.push(`assessment_manifest_artifact_not_supplied:${manifestEntry.artifact_id}`);
@@ -448,15 +457,6 @@ export function evaluateVerifiedEvidenceBundle({
     if (!artifactMatchesManifestEntry(supplied, manifestEntry)) {
       reasons.push(`assessment_manifest_artifact_identity_mismatch:${manifestEntry.artifact_id}`);
       manifestArtifactsAdmissible = false;
-    }
-
-    const supportingLink = suppliedLinks.some((candidateLink) =>
-      normalizeOptionalUuid(candidateLink?.claim_id) === normalizeOptionalUuid(claim?.id) &&
-      normalizeOptionalUuid(candidateLink?.artifact_id) === manifestEntry.artifact_id &&
-      new Set(["source_of", "supports"]).has(candidateLink?.relationship));
-    if (!supportingLink) {
-      reasons.push(`assessment_manifest_artifact_missing_supporting_link:${manifestEntry.artifact_id}`);
-      manifestLinksAdmissible = false;
     }
 
     const suppliedKnowledge = parseDate(supplied?.knowledge_time);
