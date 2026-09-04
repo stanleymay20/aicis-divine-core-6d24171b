@@ -122,6 +122,10 @@ jobs:
         continue-on-error: true
         run: node --test tests/sovereign-artifact-lock.test.mjs
 
+      - name: Evidence Fabric v1 truth floor
+        id: evidence_fabric_v1
+        run: node --test tests/evidence-fabric-contract-v1.test.mjs
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
@@ -186,6 +190,7 @@ jobs:
           echo "Sovereign AI gateway truth floor: ${{ steps.sovereign_ai_gateway.outcome }}"
           echo "Sovereign AI runtime contract: ${{ steps.sovereign_ai_runtime.outcome }}"
           echo "Sovereign artifact lock: ${{ steps.sovereign_artifact_lock.outcome }}"
+          echo "Evidence Fabric v1: ${{ steps.evidence_fabric_v1.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
@@ -208,6 +213,7 @@ jobs:
           [ "${{ steps.sovereign_ai_gateway.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.sovereign_ai_runtime.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.sovereign_artifact_lock.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.evidence_fabric_v1.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1
