@@ -53,6 +53,21 @@ test("permits loopback and RFC1918 endpoints in sovereign mode without an extern
   }
 });
 
+test("rejects link-local and known cloud metadata model targets in every mode", () => {
+  for (const mode of ["sovereign", "hybrid", "research"]) {
+    for (const endpoint of [
+      "http://169.254.169.254/latest/meta-data",
+      "http://169.254.1.10/v1/chat/completions",
+      "http://metadata.google.internal/computeMetadata/v1",
+    ]) {
+      expectPolicyError(
+        () => evaluateAiRoute({ mode, endpoint, apiKeyPresent: true }),
+        "model_endpoint_host_forbidden",
+      );
+    }
+  }
+});
+
 test("rejects an arbitrary public endpoint in sovereign mode", () => {
   expectPolicyError(
     () => evaluateAiRoute({
