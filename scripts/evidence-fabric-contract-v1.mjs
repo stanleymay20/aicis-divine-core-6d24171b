@@ -41,6 +41,13 @@ const CLAIM_STATUSES = new Set([
   "unverified",
   "contradicted",
 ]);
+const CLAIM_ARTIFACT_RELATIONSHIPS = new Set([
+  "source_of",
+  "supports",
+  "contradicts",
+  "mentions",
+  "context",
+]);
 const ASSESSMENT_STATUSES = new Set([
   "verified",
   "contradicted",
@@ -68,6 +75,13 @@ const LEGACY_TRUST_FIELDS = [
   "reliability_score",
   "freshness_score",
 ];
+const UNTRUSTED_CONFIDENCE_SEMANTICS = [
+  "legacy",
+  "unknown",
+  "unspecified",
+  "unverified",
+  "not_quantified",
+];
 
 export function evaluateEvidenceArtifact(candidate) {
   const reasons = [];
@@ -80,6 +94,7 @@ export function evaluateEvidenceArtifact(candidate) {
   if (!isDate(candidate.first_observed_at)) reasons.push("first_observed_at_invalid");
   if (!KNOWLEDGE_STATUSES.has(candidate.knowledge_time_status)) reasons.push("knowledge_time_status_invalid");
   if (!C2PA_STATUSES.has(candidate.c2pa_status ?? "not_checked")) reasons.push("c2pa_status_invalid");
+  if (candidate.synthetic !== true && candidate.synthetic !== false) reasons.push("artifact_synthetic_flag_required");
 
   for (const field of LEGACY_TRUST_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(candidate, field) && candidate[field] !== null && candidate[field] !== undefined) {
@@ -100,6 +115,7 @@ export function evaluateEvidenceArtifact(candidate) {
   if (knowledgeTime && retrievedAt && knowledgeTime > retrievedAt) reasons.push("knowledge_time_after_retrieval");
   if (knowledgeTime && observedAt && knowledgeTime > observedAt) reasons.push("knowledge_time_after_first_observation");
   if (publishedAt && knowledgeTime && publishedAt > knowledgeTime) reasons.push("published_after_knowledge_time");
+  if (knowledgeTime && verifiedAt && verifiedAt < knowledgeTime) reasons.push("knowledge_time_verification_precedes_knowledge_time");
   if (candidate.c2pa_status === "manifest_verified" && !SHA256_RE.test(String(candidate.c2pa_manifest_sha256 ?? ""))) {
     reasons.push("verified_c2pa_manifest_digest_missing");
   }
@@ -108,7 +124,8 @@ export function evaluateEvidenceArtifact(candidate) {
   const verifiedExternalEvidence = admissible &&
     candidate.knowledge_time_status === "verified_leakage_safe" &&
     candidate.source_class !== "derived_internal" &&
-    candidate.synthetic !== true;
+    candidate.synthetic === false &&
+    candidate.c2pa_status !== "manifest_invalid";
 
   return freezeResult({ admissible, verified_external_evidence: verifiedExternalEvidence, reasons });
 }
@@ -130,6 +147,16 @@ export function evaluateEvidenceClaim(candidate) {
   return freezeResult({ admissible: reasons.length === 0, reasons });
 }
 
+export function evaluateClaimArtifactLink(candidate) {
+  const reasons = [];
+  if (!isRecord(candidate)) return invalidResult("claim_artifact_link_missing_or_invalid");
+  if (candidate.contract_version !== AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION) reasons.push("contract_version_mismatch");
+  if (!nonEmpty(candidate.claim_id)) reasons.push("link_claim_id_missing");
+  if (!nonEmpty(candidate.artifact_id)) reasons.push("link_artifact_id_missing");
+  if (!CLAIM_ARTIFACT_RELATIONSHIPS.has(candidate.relationship)) reasons.push("link_relationship_invalid");
+  return freezeResult({ admissible: reasons.length === 0, reasons });
+}
+
 export function evaluateClaimAssessment(candidate) {
   const reasons = [];
   if (!isRecord(candidate)) return invalidResult("assessment_missing_or_invalid");
@@ -140,6 +167,21 @@ export function evaluateClaimAssessment(candidate) {
   if (!ASSESSOR_TYPES.has(candidate.assessor_type)) reasons.push("assessor_type_invalid");
   if (!nonEmpty(candidate.assessor_id)) reasons.push("assessor_id_missing");
   if (!SHA256_RE.test(String(candidate.evidence_set_sha256 ?? ""))) reasons.push("assessment_evidence_set_sha256_invalid");
+  if (!positiveInteger(candidate.evidence_artifact_count)) reasons.push("assessment_evidence_artifact_count_invalid");
+  if (!positiveInteger(candidate.independent_source_count)) reasons.push("assessment_independent_source_count_invalid");
+  if (
+    positiveInteger(candidate.evidence_artifact_count) &&
+    positiveInteger(candidate.independent_source_count) &&
+    candidate.independent_source_count > candidate.evidence_artifact_count
+  ) {
+    reasons.push("independent_source_count_exceeds_artifact_count");
+  }
+  if (
+    candidate.assessment_method === "independent_source_corroboration" &&
+    (!positiveInteger(candidate.independent_source_count) || candidate.independent_source_count < 2)
+  ) {
+    reasons.push("independent_corroboration_requires_multiple_sources");
+  }
   const knowledgeTime = parseDate(candidate.assessment_knowledge_time);
   const assessedAt = parseDate(candidate.assessed_at);
   if (!knowledgeTime) reasons.push("assessment_knowledge_time_invalid");
@@ -149,21 +191,29 @@ export function evaluateClaimAssessment(candidate) {
   return freezeResult({ admissible: reasons.length === 0, reasons });
 }
 
-export function evaluateVerifiedEvidenceBundle({ artifact, claim, assessment, cutoff_at = null } = {}) {
+export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessment, cutoff_at = null } = {}) {
   const artifactResult = evaluateEvidenceArtifact(artifact);
   const claimResult = evaluateEvidenceClaim(claim);
+  const linkResult = evaluateClaimArtifactLink(link);
   const assessmentResult = evaluateClaimAssessment(assessment);
   const reasons = [
     ...artifactResult.reasons,
     ...claimResult.reasons,
+    ...linkResult.reasons,
     ...assessmentResult.reasons,
   ];
 
   if (!artifactResult.verified_external_evidence) reasons.push("artifact_not_verified_external_evidence");
+  if (!nonEmpty(artifact?.id) || !nonEmpty(claim?.id)) reasons.push("bundle_record_ids_required");
+  if (link?.artifact_id !== artifact?.id) reasons.push("link_artifact_mismatch");
+  if (link?.claim_id !== claim?.id) reasons.push("link_claim_mismatch");
+  if (!new Set(["source_of", "supports"]).has(link?.relationship)) reasons.push("link_does_not_support_claim");
+  if (assessment?.claim_id !== claim?.id) reasons.push("assessment_claim_mismatch");
   if (claim?.synthetic === true) reasons.push("synthetic_claim_forbidden_for_verified_evidence");
+  if (claim?.epistemic_status === "contradicted") reasons.push("contradicted_claim_forbidden_for_verified_evidence");
   if (assessment?.assessment_status !== "verified") reasons.push("claim_not_verified_by_assessment");
-  if (assessment?.assessment_method === "model_assisted") {
-    reasons.push("model_assisted_assessment_cannot_independently_verify_claim");
+  if (["model_assisted", "rule_based"].includes(assessment?.assessment_method)) {
+    reasons.push("automated_assessment_cannot_independently_verify_claim");
   }
 
   const cutoff = parseDate(cutoff_at);
@@ -175,7 +225,7 @@ export function evaluateVerifiedEvidenceBundle({ artifact, claim, assessment, cu
 
   const uniqueReasons = [...new Set(reasons)];
   return freezeResult({
-    admissible: artifactResult.admissible && claimResult.admissible && assessmentResult.admissible,
+    admissible: artifactResult.admissible && claimResult.admissible && linkResult.admissible && assessmentResult.admissible,
     verified: uniqueReasons.length === 0,
     reasons: uniqueReasons,
   });
@@ -187,7 +237,13 @@ function validateNullableConfidence(value, semantics, reasons, prefix) {
     reasons.push(`${prefix}_confidence_invalid`);
     return;
   }
-  if (!nonEmpty(semantics)) reasons.push(`${prefix}_confidence_semantics_missing`);
+  if (!hasUsableConfidenceSemantics(semantics)) reasons.push(`${prefix}_confidence_semantics_missing_or_unusable`);
+}
+
+function hasUsableConfidenceSemantics(value) {
+  if (!nonEmpty(value)) return false;
+  const normalized = value.toLowerCase();
+  return !UNTRUSTED_CONFIDENCE_SEMANTICS.some((token) => normalized.includes(token));
 }
 
 function validateInterval(startValue, endValue, reasons, prefix) {
@@ -199,6 +255,10 @@ function validateInterval(startValue, endValue, reasons, prefix) {
     return;
   }
   if (end < start) reasons.push(`${prefix}_reversed`);
+}
+
+function positiveInteger(value) {
+  return Number.isInteger(value) && value >= 1;
 }
 
 function parseDate(value) {
