@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 import {
   AICIS_SOVEREIGN_RUNTIME_CONTRACT_VERSION,
+  REQUIRED_SOVEREIGN_RUNTIME_BENCHMARK_DIMENSIONS,
   assertBenchmarkLocked,
   evaluateSovereignRuntimeCandidate,
 } from "../scripts/sovereign-runtime-contract.mjs";
@@ -39,7 +40,7 @@ test("controlled manifest is research-admissible but not benchmark-locked", () =
   assert.equal(result.admissible, true);
   assert.equal(result.benchmark_locked, false);
   assert.ok(result.benchmark_lock_reasons.includes("status_not_benchmark_locked"));
-  assert.ok(result.benchmark_lock_reasons.some((reason) => reason.startsWith("runtime_version_unpinned:")));
+  assert.ok(result.benchmark_lock_reasons.some((reason) => reason.startsWith("runtime_version_not_exact:")));
   assert.ok(result.benchmark_lock_reasons.some((reason) => reason.startsWith("model_revision_unpinned:")));
 });
 
@@ -54,6 +55,26 @@ test("manifest records Qwen candidates only as non-production research candidate
   assert.equal(candidate.models.every((model) => model.production_approved === false), true);
 });
 
+test("invalid candidates return the complete fail-closed result shape", () => {
+  for (const invalid of [null, [], "invalid"]) {
+    const result = evaluateSovereignRuntimeCandidate(invalid);
+    assert.deepEqual(result, {
+      admissible: false,
+      benchmark_locked: false,
+      reasons: ["candidate_missing_or_invalid"],
+      benchmark_lock_reasons: ["candidate_not_admissible"],
+    });
+    assert.throws(
+      () => assertBenchmarkLocked(invalid),
+      (error) => {
+        assert.equal(error.code, "AICIS_SOVEREIGN_RUNTIME_NOT_BENCHMARK_LOCKED");
+        assert.ok(error.reasons.includes("candidate_missing_or_invalid"));
+        return true;
+      },
+    );
+  }
+});
+
 test("rejects external fallback and public model ingress", () => {
   const externalFallback = manifest();
   externalFallback.external_model_fallback = true;
@@ -66,7 +87,7 @@ test("rejects external fallback and public model ingress", () => {
   publicIngress.network_policy.model_server_public_ingress = true;
   const ingressResult = evaluateSovereignRuntimeCandidate(publicIngress);
   assert.equal(ingressResult.admissible, false);
-  assert.ok(ingressResult.reasons.includes("runtime_public_ingress_forbidden"));
+  assert.ok(ingressResult.reasons.includes("primary_runtime_public_ingress_forbidden"));
   assert.ok(ingressResult.reasons.includes("model_server_public_ingress_forbidden"));
 });
 
@@ -76,8 +97,24 @@ test("requires the vLLM reverse-proxy isolation boundary", () => {
   candidate.runtime.primary.deny_unproxied_inference_endpoints = false;
   const result = evaluateSovereignRuntimeCandidate(candidate);
   assert.equal(result.admissible, false);
-  assert.ok(result.reasons.includes("vllm_reverse_proxy_required"));
-  assert.ok(result.reasons.includes("vllm_unproxied_inference_must_be_denied"));
+  assert.ok(result.reasons.includes("vllm_reverse_proxy_required:primary"));
+  assert.ok(result.reasons.includes("vllm_unproxied_inference_must_be_denied:primary"));
+});
+
+test("validates the complete secondary runtime security boundary", () => {
+  const candidate = manifest();
+  candidate.runtime.secondary.name = "unknown-runtime";
+  candidate.runtime.secondary.protocol = "custom";
+  candidate.runtime.secondary.network_boundary = "public";
+  candidate.runtime.secondary.public_ingress = true;
+  candidate.runtime.secondary.benchmark_only = false;
+  const result = evaluateSovereignRuntimeCandidate(candidate);
+  assert.equal(result.admissible, false);
+  assert.ok(result.reasons.includes("secondary_runtime_missing_or_invalid"));
+  assert.ok(result.reasons.includes("secondary_runtime_protocol_invalid"));
+  assert.ok(result.reasons.includes("secondary_runtime_network_boundary_not_private"));
+  assert.ok(result.reasons.includes("secondary_runtime_public_ingress_forbidden"));
+  assert.ok(result.reasons.includes("secondary_runtime_must_be_benchmark_only"));
 });
 
 test("rejects mutable latest container references", () => {
@@ -85,7 +122,7 @@ test("rejects mutable latest container references", () => {
   candidate.runtime.primary.container_image = "vllm/vllm-openai:latest";
   const result = evaluateSovereignRuntimeCandidate(candidate);
   assert.equal(result.admissible, false);
-  assert.ok(result.reasons.includes("mutable_latest_container_tag_forbidden"));
+  assert.ok(result.reasons.includes("primary_runtime_mutable_latest_container_tag_forbidden"));
 });
 
 test("v1 contract cannot be used to assert production activation", () => {
@@ -96,6 +133,24 @@ test("v1 contract cannot be used to assert production activation", () => {
   assert.equal(result.admissible, false);
   assert.ok(result.reasons.includes("production_activation_must_be_false_in_v1"));
   assert.ok(result.reasons.includes("model_production_approval_forbidden_in_v1"));
+});
+
+test("every mandatory benchmark dimension is enforced", () => {
+  const baseline = manifest();
+  assert.deepEqual(
+    new Set(baseline.evaluation_gate.required_dimensions),
+    new Set(REQUIRED_SOVEREIGN_RUNTIME_BENCHMARK_DIMENSIONS),
+  );
+
+  for (const dimension of REQUIRED_SOVEREIGN_RUNTIME_BENCHMARK_DIMENSIONS) {
+    const candidate = manifest();
+    candidate.evaluation_gate.required_dimensions = candidate.evaluation_gate.required_dimensions.filter(
+      (value) => value !== dimension,
+    );
+    const result = evaluateSovereignRuntimeCandidate(candidate);
+    assert.equal(result.admissible, false);
+    assert.ok(result.reasons.includes(`required_benchmark_dimension_missing:${dimension}`));
+  }
 });
 
 test("benchmark lock requires immutable runtime and model identities", () => {
@@ -109,14 +164,14 @@ test("benchmark lock requires immutable runtime and model identities", () => {
   });
 });
 
-test("benchmark lock rejects mutable runtime version labels", () => {
-  for (const mutableVersion of ["latest", "main", "master", "nightly", "dev"]) {
+test("benchmark lock rejects non-exact runtime version labels and ranges", () => {
+  for (const mutableVersion of ["latest", "main", "master", "nightly", "dev", "*", "^0.15.1", ">=0.15.1", "0.15", " 0.15.1 "]) {
     const candidate = benchmarkLockedCandidate();
     candidate.runtime.primary.version = mutableVersion;
     const result = evaluateSovereignRuntimeCandidate(candidate);
     assert.equal(result.admissible, true);
     assert.equal(result.benchmark_locked, false);
-    assert.ok(result.benchmark_lock_reasons.includes("runtime_version_mutable:vllm"));
+    assert.ok(result.benchmark_lock_reasons.includes("runtime_version_not_exact:vllm"));
   }
 });
 
