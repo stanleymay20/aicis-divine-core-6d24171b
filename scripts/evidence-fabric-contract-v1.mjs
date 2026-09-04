@@ -5,6 +5,7 @@ export const AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION = "aicis-evidence-fabric-con
 const SHA256_RE = /^[a-f0-9]{64}$/i;
 const REVISION_RE = /^[a-f0-9]{40}$/i;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ISO_DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/;
 const SOURCE_CLASSES = new Set([
   "primary_official",
   "structured_dataset",
@@ -352,6 +353,7 @@ export function evaluateVerifiedEvidenceBundle({
   assessment,
   transform = null,
   evidence_artifacts = null,
+  evidence_links = null,
   cutoff_at = null,
 } = {}) {
   const artifactResult = evaluateEvidenceArtifact(artifact);
@@ -387,6 +389,15 @@ export function evaluateVerifiedEvidenceBundle({
     reasons.push("evidence_artifacts_must_be_array");
   }
 
+  const suppliedLinks = evidence_links === null
+    ? [link]
+    : Array.isArray(evidence_links)
+      ? evidence_links
+      : [];
+  if (evidence_links !== null && !Array.isArray(evidence_links)) {
+    reasons.push("evidence_links_must_be_array");
+  }
+
   const suppliedById = new Map();
   let manifestArtifactsAdmissible = true;
   for (const supplied of suppliedArtifacts) {
@@ -402,6 +413,15 @@ export function evaluateVerifiedEvidenceBundle({
       continue;
     }
     suppliedById.set(suppliedId, supplied);
+  }
+
+  let manifestLinksAdmissible = true;
+  for (const suppliedLink of suppliedLinks) {
+    const suppliedLinkResult = evaluateClaimArtifactLink(suppliedLink);
+    if (!suppliedLinkResult.admissible) {
+      reasons.push("supplied_evidence_link_not_admissible");
+      manifestLinksAdmissible = false;
+    }
   }
 
   const assessmentKnowledge = parseDate(assessment?.assessment_knowledge_time);
@@ -428,6 +448,15 @@ export function evaluateVerifiedEvidenceBundle({
     if (!artifactMatchesManifestEntry(supplied, manifestEntry)) {
       reasons.push(`assessment_manifest_artifact_identity_mismatch:${manifestEntry.artifact_id}`);
       manifestArtifactsAdmissible = false;
+    }
+
+    const supportingLink = suppliedLinks.some((candidateLink) =>
+      normalizeOptionalUuid(candidateLink?.claim_id) === normalizeOptionalUuid(claim?.id) &&
+      normalizeOptionalUuid(candidateLink?.artifact_id) === manifestEntry.artifact_id &&
+      new Set(["source_of", "supports"]).has(candidateLink?.relationship));
+    if (!supportingLink) {
+      reasons.push(`assessment_manifest_artifact_missing_supporting_link:${manifestEntry.artifact_id}`);
+      manifestLinksAdmissible = false;
     }
 
     const suppliedKnowledge = parseDate(supplied?.knowledge_time);
@@ -471,7 +500,8 @@ export function evaluateVerifiedEvidenceBundle({
       linkResult.admissible &&
       assessmentResult.admissible &&
       transformResult.admissible &&
-      manifestArtifactsAdmissible,
+      manifestArtifactsAdmissible &&
+      manifestLinksAdmissible,
     verified: uniqueReasons.length === 0,
     reasons: uniqueReasons,
   });
@@ -534,7 +564,7 @@ function canonicalizeJson(value) {
   }
   if (Array.isArray(value)) return value.map((entry) => canonicalizeJson(entry));
   if (isRecord(value)) {
-    const output = {};
+    const output = Object.create(null);
     for (const key of Object.keys(value).sort()) {
       if (value[key] !== undefined) output[key] = canonicalizeJson(value[key]);
     }
@@ -560,9 +590,39 @@ function positiveInteger(value) {
 }
 
 function parseDate(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const parsed = new Date(value);
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const match = ISO_DATETIME_RE.exec(trimmed);
+  if (!match) return null;
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  if (year < 1 || month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) return null;
+  const maxDay = daysInMonth(year, month);
+  if (day < 1 || day > maxDay) return null;
+
+  if (zone !== "Z") {
+    const offsetHours = Number(zone.slice(1, 3));
+    const offsetMinutes = Number(zone.slice(4, 6));
+    if (offsetHours > 14 || offsetMinutes > 59 || (offsetHours === 14 && offsetMinutes !== 0)) return null;
+  }
+
+  const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function daysInMonth(year, month) {
+  if (month === 2) return isLeapYear(year) ? 29 : 28;
+  return new Set([4, 6, 9, 11]).has(month) ? 30 : 31;
+}
+
+function isLeapYear(year) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
 function isDate(value) {
