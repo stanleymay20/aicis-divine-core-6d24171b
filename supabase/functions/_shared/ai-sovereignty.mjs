@@ -39,6 +39,15 @@ export function evaluateAiRoute({
   const normalizedMode = normalizeAiMode(mode);
   const url = parseModelEndpoint(endpoint);
   const hostname = normalizeHostname(url.hostname);
+
+  if (isForbiddenInfrastructureHostname(hostname)) {
+    throw new AiSovereigntyPolicyError(
+      "Model endpoints must not target link-local or cloud metadata infrastructure",
+      "model_endpoint_host_forbidden",
+      { endpoint_host: hostname },
+    );
+  }
+
   const trustClass = classifyEndpointTrust(hostname, sovereignHosts);
 
   if (normalizedMode === "sovereign" && trustClass === "external") {
@@ -135,6 +144,17 @@ function isLoopbackHostname(hostname) {
   return hostname === "localhost" || hostname === "::1" || hostname.startsWith("127.");
 }
 
+function isForbiddenInfrastructureHostname(hostname) {
+  if (hostname === "metadata.google.internal") return true;
+
+  const parts = hostname.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return false;
+  const octets = parts.map(Number);
+  if (octets.some((value) => value < 0 || value > 255)) return false;
+
+  return octets[0] === 169 && octets[1] === 254;
+}
+
 function isPrivateIpv4(hostname) {
   const parts = hostname.split(".");
   if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return false;
@@ -145,8 +165,7 @@ function isPrivateIpv4(hostname) {
   return (
     a === 10 ||
     (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 169 && b === 254)
+    (a === 192 && b === 168)
   );
 }
 
