@@ -72,11 +72,14 @@ function tierFromScore(score: number): string {
   return "noise";
 }
 
+function normalizeObservedConfidence(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, value > 1 ? value : value * 100));
+}
+
 function fallbackScore(signal: SignalPayload, org: OrgContext) {
   const sevScore = severityToScore(signal.severity);
-  const conf = typeof signal.confidence === "number"
-    ? Math.max(0, Math.min(100, signal.confidence > 1 ? signal.confidence : signal.confidence * 100))
-    : 60;
+  const observedConfidence = normalizeObservedConfidence(signal.confidence);
 
   const reasons: string[] = [];
   const contributors: Array<{ kind: string; label: string; weight: number; matched?: string[] }> = [];
@@ -87,10 +90,16 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
   reasons.push(`severity ${Math.round(sevScore)}`);
   contributors.push({ kind: "severity", label: `Severity ${Math.round(sevScore)}`, weight: Math.round(sevContrib) });
 
-  // Confidence contributes up to 15
-  const confContrib = (conf / 100) * 15;
-  score += confContrib;
-  contributors.push({ kind: "confidence", label: `Confidence ${Math.round(conf)}`, weight: Math.round(confContrib) });
+  // Observed source confidence contributes up to 15. Missing confidence contributes nothing.
+  if (observedConfidence !== null) {
+    const confContrib = (observedConfidence / 100) * 15;
+    score += confContrib;
+    contributors.push({
+      kind: "confidence",
+      label: `Source confidence ${Math.round(observedConfidence)}`,
+      weight: Math.round(confContrib),
+    });
+  }
 
   // Country match: +20
   const sigCountry = (signal.country || "").toLowerCase();
@@ -151,7 +160,7 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
   const tier = tierFromScore(score);
   const why = reasons.length > 0
     ? `Scored ${score}/100 based on ${reasons.join("; ")}.`
-    : `Scored ${score}/100 from severity and confidence; no organization-specific match found.`;
+    : `Scored ${score}/100 from available deterministic relevance evidence.`;
 
   const action = tier === "critical"
     ? "Escalate to leadership within 1 hour and trigger contingency review."
@@ -171,7 +180,7 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
       ? `This signal intersects your operational footprint via ${reasons.slice(1).join(", ") || "severity"}.`
       : `Generic global signal; no direct operational intersection detected.`,
     recommended_action: action,
-    confidence_score: Math.round(conf * 0.7 + (entityHits.length || kwHits.length ? 20 : 5)),
+    confidence_score: null,
     model_used: FALLBACK_MODEL,
     prompt_version: PROMPT_VERSION,
     used_fallback: true,
@@ -180,7 +189,7 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
 }
 
 async function modelScore(signal: SignalPayload, org: OrgContext) {
-  const sys = `You are AICIS Relevance Engine v1. Score how relevant a global signal is to an organization on 0-100. Reply ONLY with compact JSON: {"relevance_score":number,"relevance_tier":"critical|high|moderate|low|noise","explanation":string,"why_this_matters":string,"recommended_action":string,"confidence_score":number}`;
+  const sys = `You are AICIS Relevance Engine v1. Score how relevant a global signal is to an organization on 0-100. Reply ONLY with compact JSON: {"relevance_score":number,"relevance_tier":"critical|high|moderate|low|noise","explanation":string,"why_this_matters":string,"recommended_action":string}`;
   const user = JSON.stringify({ signal, organization: org });
 
   const ai = await aiChat({
@@ -200,10 +209,6 @@ async function modelScore(signal: SignalPayload, org: OrgContext) {
   const relevanceTier = allowedTiers.has(parsed.relevance_tier)
     ? parsed.relevance_tier
     : tierFromScore(relevanceScore);
-  const rawConfidence = Number(parsed.confidence_score);
-  const confidenceScore = Number.isFinite(rawConfidence)
-    ? Math.max(0, Math.min(100, rawConfidence))
-    : null;
 
   return {
     relevance_score: relevanceScore,
@@ -211,7 +216,7 @@ async function modelScore(signal: SignalPayload, org: OrgContext) {
     explanation: typeof parsed.explanation === "string" ? parsed.explanation : "",
     why_this_matters: typeof parsed.why_this_matters === "string" ? parsed.why_this_matters : "",
     recommended_action: typeof parsed.recommended_action === "string" ? parsed.recommended_action : "",
-    confidence_score: confidenceScore,
+    confidence_score: null,
     model_used: ai.model,
     prompt_version: PROMPT_VERSION,
     used_fallback: false,
@@ -254,7 +259,7 @@ Deno.serve(async (req) => {
     } catch (err) {
       structuredLog("warn", "model_score_failed_using_fallback", { error: String(err) });
       result = fallbackScore(signal, org);
-      notice = "Configured model route unavailable or denied by policy; used deterministic fallback rules.";
+      notice = "Configured model route unavailable or denied by policy; used deterministic fallback rules. Relevance confidence remains unknown until calibrated evidence is available.";
     }
 
     // Persist with service role
