@@ -92,6 +92,8 @@ function benchmarkLockReasons(candidate) {
   for (const runtime of runtimes) {
     if (!runtime.version || typeof runtime.version !== "string") {
       reasons.push(`runtime_version_unpinned:${runtime.name ?? "unknown"}`);
+    } else if (isMutableVersion(runtime.version)) {
+      reasons.push(`runtime_version_mutable:${runtime.name ?? "unknown"}`);
     }
     if (!DIGEST_RE.test(String(runtime.container_digest ?? ""))) {
       reasons.push(`runtime_container_digest_unpinned:${runtime.name ?? "unknown"}`);
@@ -115,6 +117,11 @@ function hasMutableLatestTag(image) {
   if (typeof image !== "string" || !image) return false;
   const withoutDigest = image.split("@")[0];
   return /:latest$/i.test(withoutDigest);
+}
+
+function isMutableVersion(version) {
+  const normalized = String(version ?? "").trim().toLowerCase();
+  return normalized === "latest" || normalized === "main" || normalized === "master" || normalized === "nightly" || normalized === "dev";
 }
 
 function deepFreeze(value) {
