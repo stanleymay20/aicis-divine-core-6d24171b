@@ -210,3 +210,13 @@ test("Edge Functions cannot bypass the shared gateway through model transport se
   const relevanceSource = readFileSync("supabase/functions/score-relevance/index.ts", "utf8");
   assert.match(relevanceSource, /import \{ aiChat \} from "\.\.\/_shared\/ai-gateway\.ts"/);
 });
+
+test("relevance scoring does not fabricate uncalibrated confidence", () => {
+  const relevanceSource = readFileSync("supabase/functions/score-relevance/index.ts", "utf8");
+  const relevanceUi = readFileSync("src/components/relevance/RelevanceCard.tsx", "utf8");
+
+  assert.equal(relevanceSource.includes("Math.round(conf * 0.7"), false);
+  assert.match(relevanceSource, /confidence_score:\s*null/);
+  assert.match(relevanceUi, /confidence_score:\s*number \| null/);
+  assert.match(relevanceUi, /\? "Unknown"/);
+});
