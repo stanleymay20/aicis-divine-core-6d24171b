@@ -19,7 +19,7 @@ Canonical Claim
       ↓
 Claim ↔ Artifact Binding
       ↓
-Independent Assessment + Evidence Manifest
+Independent Assessment + Materialized Evidence Manifest
       ↓
 Fact Lineage
       ↓
@@ -121,6 +121,10 @@ Verification is separate from extraction. Assessments are immutable and record:
 - optional quantified confidence with explicit semantics.
 
 The evidence manifest contains exact `{artifact_id, artifact_sha256, source_id, source_independence_key}` entries. Its canonical SHA-256 is recomputed by the admission contract. Changing the artifact identity, record identity, or source-origin grouping changes the evidence-set identity. Declared artifact/source counts must equal manifest-derived counts, so a caller cannot establish “two independent sources” by setting a numeric counter alone.
+
+A manifest entry is not evidence merely because it is syntactically valid. For a verified evidence bundle, **every manifest entry must resolve to a supplied artifact with the same ID, artifact SHA-256, source ID, and origin-group key, and that artifact must independently pass the verified-external-evidence admission rules**. A phantom manifest row therefore cannot manufacture corroboration.
+
+The assessment's knowledge time must be at or after the knowledge time of every artifact it relies on. Historical cutoffs apply to every artifact in the manifest, not only the primary linked artifact. This prevents a retrospective assessment from silently using a supporting source that became knowable after the forecast cutoff.
 
 `independent_source_corroboration` requires at least two distinct `source_independence_key` values in the bound evidence manifest. Merely having two URLs, publishers, API records, or news articles is insufficient. If two records derive from one common origin, they count as one source for corroboration.
 
