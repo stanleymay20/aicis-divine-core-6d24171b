@@ -13,11 +13,13 @@
 --   * knowledge time is explicit and fail-closed;
 --   * extraction/derivation activities are independently attributable;
 --   * assessment evidence sets are cryptographically bound to explicit artifact manifests;
+--   * source corroboration counts governed origin groups, not merely distinct URLs/records;
 --   * C2PA/STIX/OpenLineage/W3C PROV interoperability metadata never substitutes for truth.
 
 CREATE TABLE IF NOT EXISTS public.aicis_evidence_artifacts_v1 (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   source_id text NOT NULL,
+  source_independence_key text,
   source_provider_key text REFERENCES public.data_provider_registry(provider_key),
   source_class text NOT NULL CHECK (source_class IN (
     'primary_official',
@@ -70,6 +72,7 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_artifacts_v1 (
   synthetic boolean NOT NULL DEFAULT false,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (source_independence_key IS NULL OR length(btrim(source_independence_key)) > 0),
   CHECK (valid_time_end IS NULL OR valid_time_start IS NULL OR valid_time_end >= valid_time_start),
   CHECK (published_at IS NULL OR knowledge_time IS NULL OR published_at <= knowledge_time),
   CHECK (knowledge_time IS NULL OR knowledge_time <= retrieved_at),
@@ -90,6 +93,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_aicis_evidence_artifact_revision_v1
   ON public.aicis_evidence_artifacts_v1(artifact_sha256, source_id, revision_id) NULLS NOT DISTINCT;
 CREATE INDEX IF NOT EXISTS idx_aicis_evidence_artifacts_source_v1
   ON public.aicis_evidence_artifacts_v1(source_id, published_at DESC NULLS LAST, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_aicis_evidence_artifacts_independence_v1
+  ON public.aicis_evidence_artifacts_v1(source_independence_key)
+  WHERE source_independence_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_aicis_evidence_artifacts_hash_v1
   ON public.aicis_evidence_artifacts_v1(artifact_sha256);
 CREATE INDEX IF NOT EXISTS idx_aicis_evidence_artifacts_knowledge_v1
