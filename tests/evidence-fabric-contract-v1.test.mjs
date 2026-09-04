@@ -168,9 +168,20 @@ function verifiedBundle(overrides = {}) {
   if (Object.prototype.hasOwnProperty.call(overrides, "cutoff_at")) bundle.cutoff_at = overrides.cutoff_at;
   if (Object.prototype.hasOwnProperty.call(overrides, "additional_artifacts")) {
     bundle.evidence_artifacts = [sourceArtifact, ...overrides.additional_artifacts];
+    bundle.evidence_links = [
+      evidenceLink,
+      ...overrides.additional_artifacts.map((additional) => link({
+        claim_id: evidenceClaim.id,
+        artifact_id: additional.id,
+        relationship: "supports",
+      })),
+    ];
   }
   if (Object.prototype.hasOwnProperty.call(overrides, "evidence_artifacts")) {
     bundle.evidence_artifacts = overrides.evidence_artifacts;
+  }
+  if (Object.prototype.hasOwnProperty.call(overrides, "evidence_links")) {
+    bundle.evidence_links = overrides.evidence_links;
   }
   return bundle;
 }
@@ -227,6 +238,27 @@ test("verified knowledge time fails closed when proof fields are absent or tempo
   }));
   assert.equal(predatedProof.admissible, false);
   assert.ok(predatedProof.reasons.includes("knowledge_time_verification_precedes_knowledge_time"));
+});
+
+test("strict timestamps reject impossible calendar dates instead of normalizing them", () => {
+  const impossible = evaluateEvidenceArtifact(artifact({
+    published_at: "2026-02-28T00:00:00Z",
+    knowledge_time: "2026-02-30T00:00:00Z",
+    retrieved_at: "2026-03-02T00:00:00Z",
+    first_observed_at: "2026-03-02T00:00:00Z",
+    knowledge_time_verified_at: "2026-03-02T00:01:00Z",
+  }));
+  assert.equal(impossible.admissible, false);
+  assert.ok(impossible.reasons.includes("knowledge_time_invalid"));
+
+  const leapDay = evaluateEvidenceArtifact(artifact({
+    published_at: "2028-02-29T08:00:00+01:00",
+    knowledge_time: "2028-02-29T08:00:00+01:00",
+    retrieved_at: "2028-02-29T08:10:00+01:00",
+    first_observed_at: "2028-02-29T08:10:00+01:00",
+    knowledge_time_verified_at: "2028-02-29T08:11:00+01:00",
+  }));
+  assert.equal(leapDay.admissible, true);
 });
 
 test("optional artifact timestamps fail closed when malformed", () => {
@@ -289,6 +321,14 @@ test("claim SHA-256 is bound to canonical claim content", () => {
   const result = evaluateEvidenceClaim(tampered);
   assert.equal(result.admissible, false);
   assert.ok(result.reasons.includes("claim_sha256_content_mismatch"));
+});
+
+test("canonical claim hashing preserves own __proto__ JSON keys", () => {
+  const first = claim({ object_value: JSON.parse('{"__proto__":{"amount":1}}') });
+  const second = claim({ object_value: JSON.parse('{"__proto__":{"amount":999}}') });
+  assert.equal(evaluateEvidenceClaim(first).admissible, true);
+  assert.equal(evaluateEvidenceClaim(second).admissible, true);
+  assert.notEqual(first.claim_sha256, second.claim_sha256);
 });
 
 test("extracted and derived claims require an attributable transform run", () => {
@@ -474,6 +514,7 @@ test("verified bundle requires the assessment manifest to contain the exact link
   assert.equal(result.verified, false);
   assert.ok(result.reasons.includes("assessment_evidence_set_missing_linked_artifact"));
   assert.ok(result.reasons.includes(`assessment_manifest_artifact_not_supplied:${SECOND_ARTIFACT_ID}`));
+  assert.ok(result.reasons.includes(`assessment_manifest_artifact_missing_supporting_link:${SECOND_ARTIFACT_ID}`));
 });
 
 test("independent corroboration cannot be created by a phantom second manifest entry", () => {
@@ -492,9 +533,30 @@ test("independent corroboration cannot be created by a phantom second manifest e
   assert.equal(result.admissible, false);
   assert.equal(result.verified, false);
   assert.ok(result.reasons.includes(`assessment_manifest_artifact_not_supplied:${SECOND_ARTIFACT_ID}`));
+  assert.ok(result.reasons.includes(`assessment_manifest_artifact_missing_supporting_link:${SECOND_ARTIFACT_ID}`));
 });
 
-test("independent corroboration verifies only when every manifest artifact is supplied and externally admissible", () => {
+test("every corroborating artifact requires an explicit supporting claim link", () => {
+  const secondArtifact = artifact({
+    id: SECOND_ARTIFACT_ID,
+    artifact_sha256: SHA_D,
+    source_id: "independent-source-record-2",
+    source_independence_key: "origin:independent-primary-2",
+  });
+  const result = evaluateVerifiedEvidenceBundle(verifiedBundle({
+    assessment: {
+      assessment_method: "independent_source_corroboration",
+      evidence_manifest: [manifestEntry(), manifestEntry(secondArtifact)],
+    },
+    additional_artifacts: [secondArtifact],
+    evidence_links: [link()],
+  }));
+  assert.equal(result.admissible, false);
+  assert.equal(result.verified, false);
+  assert.ok(result.reasons.includes(`assessment_manifest_artifact_missing_supporting_link:${SECOND_ARTIFACT_ID}`));
+});
+
+test("independent corroboration verifies only when every manifest artifact and supporting link are supplied", () => {
   const secondArtifact = artifact({
     id: SECOND_ARTIFACT_ID,
     artifact_sha256: SHA_D,
