@@ -133,7 +133,7 @@ export function RelevanceCard({ evaluation }: { evaluation: RelevanceEvaluation 
           user_feedback: value,
           feedback_at: new Date().toISOString(),
           feedback_user_id: userRes.user?.id ?? null,
-        } as any)
+        })
         .eq("id", evaluation.evaluation_id);
       if (error) throw error;
       setFeedback(value);
