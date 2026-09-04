@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 export const AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION = "aicis-evidence-fabric-contract-v1";
 
 const SHA256_RE = /^[a-f0-9]{64}$/i;
+const REVISION_RE = /^[a-f0-9]{40}$/i;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SOURCE_CLASSES = new Set([
   "primary_official",
@@ -30,6 +31,14 @@ const C2PA_STATUSES = new Set([
   "manifest_verified",
   "manifest_invalid",
   "manifest_present_unverified",
+]);
+const TRANSFORM_TYPES = new Set([
+  "deterministic_code",
+  "rule_based",
+  "self_hosted_model",
+  "external_model",
+  "human",
+  "manual_import",
 ]);
 const CLAIM_ORIGINS = new Set([
   "direct_source_record",
@@ -105,6 +114,13 @@ export function evaluateEvidenceArtifact(candidate) {
     }
   }
 
+  validateOptionalDate(candidate.published_at, reasons, "published_at_invalid");
+  validateOptionalDate(candidate.knowledge_time, reasons, "knowledge_time_invalid");
+  validateOptionalDate(candidate.knowledge_time_verified_at, reasons, "knowledge_time_verified_at_invalid");
+  validateOptionalDate(candidate.valid_time_start, reasons, "valid_time_start_invalid");
+  validateOptionalDate(candidate.valid_time_end, reasons, "valid_time_end_invalid");
+  validateInterval(candidate.valid_time_start, candidate.valid_time_end, reasons, "artifact_valid_time");
+
   const publishedAt = parseDate(candidate.published_at);
   const retrievedAt = parseDate(candidate.retrieved_at);
   const observedAt = parseDate(candidate.first_observed_at);
@@ -133,6 +149,69 @@ export function evaluateEvidenceArtifact(candidate) {
   return freezeResult({ admissible, verified_external_evidence: verifiedExternalEvidence, reasons });
 }
 
+export function evaluateEvidenceTransformRun(candidate) {
+  const reasons = [];
+  if (!isRecord(candidate)) return invalidResult("transform_run_missing_or_invalid");
+  if (candidate.contract_version !== AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION) reasons.push("contract_version_mismatch");
+  if (!isUuid(candidate.id)) reasons.push("transform_run_id_invalid");
+  if (!TRANSFORM_TYPES.has(candidate.transform_type)) reasons.push("transform_type_invalid");
+  if (!nonEmpty(candidate.producer)) reasons.push("transform_producer_missing");
+  if (!SHA256_RE.test(String(candidate.input_set_sha256 ?? ""))) reasons.push("transform_input_set_sha256_invalid");
+  if (!SHA256_RE.test(String(candidate.output_set_sha256 ?? ""))) reasons.push("transform_output_set_sha256_invalid");
+  if (!isDate(candidate.started_at)) reasons.push("transform_started_at_invalid");
+  if (!isDate(candidate.completed_at)) reasons.push("transform_completed_at_invalid");
+  const startedAt = parseDate(candidate.started_at);
+  const completedAt = parseDate(candidate.completed_at);
+  if (startedAt && completedAt && completedAt < startedAt) reasons.push("transform_completed_before_start");
+  if (candidate.synthetic_output !== true && candidate.synthetic_output !== false) reasons.push("transform_synthetic_output_flag_required");
+
+  if (["deterministic_code", "rule_based"].includes(candidate.transform_type)) {
+    if (!SHA256_RE.test(String(candidate.code_sha256 ?? ""))) reasons.push("transform_code_sha256_required");
+  }
+  if (candidate.transform_type === "self_hosted_model") {
+    if (!nonEmpty(candidate.model_id)) reasons.push("self_hosted_model_id_missing");
+    if (!REVISION_RE.test(String(candidate.model_revision ?? ""))) reasons.push("self_hosted_model_revision_invalid");
+    if (!SHA256_RE.test(String(candidate.model_artifact_lock_sha256 ?? ""))) reasons.push("self_hosted_model_artifact_lock_invalid");
+    if (!SHA256_RE.test(String(candidate.prompt_sha256 ?? ""))) reasons.push("self_hosted_prompt_sha256_invalid");
+  }
+  if (candidate.transform_type === "external_model") {
+    if (!nonEmpty(candidate.model_id)) reasons.push("external_model_id_missing");
+    if (!nonEmpty(candidate.external_model_provider)) reasons.push("external_model_provider_missing");
+    if (!SHA256_RE.test(String(candidate.prompt_sha256 ?? ""))) reasons.push("external_prompt_sha256_invalid");
+    if (!SHA256_RE.test(String(candidate.request_config_sha256 ?? ""))) reasons.push("external_request_config_sha256_invalid");
+  }
+
+  return freezeResult({ admissible: reasons.length === 0, reasons });
+}
+
+export function canonicalClaimPayload(candidate) {
+  if (!isRecord(candidate) || !nonEmpty(candidate.statement)) return null;
+  if (candidate.subject_entity_id !== null && candidate.subject_entity_id !== undefined && !isUuid(candidate.subject_entity_id)) return null;
+  if (candidate.object_entity_id !== null && candidate.object_entity_id !== undefined && !isUuid(candidate.object_entity_id)) return null;
+
+  const occurredAt = normalizeOptionalDate(candidate.occurred_at);
+  const validFrom = normalizeOptionalDate(candidate.valid_from);
+  const validTo = normalizeOptionalDate(candidate.valid_to);
+  if (occurredAt === false || validFrom === false || validTo === false) return null;
+
+  return deepFreeze({
+    statement: normalizeText(candidate.statement),
+    subject_entity_id: normalizeOptionalUuid(candidate.subject_entity_id),
+    predicate: nonEmpty(candidate.predicate) ? normalizeText(candidate.predicate) : null,
+    object_entity_id: normalizeOptionalUuid(candidate.object_entity_id),
+    object_value: canonicalizeJson(candidate.object_value ?? null),
+    occurred_at: occurredAt,
+    valid_from: validFrom,
+    valid_to: validTo,
+  });
+}
+
+export function claimSha256(candidate) {
+  const payload = canonicalClaimPayload(candidate);
+  if (!payload) return null;
+  return sha256Text(stableJson(payload));
+}
+
 export function evaluateEvidenceClaim(candidate) {
   const reasons = [];
   if (!isRecord(candidate)) return invalidResult("claim_missing_or_invalid");
@@ -140,13 +219,27 @@ export function evaluateEvidenceClaim(candidate) {
   if (!CLAIM_ORIGINS.has(candidate.claim_origin)) reasons.push("claim_origin_invalid");
   if (!nonEmpty(candidate.statement)) reasons.push("claim_statement_missing");
   if (!SHA256_RE.test(String(candidate.claim_sha256 ?? ""))) reasons.push("claim_sha256_invalid");
+  if (candidate.subject_entity_id !== null && candidate.subject_entity_id !== undefined && !isUuid(candidate.subject_entity_id)) {
+    reasons.push("claim_subject_entity_id_invalid");
+  }
+  if (candidate.object_entity_id !== null && candidate.object_entity_id !== undefined && !isUuid(candidate.object_entity_id)) {
+    reasons.push("claim_object_entity_id_invalid");
+  }
   if (!CLAIM_STATUSES.has(candidate.epistemic_status)) reasons.push("claim_epistemic_status_invalid");
   if (candidate.synthetic !== true && candidate.synthetic !== false) reasons.push("claim_synthetic_flag_required");
   if (["extracted", "derived"].includes(candidate.claim_origin) && !isUuid(candidate.transform_run_id)) {
     reasons.push("claim_transform_run_required");
   }
+  validateOptionalDate(candidate.occurred_at, reasons, "claim_occurred_at_invalid");
+  validateOptionalDate(candidate.valid_from, reasons, "claim_valid_from_invalid");
+  validateOptionalDate(candidate.valid_to, reasons, "claim_valid_to_invalid");
   validateNullableConfidence(candidate.confidence, candidate.confidence_semantics, reasons, "claim");
   validateInterval(candidate.valid_from, candidate.valid_to, reasons, "claim_valid_time");
+
+  const expectedClaimSha256 = claimSha256(candidate);
+  if (expectedClaimSha256 && SHA256_RE.test(String(candidate.claim_sha256 ?? "")) && candidate.claim_sha256.toLowerCase() !== expectedClaimSha256) {
+    reasons.push("claim_sha256_content_mismatch");
+  }
   return freezeResult({ admissible: reasons.length === 0, reasons });
 }
 
@@ -166,26 +259,26 @@ export function canonicalEvidenceManifest(manifest) {
   const artifactIds = new Set();
   for (const entry of manifest) {
     if (!isRecord(entry)) return null;
-    const artifactId = typeof entry.artifact_id === "string" ? entry.artifact_id.trim().toLowerCase() : "";
+    const artifactId = normalizeOptionalUuid(entry.artifact_id);
     const artifactSha256 = typeof entry.artifact_sha256 === "string" ? entry.artifact_sha256.trim().toLowerCase() : "";
     const sourceId = typeof entry.source_id === "string" ? entry.source_id.trim() : "";
-    if (!UUID_RE.test(artifactId) || !SHA256_RE.test(artifactSha256) || !sourceId) return null;
+    if (!artifactId || !SHA256_RE.test(artifactSha256) || !sourceId) return null;
     if (artifactIds.has(artifactId)) return null;
     artifactIds.add(artifactId);
-    normalized.push(Object.freeze({ artifact_id: artifactId, artifact_sha256: artifactSha256, source_id: sourceId }));
+    normalized.push({ artifact_id: artifactId, artifact_sha256: artifactSha256, source_id: sourceId });
   }
   if (normalized.length === 0) return null;
   normalized.sort((a, b) =>
     a.artifact_id.localeCompare(b.artifact_id) ||
     a.artifact_sha256.localeCompare(b.artifact_sha256) ||
     a.source_id.localeCompare(b.source_id));
-  return Object.freeze(normalized);
+  return deepFreeze(normalized);
 }
 
 export function evidenceManifestSha256(manifest) {
   const canonical = canonicalEvidenceManifest(manifest);
   if (!canonical) return null;
-  return createHash("sha256").update(JSON.stringify(canonical), "utf8").digest("hex");
+  return sha256Text(stableJson(canonical));
 }
 
 export function evaluateClaimAssessment(candidate) {
@@ -238,31 +331,45 @@ export function evaluateClaimAssessment(candidate) {
   return freezeResult({ admissible: reasons.length === 0, reasons });
 }
 
-export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessment, cutoff_at = null } = {}) {
+export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessment, transform = null, cutoff_at = null } = {}) {
   const artifactResult = evaluateEvidenceArtifact(artifact);
   const claimResult = evaluateEvidenceClaim(claim);
   const linkResult = evaluateClaimArtifactLink(link);
   const assessmentResult = evaluateClaimAssessment(assessment);
+  const requiresTransform = ["extracted", "derived"].includes(claim?.claim_origin);
+  const transformResult = requiresTransform || transform !== null
+    ? evaluateEvidenceTransformRun(transform)
+    : freezeResult({ admissible: true, reasons: [] });
   const reasons = [
     ...artifactResult.reasons,
     ...claimResult.reasons,
     ...linkResult.reasons,
     ...assessmentResult.reasons,
+    ...transformResult.reasons,
   ];
 
   if (!artifactResult.verified_external_evidence) reasons.push("artifact_not_verified_external_evidence");
   if (!isUuid(artifact?.id) || !isUuid(claim?.id)) reasons.push("bundle_record_ids_required");
-  if (link?.artifact_id !== artifact?.id) reasons.push("link_artifact_mismatch");
-  if (link?.claim_id !== claim?.id) reasons.push("link_claim_mismatch");
+  if (normalizeOptionalUuid(link?.artifact_id) !== normalizeOptionalUuid(artifact?.id)) reasons.push("link_artifact_mismatch");
+  if (normalizeOptionalUuid(link?.claim_id) !== normalizeOptionalUuid(claim?.id)) reasons.push("link_claim_mismatch");
   if (!new Set(["source_of", "supports"]).has(link?.relationship)) reasons.push("link_does_not_support_claim");
-  if (assessment?.claim_id !== claim?.id) reasons.push("assessment_claim_mismatch");
+  if (normalizeOptionalUuid(assessment?.claim_id) !== normalizeOptionalUuid(claim?.id)) reasons.push("assessment_claim_mismatch");
 
   const canonicalManifest = canonicalEvidenceManifest(assessment?.evidence_manifest);
   const assessmentContainsArtifact = canonicalManifest?.some((entry) =>
-    entry.artifact_id === String(artifact?.id ?? "").toLowerCase() &&
+    entry.artifact_id === normalizeOptionalUuid(artifact?.id) &&
     entry.artifact_sha256 === String(artifact?.artifact_sha256 ?? "").toLowerCase() &&
     entry.source_id === artifact?.source_id) ?? false;
   if (!assessmentContainsArtifact) reasons.push("assessment_evidence_set_missing_linked_artifact");
+
+  if (requiresTransform) {
+    if (normalizeOptionalUuid(transform?.id) !== normalizeOptionalUuid(claim?.transform_run_id)) {
+      reasons.push("claim_transform_run_mismatch");
+    }
+    if (transform?.synthetic_output === true) {
+      reasons.push("synthetic_transform_output_forbidden_for_verified_evidence");
+    }
+  }
 
   if (claim?.synthetic === true) reasons.push("synthetic_claim_forbidden_for_verified_evidence");
   if (claim?.epistemic_status === "contradicted") reasons.push("contradicted_claim_forbidden_for_verified_evidence");
@@ -280,7 +387,11 @@ export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessme
 
   const uniqueReasons = [...new Set(reasons)];
   return freezeResult({
-    admissible: artifactResult.admissible && claimResult.admissible && linkResult.admissible && assessmentResult.admissible,
+    admissible: artifactResult.admissible &&
+      claimResult.admissible &&
+      linkResult.admissible &&
+      assessmentResult.admissible &&
+      transformResult.admissible,
     verified: uniqueReasons.length === 0,
     reasons: uniqueReasons,
   });
@@ -301,15 +412,59 @@ function hasUsableConfidenceSemantics(value) {
   return !UNTRUSTED_CONFIDENCE_SEMANTICS.some((token) => normalized.includes(token));
 }
 
+function validateOptionalDate(value, reasons, reason) {
+  if (value === null || value === undefined || value === "") return;
+  if (!parseDate(value)) reasons.push(reason);
+}
+
 function validateInterval(startValue, endValue, reasons, prefix) {
-  if (startValue === null || startValue === undefined || endValue === null || endValue === undefined) return;
+  validateOptionalDate(startValue, reasons, `${prefix}_start_invalid`);
+  validateOptionalDate(endValue, reasons, `${prefix}_end_invalid`);
+  if (startValue === null || startValue === undefined || startValue === "" ||
+      endValue === null || endValue === undefined || endValue === "") return;
   const start = parseDate(startValue);
   const end = parseDate(endValue);
-  if (!start || !end) {
-    reasons.push(`${prefix}_invalid`);
-    return;
+  if (start && end && end < start) reasons.push(`${prefix}_reversed`);
+}
+
+function normalizeOptionalDate(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = parseDate(value);
+  return parsed ? parsed.toISOString() : false;
+}
+
+function normalizeOptionalUuid(value) {
+  if (value === null || value === undefined || value === "") return null;
+  return isUuid(value) ? value.trim().toLowerCase() : null;
+}
+
+function canonicalizeJson(value) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("Non-finite numbers cannot be canonicalized");
+    return value;
   }
-  if (end < start) reasons.push(`${prefix}_reversed`);
+  if (Array.isArray(value)) return value.map((entry) => canonicalizeJson(entry));
+  if (isRecord(value)) {
+    const output = {};
+    for (const key of Object.keys(value).sort()) {
+      if (value[key] !== undefined) output[key] = canonicalizeJson(value[key]);
+    }
+    return output;
+  }
+  throw new TypeError("Unsupported JSON value in canonical evidence payload");
+}
+
+function stableJson(value) {
+  return JSON.stringify(canonicalizeJson(value));
+}
+
+function normalizeText(value) {
+  return value.trim().normalize("NFC");
+}
+
+function sha256Text(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
 function positiveInteger(value) {
@@ -345,4 +500,11 @@ function invalidResult(reason) {
 function freezeResult(result) {
   const reasons = Object.freeze([...(result.reasons ?? [])]);
   return Object.freeze({ ...result, reasons });
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  Object.freeze(value);
+  for (const child of Object.values(value)) deepFreeze(child);
+  return value;
 }
