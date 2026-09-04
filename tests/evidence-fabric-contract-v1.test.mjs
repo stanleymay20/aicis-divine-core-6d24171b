@@ -29,6 +29,7 @@ function artifact(overrides = {}) {
     contract_version: AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION,
     id: ARTIFACT_ID,
     source_id: "example-source-record-1",
+    source_independence_key: "origin:example-primary-1",
     source_class: "primary_official",
     artifact_sha256: SHA_A,
     retrieved_at: "2026-09-04T10:00:00Z",
@@ -76,6 +77,7 @@ function manifestEntry(sourceArtifact = artifact(), overrides = {}) {
     artifact_id: sourceArtifact.id,
     artifact_sha256: sourceArtifact.artifact_sha256,
     source_id: sourceArtifact.source_id,
+    source_independence_key: sourceArtifact.source_independence_key,
     ...overrides,
   };
 }
@@ -86,7 +88,7 @@ function assessment(overrides = {}) {
     : [manifestEntry()];
   const canonicalHash = evidenceManifestSha256(evidenceManifest);
   const sourceCount = Array.isArray(evidenceManifest)
-    ? new Set(evidenceManifest.map((entry) => entry?.source_id).filter(Boolean)).size
+    ? new Set(evidenceManifest.map((entry) => entry?.source_independence_key).filter(Boolean)).size
     : 0;
   const candidate = {
     contract_version: AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION,
@@ -167,11 +169,17 @@ function verifiedBundle(overrides = {}) {
   return bundle;
 }
 
-test("verified external artifact requires immutable identity and leakage-safe knowledge time", () => {
+test("verified external artifact requires immutable identity, independence grouping and leakage-safe knowledge time", () => {
   const result = evaluateEvidenceArtifact(artifact());
   assert.equal(result.admissible, true);
   assert.equal(result.verified_external_evidence, true);
   assert.deepEqual(result.reasons, []);
+});
+
+test("missing source-independence grouping remains admissible metadata but cannot become verified external evidence", () => {
+  const result = evaluateEvidenceArtifact(artifact({ source_independence_key: null }));
+  assert.equal(result.admissible, true);
+  assert.equal(result.verified_external_evidence, false);
 });
 
 test("artifact synthetic flag is mandatory and synthetic artifacts cannot become verified external evidence", () => {
@@ -364,6 +372,18 @@ test("assessment evidence-set hash and counts are derived from the exact evidenc
   const duplicateManifest = evaluateClaimAssessment(assessment({ evidence_manifest: [duplicate, duplicate] }));
   assert.equal(duplicateManifest.admissible, false);
   assert.ok(duplicateManifest.reasons.includes("assessment_evidence_manifest_invalid"));
+
+  const missingIndependenceKey = evaluateClaimAssessment(assessment({
+    evidence_manifest: [manifestEntry(artifact(), { source_independence_key: null })],
+  }));
+  assert.equal(missingIndependenceKey.admissible, false);
+  assert.ok(missingIndependenceKey.reasons.includes("assessment_evidence_manifest_invalid"));
+});
+
+test("changing source-independence grouping changes the evidence-set identity", () => {
+  const originalManifest = [manifestEntry()];
+  const regroupedManifest = [manifestEntry(artifact(), { source_independence_key: "origin:another-group" })];
+  assert.notEqual(evidenceManifestSha256(originalManifest), evidenceManifestSha256(regroupedManifest));
 });
 
 test("assessment knowledge time must not postdate assessment", () => {
@@ -375,7 +395,7 @@ test("assessment knowledge time must not postdate assessment", () => {
   assert.ok(result.reasons.includes("assessment_knowledge_time_after_assessment"));
 });
 
-test("independent-source corroboration requires a manifest with at least two distinct sources", () => {
+test("independent-source corroboration requires at least two distinct origin groups", () => {
   const tooFew = evaluateClaimAssessment(assessment({
     assessment_method: "independent_source_corroboration",
   }));
@@ -386,6 +406,7 @@ test("independent-source corroboration requires a manifest with at least two dis
     id: SECOND_ARTIFACT_ID,
     artifact_sha256: SHA_D,
     source_id: "independent-source-record-2",
+    source_independence_key: "origin:independent-primary-2",
   });
   const manifest = [manifestEntry(), manifestEntry(secondArtifact)];
   const valid = evaluateClaimAssessment(assessment({
@@ -393,7 +414,21 @@ test("independent-source corroboration requires a manifest with at least two dis
     evidence_manifest: manifest,
   }));
   assert.equal(valid.admissible, true);
-  assert.equal(valid.evidence_artifact_count, undefined);
+});
+
+test("syndicated or copied records sharing one origin group do not count as independent corroboration", () => {
+  const syndicatedArtifact = artifact({
+    id: SECOND_ARTIFACT_ID,
+    artifact_sha256: SHA_D,
+    source_id: "different-publisher-record-2",
+    source_independence_key: "origin:example-primary-1",
+  });
+  const result = evaluateClaimAssessment(assessment({
+    assessment_method: "independent_source_corroboration",
+    evidence_manifest: [manifestEntry(), manifestEntry(syndicatedArtifact)],
+  }));
+  assert.equal(result.admissible, false);
+  assert.ok(result.reasons.includes("independent_corroboration_requires_multiple_sources"));
 });
 
 test("automated assessments may assist but cannot independently create verified truth", () => {
@@ -424,6 +459,7 @@ test("verified bundle requires the assessment manifest to contain the exact link
     id: SECOND_ARTIFACT_ID,
     artifact_sha256: SHA_D,
     source_id: "independent-source-record-2",
+    source_independence_key: "origin:independent-primary-2",
   });
   const result = evaluateVerifiedEvidenceBundle(verifiedBundle({
     assessment: { evidence_manifest: [manifestEntry(unrelated)] },
@@ -525,6 +561,7 @@ test("candidate SQL is additive, append-only and rejects legacy numeric trust de
   ]) {
     assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS public\\.${table}`, "i"));
   }
+  assert.match(sql, /source_independence_key text/i);
   assert.match(sql, /v_aicis_legacy_provenance_unverified_v1/i);
   assert.match(sql, /WITH \(security_invoker = true\)/i);
   assert.match(sql, /NULL::numeric AS admissible_confidence/i);
