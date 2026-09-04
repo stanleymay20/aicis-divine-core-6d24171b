@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { lstat, readdir, stat, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,9 @@ export class SovereignArtifactLockError extends Error {
 }
 
 export async function buildArtifactLock({ rootDir, modelId, revision }) {
+  if (!rootDir || typeof rootDir !== "string" || !rootDir.trim()) {
+    throw new SovereignArtifactLockError("rootDir is required", "artifact_root_missing");
+  }
   if (!modelId || typeof modelId !== "string" || !modelId.trim()) {
     throw new SovereignArtifactLockError("modelId is required", "model_id_missing");
   }
@@ -30,7 +33,7 @@ export async function buildArtifactLock({ rootDir, modelId, revision }) {
     );
   }
 
-  const root = resolve(String(rootDir ?? ""));
+  const root = resolve(rootDir.trim());
   let rootStats;
   try {
     rootStats = await stat(root);
@@ -101,12 +104,15 @@ export async function buildArtifactLock({ rootDir, modelId, revision }) {
 }
 
 export async function writeArtifactLock({ rootDir, modelId, revision, outputPath }) {
-  const root = resolve(String(rootDir ?? ""));
-  const output = resolve(String(outputPath ?? ""));
-  if (!outputPath) {
+  if (!outputPath || typeof outputPath !== "string" || !outputPath.trim()) {
     throw new SovereignArtifactLockError("outputPath is required", "output_path_missing");
   }
+  if (!rootDir || typeof rootDir !== "string" || !rootDir.trim()) {
+    throw new SovereignArtifactLockError("rootDir is required", "artifact_root_missing");
+  }
 
+  const root = resolve(rootDir.trim());
+  const output = resolve(outputPath.trim());
   const outputRelative = relative(root, output);
   const outputInsideRoot = outputRelative === "" || (
     outputRelative !== ".." &&
