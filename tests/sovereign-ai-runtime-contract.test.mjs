@@ -109,6 +109,17 @@ test("benchmark lock requires immutable runtime and model identities", () => {
   });
 });
 
+test("benchmark lock rejects mutable runtime version labels", () => {
+  for (const mutableVersion of ["latest", "main", "master", "nightly", "dev"]) {
+    const candidate = benchmarkLockedCandidate();
+    candidate.runtime.primary.version = mutableVersion;
+    const result = evaluateSovereignRuntimeCandidate(candidate);
+    assert.equal(result.admissible, true);
+    assert.equal(result.benchmark_locked, false);
+    assert.ok(result.benchmark_lock_reasons.includes("runtime_version_mutable:vllm"));
+  }
+});
+
 test("benchmark lock fails closed on malformed digests or mutable identities", () => {
   const candidate = benchmarkLockedCandidate();
   candidate.runtime.primary.container_digest = "sha256:not-a-digest";
