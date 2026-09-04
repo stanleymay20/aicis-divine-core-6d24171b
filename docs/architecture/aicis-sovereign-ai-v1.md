@@ -46,7 +46,8 @@ Replacing the active LLM must not erase or redefine AICIS historical evidence, f
 - Default target for protected production intelligence workloads.
 - Third-party public model endpoints are forbidden.
 - Model endpoint must be local/private or explicitly present in `AICIS_SOVEREIGN_MODEL_HOSTS`.
-- A public allowlisted sovereign endpoint must have API authentication configured.
+- A public allowlisted sovereign endpoint must use HTTPS and have API authentication configured.
+- Provider redirects are rejected rather than followed automatically, so an approved endpoint cannot silently forward prompts to another host.
 - There is no silent fallback to an external model if the sovereign endpoint fails.
 - Failure to satisfy the route policy fails closed.
 
@@ -90,6 +91,8 @@ OpenAI-compatible describes the API contract only. It does not imply OpenAI is t
 
 The application callsite must not change when operators change the configured compatible backend.
 
+The CI sovereignty truth floor scans Edge Functions for direct model-transport secrets and legacy provider transport patterns outside the shared gateway. New model calls must cross the shared policy boundary.
+
 ## Fail-closed requirements
 
 The v1 gateway rejects:
@@ -100,8 +103,10 @@ The v1 gateway rejects:
 4. credentials embedded in endpoint URLs;
 5. link-local and known cloud metadata targets in every mode;
 6. arbitrary public endpoints in `sovereign` mode;
-7. public sovereign endpoints that are allowlisted but unauthenticated;
-8. missing explicit model names.
+7. public sovereign endpoints that do not use HTTPS;
+8. public sovereign endpoints that are allowlisted but unauthenticated;
+9. provider redirects instead of following them automatically;
+10. missing explicit model names.
 
 A sovereign request must never be automatically retried against a third-party endpoint.
 
