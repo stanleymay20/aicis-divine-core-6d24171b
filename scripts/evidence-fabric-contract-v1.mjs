@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
+
 export const AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION = "aicis-evidence-fabric-contract-v1";
 
 const SHA256_RE = /^[a-f0-9]{64}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SOURCE_CLASSES = new Set([
   "primary_official",
   "structured_dataset",
@@ -139,7 +142,7 @@ export function evaluateEvidenceClaim(candidate) {
   if (!SHA256_RE.test(String(candidate.claim_sha256 ?? ""))) reasons.push("claim_sha256_invalid");
   if (!CLAIM_STATUSES.has(candidate.epistemic_status)) reasons.push("claim_epistemic_status_invalid");
   if (candidate.synthetic !== true && candidate.synthetic !== false) reasons.push("claim_synthetic_flag_required");
-  if (["extracted", "derived"].includes(candidate.claim_origin) && !nonEmpty(candidate.transform_run_id)) {
+  if (["extracted", "derived"].includes(candidate.claim_origin) && !isUuid(candidate.transform_run_id)) {
     reasons.push("claim_transform_run_required");
   }
   validateNullableConfidence(candidate.confidence, candidate.confidence_semantics, reasons, "claim");
@@ -151,37 +154,81 @@ export function evaluateClaimArtifactLink(candidate) {
   const reasons = [];
   if (!isRecord(candidate)) return invalidResult("claim_artifact_link_missing_or_invalid");
   if (candidate.contract_version !== AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION) reasons.push("contract_version_mismatch");
-  if (!nonEmpty(candidate.claim_id)) reasons.push("link_claim_id_missing");
-  if (!nonEmpty(candidate.artifact_id)) reasons.push("link_artifact_id_missing");
+  if (!isUuid(candidate.claim_id)) reasons.push("link_claim_id_invalid");
+  if (!isUuid(candidate.artifact_id)) reasons.push("link_artifact_id_invalid");
   if (!CLAIM_ARTIFACT_RELATIONSHIPS.has(candidate.relationship)) reasons.push("link_relationship_invalid");
   return freezeResult({ admissible: reasons.length === 0, reasons });
+}
+
+export function canonicalEvidenceManifest(manifest) {
+  if (!Array.isArray(manifest)) return null;
+  const normalized = [];
+  const artifactIds = new Set();
+  for (const entry of manifest) {
+    if (!isRecord(entry)) return null;
+    const artifactId = typeof entry.artifact_id === "string" ? entry.artifact_id.trim().toLowerCase() : "";
+    const artifactSha256 = typeof entry.artifact_sha256 === "string" ? entry.artifact_sha256.trim().toLowerCase() : "";
+    const sourceId = typeof entry.source_id === "string" ? entry.source_id.trim() : "";
+    if (!UUID_RE.test(artifactId) || !SHA256_RE.test(artifactSha256) || !sourceId) return null;
+    if (artifactIds.has(artifactId)) return null;
+    artifactIds.add(artifactId);
+    normalized.push(Object.freeze({ artifact_id: artifactId, artifact_sha256: artifactSha256, source_id: sourceId }));
+  }
+  if (normalized.length === 0) return null;
+  normalized.sort((a, b) =>
+    a.artifact_id.localeCompare(b.artifact_id) ||
+    a.artifact_sha256.localeCompare(b.artifact_sha256) ||
+    a.source_id.localeCompare(b.source_id));
+  return Object.freeze(normalized);
+}
+
+export function evidenceManifestSha256(manifest) {
+  const canonical = canonicalEvidenceManifest(manifest);
+  if (!canonical) return null;
+  return createHash("sha256").update(JSON.stringify(canonical), "utf8").digest("hex");
 }
 
 export function evaluateClaimAssessment(candidate) {
   const reasons = [];
   if (!isRecord(candidate)) return invalidResult("assessment_missing_or_invalid");
   if (candidate.contract_version !== AICIS_EVIDENCE_FABRIC_CONTRACT_VERSION) reasons.push("contract_version_mismatch");
-  if (!nonEmpty(candidate.claim_id)) reasons.push("assessment_claim_id_missing");
+  if (!isUuid(candidate.claim_id)) reasons.push("assessment_claim_id_invalid");
   if (!ASSESSMENT_STATUSES.has(candidate.assessment_status)) reasons.push("assessment_status_invalid");
   if (!ASSESSMENT_METHODS.has(candidate.assessment_method)) reasons.push("assessment_method_invalid");
   if (!ASSESSOR_TYPES.has(candidate.assessor_type)) reasons.push("assessor_type_invalid");
   if (!nonEmpty(candidate.assessor_id)) reasons.push("assessor_id_missing");
-  if (!SHA256_RE.test(String(candidate.evidence_set_sha256 ?? ""))) reasons.push("assessment_evidence_set_sha256_invalid");
-  if (!positiveInteger(candidate.evidence_artifact_count)) reasons.push("assessment_evidence_artifact_count_invalid");
-  if (!positiveInteger(candidate.independent_source_count)) reasons.push("assessment_independent_source_count_invalid");
-  if (
-    positiveInteger(candidate.evidence_artifact_count) &&
-    positiveInteger(candidate.independent_source_count) &&
-    candidate.independent_source_count > candidate.evidence_artifact_count
-  ) {
-    reasons.push("independent_source_count_exceeds_artifact_count");
+
+  const canonicalManifest = canonicalEvidenceManifest(candidate.evidence_manifest);
+  if (!canonicalManifest) reasons.push("assessment_evidence_manifest_invalid");
+  const derivedArtifactCount = canonicalManifest?.length ?? null;
+  const derivedSourceCount = canonicalManifest
+    ? new Set(canonicalManifest.map((entry) => entry.source_id)).size
+    : null;
+  const derivedEvidenceSetSha256 = canonicalManifest ? evidenceManifestSha256(canonicalManifest) : null;
+
+  if (!SHA256_RE.test(String(candidate.evidence_set_sha256 ?? ""))) {
+    reasons.push("assessment_evidence_set_sha256_invalid");
+  } else if (derivedEvidenceSetSha256 && candidate.evidence_set_sha256.toLowerCase() !== derivedEvidenceSetSha256) {
+    reasons.push("assessment_evidence_set_sha256_mismatch");
+  }
+  if (!positiveInteger(candidate.evidence_artifact_count)) {
+    reasons.push("assessment_evidence_artifact_count_invalid");
+  } else if (derivedArtifactCount !== null && candidate.evidence_artifact_count !== derivedArtifactCount) {
+    reasons.push("assessment_evidence_artifact_count_mismatch");
+  }
+  if (!positiveInteger(candidate.independent_source_count)) {
+    reasons.push("assessment_independent_source_count_invalid");
+  } else if (derivedSourceCount !== null && candidate.independent_source_count !== derivedSourceCount) {
+    reasons.push("assessment_independent_source_count_mismatch");
   }
   if (
     candidate.assessment_method === "independent_source_corroboration" &&
-    (!positiveInteger(candidate.independent_source_count) || candidate.independent_source_count < 2)
+    derivedSourceCount !== null &&
+    derivedSourceCount < 2
   ) {
     reasons.push("independent_corroboration_requires_multiple_sources");
   }
+
   const knowledgeTime = parseDate(candidate.assessment_knowledge_time);
   const assessedAt = parseDate(candidate.assessed_at);
   if (!knowledgeTime) reasons.push("assessment_knowledge_time_invalid");
@@ -204,11 +251,19 @@ export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessme
   ];
 
   if (!artifactResult.verified_external_evidence) reasons.push("artifact_not_verified_external_evidence");
-  if (!nonEmpty(artifact?.id) || !nonEmpty(claim?.id)) reasons.push("bundle_record_ids_required");
+  if (!isUuid(artifact?.id) || !isUuid(claim?.id)) reasons.push("bundle_record_ids_required");
   if (link?.artifact_id !== artifact?.id) reasons.push("link_artifact_mismatch");
   if (link?.claim_id !== claim?.id) reasons.push("link_claim_mismatch");
   if (!new Set(["source_of", "supports"]).has(link?.relationship)) reasons.push("link_does_not_support_claim");
   if (assessment?.claim_id !== claim?.id) reasons.push("assessment_claim_mismatch");
+
+  const canonicalManifest = canonicalEvidenceManifest(assessment?.evidence_manifest);
+  const assessmentContainsArtifact = canonicalManifest?.some((entry) =>
+    entry.artifact_id === String(artifact?.id ?? "").toLowerCase() &&
+    entry.artifact_sha256 === String(artifact?.artifact_sha256 ?? "").toLowerCase() &&
+    entry.source_id === artifact?.source_id) ?? false;
+  if (!assessmentContainsArtifact) reasons.push("assessment_evidence_set_missing_linked_artifact");
+
   if (claim?.synthetic === true) reasons.push("synthetic_claim_forbidden_for_verified_evidence");
   if (claim?.epistemic_status === "contradicted") reasons.push("contradicted_claim_forbidden_for_verified_evidence");
   if (assessment?.assessment_status !== "verified") reasons.push("claim_not_verified_by_assessment");
@@ -269,6 +324,10 @@ function parseDate(value) {
 
 function isDate(value) {
   return parseDate(value) !== null;
+}
+
+function isUuid(value) {
+  return typeof value === "string" && UUID_RE.test(value.trim());
 }
 
 function nonEmpty(value) {
