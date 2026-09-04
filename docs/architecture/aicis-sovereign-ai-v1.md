@@ -98,9 +98,10 @@ The v1 gateway rejects:
 2. missing or malformed model endpoint;
 3. non-HTTP(S) model endpoints;
 4. credentials embedded in endpoint URLs;
-5. arbitrary public endpoints in `sovereign` mode;
-6. public sovereign endpoints that are allowlisted but unauthenticated;
-7. missing explicit model names.
+5. link-local and known cloud metadata targets in every mode;
+6. arbitrary public endpoints in `sovereign` mode;
+7. public sovereign endpoints that are allowlisted but unauthenticated;
+8. missing explicit model names.
 
 A sovereign request must never be automatically retried against a third-party endpoint.
 
