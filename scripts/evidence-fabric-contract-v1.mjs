@@ -144,7 +144,8 @@ export function evaluateEvidenceArtifact(candidate) {
     candidate.knowledge_time_status === "verified_leakage_safe" &&
     candidate.source_class !== "derived_internal" &&
     candidate.synthetic === false &&
-    candidate.c2pa_status !== "manifest_invalid";
+    candidate.c2pa_status !== "manifest_invalid" &&
+    nonEmpty(candidate.source_independence_key);
 
   return freezeResult({ admissible, verified_external_evidence: verifiedExternalEvidence, reasons });
 }
@@ -194,16 +195,20 @@ export function canonicalClaimPayload(candidate) {
   const validTo = normalizeOptionalDate(candidate.valid_to);
   if (occurredAt === false || validFrom === false || validTo === false) return null;
 
-  return deepFreeze({
-    statement: normalizeText(candidate.statement),
-    subject_entity_id: normalizeOptionalUuid(candidate.subject_entity_id),
-    predicate: nonEmpty(candidate.predicate) ? normalizeText(candidate.predicate) : null,
-    object_entity_id: normalizeOptionalUuid(candidate.object_entity_id),
-    object_value: canonicalizeJson(candidate.object_value ?? null),
-    occurred_at: occurredAt,
-    valid_from: validFrom,
-    valid_to: validTo,
-  });
+  try {
+    return deepFreeze({
+      statement: normalizeText(candidate.statement),
+      subject_entity_id: normalizeOptionalUuid(candidate.subject_entity_id),
+      predicate: nonEmpty(candidate.predicate) ? normalizeText(candidate.predicate) : null,
+      object_entity_id: normalizeOptionalUuid(candidate.object_entity_id),
+      object_value: canonicalizeJson(candidate.object_value ?? null),
+      occurred_at: occurredAt,
+      valid_from: validFrom,
+      valid_to: validTo,
+    });
+  } catch {
+    return null;
+  }
 }
 
 export function claimSha256(candidate) {
@@ -237,7 +242,9 @@ export function evaluateEvidenceClaim(candidate) {
   validateInterval(candidate.valid_from, candidate.valid_to, reasons, "claim_valid_time");
 
   const expectedClaimSha256 = claimSha256(candidate);
-  if (expectedClaimSha256 && SHA256_RE.test(String(candidate.claim_sha256 ?? "")) && candidate.claim_sha256.toLowerCase() !== expectedClaimSha256) {
+  if (!expectedClaimSha256) {
+    reasons.push("claim_canonical_payload_invalid");
+  } else if (SHA256_RE.test(String(candidate.claim_sha256 ?? "")) && candidate.claim_sha256.toLowerCase() !== expectedClaimSha256) {
     reasons.push("claim_sha256_content_mismatch");
   }
   return freezeResult({ admissible: reasons.length === 0, reasons });
@@ -262,16 +269,23 @@ export function canonicalEvidenceManifest(manifest) {
     const artifactId = normalizeOptionalUuid(entry.artifact_id);
     const artifactSha256 = typeof entry.artifact_sha256 === "string" ? entry.artifact_sha256.trim().toLowerCase() : "";
     const sourceId = typeof entry.source_id === "string" ? entry.source_id.trim() : "";
-    if (!artifactId || !SHA256_RE.test(artifactSha256) || !sourceId) return null;
+    const independenceKey = typeof entry.source_independence_key === "string" ? entry.source_independence_key.trim() : "";
+    if (!artifactId || !SHA256_RE.test(artifactSha256) || !sourceId || !independenceKey) return null;
     if (artifactIds.has(artifactId)) return null;
     artifactIds.add(artifactId);
-    normalized.push({ artifact_id: artifactId, artifact_sha256: artifactSha256, source_id: sourceId });
+    normalized.push({
+      artifact_id: artifactId,
+      artifact_sha256: artifactSha256,
+      source_id: sourceId,
+      source_independence_key: independenceKey,
+    });
   }
   if (normalized.length === 0) return null;
   normalized.sort((a, b) =>
     a.artifact_id.localeCompare(b.artifact_id) ||
     a.artifact_sha256.localeCompare(b.artifact_sha256) ||
-    a.source_id.localeCompare(b.source_id));
+    a.source_id.localeCompare(b.source_id) ||
+    a.source_independence_key.localeCompare(b.source_independence_key));
   return deepFreeze(normalized);
 }
 
@@ -295,7 +309,7 @@ export function evaluateClaimAssessment(candidate) {
   if (!canonicalManifest) reasons.push("assessment_evidence_manifest_invalid");
   const derivedArtifactCount = canonicalManifest?.length ?? null;
   const derivedSourceCount = canonicalManifest
-    ? new Set(canonicalManifest.map((entry) => entry.source_id)).size
+    ? new Set(canonicalManifest.map((entry) => entry.source_independence_key)).size
     : null;
   const derivedEvidenceSetSha256 = canonicalManifest ? evidenceManifestSha256(canonicalManifest) : null;
 
@@ -359,7 +373,8 @@ export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessme
   const assessmentContainsArtifact = canonicalManifest?.some((entry) =>
     entry.artifact_id === normalizeOptionalUuid(artifact?.id) &&
     entry.artifact_sha256 === String(artifact?.artifact_sha256 ?? "").toLowerCase() &&
-    entry.source_id === artifact?.source_id) ?? false;
+    entry.source_id === artifact?.source_id &&
+    entry.source_independence_key === artifact?.source_independence_key) ?? false;
   if (!assessmentContainsArtifact) reasons.push("assessment_evidence_set_missing_linked_artifact");
 
   if (requiresTransform) {
