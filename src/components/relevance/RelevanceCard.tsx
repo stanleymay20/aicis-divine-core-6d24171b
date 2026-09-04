@@ -21,7 +21,7 @@ export interface RelevanceEvaluation {
   explanation: string;
   why_this_matters: string;
   recommended_action: string;
-  confidence_score: number;
+  confidence_score: number | null;
   model_used: string;
   prompt_version: string;
   notice?: string | null;
@@ -150,6 +150,9 @@ export function RelevanceCard({ evaluation }: { evaluation: RelevanceEvaluation 
   };
 
   const tierCls = tierColor[evaluation.relevance_tier] || tierColor.noise;
+  const confidenceLabel = evaluation.confidence_score === null || evaluation.confidence_score === undefined
+    ? "Unknown"
+    : String(evaluation.confidence_score);
 
   return (
     <Card className="p-4 space-y-3 border-primary/20">
@@ -205,7 +208,7 @@ export function RelevanceCard({ evaluation }: { evaluation: RelevanceEvaluation 
 
       <div className="flex items-center justify-between pt-2 border-t border-border/40">
         <span className="text-[10px] text-muted-foreground">
-          Confidence: <span className="font-semibold text-foreground">{evaluation.confidence_score}</span> •{" "}
+          Confidence: <span className="font-semibold text-foreground">{confidenceLabel}</span> •{" "}
           {evaluation.model_used}
         </span>
         <div className="flex items-center gap-1">
