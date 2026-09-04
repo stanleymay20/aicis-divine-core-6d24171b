@@ -345,7 +345,15 @@ export function evaluateClaimAssessment(candidate) {
   return freezeResult({ admissible: reasons.length === 0, reasons });
 }
 
-export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessment, transform = null, cutoff_at = null } = {}) {
+export function evaluateVerifiedEvidenceBundle({
+  artifact,
+  claim,
+  link,
+  assessment,
+  transform = null,
+  evidence_artifacts = null,
+  cutoff_at = null,
+} = {}) {
   const artifactResult = evaluateEvidenceArtifact(artifact);
   const claimResult = evaluateEvidenceClaim(claim);
   const linkResult = evaluateClaimArtifactLink(link);
@@ -370,11 +378,70 @@ export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessme
   if (normalizeOptionalUuid(assessment?.claim_id) !== normalizeOptionalUuid(claim?.id)) reasons.push("assessment_claim_mismatch");
 
   const canonicalManifest = canonicalEvidenceManifest(assessment?.evidence_manifest);
+  const suppliedArtifacts = evidence_artifacts === null
+    ? [artifact]
+    : Array.isArray(evidence_artifacts)
+      ? evidence_artifacts
+      : [];
+  if (evidence_artifacts !== null && !Array.isArray(evidence_artifacts)) {
+    reasons.push("evidence_artifacts_must_be_array");
+  }
+
+  const suppliedById = new Map();
+  let manifestArtifactsAdmissible = true;
+  for (const supplied of suppliedArtifacts) {
+    const suppliedId = normalizeOptionalUuid(supplied?.id);
+    if (!suppliedId) {
+      reasons.push("supplied_evidence_artifact_id_invalid");
+      manifestArtifactsAdmissible = false;
+      continue;
+    }
+    if (suppliedById.has(suppliedId)) {
+      reasons.push(`duplicate_supplied_evidence_artifact:${suppliedId}`);
+      manifestArtifactsAdmissible = false;
+      continue;
+    }
+    suppliedById.set(suppliedId, supplied);
+  }
+
+  const assessmentKnowledge = parseDate(assessment?.assessment_knowledge_time);
+  const cutoff = parseDate(cutoff_at);
+  if (cutoff_at !== null && !cutoff) reasons.push("cutoff_at_invalid");
+
+  for (const manifestEntry of canonicalManifest ?? []) {
+    const supplied = suppliedById.get(manifestEntry.artifact_id);
+    if (!supplied) {
+      reasons.push(`assessment_manifest_artifact_not_supplied:${manifestEntry.artifact_id}`);
+      manifestArtifactsAdmissible = false;
+      continue;
+    }
+
+    const suppliedResult = evaluateEvidenceArtifact(supplied);
+    if (!suppliedResult.admissible) {
+      reasons.push(`assessment_manifest_artifact_not_admissible:${manifestEntry.artifact_id}`);
+      manifestArtifactsAdmissible = false;
+    }
+    if (!suppliedResult.verified_external_evidence) {
+      reasons.push(`assessment_manifest_artifact_not_verified_external:${manifestEntry.artifact_id}`);
+      manifestArtifactsAdmissible = false;
+    }
+    if (!artifactMatchesManifestEntry(supplied, manifestEntry)) {
+      reasons.push(`assessment_manifest_artifact_identity_mismatch:${manifestEntry.artifact_id}`);
+      manifestArtifactsAdmissible = false;
+    }
+
+    const suppliedKnowledge = parseDate(supplied?.knowledge_time);
+    if (assessmentKnowledge && suppliedKnowledge && suppliedKnowledge > assessmentKnowledge) {
+      reasons.push(`assessment_precedes_manifest_artifact_knowledge:${manifestEntry.artifact_id}`);
+      manifestArtifactsAdmissible = false;
+    }
+    if (cutoff && suppliedKnowledge && suppliedKnowledge > cutoff) {
+      reasons.push(`assessment_manifest_artifact_after_cutoff:${manifestEntry.artifact_id}`);
+    }
+  }
+
   const assessmentContainsArtifact = canonicalManifest?.some((entry) =>
-    entry.artifact_id === normalizeOptionalUuid(artifact?.id) &&
-    entry.artifact_sha256 === String(artifact?.artifact_sha256 ?? "").toLowerCase() &&
-    entry.source_id === artifact?.source_id &&
-    entry.source_independence_key === artifact?.source_independence_key) ?? false;
+    artifactMatchesManifestEntry(artifact, entry)) ?? false;
   if (!assessmentContainsArtifact) reasons.push("assessment_evidence_set_missing_linked_artifact");
 
   if (requiresTransform) {
@@ -393,10 +460,7 @@ export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessme
     reasons.push("automated_assessment_cannot_independently_verify_claim");
   }
 
-  const cutoff = parseDate(cutoff_at);
   const artifactKnowledge = parseDate(artifact?.knowledge_time);
-  const assessmentKnowledge = parseDate(assessment?.assessment_knowledge_time);
-  if (cutoff_at !== null && !cutoff) reasons.push("cutoff_at_invalid");
   if (cutoff && artifactKnowledge && artifactKnowledge > cutoff) reasons.push("artifact_after_cutoff");
   if (cutoff && assessmentKnowledge && assessmentKnowledge > cutoff) reasons.push("assessment_after_cutoff");
 
@@ -406,10 +470,19 @@ export function evaluateVerifiedEvidenceBundle({ artifact, claim, link, assessme
       claimResult.admissible &&
       linkResult.admissible &&
       assessmentResult.admissible &&
-      transformResult.admissible,
+      transformResult.admissible &&
+      manifestArtifactsAdmissible,
     verified: uniqueReasons.length === 0,
     reasons: uniqueReasons,
   });
+}
+
+function artifactMatchesManifestEntry(artifact, entry) {
+  if (!isRecord(artifact) || !isRecord(entry)) return false;
+  return normalizeOptionalUuid(artifact.id) === entry.artifact_id &&
+    String(artifact.artifact_sha256 ?? "").toLowerCase() === entry.artifact_sha256 &&
+    artifact.source_id === entry.source_id &&
+    artifact.source_independence_key === entry.source_independence_key;
 }
 
 function validateNullableConfidence(value, semantics, reasons, prefix) {
