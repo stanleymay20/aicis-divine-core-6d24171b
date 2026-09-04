@@ -112,6 +112,11 @@ jobs:
         continue-on-error: true
         run: node --test tests/sovereign-ai-gateway.test.mjs
 
+      - name: Sovereign AI runtime contract truth floor
+        id: sovereign_ai_runtime
+        continue-on-error: true
+        run: node --test tests/sovereign-ai-runtime-contract.test.mjs
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
@@ -174,6 +179,7 @@ jobs:
           echo "Scientific forecasting protocol: ${{ steps.scientific_forecasting_protocol.outcome }}"
           echo "Scientific forecast ledger schema: ${{ steps.scientific_forecast_ledger_schema.outcome }}"
           echo "Sovereign AI gateway truth floor: ${{ steps.sovereign_ai_gateway.outcome }}"
+          echo "Sovereign AI runtime contract: ${{ steps.sovereign_ai_runtime.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
@@ -194,6 +200,7 @@ jobs:
           [ "${{ steps.scientific_forecasting_protocol.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.scientific_forecast_ledger_schema.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.sovereign_ai_gateway.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.sovereign_ai_runtime.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1

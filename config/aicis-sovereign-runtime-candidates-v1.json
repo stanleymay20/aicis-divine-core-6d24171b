@@ -1,0 +1,103 @@
+{
+  "contract_version": "aicis-sovereign-runtime-contract-v1",
+  "status": "research_candidate",
+  "checked_at": "2026-09-04",
+  "production_activation_allowed": false,
+  "external_model_fallback": false,
+  "authoritative_scientific_state_outside_llm": true,
+  "runtime": {
+    "primary": {
+      "name": "vllm",
+      "role": "primary_benchmark_runtime",
+      "protocol": "openai-compatible",
+      "network_boundary": "private",
+      "public_ingress": false,
+      "reverse_proxy_required": true,
+      "deny_unproxied_inference_endpoints": true,
+      "version": null,
+      "container_image": "vllm/vllm-openai",
+      "container_digest": null
+    },
+    "secondary": {
+      "name": "sglang",
+      "role": "serving_benchmark_alternative",
+      "protocol": "openai-compatible",
+      "network_boundary": "private",
+      "public_ingress": false,
+      "benchmark_only": true,
+      "version": null,
+      "container_image": "lmsysorg/sglang",
+      "container_digest": null
+    }
+  },
+  "models": [
+    {
+      "role": "primary_quality_candidate",
+      "model_id": "Qwen/Qwen3.8-27B",
+      "declared_license": "apache-2.0",
+      "parameters_billion": 27.7814,
+      "native_context_tokens": 262144,
+      "multimodal": true,
+      "serving_compatibility": ["vllm", "sglang"],
+      "revision": null,
+      "weights_manifest_sha256": null,
+      "tokenizer_sha256": null,
+      "config_sha256": null,
+      "production_approved": false,
+      "evidence": {
+        "model_card": "https://huggingface.co/Qwen/Qwen3.8-27B",
+        "license": "https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/LICENSE"
+      }
+    },
+    {
+      "role": "smoke_and_efficiency_candidate",
+      "model_id": "Qwen/Qwen3.5-9B",
+      "declared_license": "apache-2.0",
+      "parameters_billion": 9.6531,
+      "multimodal": true,
+      "serving_compatibility": ["vllm", "sglang"],
+      "revision": null,
+      "weights_manifest_sha256": null,
+      "tokenizer_sha256": null,
+      "config_sha256": null,
+      "production_approved": false,
+      "evidence": {
+        "model_card": "https://huggingface.co/Qwen/Qwen3.5-9B",
+        "license": "https://huggingface.co/Qwen/Qwen3.5-9B/blob/main/LICENSE"
+      }
+    }
+  ],
+  "network_policy": {
+    "model_server_public_ingress": false,
+    "model_server_egress": "deny_by_default",
+    "gateway_to_runtime_only": true,
+    "runtime_redirects": "forbidden",
+    "secrets_in_browser": false
+  },
+  "artifact_lock_requirements": {
+    "runtime_version_required": true,
+    "container_digest_required": true,
+    "model_revision_required": true,
+    "weights_manifest_sha256_required": true,
+    "tokenizer_sha256_required": true,
+    "config_sha256_required": true,
+    "mutable_latest_tags_forbidden": true
+  },
+  "evaluation_gate": {
+    "automatic_promotion": false,
+    "deterministic_baseline_required": true,
+    "external_frontier_reference_optional": true,
+    "required_dimensions": [
+      "structured_output_validity",
+      "grounded_task_accuracy",
+      "unsupported_assertion_rate",
+      "abstention_behavior",
+      "prompt_injection_resistance",
+      "latency",
+      "throughput",
+      "memory_footprint",
+      "failure_recovery"
+    ],
+    "scientific_forecast_claims_from_llm_forbidden": true
+  }
+}
