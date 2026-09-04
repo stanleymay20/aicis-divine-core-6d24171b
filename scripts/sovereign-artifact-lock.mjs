@@ -80,10 +80,7 @@ export async function buildArtifactLock({ rootDir, modelId, revision }) {
     );
   }
 
-  const weightsManifestPayload = weightFiles
-    .map((file) => `${file.path}\t${file.bytes}\t${file.sha256}`)
-    .join("\n");
-  const weightsManifestSha256 = sha256Text(weightsManifestPayload);
+  const weightsManifestSha256 = sha256Text(canonicalJson(weightFiles));
   const totalBytes = files.reduce((sum, file) => sum + file.bytes, 0);
 
   const body = {
@@ -127,7 +124,17 @@ export async function writeArtifactLock({ rootDir, modelId, revision, outputPath
   }
 
   const lock = await buildArtifactLock({ rootDir: root, modelId, revision });
-  await writeFile(output, `${JSON.stringify(lock, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+  try {
+    await writeFile(output, `${JSON.stringify(lock, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      throw new SovereignArtifactLockError(
+        "artifact lock output already exists and will not be overwritten",
+        "output_already_exists",
+      );
+    }
+    throw error;
+  }
   return lock;
 }
 
@@ -169,7 +176,7 @@ async function collectRegularFiles(root, current) {
 }
 
 function toPortableRelative(root, absolutePath) {
-  return relative(root, absolutePath).split(sep).join("/");
+  return relative(root, absolutePath).split(sep).join("/").normalize("NFC");
 }
 
 async function sha256File(path) {
