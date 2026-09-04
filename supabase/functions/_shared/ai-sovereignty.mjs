@@ -61,6 +61,18 @@ export function evaluateAiRoute({
   if (
     normalizedMode === "sovereign" &&
     trustClass === "sovereign_allowlisted" &&
+    url.protocol !== "https:"
+  ) {
+    throw new AiSovereigntyPolicyError(
+      "Public sovereign model endpoints must use HTTPS",
+      "public_sovereign_endpoint_requires_https",
+      { endpoint_host: hostname },
+    );
+  }
+
+  if (
+    normalizedMode === "sovereign" &&
+    trustClass === "sovereign_allowlisted" &&
     !apiKeyPresent
   ) {
     throw new AiSovereigntyPolicyError(
