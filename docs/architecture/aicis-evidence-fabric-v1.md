@@ -15,9 +15,11 @@ Immutable Artifact
       ↓
 Transformation Activity
       ↓
-Claim
+Canonical Claim
       ↓
-Independent Assessment
+Claim ↔ Artifact Binding
+      ↓
+Independent Assessment + Evidence Manifest
       ↓
 Fact Lineage
       ↓
@@ -59,6 +61,7 @@ Represents one exact source artifact or source record revision. It records:
 - publication, retrieval, first-observation, valid-time, and knowledge-time fields;
 - knowledge-time verification status;
 - revision/supersession links;
+- explicit synthetic flag;
 - optional C2PA and STIX interoperability metadata.
 
 Corrections create new artifact revisions. They do not overwrite history.
@@ -69,13 +72,17 @@ Corrections create new artifact revisions. They do not overwrite history.
 
 Represents an extraction/normalization/derivation activity. It records producer identity, code/model/prompt fingerprints, input/output set hashes, and start/completion times.
 
-For a self-hosted model transform, the exact model revision and Sovereign Artifact Lock digest are required. For an external model, provider/model/prompt/request-configuration identity must be explicit.
+For deterministic or rule-based transforms, a code SHA-256 is required. For a self-hosted model transform, the exact model revision, Sovereign Artifact Lock digest, and prompt hash are required. For an external model, provider/model/prompt/request-configuration identity must be explicit.
 
-### 3. Claim
+An extracted or derived claim cannot qualify through a syntactically valid transform UUID alone: the Evidence Fabric admission contract evaluates the referenced transform and requires its identity to match the claim. Synthetic transform output cannot create verified external truth.
+
+### 3. Canonical claim
 
 `aicis_evidence_claims_v1`
 
-Represents an immutable proposition extracted or entered from evidence. A claim can be observed, derived, inferred, unverified, or contradicted. Numeric confidence is optional; if present, its semantics must be named.
+Represents an immutable proposition extracted or entered from evidence. A claim can be observed, derived, inferred, unverified, or contradicted. Numeric confidence is optional; if present, its semantics must be named and usable.
+
+`claim_sha256` is not treated as an arbitrary caller-supplied fingerprint. The admission contract recomputes it from canonical claim content, including statement, subject/predicate/object content, object value, and claim-validity timestamps. Reordering JSON object keys or equivalent timestamp formatting does not change the claim identity; changing the proposition does.
 
 Claims extracted or derived by a machine must identify the transform run that produced them.
 
@@ -93,6 +100,8 @@ Links claims to exact artifacts with a controlled role:
 
 A source locator can identify a page, row, JSON pointer, timestamp, cell range, or other exact location. An excerpt may be represented by SHA-256 without storing copyrighted text in the evidence ledger.
 
+A verified evidence bundle must bind the exact claim ID to the exact artifact ID. Only `source_of` or `supports` can support verification; `contradicts`, `mentions`, and `context` cannot be silently treated as supporting evidence.
+
 ### 5. Independent claim assessment
 
 `aicis_evidence_claim_assessments_v1`
@@ -102,11 +111,17 @@ Verification is separate from extraction. Assessments are immutable and record:
 - status;
 - assessment method;
 - assessor identity/type;
-- evidence-set hash;
+- canonical evidence manifest;
+- evidence-set SHA-256;
+- artifact count and independently identified source count;
 - assessment knowledge time;
 - optional quantified confidence with explicit semantics.
 
-A model-assisted assessment can support review, but Evidence Fabric v1 does not allow a model-assisted assessment by itself to establish verified truth.
+The evidence manifest contains exact `{artifact_id, artifact_sha256, source_id}` entries. Its canonical SHA-256 is recomputed by the admission contract. Declared artifact/source counts must equal the manifest-derived counts, so a caller cannot establish “two independent sources” by setting a numeric counter alone.
+
+`independent_source_corroboration` requires at least two distinct source identities in the bound evidence manifest.
+
+Model-assisted and rule-based assessments can support review, but Evidence Fabric v1 does not allow either to independently establish verified truth. A model cannot verify its own extraction merely by assigning a confidence score.
 
 ### 6. Fact lineage
 
@@ -127,7 +142,7 @@ AICIS distinguishes:
 - **assessment knowledge time** — evidence cutoff available to a verifier;
 - **system time** — when AICIS stored the ledger row.
 
-`verified_leakage_safe` requires explicit `knowledge_time` and `knowledge_time_verified_at`. Historical evaluation rejects artifacts or assessments whose knowledge time falls after the experiment cutoff.
+`verified_leakage_safe` requires explicit `knowledge_time` and `knowledge_time_verified_at`. Historical evaluation rejects artifacts or assessments whose knowledge time falls after the experiment cutoff. Optional timestamps, when supplied, must parse as real timestamps; malformed temporal metadata does not silently become `NULL` in the admission contract.
 
 ## Unknown stays unknown
 
@@ -135,7 +150,7 @@ Evidence Fabric v1 has no default source reliability, quality, freshness, or con
 
 A missing number remains `NULL`.
 
-A numeric confidence can be stored only with explicit semantics. Provenance integrity and source identity are not converted into invented probabilities.
+A numeric confidence can be stored only with explicit usable semantics. Labels containing legacy, unknown, unspecified, unverified, or not-quantified semantics are not admitted as quantified confidence. Provenance integrity and source identity are never converted into invented probabilities.
 
 ## Standards interoperability
 
@@ -160,7 +175,7 @@ Cyber evidence may retain a STIX object ID and be translated to/from STIX object
 
 ### C2PA
 
-When a media artifact contains Content Credentials, AICIS may record the manifest verification status and manifest hash. A valid C2PA manifest supports integrity/provenance assertions; it does **not** by itself establish factual truth. A C2PA-verified artifact still requires the normal AICIS claim/assessment process.
+When a media artifact contains Content Credentials, AICIS may record the manifest verification status and manifest hash. A valid C2PA manifest supports integrity/provenance assertions; it does **not** by itself establish factual truth. An invalid C2PA manifest prevents that artifact from qualifying as verified external evidence; a valid manifest still requires the normal AICIS claim/assessment process.
 
 ## Append-only policy
 
@@ -175,7 +190,7 @@ This preserves what AICIS knew and believed at each historical point.
 
 ## Security boundary
 
-The candidate grants no direct access to `anon` or `authenticated`. Only `service_role` receives `SELECT`/`INSERT` in the candidate. A future deployment should expose narrowly scoped security-invoker views/RPCs rather than raw evidence tables.
+The candidate grants no direct access to `anon` or `authenticated`. Only `service_role` receives `SELECT`/`INSERT` in the candidate. The legacy compatibility view is `security_invoker`. A future deployment should expose narrowly scoped security-invoker views/RPCs rather than raw evidence tables.
 
 ## Non-claims
 
@@ -185,7 +200,8 @@ Evidence Fabric v1 does **not** claim:
 - existing historical AICIS rows have been re-admitted;
 - source reliability has been calibrated;
 - C2PA/STIX metadata proves truth;
-- a model can verify its own extracted claims;
-- any world-model training set is now automatically leakage-safe.
+- a model or deterministic rule can independently verify its own extracted claims;
+- any world-model training set is now automatically leakage-safe;
+- evidence-manifest admission replaces future database-level or staging integrity testing.
 
 Deployment and historical backfill require separate source-controlled migrations, restore completeness proof, security review, and exact-SHA staging evidence.
