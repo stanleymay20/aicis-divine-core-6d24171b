@@ -124,7 +124,6 @@ jobs:
 
       - name: Evidence Fabric v1 truth floor
         id: evidence_fabric_v1
-        continue-on-error: true
         run: node --test tests/evidence-fabric-contract-v1.test.mjs
 
       - name: Strict lint — post-portability code
