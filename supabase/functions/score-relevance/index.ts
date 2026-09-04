@@ -1,7 +1,8 @@
 import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
+import { aiChat } from "../_shared/ai-gateway.ts";
 // AICIS Relevance Engine v1 — score-relevance
-// Scores a global signal's relevance to an organization using either an
-// OpenAI-compatible model endpoint OR a deterministic fallback rule engine.
+// Scores a global signal's relevance to an organization using the shared
+// AICIS model gateway OR a deterministic fallback rule engine.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -71,11 +72,14 @@ function tierFromScore(score: number): string {
   return "noise";
 }
 
+function normalizeObservedConfidence(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, value > 1 ? value : value * 100));
+}
+
 function fallbackScore(signal: SignalPayload, org: OrgContext) {
   const sevScore = severityToScore(signal.severity);
-  const conf = typeof signal.confidence === "number"
-    ? Math.max(0, Math.min(100, signal.confidence > 1 ? signal.confidence : signal.confidence * 100))
-    : 60;
+  const observedConfidence = normalizeObservedConfidence(signal.confidence);
 
   const reasons: string[] = [];
   const contributors: Array<{ kind: string; label: string; weight: number; matched?: string[] }> = [];
@@ -86,10 +90,16 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
   reasons.push(`severity ${Math.round(sevScore)}`);
   contributors.push({ kind: "severity", label: `Severity ${Math.round(sevScore)}`, weight: Math.round(sevContrib) });
 
-  // Confidence contributes up to 15
-  const confContrib = (conf / 100) * 15;
-  score += confContrib;
-  contributors.push({ kind: "confidence", label: `Confidence ${Math.round(conf)}`, weight: Math.round(confContrib) });
+  // Observed source confidence contributes up to 15. Missing confidence contributes nothing.
+  if (observedConfidence !== null) {
+    const confContrib = (observedConfidence / 100) * 15;
+    score += confContrib;
+    contributors.push({
+      kind: "confidence",
+      label: `Source confidence ${Math.round(observedConfidence)}`,
+      weight: Math.round(confContrib),
+    });
+  }
 
   // Country match: +20
   const sigCountry = (signal.country || "").toLowerCase();
@@ -150,7 +160,7 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
   const tier = tierFromScore(score);
   const why = reasons.length > 0
     ? `Scored ${score}/100 based on ${reasons.join("; ")}.`
-    : `Scored ${score}/100 from severity and confidence; no organization-specific match found.`;
+    : `Scored ${score}/100 from available deterministic relevance evidence.`;
 
   const action = tier === "critical"
     ? "Escalate to leadership within 1 hour and trigger contingency review."
@@ -170,7 +180,7 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
       ? `This signal intersects your operational footprint via ${reasons.slice(1).join(", ") || "severity"}.`
       : `Generic global signal; no direct operational intersection detected.`,
     recommended_action: action,
-    confidence_score: Math.round(conf * 0.7 + (entityHits.length || kwHits.length ? 20 : 5)),
+    confidence_score: null,
     model_used: FALLBACK_MODEL,
     prompt_version: PROMPT_VERSION,
     used_fallback: true,
@@ -178,47 +188,41 @@ function fallbackScore(signal: SignalPayload, org: OrgContext) {
   };
 }
 
-async function modelScore(
-  endpoint: string,
-  apiKey: string | undefined,
-  signal: SignalPayload,
-  org: OrgContext,
-) {
-  const sys = `You are AICIS Relevance Engine v1. Score how relevant a global signal is to an organization on 0-100. Reply ONLY with compact JSON: {"relevance_score":number,"relevance_tier":"critical|high|moderate|low|noise","explanation":string,"why_this_matters":string,"recommended_action":string,"confidence_score":number}`;
+async function modelScore(signal: SignalPayload, org: OrgContext) {
+  const sys = `You are AICIS Relevance Engine v1. Score how relevant a global signal is to an organization on 0-100. Reply ONLY with compact JSON: {"relevance_score":number,"relevance_tier":"critical|high|moderate|low|noise","explanation":string,"why_this_matters":string,"recommended_action":string}`;
   const user = JSON.stringify({ signal, organization: org });
 
-  const res = await fetch(endpoint.replace(/\/$/, "") + "/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: Deno.env.get("AICIS_MODEL_NAME") || "gpt-4o-mini",
-      messages: [
-        { role: "system", content: sys },
-        { role: "user", content: user },
-      ],
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-    }),
+  const ai = await aiChat({
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: user },
+    ],
+    temperature: 0.2,
+    responseFormat: { type: "json_object" },
   });
-  if (!res.ok) throw new Error(`model endpoint ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("model returned empty content");
-  const parsed = JSON.parse(content);
+
+  const parsed = JSON.parse(ai.content);
+  const rawScore = Number(parsed.relevance_score);
+  if (!Number.isFinite(rawScore)) throw new Error("model relevance_score missing or invalid");
+  const relevanceScore = Math.max(0, Math.min(100, rawScore));
+  const allowedTiers = new Set(["critical", "high", "moderate", "low", "noise"]);
+  const relevanceTier = allowedTiers.has(parsed.relevance_tier)
+    ? parsed.relevance_tier
+    : tierFromScore(relevanceScore);
+
   return {
-    relevance_score: Number(parsed.relevance_score) || 0,
-    relevance_tier: parsed.relevance_tier || tierFromScore(Number(parsed.relevance_score) || 0),
-    explanation: parsed.explanation || "",
-    why_this_matters: parsed.why_this_matters || "",
-    recommended_action: parsed.recommended_action || "",
-    confidence_score: Number(parsed.confidence_score) || 60,
-    model_used: data.model || "openai-compatible",
+    relevance_score: relevanceScore,
+    relevance_tier: relevanceTier,
+    explanation: typeof parsed.explanation === "string" ? parsed.explanation : "",
+    why_this_matters: typeof parsed.why_this_matters === "string" ? parsed.why_this_matters : "",
+    recommended_action: typeof parsed.recommended_action === "string" ? parsed.recommended_action : "",
+    confidence_score: null,
+    model_used: ai.model,
     prompt_version: PROMPT_VERSION,
     used_fallback: false,
     match_contributors: [],
+    route: ai.route,
+    provider: ai.provider,
   };
 }
 
@@ -242,24 +246,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    const endpoint = Deno.env.get("AICIS_MODEL_ENDPOINT");
-    const apiKey = Deno.env.get("AICIS_MODEL_API_KEY");
-
     let result;
     let notice: string | null = null;
-    if (endpoint) {
-      try {
-        result = await modelScore(endpoint, apiKey, signal, org);
-        structuredLog("info", "model_score_ok", { model: result.model_used, ms: Date.now() - started });
-      } catch (err) {
-        structuredLog("warn", "model_score_failed_using_fallback", { error: String(err) });
-        result = fallbackScore(signal, org);
-        notice = "Model endpoint failed; used fallback rules.";
-      }
-    } else {
+    try {
+      result = await modelScore(signal, org);
+      structuredLog("info", "model_score_ok", {
+        model: result.model_used,
+        provider: result.provider,
+        route: result.route,
+        ms: Date.now() - started,
+      });
+    } catch (err) {
+      structuredLog("warn", "model_score_failed_using_fallback", { error: String(err) });
       result = fallbackScore(signal, org);
-      notice = "Using fallback relevance scoring. Connect model endpoint for AI scoring.";
-      structuredLog("info", "fallback_score_ok", { score: result.relevance_score, tier: result.relevance_tier });
+      notice = "Configured model route unavailable or denied by policy; used deterministic fallback rules. Relevance confidence remains unknown until calibrated evidence is available.";
     }
 
     // Persist with service role
