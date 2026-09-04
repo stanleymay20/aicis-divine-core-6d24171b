@@ -12,6 +12,7 @@
 --   * content hashes use SHA-256 and source revisions are append-only;
 --   * knowledge time is explicit and fail-closed;
 --   * extraction/derivation activities are independently attributable;
+--   * assessment evidence sets are cryptographically bound to explicit artifact manifests;
 --   * C2PA/STIX/OpenLineage/W3C PROV interoperability metadata never substitutes for truth.
 
 CREATE TABLE IF NOT EXISTS public.aicis_evidence_artifacts_v1 (
@@ -246,6 +247,10 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_claim_assessments_v1 (
     'external_authority'
   )),
   assessor_id text NOT NULL,
+  evidence_manifest jsonb NOT NULL CHECK (
+    jsonb_typeof(evidence_manifest) = 'array'
+    AND jsonb_array_length(evidence_manifest) >= 1
+  ),
   evidence_set_sha256 text NOT NULL CHECK (evidence_set_sha256 ~ '^[0-9a-fA-F]{64}$'),
   evidence_artifact_count integer NOT NULL CHECK (evidence_artifact_count >= 1),
   independent_source_count integer NOT NULL CHECK (independent_source_count >= 1),
@@ -257,6 +262,8 @@ CREATE TABLE IF NOT EXISTS public.aicis_evidence_claim_assessments_v1 (
   assessed_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (assessment_knowledge_time <= assessed_at),
+  CHECK (evidence_artifact_count = jsonb_array_length(evidence_manifest)),
+  CHECK (independent_source_count <= evidence_artifact_count),
   CHECK (
     confidence IS NULL OR (
       confidence_semantics IS NOT NULL
