@@ -114,7 +114,7 @@ SELECT
 
 SELECT
   CASE
-    WHEN :aicis_has_community_metrics::boolean THEN 'full_candidate_data_present'
+    WHEN to_regclass('public.community_metrics') IS NOT NULL THEN 'full_candidate_data_present'
     ELSE 'main_dump_only_blocked_pending_community_metrics'
   END AS verification_stage;
 
@@ -184,27 +184,27 @@ SELECT
 --    reported instead of aborting the rest of the read-only audit.
 -- ---------------------------------------------------------------------------
 \if :aicis_has_community_metrics
-  \if :aicis_has_admin_regions
+\if :aicis_has_admin_regions
 SELECT
   COUNT(*) AS orphan_region_ids
 FROM public.community_metrics cm
 LEFT JOIN public.admin_regions ar ON ar.id = cm.region_id
 WHERE cm.region_id IS NOT NULL
   AND ar.id IS NULL;
-  \else
+\else
 SELECT 'BLOCKED' AS status, 'public.admin_regions_not_present' AS reason;
-  \endif
+\endif
 
-  \if :aicis_has_accountability_nodes
+\if :aicis_has_accountability_nodes
 SELECT
   COUNT(*) AS orphan_reporter_node_ids
 FROM public.community_metrics cm
 LEFT JOIN public.accountability_nodes an ON an.id = cm.reporter_node_id
 WHERE cm.reporter_node_id IS NOT NULL
   AND an.id IS NULL;
-  \else
+\else
 SELECT 'BLOCKED' AS status, 'public.accountability_nodes_not_present' AS reason;
-  \endif
+\endif
 \else
 SELECT 'BLOCKED' AS status, 'community_metrics_referential_checks_pending_table_delivery' AS reason;
 \endif
