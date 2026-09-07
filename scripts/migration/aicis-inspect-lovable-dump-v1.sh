@@ -30,7 +30,7 @@ if [[ ! -f "$DUMP" ]]; then
   exit 66
 fi
 
-for command in stat sha256sum md5sum file pg_restore grep head wc; do
+for command in stat sha256sum md5sum file pg_restore grep wc awk; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required command missing: $command" >&2
     exit 69
@@ -78,9 +78,9 @@ grep -Eni \
   >"$OUTDIR/schema-risk-patterns.txt" || true
 
 {
-  echo "archive_list_lines=$(wc -l <\"$OUTDIR/pg_restore-list.txt\")"
-  echo "schema_sql_lines=$(wc -l <\"$OUTDIR/schema-only.sql\")"
-  echo "risk_pattern_lines=$(wc -l <\"$OUTDIR/schema-risk-patterns.txt\")"
+  echo "archive_list_lines=$(wc -l < "$OUTDIR/pg_restore-list.txt")"
+  echo "schema_sql_lines=$(wc -l < "$OUTDIR/schema-only.sql")"
+  echo "risk_pattern_lines=$(wc -l < "$OUTDIR/schema-risk-patterns.txt")"
 } >"$OUTDIR/inspection-counts.txt"
 
 cat <<EOF
