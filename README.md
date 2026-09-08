@@ -1,96 +1,38 @@
 # AICIS — AI Civilization Intelligence System
 
-AICIS is an enterprise operational intelligence platform designed to help institutions detect, understand, coordinate, and respond to complex global risks in realtime.
+**AI-assisted early-warning, resilience and decision-support research platform**
 
-The platform combines:
-- realtime telemetry,
-- planetary signal ingestion,
-- causal propagation analysis,
-- decision workflows,
-- intervention governance,
-- operational forecasting,
-- multilingual intelligence translation,
-- executive command interfaces.
+AICIS is an applied AI and data-engineering project exploring how institutions can combine heterogeneous signals, structured evidence, forecasting and governed decision workflows to reason about complex socioeconomic, climate, infrastructure and governance risks.
 
-AICIS is designed for:
-- governments,
-- enterprise operations centers,
-- resilience teams,
-- intelligence organizations,
-- humanitarian coordination,
-- strategic risk management,
-- infrastructure monitoring.
+The project is intentionally framed as a **decision-support system**, not an autonomous authority. Human review, provenance, access control and auditable intervention workflows are central design concerns.
 
----
+## Development and public-interest relevance
 
-# Core Operational Philosophy
+AICIS investigates a practical development problem: important risks rarely arrive in one clean dataset. Climate pressure, economic continuity, infrastructure disruption, governance stability and humanitarian needs can interact, while decision-makers must still distinguish observed evidence from model inference.
 
-AICIS is not merely an analytics dashboard.
+The repository therefore explores capabilities relevant to:
 
-It is designed as:
+- resilience and crisis-risk analysis;
+- governance and institutional decision support;
+- climate and infrastructure risk monitoring;
+- economic-continuity analysis;
+- humanitarian coordination workflows;
+- multilingual access to operational information;
+- evidence provenance and accountable AI-assisted recommendations.
 
-```text
-planetary operational intelligence infrastructure
-```
+Potential Sustainable Development Goal relevance includes **SDG 9 (Industry, Innovation and Infrastructure), SDG 11 (Sustainable Cities and Communities), SDG 13 (Climate Action) and SDG 16 (Peace, Justice and Strong Institutions)**. This mapping describes the problem domains addressed by the engineering work; it is not a claim of UN endorsement or measured SDG impact.
 
-The system focuses on three core questions:
+## Core questions
+
+AICIS is organized around three questions:
 
 ```text
 1. What is happening?
-2. Why does it matter?
-3. What should we do next?
+2. What evidence supports that assessment?
+3. What response options should a human decision-maker review?
 ```
 
----
-
-# Platform Capabilities
-
-## Operational Intelligence
-
-- Realtime operational telemetry
-- Global-to-local intelligence routing
-- Planetary command center
-- Executive operational summaries
-- Live operational streams
-- Risk escalation monitoring
-- Cross-domain intelligence coordination
-
-## Predictive Intelligence
-
-- Causal propagation modeling
-- Escalation forecasting
-- Memory-informed prediction
-- Operational trend detection
-- Multi-domain consequence analysis
-
-## Decision Coordination
-
-- Incident-to-decision workflows
-- Intervention review surfaces
-- Governance coordination
-- Operator escalation pathways
-- Executive recommendation systems
-
-## Enterprise Architecture
-
-- Multi-tenant architecture
-- Supabase-backed operational infrastructure
-- Row-level security (RLS)
-- Edge-function orchestration
-- Typed operational pipelines
-- Realtime query infrastructure
-- Operational observability direction
-
-## Global Intelligence Accessibility
-
-- Multilingual intelligence translation
-- Region-aware operational routing
-- Cross-border signal relevance
-- Human-review workflows
-
----
-
-# System Architecture
+## System architecture
 
 ```text
 Open APIs / Signals / Feeds
@@ -101,303 +43,108 @@ Canonicalization + Deduplication
                 ↓
 Enrichment + Relevance Scoring
                 ↓
-Causal + Predictive Intelligence
+Causal / Predictive Analysis
                 ↓
-Decision + Governance Workflows
+Evidence + Governance Review
                 ↓
-Executive Command Interfaces
+Decision-Support Interfaces
                 ↓
-Operational Coordination
+Human Operational Coordination
 ```
 
----
+## Implemented engineering areas
 
-# Frontend Stack
+### Data and operational intelligence
 
-- React 18
-- TypeScript
-- Vite
-- Tailwind CSS
-- shadcn-ui
-- TanStack Query
-- React Router
-- Lucide Icons
-- Supabase Browser Client
+- realtime telemetry surfaces;
+- signal canonicalization and deduplication;
+- enrichment and relevance scoring;
+- cross-domain risk representations;
+- operational summaries and spatial interfaces;
+- typed data pipelines and database views.
 
-## Primary Interfaces
+### Forecasting and analytical support
 
-- Planetary Command Center
-- Realtime Operations Stream
-- Operational Decision Workflow
-- Planetary Operations Map
-- Executive Briefing Surfaces
-- Governance Interfaces
-- Telemetry Monitoring
-- Memory Forecasting
-- Translation Operations
+- escalation and trend-analysis workflows;
+- causal-propagation representations;
+- memory-informed analytical components;
+- multi-domain consequence analysis;
+- structured risk variables covering areas such as economic continuity, governance stability and climate resilience.
 
----
+These components support analytical experimentation. Forecasts and causal outputs should be validated for the specific data, geography and decision context before operational use.
 
-# Backend Infrastructure
+### Governance and human review
 
-- Supabase Postgres
-- Supabase Auth
-- Supabase Realtime
-- Supabase Edge Functions
-- Typed operational views
-- Governance command views
-- Realtime telemetry surfaces
-- Operational pipeline orchestration
+- intervention-review surfaces;
+- governance-agent and approval concepts;
+- authenticated operational mutations;
+- auditable workflow direction;
+- evidence-provenance hardening;
+- human-review pathways for sensitive decisions.
 
----
+### Architecture and security
 
-# Enterprise Security Model
+- React, TypeScript and Vite frontend;
+- Supabase Postgres, Auth, Realtime and Edge Functions;
+- multi-tenant architecture;
+- Row-Level Security for user-facing data;
+- server-side privileged workflows;
+- secret validation for scheduled/privileged functions;
+- typed operational pipelines.
 
-## Security Principles
+## Evidence boundaries
 
-- No service-role exposure in frontend code
-- All privileged workflows must remain server-side
-- RLS enforced for user-facing operational data
-- Operational mutations require authenticated workflows
-- Cron workflows require secret validation
-- Governance workflows should be auditable
+AICIS is an evolving engineering and research system. The repository demonstrates implemented architecture, schemas, workflows and application logic, but it should **not** be interpreted as proof that the system has been independently validated for national security, humanitarian deployment, emergency management or global-scale forecasting.
 
-## Authentication Classes
+Current hardening work includes:
 
-### Public
+- model and forecast validation;
+- reliability engineering;
+- production telemetry resilience;
+- alert and incident lifecycle design;
+- institutional onboarding;
+- audit and evidence provenance;
+- role-specific operational experiences.
 
-Read-only operational intelligence surfaces intentionally exposed for public access.
+This distinction is deliberate: claims about system effectiveness should remain proportional to the evidence available.
 
-### Cron-Restricted
+## Technology stack
 
-Operational ingestion and scheduled workflows requiring `CRON_SECRET` validation.
+**Frontend:** React 18 · TypeScript · Vite · Tailwind CSS · shadcn/ui · TanStack Query · React Router
 
-### Admin-Restricted
+**Backend/data:** Supabase Postgres · Supabase Auth · Supabase Realtime · Supabase Edge Functions
 
-Privileged governance, ingestion, intervention, and operational coordination workflows.
-
----
-
-# Operational Pipeline
-
-```text
-intake
-→ canonicalization
-→ enrichment
-→ relevance scoring
-→ propagation analysis
-→ governance review
-→ operational coordination
-→ feedback learning
-```
-
-## Pipeline Goals
-
-- Reduce signal overload
-- Increase operational clarity
-- Improve escalation visibility
-- Coordinate interventions
-- Support executive decisions
-- Provide auditability and traceability
-
----
-
-# Local Development
-
-## Install
+## Local development
 
 ```bash
 npm ci
-```
-
-## Configure Environment
-
-```bash
 cp .env.example .env.local
-```
-
-Required frontend variables:
-
-```bash
-VITE_SUPABASE_URL=
-VITE_SUPABASE_PUBLISHABLE_KEY=
-```
-
-## Run Development Server
-
-```bash
 npm run dev
 ```
 
-## Production Build
-
-```bash
-npm run build
-```
-
-## Lint + Typecheck
+Quality checks:
 
 ```bash
 npm run lint
 npm run typecheck
+npm run build
 ```
 
----
+Required public frontend configuration is documented in `.env.example`. Privileged credentials must remain server-side and must never be committed to source control.
 
-# Deployment
-
-Supported deployment environments:
-
-- Vercel
-- Netlify
-- Supabase
-- Self-hosted Vite-compatible infrastructure
-
-Recommended production command:
-
-```bash
-npm ci && npm run lint && npm run typecheck && npm run build
-```
-
-Output directory:
-
-```text
-dist
-```
-
----
-
-# Required Environment Variables
-
-## Frontend
-
-```bash
-VITE_SUPABASE_URL=
-VITE_SUPABASE_PUBLISHABLE_KEY=
-```
-
-## Edge Functions / Server Infrastructure
-
-```bash
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-CRON_SECRET=
-AICIS_MODEL_ENDPOINT=
-AICIS_MODEL_API_KEY=
-AICIS_MODEL_NAME=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-ALPHA_VANTAGE_API_KEY=
-EIA_API_KEY=
-```
-
-Never expose:
-- `SUPABASE_SERVICE_ROLE_KEY`
-- model provider secrets,
-- Stripe secrets,
-- cron secrets,
-- privileged operational credentials.
-
----
-
-# Enterprise Hardening Status
-
-## Strong Areas
-
-- Enterprise operational UX
-- Realtime operational architecture direction
-- Operational workflow design
-- Multi-domain intelligence structure
-- Spatial intelligence interfaces
-- Operational simplification and hierarchy
-- Governance workflow direction
-
-## Active Hardening Areas
-
-- Operational observability
-- Alert routing
-- Incident lifecycle management
-- Reliability engineering
-- Production telemetry resilience
-- Institutional onboarding
-- Role-specific operational experiences
-- Audit and evidence provenance
-
----
-
-# Operational Design Principles
+## Design principles
 
 AICIS prioritizes:
 
-- operational clarity over visual clutter,
-- decision coordination over dashboard overload,
-- realtime awareness over static analytics,
-- systemic causality over isolated metrics,
-- executive usability over feature sprawl.
+- evidence before recommendation;
+- human accountability for consequential decisions;
+- provenance and auditability;
+- uncertainty-aware analysis;
+- operational clarity over dashboard clutter;
+- global-to-local context without assuming one model fits every location.
 
-The command center is intentionally evolving toward:
+## Project direction
 
-```text
-calm, concise, enterprise operational coordination
-```
+The long-term engineering goal is a governed environment in which heterogeneous risk signals can be transformed into traceable analysis and decision options for human review.
 
-instead of:
-
-```text
-high-noise dashboard complexity
-```
-
----
-
-# Troubleshooting
-
-## Empty operational surfaces
-
-Check:
-
-1. Supabase environment variables
-2. RLS policies
-3. Operational views
-4. Edge function deployments
-5. Telemetry ingestion jobs
-6. Browser console and Supabase logs
-
-## Unauthorized operational workflows
-
-Check:
-
-1. JWT authentication
-2. Admin role metadata
-3. Cron secret validation
-4. Operational RLS rules
-
-## Realtime issues
-
-Check:
-
-1. Supabase realtime configuration
-2. Websocket connectivity
-3. Query invalidation strategy
-4. Operational polling intervals
-5. Telemetry pipeline status
-
----
-
-# Commercial Positioning
-
-AICIS is positioned at the intersection of:
-
-- operational intelligence,
-- resilience coordination,
-- realtime decision systems,
-- global risk monitoring,
-- enterprise command infrastructure.
-
-The long-term vision is to provide:
-
-```text
-a global-to-local operational intelligence coordination environment
-```
-
-for institutions operating in increasingly complex environments.
+The immediate focus is narrower and testable: improve data provenance, analytical validation, security, reliability and the quality of evidence available to decision-makers.
