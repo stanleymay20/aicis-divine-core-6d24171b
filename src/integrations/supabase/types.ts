@@ -10002,6 +10002,7 @@ export type Database = {
           domain: string
           entity_id: string | null
           freshness_score: number | null
+          freshness_semantics: string | null
           id: string
           iso3: string | null
           last_verified_at: string | null
@@ -10009,11 +10010,13 @@ export type Database = {
           metric_name: string
           period: string
           provenance_observed_at: string | null
+          provenance_observed_at_semantics: string | null
           provenance_source: string | null
           provider_name: string
           provider_run_id: string | null
           raw_payload_id: string | null
           related_entity_id: string | null
+          retrieved_at: string | null
           unit: string | null
           updated_at: string
           value: number
@@ -10026,6 +10029,7 @@ export type Database = {
           domain: string
           entity_id?: string | null
           freshness_score?: number | null
+          freshness_semantics?: string | null
           id?: string
           iso3?: string | null
           last_verified_at?: string | null
@@ -10033,11 +10037,13 @@ export type Database = {
           metric_name: string
           period: string
           provenance_observed_at?: string | null
+          provenance_observed_at_semantics?: string | null
           provenance_source?: string | null
           provider_name: string
           provider_run_id?: string | null
           raw_payload_id?: string | null
           related_entity_id?: string | null
+          retrieved_at?: string | null
           unit?: string | null
           updated_at?: string
           value: number
@@ -10050,6 +10056,7 @@ export type Database = {
           domain?: string
           entity_id?: string | null
           freshness_score?: number | null
+          freshness_semantics?: string | null
           id?: string
           iso3?: string | null
           last_verified_at?: string | null
@@ -10057,11 +10064,13 @@ export type Database = {
           metric_name?: string
           period?: string
           provenance_observed_at?: string | null
+          provenance_observed_at_semantics?: string | null
           provenance_source?: string | null
           provider_name?: string
           provider_run_id?: string | null
           raw_payload_id?: string | null
           related_entity_id?: string | null
+          retrieved_at?: string | null
           unit?: string | null
           updated_at?: string
           value?: number

@@ -1,0 +1,1 @@
+ALTER TABLE public.normalized_metrics ADD COLUMN IF NOT EXISTS freshness_semantics text; ALTER TABLE public.normalized_metrics ADD COLUMN IF NOT EXISTS provenance_observed_at_semantics text; ALTER TABLE public.normalized_metrics ADD COLUMN IF NOT EXISTS retrieved_at timestamptz;
