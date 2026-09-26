@@ -1,0 +1,1 @@
+- Scheduled jobs calling backend functions must send header x-cron-secret read from vault secret 'cron_secret' (matches CRON_SECRET env) — hardened function auth rejects anon-key calls.
