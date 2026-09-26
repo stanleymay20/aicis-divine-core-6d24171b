@@ -1,0 +1,1 @@
+ALTER TABLE public.normalized_metrics ADD COLUMN IF NOT EXISTS confidence_semantics text;

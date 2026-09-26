@@ -9996,11 +9996,13 @@ export type Database = {
       normalized_metrics: {
         Row: {
           confidence: number | null
+          confidence_semantics: string | null
           created_at: string
           dedup_key: string
           domain: string
           entity_id: string | null
           freshness_score: number | null
+          freshness_semantics: string | null
           id: string
           iso3: string | null
           last_verified_at: string | null
@@ -10008,22 +10010,26 @@ export type Database = {
           metric_name: string
           period: string
           provenance_observed_at: string | null
+          provenance_observed_at_semantics: string | null
           provenance_source: string | null
           provider_name: string
           provider_run_id: string | null
           raw_payload_id: string | null
           related_entity_id: string | null
+          retrieved_at: string | null
           unit: string | null
           updated_at: string
           value: number
         }
         Insert: {
           confidence?: number | null
+          confidence_semantics?: string | null
           created_at?: string
           dedup_key: string
           domain: string
           entity_id?: string | null
           freshness_score?: number | null
+          freshness_semantics?: string | null
           id?: string
           iso3?: string | null
           last_verified_at?: string | null
@@ -10031,22 +10037,26 @@ export type Database = {
           metric_name: string
           period: string
           provenance_observed_at?: string | null
+          provenance_observed_at_semantics?: string | null
           provenance_source?: string | null
           provider_name: string
           provider_run_id?: string | null
           raw_payload_id?: string | null
           related_entity_id?: string | null
+          retrieved_at?: string | null
           unit?: string | null
           updated_at?: string
           value: number
         }
         Update: {
           confidence?: number | null
+          confidence_semantics?: string | null
           created_at?: string
           dedup_key?: string
           domain?: string
           entity_id?: string | null
           freshness_score?: number | null
+          freshness_semantics?: string | null
           id?: string
           iso3?: string | null
           last_verified_at?: string | null
@@ -10054,11 +10064,13 @@ export type Database = {
           metric_name?: string
           period?: string
           provenance_observed_at?: string | null
+          provenance_observed_at_semantics?: string | null
           provenance_source?: string | null
           provider_name?: string
           provider_run_id?: string | null
           raw_payload_id?: string | null
           related_entity_id?: string | null
+          retrieved_at?: string | null
           unit?: string | null
           updated_at?: string
           value?: number
@@ -19271,12 +19283,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -19300,11 +19312,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -19325,11 +19337,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -19350,11 +19362,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -19367,11 +19379,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
