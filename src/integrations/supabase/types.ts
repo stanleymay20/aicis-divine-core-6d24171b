@@ -9996,6 +9996,7 @@ export type Database = {
       normalized_metrics: {
         Row: {
           confidence: number | null
+          confidence_semantics: string | null
           created_at: string
           dedup_key: string
           domain: string
@@ -10019,6 +10020,7 @@ export type Database = {
         }
         Insert: {
           confidence?: number | null
+          confidence_semantics?: string | null
           created_at?: string
           dedup_key: string
           domain: string
@@ -10042,6 +10044,7 @@ export type Database = {
         }
         Update: {
           confidence?: number | null
+          confidence_semantics?: string | null
           created_at?: string
           dedup_key?: string
           domain?: string
