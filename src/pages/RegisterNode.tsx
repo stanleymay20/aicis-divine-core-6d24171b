@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,10 @@ import {
 } from "@/components/ui/select";
 import { Globe, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
+
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 export default function RegisterNode() {
   const navigate = useNavigate();
@@ -38,7 +43,7 @@ export default function RegisterNode() {
         .from("accountability_nodes")
         .insert({
           org_name: form.org_name,
-          org_type: form.org_type as any,
+          org_type: form.org_type as Database["public"]["Enums"]["org_type"],
           country: form.country.toUpperCase().slice(0, 3),
           jurisdiction: form.jurisdiction,
           contact_email: form.contact_email,
@@ -56,8 +61,8 @@ export default function RegisterNode() {
       toast.success("Node registered. An admin will verify your application within 48 hours.");
       navigate("/governance");
     },
-    onError: (err: any) => {
-      toast.error(err.message ?? "Registration failed");
+    onError: (error: unknown) => {
+      toast.error(errorMessage(error) || "Registration failed");
     },
   });
 
@@ -68,6 +73,7 @@ export default function RegisterNode() {
 
   return (
     <div className="container mx-auto p-6 max-w-2xl">
+      <SystemWorkspaceNav />
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
