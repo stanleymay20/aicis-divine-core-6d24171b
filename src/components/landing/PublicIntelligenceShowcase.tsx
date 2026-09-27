@@ -125,16 +125,16 @@ export const PublicIntelligenceShowcase = () => {
               ))}
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-6">
+            <div className="grid min-w-0 lg:grid-cols-2 gap-6">
               {/* ─── Top ML Predictions ─── */}
-              <Card className="p-5 bg-card border-border">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
+              <Card className="min-w-0 p-4 sm:p-5 bg-card border-border">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <div className="min-w-0">
                     <h3 className="font-semibold text-sm flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-primary" />
                       Top calibrated risk predictions
                     </h3>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <p className="text-[11px] text-muted-foreground mt-0.5 break-words">
                       Isotonic-calibrated · 95% prediction interval · model {data.top_predictions[0]?.model_version}
                     </p>
                   </div>
@@ -146,11 +146,11 @@ export const PublicIntelligenceShowcase = () => {
                     const lo = Number(p.prediction_interval_lower);
                     const hi = Number(p.prediction_interval_upper);
                     return (
-                      <div key={p.audit_hash} className="flex items-center gap-3 px-2.5 py-2 rounded hover:bg-muted/30 transition">
+                      <div key={p.audit_hash} className="grid grid-cols-[1.25rem_2.5rem_minmax(0,1fr)_auto] sm:flex items-center gap-2 sm:gap-3 px-1 sm:px-2.5 py-2 rounded hover:bg-muted/30 transition">
                         <span className="text-[10px] font-mono text-muted-foreground w-5 shrink-0">#{i + 1}</span>
                         <span className="text-sm font-mono font-semibold w-10 shrink-0">{p.country_iso3}</span>
-                        <span className="text-xs capitalize text-muted-foreground w-20 shrink-0">{p.domain}</span>
-                        <div className="flex-1 min-w-0 text-[10px] text-muted-foreground font-mono truncate">
+                        <span className="hidden sm:block text-xs capitalize text-muted-foreground w-20 shrink-0">{p.domain}</span>
+                        <div className="min-w-0 text-[10px] text-muted-foreground font-mono truncate">
                           CI [{(lo * 100).toFixed(0)}–{(hi * 100).toFixed(0)}%] · hash {p.audit_hash.slice(0, 8)}…
                         </div>
                         <Badge variant="outline" className={`text-[10px] font-mono shrink-0 ${sevColor(score)}`}>
