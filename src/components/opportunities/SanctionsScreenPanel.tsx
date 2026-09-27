@@ -71,16 +71,16 @@ export function SanctionsScreenPanel() {
   const [legalName, setLegalName] = useState("");
   const [registrationId, setRegistrationId] = useState("");
   const [aliasesText, setAliasesText] = useState("");
-  const [verificationRole, setVerificationRole] = useState<"supplier" | "buyer">("supplier");
+  const [verificationRole, setVerificationRole] = useState<"supplier" | "buyer" | "logistics">("supplier");
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<ScreenResponse | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ legal_name?: string; role?: "supplier" | "buyer" }>).detail || {};
+      const detail = (event as CustomEvent<{ legal_name?: string; role?: "supplier" | "buyer" | "logistics" }>).detail || {};
       if (detail.legal_name) setLegalName(detail.legal_name);
-      if (detail.role === "supplier" || detail.role === "buyer") setVerificationRole(detail.role);
+      if (detail.role === "supplier" || detail.role === "buyer" || detail.role === "logistics") setVerificationRole(detail.role);
       window.requestAnimationFrame(() => {
         document.getElementById("sanctions-screen")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -227,6 +227,53 @@ export function SanctionsScreenPanel() {
                     .filter(Boolean)
                     .sort()
                     .at(-1) || new Date().toISOString();
+                  if (verificationRole === "logistics") {
+                    window.dispatchEvent(new CustomEvent("aicis:prepare-logistics-route", {
+                      detail: {
+                        dossier: {
+                          as_of: new Date().toISOString(),
+                          provider: {
+                            legal_name: legalName.trim(),
+                            jurisdiction: "",
+                            registration_id: registrationId.trim(),
+                            evidence_refs: [],
+                          },
+                          compliance: {
+                            status: "review",
+                            screened_at: screenedAt,
+                            evidence_refs: evidenceRefs,
+                          },
+                          route_quote: {
+                            quote_id: "",
+                            route_name: "",
+                            origin_country: "",
+                            destination_country: "",
+                            transit_days: 0,
+                            valid_until: "",
+                            evidence_status: "verified_quote",
+                            evidence_refs: [],
+                            stops: [],
+                            costs: [{
+                              type: "freight",
+                              amount: 0,
+                              basis: "per_unit",
+                              currency: "",
+                              evidence_refs: [],
+                            }],
+                          },
+                          capacity: {
+                            status: "verified",
+                            evidence_refs: [],
+                          },
+                          contact_channels: [],
+                          evidence_score: 0,
+                          capacity_score: 50,
+                        },
+                      },
+                    }));
+                    return;
+                  }
+
                   window.dispatchEvent(new CustomEvent("aicis:verify-counterparty", {
                     detail: {
                       dossier: {
