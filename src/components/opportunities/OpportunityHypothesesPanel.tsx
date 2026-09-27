@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Lightbulb, Loader2, RefreshCw } from "lucide-react";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
+import { BrainCircuit, Lightbulb, Loader2, RefreshCw } from "lucide-react";
 
 type Hypothesis = {
   hypothesis_id: string;
@@ -37,6 +38,32 @@ export function OpportunityHypothesesPanel() {
   const [data, setData] = useState<Response | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { selectEntity } = useIntelligenceOS();
+
+  const inspectHypothesis = (item: Hypothesis) => {
+    selectEntity({
+      id: item.hypothesis_id,
+      type: "opportunity",
+      name: item.product.name,
+      description: `Research hypothesis derived from: ${item.source_signal_title}. Profitability remains unknown until attributable quotes, costs, counterparties, and compliance are verified.`,
+      geography:
+        item.countries.length === 1
+          ? { country: item.countries[0] }
+          : undefined,
+      metadata: {
+        epistemicStatus: item.epistemic_status,
+        profitabilityStatus: item.profitability_status,
+        relevanceScore: item.relevance_score,
+        relevanceTier: item.relevance_tier,
+        catalystType: item.catalyst_type,
+        matchedCatalysts: item.matched_catalyst_terms.join(", ") || null,
+        countries: item.countries.join(", ") || null,
+        sectors: item.product.sectors.join(", ") || null,
+        productUnit: item.product.unit,
+        guardrail: item.guardrail,
+      },
+    });
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -101,6 +128,16 @@ export function OpportunityHypothesesPanel() {
                   Profitability unknown until current quotes, costs, counterparties and compliance are verified.
                 </p>
                 <div className="mt-2 flex flex-wrap justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs"
+                    onClick={() => inspectHypothesis(item)}
+                    aria-label={`Inspect hypothesis ${item.product.name}`}
+                  >
+                    <BrainCircuit className="h-3.5 w-3.5 text-primary" />
+                    Inspect hypothesis
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
