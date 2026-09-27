@@ -586,17 +586,15 @@ interface AtlasMapProps {
 const BASEMAP_TILES: Record<Basemap, { url: string; attr: string; subdomains?: string }> = {
   dark: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-    attr: "© OpenStreetMap, © CARTO",
-    subdomains: "abcd",
+    attr: 'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
   },
   light: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-    attr: "© OpenStreetMap, © CARTO",
-    subdomains: "abcd",
+    attr: 'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
   },
   satellite: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attr: "© Esri, Maxar",
+    attr: 'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Esri, Maxar, Earthstar Geographics',
   },
 };
 
