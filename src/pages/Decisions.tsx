@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { AICISMainView } from "@/components/aicis/AICISMainView";
 import { Shield } from "lucide-react";
+import { DecisionWorkspaceNav } from "@/components/decisions/DecisionWorkspaceNav";
 
 const Decisions = () => {
   const { user, loading } = useAuth();
@@ -35,7 +36,10 @@ const Decisions = () => {
 
   return (
     <AICISLayout>
-      <AICISMainView />
+      <div className="mx-auto flex h-full w-full max-w-[1500px] flex-col gap-4 overflow-y-auto p-4 md:p-6">
+        <DecisionWorkspaceNav />
+        <AICISMainView />
+      </div>
     </AICISLayout>
   );
 };
