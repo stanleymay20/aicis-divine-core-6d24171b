@@ -125,7 +125,7 @@ export const PublicIntelligenceShowcase = () => {
               ))}
             </div>
 
-            <div className="grid min-w-0 lg:grid-cols-2 gap-6">
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] lg:grid-cols-2 gap-6">
               {/* ─── Top ML Predictions ─── */}
               <Card className="min-w-0 p-4 sm:p-5 bg-card border-border">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
@@ -163,7 +163,7 @@ export const PublicIntelligenceShowcase = () => {
               </Card>
 
               {/* ─── Recent Simulations ─── */}
-              <Card className="p-5 bg-card border-border">
+              <Card className="min-w-0 p-4 sm:p-5 bg-card border-border">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -211,7 +211,7 @@ export const PublicIntelligenceShowcase = () => {
               </Card>
 
               {/* ─── Audit Hash Chain ─── */}
-              <Card className="lg:col-span-2 p-5 bg-card border-border">
+              <Card className="min-w-0 lg:col-span-2 p-4 sm:p-5 bg-card border-border">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="font-semibold text-sm flex items-center gap-2">
