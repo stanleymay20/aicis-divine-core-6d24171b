@@ -11,6 +11,7 @@ import "leaflet/dist/leaflet.css";
 import { parseMapQuery, MapQuery, ALL_DOMAINS } from "./queryParser";
 import { useCountryRiskData, aggregateByCountry, useRelatedSignals, useCountryRegions } from "./useAtlasData";
 import { AtlasInsightPanel } from "./AtlasInsightPanel";
+import { COUNTRY_NAMES as CN } from "./countryNames";
 
 /* ── Country coordinates ── */
 const CC: Record<string, [number, number]> = {
@@ -45,34 +46,6 @@ const CC: Record<string, [number, number]> = {
   PAN:[8.54,-80.78],HND:[15.20,-86.24],NIC:[12.87,-85.21],CUB:[21.52,-77.78],
   DOM:[18.74,-70.16],JAM:[18.11,-77.30],TTO:[10.69,-61.22],
   CIV:[7.54,-5.55],BWA:[-22.33,24.68],
-};
-
-export const CN: Record<string, string> = {
-  AFG:"Afghanistan",AGO:"Angola",ARG:"Argentina",AUS:"Australia",BDI:"Burundi",
-  BFA:"Burkina Faso",BGD:"Bangladesh",BRA:"Brazil",CAF:"Central African Republic",
-  CHN:"China",COD:"DR Congo",COL:"Colombia",CMR:"Cameroon",DEU:"Germany",
-  EGY:"Egypt",ETH:"Ethiopia",FRA:"France",GBR:"United Kingdom",GHA:"Ghana",
-  GMB:"Gambia",GTM:"Guatemala",HTI:"Haiti",IDN:"Indonesia",IND:"India",
-  IRN:"Iran",IRQ:"Iraq",ISR:"Israel",JPN:"Japan",KEN:"Kenya",KIR:"Kiribati",
-  LBY:"Libya",MDG:"Madagascar",MEX:"Mexico",MLI:"Mali",MMR:"Myanmar",
-  MOZ:"Mozambique",MWI:"Malawi",NER:"Niger",NGA:"Nigeria",PAK:"Pakistan",
-  PER:"Peru",PHL:"Philippines",RUS:"Russia",RWA:"Rwanda",SAU:"Saudi Arabia",
-  SDN:"Sudan",SEN:"Senegal",SLV:"El Salvador",SOM:"Somalia",SSD:"South Sudan",
-  SYR:"Syria",TCD:"Chad",THA:"Thailand",TUR:"Turkey",TZA:"Tanzania",
-  UGA:"Uganda",UKR:"Ukraine",USA:"United States",VEN:"Venezuela",VNM:"Vietnam",
-  YEM:"Yemen",ZAF:"South Africa",ZMB:"Zambia",ZWE:"Zimbabwe",
-  ARE:"UAE",MYS:"Malaysia",COG:"Congo",GIN:"Guinea",LBR:"Liberia",SLE:"Sierra Leone",
-  TGO:"Togo",BEN:"Benin",DJI:"Djibouti",ERI:"Eritrea",GAB:"Gabon",GNQ:"Eq. Guinea",
-  LSO:"Lesotho",MRT:"Mauritania",NAM:"Namibia",SWZ:"Eswatini",TUN:"Tunisia",
-  MAR:"Morocco",DZA:"Algeria",LKA:"Sri Lanka",NPL:"Nepal",KHM:"Cambodia",
-  LAO:"Laos",TWN:"Taiwan",KOR:"South Korea",PRK:"North Korea",MNG:"Mongolia",
-  KAZ:"Kazakhstan",UZB:"Uzbekistan",TKM:"Turkmenistan",KGZ:"Kyrgyzstan",
-  TJK:"Tajikistan",GEO:"Georgia",ARM:"Armenia",AZE:"Azerbaijan",JOR:"Jordan",
-  LBN:"Lebanon",KWT:"Kuwait",BHR:"Bahrain",QAT:"Qatar",OMN:"Oman",
-  ECU:"Ecuador",BOL:"Bolivia",PRY:"Paraguay",URY:"Uruguay",CHL:"Chile",
-  CRI:"Costa Rica",PAN:"Panama",HND:"Honduras",NIC:"Nicaragua",CUB:"Cuba",
-  DOM:"Dominican Republic",JAM:"Jamaica",TTO:"Trinidad & Tobago",
-  CIV:"Ivory Coast",BWA:"Botswana",
 };
 
 /* ── Continent map centers ── */
@@ -126,6 +99,10 @@ type Severity = "critical" | "high" | "elevated" | "moderate" | "low";
 type Direction = "up" | "down" | "flat";
 type Basemap = "dark" | "light" | "satellite";
 
+type AtlasWindow = Window & {
+  __atlasClick?: (iso3: string) => void;
+};
+
 const SEVERITY_TIERS: { key: Severity; color: string; label: string; min: number; max: number }[] = [
   { key: "critical", color: "#ef4444", label: "Critical (70+)",   min: 70, max: 1000 },
   { key: "high",     color: "#f97316", label: "High (55–70)",     min: 55, max: 70 },
@@ -163,14 +140,16 @@ export function RiskAtlas() {
   const toggleSeverity = useCallback((s: Severity) => {
     setSeverityFilter(prev => {
       const next = new Set(prev);
-      next.has(s) ? next.delete(s) : next.add(s);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
       return next.size === 0 ? new Set(["critical", "high", "elevated", "moderate", "low"] as Severity[]) : next;
     });
   }, []);
   const toggleDirection = useCallback((d: Direction) => {
     setDirectionFilter(prev => {
       const next = new Set(prev);
-      next.has(d) ? next.delete(d) : next.add(d);
+      if (next.has(d)) next.delete(d);
+      else next.add(d);
       return next.size === 0 ? new Set(["up", "down", "flat"] as Direction[]) : next;
     });
   }, []);
@@ -606,6 +585,7 @@ function AtlasMap({
   const mapRef = useRef<L.Map | null>(null);
   const baseLayerRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<L.Layer[]>([]);
+  const [centerLat, centerLng] = center;
 
   // Initialize map
   useEffect(() => {
@@ -613,7 +593,7 @@ function AtlasMap({
     const map = L.map(containerRef.current, { center, zoom, scrollWheelZoom: true, zoomControl: true });
     const tiles = BASEMAP_TILES[basemap];
     baseLayerRef.current = L.tileLayer(tiles.url, {
-      attribution: tiles.attr, maxZoom: 18, subdomains: tiles.subdomains as any,
+      attribution: tiles.attr, maxZoom: 18, subdomains: tiles.subdomains,
     }).addTo(map);
     // Overlay: English-only borders + place labels from ESRI.
     L.tileLayer(
@@ -637,15 +617,15 @@ function AtlasMap({
     if (baseLayerRef.current) map.removeLayer(baseLayerRef.current);
     const tiles = BASEMAP_TILES[basemap];
     baseLayerRef.current = L.tileLayer(tiles.url, {
-      attribution: tiles.attr, maxZoom: 18, subdomains: tiles.subdomains as any,
+      attribution: tiles.attr, maxZoom: 18, subdomains: tiles.subdomains,
     }).addTo(map);
     baseLayerRef.current.bringToBack();
   }, [basemap]);
 
   // Fly to center
   useEffect(() => {
-    mapRef.current?.flyTo(center, zoom, { duration: 1.2 });
-  }, [center[0], center[1], zoom]);
+    mapRef.current?.flyTo([centerLat, centerLng], zoom, { duration: 1.2 });
+  }, [centerLat, centerLng, zoom]);
 
   // Render country markers
   useEffect(() => {
@@ -777,8 +757,9 @@ function AtlasMap({
 
   // Expose click handler for popups
   useEffect(() => {
-    (window as any).__atlasClick = onCountryClick;
-    return () => { delete (window as any).__atlasClick; };
+    const atlasWindow = window as AtlasWindow;
+    atlasWindow.__atlasClick = onCountryClick;
+    return () => { delete atlasWindow.__atlasClick; };
   }, [onCountryClick]);
 
   return <div ref={containerRef} className="h-full w-full bg-[hsl(var(--background))]" />;
