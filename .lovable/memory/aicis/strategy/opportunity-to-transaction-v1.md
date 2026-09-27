@@ -358,6 +358,178 @@ No step may silently promote discovery-only or review-only evidence into executa
 11. Portfolio allocation and capital recycling optimizer.
 12. Learning loop based on realized outcomes, never self-reported synthetic profit.
 
+# Provider-neutral execution preview
+
+## Core implementation
+
+- `supabase/functions/_shared/execution-quote-contract-v1.mjs`
+- `supabase/functions/preview-execution/index.ts`
+- `src/components/opportunities/ExecutionPreviewPanel.tsx`
+- `tests/execution-quote-contract-v1.test.mjs`
+
+The execution-preview layer sits **after** transaction/strategy evaluation and **before** any future external execution connector.
+
+It can:
+- validate a normalized provider quote;
+- enforce candidate binding;
+- reject stale/future/provenance-free quotes;
+- reject secret-bearing payloads;
+- select bid/ask/rate according to side/instrument;
+- calculate gross notional and explicit quote costs;
+- fingerprint the normalized quote and preview package;
+- create a human-review request object;
+- normalize zero-explicit-cost provider-attested FX into the existing verified-FX schema.
+
+It cannot:
+- submit a provider order;
+- sign a contract;
+- move money;
+- mutate an external brokerage account;
+- mint an approval token;
+- treat user-pasted JSON as provider-authenticated evidence.
+
+## Quote statuses
+
+Input quote claims may use:
+- `indicative`;
+- `verified_market`;
+- `official_reference`;
+- `executable_quote`.
+
+A syntactically valid `executable_quote` claim is **not** executable evidence by itself.
+
+Server-side provider attestation is separately required.
+
+Without provider attestation:
+```text
+preview_status = unattested_quote
+normalized_fx_rate = null
+human_approval_package_ready = false
+```
+
+This prevents manually supplied JSON from bypassing a real provider adapter.
+
+## Provider attestation boundary
+
+Only trusted server-side provider-adapter code may call the execution contract with:
+```text
+provider_attested = true
+```
+
+The generic `preview-execution` endpoint currently sets:
+```text
+provider_attested = false
+```
+
+because it accepts a user-supplied normalized quote.
+
+A future provider adapter must:
+- authenticate to the provider using server-side or connected-account credentials;
+- retrieve the provider response itself;
+- preserve provider quote/order identifiers;
+- preserve observed time and validity/freshness;
+- retain attributable evidence;
+- normalize without accepting provider credentials in the client request;
+- call the shared contract only after provider response verification.
+
+## Candidate binding
+
+Every quote must carry:
+```text
+execution_context.candidate_id
+execution_context.purpose
+```
+
+Allowed purposes:
+- `primary_transaction`;
+- `fx_conversion`;
+- `fee_estimate`.
+
+The candidate id must match the AICIS candidate being previewed.
+
+An FX quote must use:
+```text
+purpose = fx_conversion
+side = convert
+```
+
+This prevents an unrelated quote from being attached to a different strategy/candidate.
+
+## Secret boundary
+
+Execution-preview payloads reject fields whose keys imply:
+- passwords;
+- secrets;
+- API keys;
+- access/refresh tokens;
+- authorization headers;
+- private keys;
+- client secrets.
+
+Masked account references are permitted.
+
+Provider credentials belong only in the provider connector / server secret boundary.
+
+## FX cost truth floor
+
+An executable FX quote may be injected into `fx_rates` only when:
+- it is provider-attested;
+- current;
+- attributable;
+- candidate-bound;
+- status = `executable_quote`;
+- it has no explicit costs that would be lost by converting it into a bare rate.
+
+If explicit FX commission/fees are present:
+```text
+normalized_fx_rate = null
+fx_handoff_blocked_reason =
+  explicit_fx_costs_require_transaction_cost_integration
+```
+
+AICIS must not improve apparent transaction economics by silently dropping FX costs.
+
+## Human-review package
+
+A provider-attested executable quote may produce an auditable review request containing:
+- strategic audit hash;
+- quote hash;
+- preview hash;
+- candidate id;
+- provider quote id;
+- quote expiry;
+- idempotency key.
+
+It still retains:
+```text
+approval_status = not_approved
+approval_token = null
+executable_action_available = false
+```
+
+If new evidence changes the transaction bundle, the prior ranking is stale and the user must rebuild before approval readiness can be reconsidered.
+
+## Legacy governance trade quarantine
+
+Historical endpoints:
+- `gov-initiate-trade`;
+- `gov-execute-trade`.
+
+They previously used demo pricing / internal SC-wallet mutation.
+
+They now fail closed with HTTP 410 after authentication:
+- no wallet lock;
+- no wallet debit;
+- no governance-trade insert;
+- no SC ledger execution write.
+
+The legacy Governance Market UI is view-only and routes users to Opportunity Radar.
+
+Regression guard:
+- `tests/legacy-governance-trade-quarantine.test.mjs`
+
+The legacy endpoints must never become a parallel execution path beside the audited execution architecture.
+
 # Governing rules
 
 - Unknown stays unknown.
