@@ -1,13 +1,17 @@
+import { useEffect, useState } from "react";
 import {
   BrainCircuit,
   Globe2,
   LayoutDashboard,
   Network,
+  Search,
   Sparkles,
+  X,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import { cn } from "@/lib/utils";
 
@@ -38,10 +42,71 @@ const modes = [
   },
 ] as const;
 
+const persistedSearch = (search: string) => {
+  const current = new URLSearchParams(search);
+  const next = new URLSearchParams();
+
+  for (const key of ["entity", "question"]) {
+    const value = current.get(key);
+    if (value) next.set(key, value);
+  }
+
+  return next.toString();
+};
+
 export const AnalysisWorkspaceNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { selectedEntity, openAsk } = useIntelligenceOS();
+  const [questionDraft, setQuestionDraft] = useState(
+    () => new URLSearchParams(location.search).get("question") ?? "",
+  );
+
+  useEffect(() => {
+    setQuestionDraft(
+      new URLSearchParams(location.search).get("question") ?? "",
+    );
+  }, [location.search]);
+
+  const navigateMode = (path: string) => {
+    const search = persistedSearch(location.search);
+    navigate({
+      pathname: path,
+      search: search ? `?${search}` : "",
+    });
+  };
+
+  const commitQuestion = () => {
+    const next = new URLSearchParams(location.search);
+    const question = questionDraft.trim();
+
+    if (question) next.set("question", question);
+    else next.delete("question");
+
+    navigate(
+      {
+        pathname: location.pathname,
+        search: next.toString() ? `?${next.toString()}` : "",
+      },
+      { replace: true },
+    );
+  };
+
+  const clearQuestion = () => {
+    setQuestionDraft("");
+    const next = new URLSearchParams(location.search);
+    next.delete("question");
+    navigate(
+      {
+        pathname: location.pathname,
+        search: next.toString() ? `?${next.toString()}` : "",
+      },
+      { replace: true },
+    );
+  };
+
+  const activeQuestion =
+    new URLSearchParams(location.search).get("question")?.trim() ?? "";
 
   return (
     <div className="rounded-xl border border-border/70 bg-card/35 p-2">
@@ -75,7 +140,7 @@ export const AnalysisWorkspaceNav = () => {
                   type="button"
                   variant={active ? "secondary" : "ghost"}
                   size="sm"
-                  onClick={() => navigate(mode.path)}
+                  onClick={() => navigateMode(mode.path)}
                   className={cn(
                     "h-8 shrink-0 gap-1.5 px-2.5 text-[11px]",
                     active &&
@@ -102,6 +167,62 @@ export const AnalysisWorkspaceNav = () => {
           {selectedEntity ? "Ask about selection" : "Ask AICIS"}
         </Button>
       </div>
+
+      <div className="mt-2 flex flex-col gap-2 border-t border-border/60 pt-2 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={questionDraft}
+            onChange={(event) => setQuestionDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commitQuestion();
+            }}
+            placeholder={
+              selectedEntity
+                ? `Investigation question about ${selectedEntity.name}…`
+                : "Investigation question…"
+            }
+            className="h-8 pl-8 text-xs"
+            aria-label="Analysis investigation question"
+          />
+        </div>
+
+        <div className="flex shrink-0 gap-1">
+          <Button
+            type="button"
+            size="sm"
+            onClick={commitQuestion}
+            disabled={!questionDraft.trim()}
+            className="h-8 text-[11px]"
+          >
+            Set question
+          </Button>
+          {activeQuestion && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={clearQuestion}
+              className="h-8 w-8"
+              aria-label="Clear investigation question"
+              title="Clear investigation question"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {activeQuestion && (
+        <div className="mt-2 rounded-md border border-primary/15 bg-primary/[0.035] px-3 py-2">
+          <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-primary">
+            Active investigation
+          </div>
+          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-foreground">
+            {activeQuestion}
+          </p>
+        </div>
+      )}
     </div>
   );
 };
