@@ -51,6 +51,7 @@ test("valid executable quote produces preview but never execution", () => {
     quote: securityQuote,
     strategic_audit_hash: HASH,
     idempotency_key: "preview:security:0001",
+    provider_attested: true,
     as_of: "2026-09-27T14:01:00Z",
   });
 
@@ -134,6 +135,7 @@ test("candidate not yet execution-ready can be previewed but requires rebuild", 
     quote: securityQuote,
     strategic_audit_hash: HASH,
     idempotency_key: "preview:rebuild:0001",
+    provider_attested: true,
     as_of: "2026-09-27T14:01:00Z",
   });
 
@@ -172,6 +174,7 @@ test("executable FX quote emits existing verified-FX schema", () => {
     quote,
     strategic_audit_hash: HASH,
     idempotency_key: "preview:fx:00000001",
+    provider_attested: true,
     as_of: "2026-09-27T14:01:00Z",
   });
 
@@ -261,6 +264,7 @@ test("FX quote with explicit costs is previewable but cannot be injected as a ba
     quote,
     strategic_audit_hash: HASH,
     idempotency_key: "preview:fx:withcost1",
+    provider_attested: true,
     as_of: "2026-09-27T14:01:00Z",
   });
 
@@ -286,4 +290,54 @@ test("FX quote purpose must be explicit and correct", () => {
 
   assert.equal(validation.valid, false);
   assert.ok(validation.reasons.includes("fx_quote_purpose_must_be_fx_conversion"));
+});
+
+
+test("unattested executable claim remains research-only", () => {
+  const result = buildExecutionPreview({
+    candidate,
+    quote: securityQuote,
+    strategic_audit_hash: HASH,
+    idempotency_key: "preview:unattested:1",
+    as_of: "2026-09-27T14:01:00Z",
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.preview_status, "unattested_quote");
+  assert.equal(result.provider_attestation.attested, false);
+  assert.equal(result.approval.human_approval_package_ready, false);
+  assert.equal(result.normalized_fx_rate, null);
+  assert.equal(result.execution_boundary.order_submitted, false);
+});
+
+test("unattested FX claim cannot enter the verified FX layer", () => {
+  const quote = {
+    quote_id: "fx-unattested",
+    provider_quote_id: "fx-unattested-provider",
+    provider_name: "Claimed FX Provider",
+    provider_adapter: "claimed-fx-v1",
+    status: "executable_quote",
+    observed_at: "2026-09-27T14:00:00Z",
+    valid_until: "2026-09-27T14:03:00Z",
+    instrument: { kind: "fx", base_currency: "USD", quote_currency: "EUR" },
+    execution_context: { candidate_id: "tx:cocoa", purpose: "fx_conversion" },
+    side: "convert",
+    quantity: 1000,
+    quantity_unit: "USD",
+    pricing: { rate: 0.85, currency: "EUR" },
+    costs: [],
+    evidence_refs: evidence("fx-unattested-source"),
+  };
+
+  const result = buildExecutionPreview({
+    candidate: { ...candidate, execution_ready: false },
+    quote,
+    strategic_audit_hash: HASH,
+    idempotency_key: "preview:fx:unattest1",
+    as_of: "2026-09-27T14:01:00Z",
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.preview_status, "unattested_quote");
+  assert.equal(result.normalized_fx_rate, null);
 });
