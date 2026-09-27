@@ -9,6 +9,7 @@ import { OperationalDecisionWorkflow } from "@/components/aicis/OperationalDecis
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isSchemaUnavailableError } from "@/lib/supabase-errors";
 import {
   Activity,
   AlertTriangle,
