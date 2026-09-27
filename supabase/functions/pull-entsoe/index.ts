@@ -52,8 +52,8 @@ serve(async (req) => {
             signal: AbortSignal.timeout(10000),
           });
           if (r.ok) return await r.json();
-          if (r.status >= 500 && attempt === 0) {
-            await new Promise((res) => setTimeout(res, 1500));
+          if ((r.status >= 500 || r.status === 429) && attempt === 0) {
+            await new Promise((res) => setTimeout(res, 3000));
             continue;
           }
           errors.push(`${bzn}:${r.status}`);
@@ -74,18 +74,18 @@ serve(async (req) => {
     // can never hang the job. Missing zones are reported as gaps — old values are
     // never re-stamped as today's readings.
     const fallbackUsed = 0;
-    const DEADLINE_MS = 40000;
-    const fetched = await Promise.all(
-      ZONES.map(({ bzn }) =>
-        Promise.race([
-          fetchWithRetry(bzn),
-          new Promise<null>((res) => setTimeout(() => {
-            errors.push(`${bzn}:deadline`);
-            res(null);
-          }, DEADLINE_MS)),
-        ]),
-      ),
-    );
+    const DEADLINE_MS = 45000;
+    const fetched: (any | null)[] = [];
+    const deadlineAt = start + DEADLINE_MS;
+    for (let i = 0; i < ZONES.length; i += 3) {
+      if (Date.now() > deadlineAt) {
+        for (const z of ZONES.slice(i)) { errors.push(`${z.bzn}:deadline`); fetched.push(null); }
+        break;
+      }
+      const batch = await Promise.all(ZONES.slice(i, i + 3).map(({ bzn }) => fetchWithRetry(bzn)));
+      fetched.push(...batch);
+      await new Promise((res) => setTimeout(res, 1200));
+    }
     for (let zi = 0; zi < ZONES.length; zi++) {
       const { iso3 } = ZONES[zi];
       try {
