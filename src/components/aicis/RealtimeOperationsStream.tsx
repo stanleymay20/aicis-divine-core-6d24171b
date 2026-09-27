@@ -8,6 +8,30 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Activity, AlertTriangle, BrainCircuit, RadioTower, ShieldCheck, Zap } from "lucide-react";
 import { isSchemaUnavailableError } from "@/lib/supabase-errors";
 
+type TelemetryRow = {
+  source_domain: string | null;
+  event_status: string | null;
+  event_count: number | null;
+  shard_key: string | number | null;
+  generated_at: string | null;
+};
+
+type CausalRow = {
+  source_event: string | null;
+  source_domain: string | null;
+  impact_severity: number | null;
+  impacted_system: string | null;
+  generated_at: string | null;
+};
+
+type InterventionRow = {
+  simulation_name: string | null;
+  approval_status: string | null;
+  safety_rating: string | null;
+  confidence_score: number | null;
+  generated_at: string | null;
+};
+
 type StreamEvent = {
   id: string;
   title: string;
@@ -49,11 +73,11 @@ export function RealtimeOperationsStream() {
     refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("telemetry_backbone_command_view" as any)
+        .from("telemetry_backbone_command_view" as never)
         .select("*")
         .limit(10);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as TelemetryRow[];
     },
   });
 
@@ -62,11 +86,11 @@ export function RealtimeOperationsStream() {
     refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("planetary_causal_command_view" as any)
+        .from("planetary_causal_command_view" as never)
         .select("*")
         .limit(10);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as CausalRow[];
     },
   });
 
@@ -75,11 +99,11 @@ export function RealtimeOperationsStream() {
     refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("intervention_governance_command_view" as any)
+        .from("intervention_governance_command_view" as never)
         .select("*")
         .limit(10);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as InterventionRow[];
     },
   });
 
@@ -91,7 +115,7 @@ export function RealtimeOperationsStream() {
   }, []);
 
   const stream = useMemo(() => {
-    const telemetryEvents: StreamEvent[] = (telemetry.data ?? []).map((row: any, index: number) => ({
+    const telemetryEvents: StreamEvent[] = (telemetry.data ?? []).map((row, index) => ({
       id: `telemetry-${index}`,
       title: `${row.source_domain ?? "domain"} telemetry update`,
       domain: row.source_domain ?? "telemetry",
@@ -101,7 +125,7 @@ export function RealtimeOperationsStream() {
       source: "Telemetry Backbone",
     }));
 
-    const causalEvents: StreamEvent[] = (causal.data ?? []).map((row: any, index: number) => ({
+    const causalEvents: StreamEvent[] = (causal.data ?? []).map((row, index) => ({
       id: `causal-${index}`,
       title: row.source_event ?? "Propagation event",
       domain: row.source_domain ?? "causal",
@@ -111,7 +135,7 @@ export function RealtimeOperationsStream() {
       source: "Causal Engine",
     }));
 
-    const interventionEvents: StreamEvent[] = (interventions.data ?? []).map((row: any, index: number) => ({
+    const interventionEvents: StreamEvent[] = (interventions.data ?? []).map((row, index) => ({
       id: `intervention-${index}`,
       title: row.simulation_name ?? "Intervention workflow",
       domain: "governance",
@@ -145,8 +169,13 @@ export function RealtimeOperationsStream() {
           </div>
           <div className="flex items-center gap-2">
             <div className={`h-2.5 w-2.5 rounded-full ${livePulse ? "bg-emerald-400 shadow-[0_0_14px_rgba(74,222,128,0.9)]" : "bg-emerald-700"}`} />
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-300 border-emerald-500/30">
-              Live
+            <Badge
+              variant="outline"
+              className={failed
+                ? "border-border bg-muted/20 text-muted-foreground"
+                : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"}
+            >
+              {failed ? "Unavailable" : "Live"}
             </Badge>
           </div>
         </div>
