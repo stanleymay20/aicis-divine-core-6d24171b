@@ -8,14 +8,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ShieldCheck, ShieldAlert, KeyRound, Copy, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import TrustCompletionScorePanel from "@/components/federation/TrustCompletionScorePanel";
+import { AICISLayout } from "@/components/aicis/AICISLayout";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 
 type StepStatus = "idle" | "running" | "pass" | "fail";
 
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
 interface ActiveKey {
-  key_id: string;
-  public_key: string;
-  created_at?: string;
-  expires_at?: string;
+  key_id: string | null;
+  public_key: string | null;
+  created_at?: string | null;
+  expires_at?: string | null;
 }
 
 interface SignResult {
@@ -35,7 +40,7 @@ export default function FederationAdmin() {
   const [signStatus, setSignStatus] = useState<StepStatus>("idle");
   const [verifyStatus, setVerifyStatus] = useState<StepStatus>("idle");
   const [signResult, setSignResult] = useState<SignResult | null>(null);
-  const [verifyResult, setVerifyResult] = useState<any>(null);
+  const [verifyResult, setVerifyResult] = useState<unknown>(null);
   const [rotating, setRotating] = useState(false);
 
   const testPayload = {
@@ -47,10 +52,10 @@ export default function FederationAdmin() {
   const loadActiveKey = async () => {
     setLoadingKey(true);
     const { data } = await supabase
-      .from("federation_active_key" as any)
+      .from("federation_active_key")
       .select("*")
       .maybeSingle();
-    setActiveKey((data as any) ?? null);
+    setActiveKey(data ?? null);
     setLoadingKey(false);
   };
 
@@ -77,8 +82,8 @@ export default function FederationAdmin() {
       setIssuedKeyId(data.key_id);
       toast.success(`Key ${data.key_id} generated. Save the private key now.`);
       await loadActiveKey();
-    } catch (e: any) {
-      toast.error(e.message || "Failed to initialize key");
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, "Failed to initialize key"));
     } finally {
       setRotating(false);
     }
@@ -98,9 +103,9 @@ export default function FederationAdmin() {
       setSignResult(data);
       setSignStatus("pass");
       toast.success("Signature generated");
-    } catch (e: any) {
+    } catch (error: unknown) {
       setSignStatus("fail");
-      toast.error(e.message || "Sign failed");
+      toast.error(errorMessage(error, "Sign failed"));
     }
   };
 
@@ -120,9 +125,9 @@ export default function FederationAdmin() {
       setVerifyStatus(data?.valid ? "pass" : "fail");
       if (data?.valid) toast.success("Signature verified ✓");
       else toast.error(`Verification failed: ${data?.reason ?? "invalid"}`);
-    } catch (e: any) {
+    } catch (error: unknown) {
       setVerifyStatus("fail");
-      toast.error(e.message || "Verify failed");
+      toast.error(errorMessage(error, "Verify failed"));
     }
   };
 
@@ -139,8 +144,10 @@ export default function FederationAdmin() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
+    <AICISLayout>
+      <div className="min-h-full bg-background overflow-y-auto h-full">
+        <div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
+          <SystemWorkspaceNav />
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -351,7 +358,8 @@ export default function FederationAdmin() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
-    </div>
+    </AICISLayout>
   );
 }
