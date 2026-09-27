@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, CheckCircle2, ClipboardCheck, Radar, ShieldAlert, Sparkles } from "lucide-react";
+import { isSchemaUnavailableError } from "@/lib/supabase-errors";
 
 type WorkflowEvent = {
   title: string;
@@ -52,38 +53,33 @@ export function OperationalDecisionWorkflow() {
   const flow = useMemo(() => {
     const insight: any = insights.data?.[0];
     const intervention: any = interventions.data?.[0];
+    const stages: WorkflowEvent[] = [];
 
-    const stages: WorkflowEvent[] = [
-      {
-        title: insight?.insight_title ?? "Signal detected",
-        severity: insight?.severity_band ?? "strategic",
-        confidence: insight?.confidence_score ?? 82,
+    if (insight) {
+      stages.push({
+        title: insight.insight_title || "Untitled executive insight",
+        severity: insight.severity_band || "unclassified",
+        confidence: insight.confidence_score ?? undefined,
+        recommendation: insight.recommended_action ?? undefined,
         source: "Detection",
-      },
-      {
-        title: "Propagation forecast generated",
-        severity: "strategic",
-        confidence: 79,
-        source: "Forecast Engine",
-      },
-      {
-        title: intervention?.simulation_name ?? "Intervention review",
-        severity: intervention?.approval_status ?? "pending",
-        recommendation: intervention?.safety_rating ?? "review required",
+      });
+    }
+
+    if (intervention) {
+      stages.push({
+        title: intervention.simulation_name || "Untitled intervention review",
+        severity: intervention.approval_status || "unclassified",
+        recommendation: intervention.safety_rating ?? undefined,
         source: "Governance",
-      },
-      {
-        title: "Operator action coordination",
-        severity: "healthy",
-        recommendation: insight?.recommended_action ?? "Continue monitoring",
-        source: "Execution",
-      },
-    ];
+      });
+    }
 
     return stages;
   }, [insights.data, interventions.data]);
 
   const loading = insights.isLoading || interventions.isLoading;
+  const unavailable = [insights.error, interventions.error].some(isSchemaUnavailableError);
+  const failed = insights.isError || interventions.isError;
 
   return (
     <Card className="border-border bg-card/70 overflow-hidden">
@@ -106,6 +102,18 @@ export function OperationalDecisionWorkflow() {
           <div className="space-y-2">
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-24 w-full" />
+          </div>
+        ) : unavailable ? (
+          <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+            Operational decision workflow is not available yet because its command views are absent from the live database. No synthetic workflow, confidence, or recommendation is being shown.
+          </div>
+        ) : failed ? (
+          <div className="rounded-lg border border-dashed border-destructive/30 bg-destructive/5 p-5 text-sm text-muted-foreground">
+            Operational workflow data could not be loaded. AICIS has abstained instead of generating placeholder stages.
+          </div>
+        ) : flow.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+            No governed operational workflow evidence is available yet.
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
