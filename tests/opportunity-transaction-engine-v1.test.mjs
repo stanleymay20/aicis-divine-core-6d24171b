@@ -156,3 +156,52 @@ test("reference or market FX can rank a path but cannot make it execution-ready"
   assert.equal(result.execution_ready, false);
   assert.ok(result.execution_dossier.missing_execution_fields.includes("executable_fx_quote"));
 });
+
+
+test("incomplete landed cost hard-rejects a builder-produced physical trade", () => {
+  const result = evaluateOpportunity({
+    ...good,
+    id: "opp-landed-incomplete",
+    landed_cost_complete: false,
+    landed_cost_execution_ready: false,
+  }, prefs);
+
+  assert.equal(result.eligible, false);
+  assert.ok(result.rejection_reasons.includes("landed_cost_incomplete"));
+});
+
+test("research-complete landed cost can rank but remains non-executable until execution-grade", () => {
+  const result = evaluateOpportunity({
+    ...good,
+    id: "opp-landed-research",
+    landed_cost_complete: true,
+    landed_cost_execution_ready: false,
+  }, prefs);
+
+  assert.equal(result.eligible, true);
+  assert.equal(result.execution_ready, false);
+  assert.ok(result.execution_dossier.missing_execution_fields.includes("execution_grade_landed_cost_evidence"));
+});
+
+test("recoverable-tax cash-flow adjustments survive into the execution dossier", () => {
+  const result = evaluateOpportunity({
+    ...good,
+    id: "opp-landed-cash",
+    landed_cost_complete: true,
+    landed_cost_execution_ready: true,
+    cash_flow_adjustments: [{
+      type: "recoverable_tax_cash_requirement",
+      amount: 5985,
+      currency: "EUR",
+      economic_cost: false,
+    }],
+    landed_cost_evidence: {
+      verification_version: "aicis-landed-cost-evidence-v1",
+      coverage_complete: true,
+    },
+  }, prefs);
+
+  assert.equal(result.eligible, true);
+  assert.equal(result.execution_dossier.cash_flow_adjustments[0].amount, 5985);
+  assert.equal(result.execution_dossier.landed_cost_evidence.coverage_complete, true);
+});
