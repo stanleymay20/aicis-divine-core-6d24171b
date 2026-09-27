@@ -218,6 +218,7 @@ export default function PlanetaryCommandCenter() {
       rows: telemetry.data?.length ?? 0,
       loading: telemetry.isLoading,
       error: telemetry.isError,
+      undeployed: notDeployed(telemetry),
       route: "/live",
     },
     {
@@ -228,6 +229,7 @@ export default function PlanetaryCommandCenter() {
       rows: summary.coverage != null ? 1 : 0,
       loading: kpis.isLoading || readiness.isLoading,
       error: kpis.isError && readiness.isError,
+      undeployed: notDeployed(kpis, readiness),
       route: "/data-pipeline",
     },
     {
@@ -238,6 +240,7 @@ export default function PlanetaryCommandCenter() {
       rows: causal.data?.length ?? 0,
       loading: causal.isLoading,
       error: causal.isError,
+      undeployed: notDeployed(causal),
       route: "/intelligence-engine",
     },
     {
@@ -248,6 +251,7 @@ export default function PlanetaryCommandCenter() {
       rows: (insights.data?.length ?? 0) + (agents.data?.length ?? 0),
       loading: insights.isLoading || agents.isLoading,
       error: insights.isError || agents.isError,
+      undeployed: notDeployed(insights, agents),
       route: "/decision-ops",
     },
     {
@@ -258,6 +262,7 @@ export default function PlanetaryCommandCenter() {
       rows: interventions.data?.length ?? 0,
       loading: interventions.isLoading,
       error: interventions.isError,
+      undeployed: notDeployed(interventions),
       route: "/predictions",
     },
     {
@@ -268,9 +273,12 @@ export default function PlanetaryCommandCenter() {
       rows: memory.data?.length ?? 0,
       loading: memory.isLoading,
       error: memory.isError,
+      undeployed: notDeployed(memory),
       route: "/learning-loop",
     },
   ];
+
+  const undeployedStages = stages.filter((stage) => stage.undeployed).map((stage) => stage.label);
 
   const nextAction =
     topInsight?.recommended_action ??
