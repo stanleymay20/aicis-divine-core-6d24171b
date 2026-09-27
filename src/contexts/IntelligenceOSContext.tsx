@@ -13,6 +13,58 @@ import {
 import type { AICISEntity, AICISEntityType, InspectorTab } from "@/types/intelligence-os";
 
 const ENTITY_PARAM = "entity";
+const ENTITY_SESSION_CACHE_KEY = "aicis:intelligence-entity-cache";
+const MAX_SESSION_ENTITIES = 20;
+
+const isEntity = (value: unknown): value is AICISEntity => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entity = value as Partial<AICISEntity>;
+  return (
+    typeof entity.id === "string" &&
+    entity.id.length > 0 &&
+    typeof entity.type === "string" &&
+    entity.type.length > 0 &&
+    typeof entity.name === "string" &&
+    entity.name.length > 0
+  );
+};
+
+const readSessionCache = (): Record<string, AICISEntity> => {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = window.sessionStorage.getItem(ENTITY_SESSION_CACHE_KEY);
+    if (!raw) return {};
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter((entry): entry is [string, AICISEntity] => isEntity(entry[1]))
+        .slice(-MAX_SESSION_ENTITIES),
+    );
+  } catch {
+    return {};
+  }
+};
+
+const writeSessionCache = (cache: Record<string, AICISEntity>) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      ENTITY_SESSION_CACHE_KEY,
+      JSON.stringify(
+        Object.fromEntries(
+          Object.entries(cache).slice(-MAX_SESSION_ENTITIES),
+        ),
+      ),
+    );
+  } catch {
+    // Session storage may be disabled in hardened/private browsing contexts.
+  }
+};
 
 const serializeEntity = (entity: AICISEntity) => [entity.type, entity.id].join(":");
 
@@ -34,7 +86,7 @@ const parseEntity = (value: string | null): AICISEntity | null => {
 export const IntelligenceOSProvider = ({ children }: { children: ReactNode }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const entityParam = searchParams.get(ENTITY_PARAM);
-  const [entityCache, setEntityCache] = useState<Record<string, AICISEntity>>({});
+  const [entityCache, setEntityCache] = useState<Record<string, AICISEntity>>(readSessionCache);
   const [isInspectorOpen, setInspectorOpen] = useState(Boolean(entityParam));
   const [activeInspectorTab, setInspectorTab] = useState<InspectorTab>("overview");
   const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -51,7 +103,15 @@ export const IntelligenceOSProvider = ({ children }: { children: ReactNode }) =>
   const selectEntity = useCallback(
     (entity: AICISEntity) => {
       const key = serializeEntity(entity);
-      setEntityCache((current) => ({ ...current, [key]: entity }));
+      setEntityCache((current) => {
+        const orderedEntries = [
+          ...Object.entries(current).filter(([existingKey]) => existingKey !== key),
+          [key, entity] as const,
+        ].slice(-MAX_SESSION_ENTITIES);
+        const nextCache = Object.fromEntries(orderedEntries);
+        writeSessionCache(nextCache);
+        return nextCache;
+      });
 
       const next = new URLSearchParams(searchParams);
       next.set(ENTITY_PARAM, key);
