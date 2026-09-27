@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -105,6 +105,47 @@ export function TransactionPathLab() {
   const [fxLoading, setFxLoading] = useState(false);
   const { toast } = useToast();
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ role?: "supplier" | "buyer"; offer?: Record<string, unknown> }>).detail || {};
+      if (!detail.offer || (detail.role !== "supplier" && detail.role !== "buyer")) return;
+
+      setPayload((current) => {
+        let parsed: Record<string, unknown> = {};
+        try {
+          const value: unknown = current.trim() ? JSON.parse(current) : {};
+          if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+            parsed = value as Record<string, unknown>;
+          }
+        } catch {
+          parsed = {};
+        }
+
+        const key = detail.role === "supplier" ? "source_offers" : "sale_offers";
+        const existing = Array.isArray(parsed[key]) ? parsed[key] : [];
+        const offerId = typeof detail.offer?.id === "string" ? detail.offer.id : null;
+        const withoutDuplicate = offerId
+          ? existing.filter((item) => {
+              if (typeof item !== "object" || item === null || Array.isArray(item)) return true;
+              return (item as Record<string, unknown>).id !== offerId;
+            })
+          : existing;
+
+        return JSON.stringify({
+          ...parsed,
+          [key]: [...withoutDuplicate, detail.offer],
+        }, null, 2);
+      });
+
+      window.requestAnimationFrame(() => {
+        document.getElementById("transaction-path-lab")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+
+    window.addEventListener("aicis:add-verified-offer", handler as EventListener);
+    return () => window.removeEventListener("aicis:add-verified-offer", handler as EventListener);
+  }, []);
+
   const addReferenceFx = async () => {
     let current: Record<string, unknown>;
     try {
@@ -190,7 +231,7 @@ export function TransactionPathLab() {
   const top = result?.ranking?.top_ranked ?? null;
 
   return (
-    <Card>
+    <Card id="transaction-path-lab">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <CircleDollarSign className="h-4 w-4 text-primary" />
