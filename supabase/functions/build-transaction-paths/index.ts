@@ -16,6 +16,12 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
@@ -33,10 +39,8 @@ Deno.serve(async (req) => {
   if (authError || !user) return json({ ok: false, error: "Unauthorized" }, 401);
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const input = body.input ?? body;
-
-    const built = buildTransactionPaths(input);
+    const body = asRecord(await req.json().catch(() => ({})));
+    const rawInput = asRecord(body.input ?? body);
 
     const { data: prefsRow, error: prefsError } = await sb
       .from("aicis_relevance_preferences")
@@ -57,6 +61,16 @@ Deno.serve(async (req) => {
       alert_preferences: {},
     };
 
+    const alertPreferences = asRecord(preferences.alert_preferences);
+    const opportunityProfile = asRecord(alertPreferences.opportunity_profile);
+    const configuredBaseCurrency = typeof opportunityProfile.base_currency === "string"
+      ? opportunityProfile.base_currency.trim().toUpperCase()
+      : "";
+    const input = {
+      ...rawInput,
+      comparison_currency: rawInput.comparison_currency || (/^[A-Z]{3}$/.test(configuredBaseCurrency) ? configuredBaseCurrency : undefined),
+    };
+    const built = buildTransactionPaths(input);
     const ranked = rankOpportunities(built.candidates, preferences);
     const portfolio = optimizeOpportunityPortfolio(ranked, preferences);
 
