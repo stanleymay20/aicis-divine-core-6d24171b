@@ -58,6 +58,12 @@ function normalizedQuote(response, comparisonCurrency, fxRates, asOf) {
   if (!["quoted_price_only", "explicit_additional_costs", "full_landed_cost"].includes(completeness)) {
     reasons.push("cost_completeness_invalid");
   }
+  if (
+    completeness !== "quoted_price_only" &&
+    !evidenceSetValid(response.cost_completeness_evidence_refs)
+  ) {
+    reasons.push("cost_completeness_evidence_invalid");
+  }
 
   const quotedPrice = finite(quantity) && finite(response.unit_price)
     ? quantity * response.unit_price
@@ -153,6 +159,7 @@ function normalizedQuote(response, comparisonCurrency, fxRates, asOf) {
     payment_terms: clean(response.payment_terms) || null,
     lead_time_days: finite(response.lead_time_days) ? response.lead_time_days : null,
     cost_completeness: completeness,
+    cost_completeness_evidence_refs: list(response.cost_completeness_evidence_refs),
     comparison_currency: targetCurrency || null,
     quoted_price_converted: convertedBase == null ? null : round(convertedBase),
     additional_costs_converted: round(additionalTotal),
@@ -194,20 +201,24 @@ export function compareRfqResponses({
   const validQuotes = normalized.filter((quote) => quote.valid);
   if (validQuotes.length !== normalized.length) reasons.push("one_or_more_quotes_invalid");
 
+  const rfqsMatch = commonValue(validQuotes.map((quote) => quote.rfq_id));
   const productsMatch = commonValue(validQuotes.map((quote) => quote.product_id));
   const unitsMatch = commonValue(validQuotes.map((quote) => quote.quantity_unit));
   const incotermsMatch = commonValue(validQuotes.map((quote) => quote.incoterm));
   const placesMatch = commonValue(validQuotes.map((quote) => quote.named_place_or_port));
+  const paymentTermsMatch = commonValue(validQuotes.map((quote) => quote.payment_terms));
 
   const quantities = validQuotes.map((quote) => quote.quantity);
   const quantityMatch = quantities.length > 0 &&
     quantities.every((value) => finite(value) && value === quantities[0]);
 
+  if (validQuotes.length > 1 && !rfqsMatch) reasons.push("rfq_id_mismatch");
   if (validQuotes.length > 1 && !productsMatch) reasons.push("product_mismatch");
   if (validQuotes.length > 1 && !unitsMatch) reasons.push("quantity_unit_mismatch");
   if (validQuotes.length > 1 && !quantityMatch) reasons.push("quantity_mismatch");
   if (validQuotes.length > 1 && !incotermsMatch) reasons.push("incoterm_mismatch");
   if (validQuotes.length > 1 && !placesMatch) reasons.push("named_place_or_port_mismatch");
+  if (validQuotes.length > 1 && !paymentTermsMatch) reasons.push("payment_terms_mismatch");
 
   const allFullLanded = validQuotes.length > 1 &&
     validQuotes.every((quote) => quote.cost_completeness === "full_landed_cost");
