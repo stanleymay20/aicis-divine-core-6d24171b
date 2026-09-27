@@ -53,6 +53,7 @@ Deno.serve(async (req) => {
       strategic_audit_hash: strategicAuditHash,
       idempotency_key: idempotencyKey,
       as_of: asOf,
+      provider_attested: false,
     });
 
     if (!preview.valid) {
@@ -138,9 +139,12 @@ Deno.serve(async (req) => {
       },
       approval_request: approvalRequest,
       provider_adapter_boundary: {
-        quote_input_must_already_be_normalized_by_a_trusted_provider_adapter: true,
+        supplied_quote_is_provider_attested: false,
+        quote_input_is_semantically_validated_but_not_provider_authenticated: true,
         arbitrary_provider_fetch_performed: false,
         provider_credentials_accepted_in_request: false,
+        executable_evidence_emitted: false,
+        next_requirement: "A server-side provider adapter must authenticate and normalize the live quote before AICIS may emit executable evidence.",
       },
       execution_boundary: {
         provider_submission_enabled: false,
