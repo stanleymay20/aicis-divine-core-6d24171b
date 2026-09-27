@@ -1,7 +1,7 @@
 export const VERIFIED_FX_VERSION = "aicis-verified-fx-v1";
 
 const SHA256 = /^[a-f0-9]{64}$/i;
-const ALLOWED_STATUSES = new Set(["verified_market", "official_reference"]);
+const ALLOWED_STATUSES = new Set(["verified_market", "official_reference", "executable_quote"]);
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const cleanCurrency = (value) => String(value ?? "").trim().toUpperCase();
@@ -88,6 +88,8 @@ export function convertVerifiedAmount(amount, fromCurrency, toCurrency, rates = 
       rate: 1,
       direction: "identity",
       fx_rate_id: null,
+      evidence_status: "identity",
+      execution_eligible_fx: true,
       evidence_refs: [],
     };
   }
@@ -106,6 +108,8 @@ export function convertVerifiedAmount(amount, fromCurrency, toCurrency, rates = 
       fx_rate_id: selected.id ?? null,
       provider: selected.provider ?? null,
       observed_at: selected.observed_at,
+      evidence_status: selected.evidence_status,
+      execution_eligible_fx: selected.evidence_status === "executable_quote",
       evidence_refs: selected.evidence_refs,
     };
   }
@@ -122,6 +126,8 @@ export function convertVerifiedAmount(amount, fromCurrency, toCurrency, rates = 
       fx_rate_id: selected.id ?? null,
       provider: selected.provider ?? null,
       observed_at: selected.observed_at,
+      evidence_status: selected.evidence_status,
+      execution_eligible_fx: selected.evidence_status === "executable_quote",
       evidence_refs: selected.evidence_refs,
     };
   }
