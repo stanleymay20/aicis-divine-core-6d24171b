@@ -143,3 +143,16 @@ test("rankable economics can remain non-executable when transaction details are 
   assert.ok(result.execution_dossier.missing_execution_fields.includes("source_offer"));
   assert.ok(result.execution_dossier.missing_execution_fields.includes("contacts"));
 });
+
+
+test("reference or market FX can rank a path but cannot make it execution-ready", () => {
+  const candidate = {
+    ...good,
+    id: "opp-fx-reference",
+    fx_execution_ready: false,
+  };
+  const result = evaluateOpportunity(candidate, prefs);
+  assert.equal(result.eligible, true);
+  assert.equal(result.execution_ready, false);
+  assert.ok(result.execution_dossier.missing_execution_fields.includes("executable_fx_quote"));
+});
