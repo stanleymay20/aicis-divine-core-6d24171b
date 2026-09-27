@@ -43,3 +43,30 @@ test("completion resolution records evidence satisfaction rather than profit suc
   assert.equal(result.resolution.action_kind, "refresh_buyer_quote");
   assert.equal(result.resolution.metadata.quote_id, "BQ-1");
 });
+
+
+test("landed-cost completion kinds resolve only their matching blockers", () => {
+  assert.equal(
+    researchActionKindForCompletion("landed_cost_verified"),
+    "verify_landed_cost_evidence",
+  );
+  assert.equal(
+    researchActionKindForCompletion("landed_cost_execution_evidence_verified"),
+    "upgrade_landed_cost_execution_evidence",
+  );
+  assert.notEqual(
+    researchActionKindForCompletion("landed_cost_verified"),
+    "upgrade_landed_cost_execution_evidence",
+  );
+});
+
+test("landed-cost resolution records evidence satisfaction without authorizing trade", () => {
+  const result = buildResearchCompletionResolution("landed_cost_verified", {
+    candidate_id: "tx-1",
+    coverage_complete: true,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.resolution.action_kind, "verify_landed_cost_evidence");
+  assert.equal(result.resolution.disposition, "evidence_satisfied_blocker");
+  assert.equal(result.resolution.metadata.coverage_complete, true);
+});
