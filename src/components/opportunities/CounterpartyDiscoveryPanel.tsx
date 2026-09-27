@@ -45,10 +45,10 @@ export function CounterpartyDiscoveryPanel() {
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ product?: string; countries?: string[] }>).detail || {};
+      const detail = (event as CustomEvent<{ product?: string; countries?: string[]; role?: "supplier" | "buyer" }>).detail || {};
       if (detail.product) setProduct(detail.product);
       if (Array.isArray(detail.countries)) setCountriesText(detail.countries.join(", "));
-      setRole("supplier");
+      if (detail.role === "supplier" || detail.role === "buyer") setRole(detail.role);
       window.requestAnimationFrame(() => {
         document.getElementById("counterparty-discovery")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
