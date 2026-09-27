@@ -19,6 +19,7 @@ import { LogisticsRouteVerificationLab } from "@/components/opportunities/Logist
 import { StrategicResearchTracker } from "@/components/opportunities/StrategicResearchTracker";
 import { OpportunityWorkspaceNav } from "@/components/opportunities/OpportunityWorkspaceNav";
 import {
+  AlertTriangle,
   BrainCircuit,
   CircleDollarSign,
   Loader2,
@@ -149,6 +150,8 @@ export default function OpportunityRadar() {
   const {
     data: researchQueue = [],
     isLoading,
+    isError,
+    error: researchError,
     refetch,
   } = useQuery({
     queryKey: ["opportunity-research-queue", user?.id],
@@ -544,6 +547,29 @@ export default function OpportunityRadar() {
           {isLoading ? (
             <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading personalized signals…
+            </div>
+          ) : isError ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/30 bg-destructive/5 p-4"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div>
+                  <p className="text-sm font-medium text-destructive">
+                    Opportunity research unavailable
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Personalized relevance data could not be loaded, so AICIS is
+                    not treating this as an empty research queue.
+                  </p>
+                  {researchError instanceof Error && (
+                    <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+                      {researchError.message}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           ) : researchQueue.length === 0 ? (
             <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
