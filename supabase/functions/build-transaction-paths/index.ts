@@ -4,6 +4,7 @@ import { rankOpportunities } from "../_shared/opportunity-engine-v1.mjs";
 import { optimizeOpportunityPortfolio } from "../_shared/opportunity-portfolio-optimizer-v1.mjs";
 import { evaluateStrategicOptions } from "../_shared/strategic-doctrine-engine-v1.mjs";
 import { hashStrategicSnapshot } from "../_shared/strategic-audit-v1.mjs";
+import { planStrategicResearch } from "../_shared/strategic-research-planner-v1.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -129,6 +130,11 @@ Deno.serve(async (req) => {
       ...strategic,
       audit: strategicAudit,
     };
+    const researchPlan = planStrategicResearch({
+      build: built,
+      ranking: ranked,
+      strategic: strategicWithAudit,
+    });
 
     await sb.from("system_logs").insert({
       user_id: user.id,
@@ -151,6 +157,9 @@ Deno.serve(async (req) => {
         primary_strategy_id: strategic.primary_strategy?.id ?? null,
         strategic_audit_hash: strategicAudit.hash,
         strategic_audit_version: strategicAudit.audit_version,
+        strategic_research_planner_version: researchPlan.planner_version,
+        strategic_research_action_count: researchPlan.action_count,
+        strategic_research_blocking_count: researchPlan.blocking_count,
       },
     });
 
@@ -160,6 +169,7 @@ Deno.serve(async (req) => {
       ranking: ranked,
       portfolio,
       strategic: strategicWithAudit,
+      research_plan: researchPlan,
       execution_boundary: {
         human_approval_required: true,
         external_execution_performed: false,
