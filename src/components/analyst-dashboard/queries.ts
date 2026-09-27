@@ -80,10 +80,17 @@ export const useAnalystKpis = () =>
 
       const sourceRows = (sources.data ?? []) as unknown as SourceStatusRow[];
       const total = sourceRows.length;
-      const online = sourceRows.filter((row) => {
-        const status = (row.status ?? "").toLowerCase();
-        return status === "active" || status === "online" || status === "success";
-      }).length;
+      const sourceCounts = sourceRows.reduce(
+        (counts, row) => {
+          const status = (row.status ?? "").toLowerCase();
+          if (["active", "online", "success", "healthy"].includes(status)) counts.online += 1;
+          else if (["degraded", "warning", "partial"].includes(status)) counts.degraded += 1;
+          else if (["offline", "failed", "error", "disabled"].includes(status)) counts.offline += 1;
+          else counts.unknown += 1;
+          return counts;
+        },
+        { online: 0, degraded: 0, offline: 0, unknown: 0 },
+      );
 
       return {
         events6h: cur,
@@ -95,7 +102,10 @@ export const useAnalystKpis = () =>
         confidence: null as number | null,
         countriesAtRisk,
         sourcesTotal: total,
-        sourcesOnline: online,
+        sourcesOnline: sourceCounts.online,
+        sourcesDegraded: sourceCounts.degraded,
+        sourcesOffline: sourceCounts.offline,
+        sourcesUnknown: sourceCounts.unknown,
       };
     },
   });
