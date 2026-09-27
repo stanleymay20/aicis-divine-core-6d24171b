@@ -126,7 +126,7 @@ export default function OpportunityRadar() {
   useEffect(() => {
     if (!loaded) return;
     const raw = (prefs.alert_preferences?.opportunity_profile ?? {}) as Partial<OpportunityProfile>;
-    const next: OpportunityProfile = { ...DEFAULT_PROFILE, ...raw, manual_approval_required: true };
+    const next = { ...DEFAULT_PROFILE, ...raw, manual_approval_required: true as const };
     setProfile(next);
     setTypesText((next.allowed_transaction_types || []).join(", "));
     setStrategicText({
