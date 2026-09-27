@@ -250,6 +250,141 @@ Tests:
 - `tests/strategic-doctrine-engine-v1.test.mjs`
 - `tests/strategic-doctrine-learning-v1.test.mjs`
 
+# Strategic analysis extensions
+
+## Sensitivity
+Strategic options may carry explicit assumptions and supplied sensitivity cases.
+
+A sensitivity case can contain:
+- assumption;
+- baseline value;
+- shocked value;
+- shocked expected value;
+- evidence refs.
+
+The engine reports:
+- most-sensitive supplied assumption;
+- expected-value delta;
+- largest absolute delta;
+- worst delta.
+
+Sensitivity cases are labelled:
+- `attributable` when evidence refs are supplied;
+- `user_defined_scenario` when they are deliberate what-if inputs.
+
+User-defined stress cases are useful decision tools but are not forecasts.
+
+## Robustness and regret
+For supplied scenario outcomes the engine can calculate:
+- worst case;
+- average case;
+- best case;
+- a downside-based robustness indicator.
+
+When at least two strategies share the same scenario ids, AICIS can also calculate:
+- maximum regret;
+- average regret.
+
+These calculations are scoped only to supplied scenarios. They do not imply scenario completeness or probability.
+
+## Position value
+A position-building option may become economically comparable only when attributable evidence supports:
+- commitment cost;
+- option-value estimate;
+- currency;
+- evidence score;
+- provenance.
+
+```text
+Net position value
+= option-value estimate
+- commitment cost
+```
+
+Without provenance the position remains research-only.
+
+## Strategic fingerprint
+- `supabase/functions/_shared/strategic-audit-v1.mjs`
+- `tests/strategic-audit-v1.test.mjs`
+
+Every strategic response is fingerprinted before outcome observation using canonical JSON and SHA-256.
+
+The fingerprint covers the complete strategic result before the audit object is attached, including:
+- strategic state;
+- evaluated options;
+- primary strategy;
+- Pareto frontier;
+- doctrine trace;
+- assumptions;
+- sensitivity;
+- robustness/regret;
+- learning packet.
+
+The fingerprint is not a blockchain and is not an external trusted timestamp. It is an integrity fingerprint that can detect substantive post-hoc mutation when compared with the retained pre-outcome hash.
+
+## Doctrine-learning data integrity
+Doctrine outcome evaluation:
+- excludes duplicate decision ids entirely rather than double-counting them;
+- separately reports outcomes linked to a valid 64-character strategic audit hash;
+- permits high-quality but unlinked evidence to contribute to non-causal association analysis;
+- never upgrades association to causal attribution automatically.
+
+# Blocker-driven evidence acquisition
+
+`supabase/functions/_shared/strategic-research-planner-v1.mjs`
+
+When execution or strategic comparison is blocked, AICIS should not merely return an error and should not invent missing economics.
+
+It generates research-only evidence tasks from observed blockers, including:
+- refresh expired/unverified supplier quote;
+- refresh expired/unverified buyer quote;
+- refresh logistics quote/capacity;
+- validate scenario inputs;
+- obtain verified FX normalization for mixed-currency strategy comparison;
+- obtain executable FX when reference FX is insufficient for execution;
+- resolve a declared capability gap;
+- investigate lower-capital structures when direct execution exceeds deployable capital and no evidenced indirect option exists;
+- evidence information value;
+- evidence position value;
+- complete compliance review;
+- verify public/licensed business contact channels;
+- validate the most decision-sensitive assumption.
+
+Every generated task must retain:
+```text
+research_only = true
+transaction_eligible = false
+expected_value = null
+profit_claim = null
+```
+
+Tasks carry:
+- explicit trigger;
+- required evidence;
+- completion criteria;
+- suggested next safe step;
+- priority: blocking | high | normal.
+
+The planner is deterministic and de-duplicates shared blockers.
+
+Its scope rule is:
+
+> A research task says what evidence is missing. It does not assert that the missing alternative exists, that research will succeed, or that resolving the blocker will make the opportunity profitable.
+
+# Candidate-scoping rule
+
+Strategic alternatives, scenarios and sensitivity cases may optionally declare:
+- source_id;
+- buyer_id;
+- route_id;
+- transaction_type.
+
+When a scope is declared, the path builder must attach the item only to matching transaction candidates.
+
+Unscoped items intentionally apply across the supplied candidate set.
+
+This prevents evidence or strategy assumptions for Supplier A / Route A from leaking into unrelated Supplier B / Route B candidates.
+
 # Governing principles
 
 - Evidence precedes strategy.
