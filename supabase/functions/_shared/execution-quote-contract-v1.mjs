@@ -18,6 +18,11 @@ const ALLOWED_INSTRUMENT_KINDS = new Set([
   "physical_trade",
   "other",
 ]);
+const ALLOWED_PURPOSES = new Set([
+  "primary_transaction",
+  "fx_conversion",
+  "fee_estimate",
+]);
 const FORBIDDEN_KEY = /(password|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|private[_-]?key|client[_-]?secret)/i;
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
@@ -135,12 +140,16 @@ export function validateExecutionQuote(quote = {}, asOf = new Date().toISOString
     : currency(quote?.pricing?.currency);
   const price = selectedPrice(quote);
   const leakedSecretPath = forbiddenPath(quote);
+  const boundCandidateId = clean(quote?.execution_context?.candidate_id);
+  const purpose = clean(quote?.execution_context?.purpose).toLowerCase();
 
   if (!Number.isFinite(asOfMs)) reasons.push("invalid_as_of");
   if (!quoteId) reasons.push("quote_id_missing");
   if (!providerQuoteId) reasons.push("provider_quote_id_missing");
   if (!providerName) reasons.push("provider_name_missing");
   if (!providerAdapter) reasons.push("provider_adapter_missing");
+  if (!boundCandidateId) reasons.push("quote_candidate_binding_missing");
+  if (!ALLOWED_PURPOSES.has(purpose)) reasons.push("quote_purpose_invalid");
   if (!ALLOWED_STATUSES.has(status)) reasons.push("quote_status_invalid");
   if (!ALLOWED_SIDES.has(side)) reasons.push("side_invalid");
   if (!ALLOWED_INSTRUMENT_KINDS.has(kind)) reasons.push("instrument_kind_invalid");
@@ -168,6 +177,7 @@ export function validateExecutionQuote(quote = {}, asOf = new Date().toISOString
     if (!quoted || quoted.length !== 3) reasons.push("quote_currency_invalid");
     if (base && quoted && base === quoted) reasons.push("fx_pair_must_differ");
     if (side !== "convert") reasons.push("fx_side_must_be_convert");
+    if (purpose && purpose !== "fx_conversion") reasons.push("fx_quote_purpose_must_be_fx_conversion");
   } else {
     if (!clean(quote?.instrument?.symbol || quote?.instrument?.product_id || quote?.instrument?.description)) {
       reasons.push("instrument_identity_missing");
@@ -199,6 +209,10 @@ export function validateExecutionQuote(quote = {}, asOf = new Date().toISOString
       selected_price_source: price?.source ?? null,
       costs: costs.entries,
       estimated_costs_total: costs.total,
+      execution_context: {
+        candidate_id: boundCandidateId || null,
+        purpose: purpose || null,
+      },
       account_context: quote.account_context ?? null,
       evidence_refs: list(quote.evidence_refs),
     },
@@ -246,7 +260,8 @@ function normalizedFxRate(normalized) {
   if (
     clean(normalized?.instrument?.kind).toLowerCase() !== "fx" ||
     normalized.status !== EXECUTABLE_STATUS ||
-    !finite(normalized.selected_price)
+    !finite(normalized.selected_price) ||
+    (normalized.estimated_costs_total ?? 0) > 0
   ) {
     return null;
   }
@@ -281,6 +296,13 @@ export function buildExecutionPreview({
   const idempotency = clean(idempotency_key);
 
   if (!candidateId) reasons.push("candidate_id_missing");
+  if (
+    candidateId &&
+    quoteValidation.normalized?.execution_context?.candidate_id &&
+    quoteValidation.normalized.execution_context.candidate_id !== candidateId
+  ) {
+    reasons.push("quote_candidate_binding_mismatch");
+  }
   if (!SHA256.test(auditHash)) reasons.push("strategic_audit_hash_invalid");
   if (!IDEMPOTENCY.test(idempotency)) reasons.push("idempotency_key_invalid");
   if (!quoteValidation.valid) reasons.push(...quoteValidation.reasons);
@@ -311,6 +333,13 @@ export function buildExecutionPreview({
     quote: normalized,
     economics,
     normalized_fx_rate: reasons.length ? null : normalizedFxRate(normalized),
+    fx_handoff_blocked_reason:
+      reasons.length === 0 &&
+      clean(normalized?.instrument?.kind).toLowerCase() === "fx" &&
+      normalized.status === EXECUTABLE_STATUS &&
+      (normalized.estimated_costs_total ?? 0) > 0
+        ? "explicit_fx_costs_require_transaction_cost_integration"
+        : null,
     approval: {
       human_approval_required: true,
       human_approval_package_ready: reasons.length === 0 && executableQuote && candidateExecutionReady,
