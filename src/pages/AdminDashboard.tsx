@@ -56,8 +56,18 @@ const AdminDashboard = () => {
   const { data: organizations } = useQuery({
     queryKey: ["admin-organizations"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("organizations").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("id,created_at")
+        .order("created_at", { ascending: false });
+      if (error) {
+        // Keep database authorization fail-closed. The Settings page does not
+        // need organization contents merely to render; unavailable count stays unknown.
+        if (error.code === "42501" || /permission|policy|row-level security|forbidden/i.test(error.message)) {
+          return null;
+        }
+        throw error;
+      }
       return data;
     },
   });
@@ -165,7 +175,7 @@ const AdminDashboard = () => {
               totalDivisions={totalDivisions}
               alertsCount={alertsCount}
               predictionsCount={predictionsCount}
-              organizationsCount={organizations?.length || 0}
+              organizationsCount={organizations?.length ?? null}
               onSyncData={() => triggerDataSync.mutate()}
               onGeneratePredictions={() => triggerPredictions.mutate()}
               onRunVulnScan={() => runVulnerabilityScan.mutate()}
