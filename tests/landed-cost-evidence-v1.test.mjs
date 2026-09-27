@@ -8,14 +8,19 @@ const ref = (id) => [{ source_id: id, observed_at: "2026-09-27T16:00:00Z", sha25
 
 function coverage(overrides = {}) {
   const statuses = {
+    origin_inland_transport: { status: "covered_elsewhere", existing_cost_id: "origin-inland-route", evidence_refs: ref("origin-inland-existing") },
+    origin_handling: { status: "covered_elsewhere", existing_cost_id: "origin-handling-route", evidence_refs: ref("origin-handling-existing") },
     export_customs: { status: "not_applicable", reason: "No separate export customs charge for supplied scenario", evidence_refs: ref("export-na") },
+    export_duty_tax: { status: "not_applicable", reason: "No evidenced export duty/tax for supplied scenario", evidence_refs: ref("export-duty-na") },
+    international_freight: { status: "covered_elsewhere", existing_cost_id: "freight-route", evidence_refs: ref("freight-existing") },
+    cargo_insurance: { status: "covered_elsewhere", existing_cost_id: "insurance-route", evidence_refs: ref("insurance-existing") },
     import_duty: { status: "included_here" },
     import_tax: { status: "included_here" },
     customs_brokerage: { status: "included_here" },
-    inspection_certification: { status: "covered_elsewhere", existing_cost_id: "inspection-route", evidence_refs: ref("inspection-existing") },
-    cargo_insurance: { status: "covered_elsewhere", existing_cost_id: "insurance-route", evidence_refs: ref("insurance-existing") },
-    financing: { status: "included_here" },
     destination_handling: { status: "included_here" },
+    inspection_certification: { status: "covered_elsewhere", existing_cost_id: "inspection-route", evidence_refs: ref("inspection-existing") },
+    financing: { status: "included_here" },
+    storage_distribution: { status: "not_applicable", reason: "Buyer takes delivery at named destination in supplied scenario", evidence_refs: ref("storage-na") },
     ...overrides,
   };
   return Object.entries(statuses).map(([category, value]) => ({ category, ...value }));
