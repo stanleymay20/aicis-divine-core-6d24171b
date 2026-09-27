@@ -21,11 +21,40 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function hitArray(payload: any): any[] {
-  const data = payload?.data ?? payload ?? {};
-  const web = Array.isArray(data?.web) ? data.web : Array.isArray(payload?.web) ? payload.web : [];
-  const results = Array.isArray(data?.data) ? data.data : Array.isArray(payload?.data) ? payload.data : [];
-  return [...web, ...results];
+type JsonRecord = Record<string, unknown>;
+
+type SearchHit = {
+  url: string;
+  title: string;
+  description: string;
+  markdown: string;
+  discovery_query?: string;
+};
+
+function asRecord(value: unknown): JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as JsonRecord
+    : {};
+}
+
+function asRecordArray(value: unknown): JsonRecord[] {
+  return Array.isArray(value) ? value.map(asRecord) : [];
+}
+
+function stringField(record: JsonRecord, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string") return value;
+  }
+  return "";
+}
+
+function hitArray(payload: unknown): JsonRecord[] {
+  const root = asRecord(payload);
+  const nested = asRecord(root.data);
+  const web = Array.isArray(nested.web) ? asRecordArray(nested.web) : asRecordArray(root.web);
+  const nestedData = Array.isArray(nested.data) ? asRecordArray(nested.data) : asRecordArray(root.data);
+  return [...web, ...nestedData];
 }
 
 async function sha256(value: string) {
@@ -57,12 +86,12 @@ async function searchFirecrawl(apiKey: string, query: string, limit: number) {
     throw new Error("Firecrawl search failed with HTTP " + response.status);
   }
 
-  const payload = await response.json();
-  return hitArray(payload).map((hit: any) => ({
-    url: hit?.url || hit?.link || "",
-    title: hit?.title || hit?.name || "",
-    description: hit?.description || hit?.snippet || "",
-    markdown: hit?.markdown || hit?.content || "",
+  const payload: unknown = await response.json();
+  return hitArray(payload).map((hit): SearchHit => ({
+    url: stringField(hit, "url", "link"),
+    title: stringField(hit, "title", "name"),
+    description: stringField(hit, "description", "snippet"),
+    markdown: stringField(hit, "markdown", "content"),
   }));
 }
 
@@ -122,7 +151,7 @@ Deno.serve(async (req) => {
     const queries = buildCounterpartyQueries(input);
     if (queries.length === 0) return json({ ok: false, error: "No valid discovery queries could be constructed" }, 400);
 
-    const rawHits: any[] = [];
+    const rawHits: SearchHit[] = [];
     const queryResults: Array<{ query: string; hits: number }> = [];
 
     for (const query of queries) {
@@ -137,7 +166,7 @@ Deno.serve(async (req) => {
     }
 
     const normalized = normalizeDiscoveryHits(rawHits, input).slice(0, maxCandidates);
-    const rawByDomain = new Map<string, any>();
+    const rawByDomain = new Map<string, SearchHit>();
     for (const hit of rawHits) {
       try {
         const domain = new URL(hit.url).hostname.toLowerCase().replace(/^www\./, "");
