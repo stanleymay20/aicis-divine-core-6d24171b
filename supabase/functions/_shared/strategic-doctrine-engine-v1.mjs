@@ -367,6 +367,7 @@ function sensitivityAnalysis(option) {
       shocked_expected_value: round(item.shocked_expected_value),
       delta_expected_value: round(item.shocked_expected_value - baseline),
       evidence_refs: list(item.evidence_refs),
+      evidence_status: list(item.evidence_refs).length > 0 ? "attributable" : "user_defined_scenario",
     }))
     .sort((a, b) => Math.abs(b.delta_expected_value) - Math.abs(a.delta_expected_value));
 
