@@ -11,36 +11,57 @@ const DOCTRINES = {
   know_self: {
     id: "know_self",
     source: "sunzi_derived",
+    status: "experimental",
+    falsifiable_claim: "Strategies aligned with verified actor capabilities should fail less often from execution infeasibility.",
+    measurement_hint: "execution_failure_rate_due_to_capability_gap",
     principle: "Assess the actor's actual capabilities and constraints before selecting a strategy.",
   },
   know_terrain: {
     id: "know_terrain",
     source: "sunzi_derived",
+    status: "experimental",
+    falsifiable_claim: "Strategies that explicitly model material terrain constraints should suffer fewer unanticipated operational failures.",
+    measurement_hint: "unanticipated_operational_failure_rate",
     principle: "Evaluate geography, regulation, infrastructure, market structure and operating conditions.",
   },
   timing: {
     id: "timing",
     source: "sunzi_derived",
+    status: "experimental",
+    falsifiable_claim: "Strategies executed within evidence-backed windows should outperform otherwise comparable late actions.",
+    measurement_hint: "realized_value_vs_timing_window",
     principle: "Treat timing and opportunity windows as part of strategy, not metadata.",
   },
   economy_of_force: {
     id: "economy_of_force",
     source: "sunzi_derived",
+    status: "experimental",
+    falsifiable_claim: "For comparable objectives, lower unnecessary capital exposure should improve risk-adjusted realized value.",
+    measurement_hint: "incremental_value_per_capital_at_risk",
     principle: "Prefer strategies that achieve the objective with lower unnecessary capital, exposure or friction when outcomes are comparable.",
   },
   indirect_approach: {
     id: "indirect_approach",
     source: "sunzi_derived",
+    status: "experimental",
+    falsifiable_claim: "Evidence-backed indirect strategies can outperform direct strategies when they achieve similar objectives with lower exposure.",
+    measurement_hint: "risk_adjusted_incremental_value_vs_direct_comparator",
     principle: "Consider indirect structures such as brokerage, partnership or financing instead of assuming principal ownership is best.",
   },
   formlessness: {
     id: "formlessness",
     source: "sunzi_derived",
+    status: "experimental",
+    falsifiable_claim: "Contingent strategies with explicit switching rules should reduce losses when conditions change materially.",
+    measurement_hint: "loss_avoided_after_invalidation_or_switch",
     principle: "Represent strategy as a contingent policy with invalidation and switching conditions.",
   },
   foreknowledge: {
     id: "foreknowledge",
     source: "sunzi_derived",
+    status: "experimental",
+    falsifiable_claim: "Decision-relevant information should improve outcomes when its realized decision-loss reduction exceeds acquisition cost.",
+    measurement_hint: "realized_information_value",
     principle: "Acquire decision-relevant information before irreversible commitment when information value exceeds its cost.",
   },
 };
@@ -489,17 +510,45 @@ export function evaluateStrategicOptions({
       return bv - av;
     });
 
+  const primary = mixedCurrencyBlocked ? null : (selectable[0] || null);
+  const noAction = selectable.find((option) => option.strategy_type === "no_action") || null;
+  const doctrineIds = primary
+    ? [...new Set(primary.doctrine_trace.map((item) => item.id))]
+    : [];
+  const learningPacket = primary ? {
+    strategy_id: primary.id,
+    source_candidate_id: primary.source_candidate_id,
+    strategy_type: primary.strategy_type,
+    doctrine_ids: doctrineIds,
+    comparator_strategy_id: noAction?.id ?? null,
+    evaluated_option_ids: evaluated.map((option) => option.id),
+    pareto_frontier_ids: evaluated.filter((option) => option.pareto_frontier).map((option) => option.id),
+    pre_registered_outcome_metrics: [
+      "outcome_success",
+      "realized_net_value",
+      "time_to_outcome_days",
+      "capital_actually_committed",
+      "maximum_realized_downside",
+      "strategy_switched",
+      "invalidation_triggered",
+    ],
+    pre_commit_invalidation_rules: primary.invalidation_rules,
+    pre_commit_switching_rules: primary.switching_rules,
+    epistemic_boundary: "outcome_association_not_causal_attribution",
+  } : null;
+
   return {
     engine_version: STRATEGIC_DOCTRINE_ENGINE_VERSION,
     strategic_state: state,
     option_count: evaluated.length,
     feasible_count: evaluated.filter((option) => option.feasible).length,
     pareto_frontier_count: evaluated.filter((option) => option.pareto_frontier).length,
-    primary_strategy: mixedCurrencyBlocked ? null : (selectable[0] || null),
+    primary_strategy: primary,
     primary_information_action: mixedCurrencyBlocked
       ? null
       : (selectable.find((option) => option.strategy_type === "information_gathering") || null),
-    no_action_option: selectable.find((option) => option.strategy_type === "no_action") || null,
+    no_action_option: noAction,
+    learning_packet: learningPacket,
     comparison_currency: comparableCurrencies.length === 1 ? comparableCurrencies[0] : null,
     comparison_blocked_reason: mixedCurrencyBlocked ? "mixed_currency_strategy_options_require_verified_fx_normalization" : null,
     options: evaluated,
