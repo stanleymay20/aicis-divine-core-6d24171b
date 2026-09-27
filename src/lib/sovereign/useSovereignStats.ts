@@ -13,8 +13,8 @@ export interface SovereignStats {
 
 async function fetchSovereignStats(): Promise<SovereignStats> {
   const [ledger, citations, authorities, residency, keys, signed] = await Promise.all([
-    supabase.from("ledger_entries").select("*", { count: "exact", head: true }),
-    supabase.from("intelligence_citations").select("*", { count: "exact", head: true }),
+    supabase.from("ledger_entries").select("*", { count: "estimated", head: true }),
+    supabase.from("intelligence_citations").select("*", { count: "estimated", head: true }),
     supabase.from("source_authority_registry").select("*", { count: "exact", head: true }),
     supabase.from("data_residency_manifest").select("*", { count: "exact", head: true }),
     supabase.from("federation_signing_keys").select("*", { count: "exact", head: true }).eq("is_active", true),
@@ -28,7 +28,7 @@ async function fetchSovereignStats(): Promise<SovereignStats> {
     residencyResources: residency.count ?? 0,
     activeKeys: keys.count ?? 0,
     lastSignedAt: (signed.data as any)?.signed_at ?? null,
-    ledgerChainOk: (ledger.count ?? 0) > 0,
+    ledgerChainOk: !ledger.error && (ledger.count ?? 0) > 0,
   };
 }
 

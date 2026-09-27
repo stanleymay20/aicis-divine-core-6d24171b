@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -21,7 +21,8 @@ interface IncidentMarkersProps {
 
 export const useIncidentMarkers = ({ map, isMapLoaded, onIncidentClick }: IncidentMarkersProps) => {
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [markers, setMarkers] = useState<maplibregl.Marker[]>([]);
+  const clickRef = useRef(onIncidentClick);
+  clickRef.current = onIncidentClick;
 
   useEffect(() => {
     const fetchIncidents = async () => {
@@ -69,7 +70,7 @@ export const useIncidentMarkers = ({ map, isMapLoaded, onIncidentClick }: Incide
   useEffect(() => {
     if (!map || !isMapLoaded) return;
 
-    markers.forEach(m => m.remove());
+
     const newMarkers: maplibregl.Marker[] = [];
 
     incidents.forEach(incident => {
@@ -89,7 +90,7 @@ export const useIncidentMarkers = ({ map, isMapLoaded, onIncidentClick }: Incide
       el.style.cursor = "pointer";
       
       el.addEventListener("click", () => {
-        onIncidentClick?.(incident);
+        clickRef.current?.(incident);
         map.flyTo({ center: [incident.longitude, incident.latitude], zoom: 8, duration: 1500 });
       });
 
@@ -100,12 +101,12 @@ export const useIncidentMarkers = ({ map, isMapLoaded, onIncidentClick }: Incide
       newMarkers.push(marker);
     });
 
-    setMarkers(newMarkers);
+
 
     return () => {
       newMarkers.forEach(m => m.remove());
     };
-  }, [map, isMapLoaded, incidents, onIncidentClick]);
+  }, [map, isMapLoaded, incidents]);
 
   return { incidents, incidentCount: incidents.length };
 };

@@ -87,10 +87,24 @@ Deno.serve(async (req) => {
     }
 
     const { data, error } = await query;
+    if (error && (error as { code?: string }).code === "PGRST205") {
+      // Storage for research runs is not provisioned in the live database.
+      // Report the gap explicitly instead of failing the whole page.
+      return json({
+        ok: true,
+        available: false,
+        statuses,
+        strategic_audit_hash: auditHash || null,
+        run_count: 0,
+        runs: [],
+        scope_notice: "Research run tracking is not yet provisioned; no runs can be listed.",
+      });
+    }
     if (error) throw error;
 
     return json({
       ok: true,
+      available: true,
       statuses,
       strategic_audit_hash: auditHash || null,
       run_count: data?.length ?? 0,
