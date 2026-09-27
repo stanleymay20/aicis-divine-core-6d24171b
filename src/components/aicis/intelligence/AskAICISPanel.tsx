@@ -40,9 +40,9 @@ export const AskAICISPanel = () => {
         </div>
         <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
           {activeQuestion
-            ? "The active investigation question is preloaded. Edit it here or open it in full research."
+            ? "The active investigation question is preloaded. Edit it here or continue into evidence research."
             : selectedEntity
-              ? "The selected " + selectedEntity.type + " is carried into the research workspace."
+              ? "The selected " + selectedEntity.type + " is carried into the evidence-research workspace."
               : "Ask from the current workspace or select an entity first for stronger context."}
         </p>
       </div>
@@ -59,7 +59,7 @@ export const AskAICISPanel = () => {
           aria-label="Ask AICIS"
         />
         <Button type="submit" className="w-full gap-2" disabled={!question.trim()}>
-          Open in full research
+          Continue in evidence research
           <ExternalLink className="h-3.5 w-3.5" />
         </Button>
       </form>
