@@ -20,6 +20,8 @@ import {
   Sigma,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ForecastWorkspaceNav } from "@/components/forecast/ForecastWorkspaceNav";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 
 const HORIZONS = [
   { key: "7", label: "7 days" },
@@ -157,8 +159,49 @@ function formatSourceDate(value?: string | null): string | null {
 export default function PredictionsPage() {
   const queryClient = useQueryClient();
   const { isAdmin, isLoading: rolesLoading } = useUserRoles();
+  const { selectEntity } = useIntelligenceOS();
   const [horizon, setHorizon] = useState("7");
   const [domainFilter, setDomainFilter] = useState<string>("all");
+
+  const inspectPrediction = (row: MLRow) => {
+    const semantics = scoreSemantics(row);
+    const score = displayScore(row);
+    const hasEmpiricalInterval =
+      semantics === "calibrated" &&
+      row.interval_semantics === "wilson_95_empirical_calibration_bin_rate" &&
+      row.prediction_interval_lower !== null &&
+      row.prediction_interval_upper !== null;
+
+    selectEntity({
+      id: row.id,
+      type: "forecast",
+      name: `${row.country_iso3} · ${row.domain}`,
+      description: `${row.horizon_days}-day analytical estimate · ${semanticsLabel(row)}.`,
+      geography: { country: row.country_iso3 },
+      metadata: {
+        displayedEstimate:
+          score == null ? null : `${(score * 100).toFixed(1)}%`,
+        semantics: semanticsLabel(row),
+        horizonDays: row.horizon_days,
+        modelVersion: row.model_version,
+        modelSemantics: modelSemanticsLabel(row.model_semantics),
+        calibrationStatus: row.calibration_status ?? null,
+        calibrationSampleSize: row.calibration_sample_size ?? null,
+        empiricalIntervalLower:
+          hasEmpiricalInterval && row.prediction_interval_lower !== null
+            ? `${(Number(row.prediction_interval_lower) * 100).toFixed(1)}%`
+            : null,
+        empiricalIntervalUpper:
+          hasEmpiricalInterval && row.prediction_interval_upper !== null
+            ? `${(Number(row.prediction_interval_upper) * 100).toFixed(1)}%`
+            : null,
+        sourceSnapshotDate: row.source_snapshot_date ?? null,
+        featureCompleteness: row.feature_completeness ?? null,
+        trainingRunId: row.training_run_id ?? null,
+        auditHash: row.audit_hash,
+      },
+    });
+  };
 
   const list = useQuery({
     queryKey: ["ml-predictions", horizon],
@@ -239,6 +282,7 @@ export default function PredictionsPage() {
   return (
     <AICISLayout>
       <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
+        <ForecastWorkspaceNav />
         <PanelBoundary>
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
@@ -523,6 +567,17 @@ export default function PredictionsPage() {
                               <Badge variant="outline" className={`text-[11px] font-mono tabular-nums ${scoreClass(score)}`}>
                                 {score === null ? "unknown" : `${(score * 100).toFixed(0)}%`}
                               </Badge>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 shrink-0 gap-1 px-2 text-[10px]"
+                                onClick={() => inspectPrediction(row)}
+                                aria-label={`Inspect forecast for ${row.country_iso3} ${row.domain}`}
+                              >
+                                <Brain className="h-3 w-3" />
+                                Inspect
+                              </Button>
                             </div>
                           );
                         })}
