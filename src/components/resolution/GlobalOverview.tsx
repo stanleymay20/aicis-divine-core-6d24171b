@@ -165,10 +165,18 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
           ) : (
             <div className="divide-y divide-border">
               {topCountries?.map((c) => (
-                <button
+                <div
                   key={c.iso3}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => onSelectCountry(c.iso3, countryNames[c.iso3] || c.iso3)}
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors text-left"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onSelectCountry(c.iso3, countryNames[c.iso3] || c.iso3);
+                    }
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-xs text-muted-foreground w-8">{c.iso3}</span>
@@ -186,7 +194,7 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
                     {directionIcon(c.netDirection)}
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
