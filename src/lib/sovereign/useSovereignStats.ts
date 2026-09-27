@@ -27,7 +27,7 @@ async function fetchSovereignStats(): Promise<SovereignStats> {
     authoritySources: authorities.count ?? 0,
     residencyResources: residency.count ?? 0,
     activeKeys: keys.count ?? 0,
-    lastSignedAt: (signed.data as any)?.signed_at ?? null,
+    lastSignedAt: signed.data?.signed_at ?? null,
     ledgerChainOk: !ledger.error && (ledger.count ?? 0) > 0,
   };
 }

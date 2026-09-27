@@ -1,5 +1,5 @@
 import { Command, PanelRight } from "lucide-react";
-import { useIntelligenceOS } from "@/contexts/IntelligenceOSContext";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 
 export const SystemStatusBar = () => {
   const { selectedEntity, isInspectorOpen } = useIntelligenceOS();

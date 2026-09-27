@@ -18,7 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
-import { useIntelligenceOS } from "@/contexts/IntelligenceOSContext";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import {
   DropdownMenu,
   DropdownMenuContent,

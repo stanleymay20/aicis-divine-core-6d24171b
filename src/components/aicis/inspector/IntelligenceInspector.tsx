@@ -14,7 +14,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { useIntelligenceOS } from "@/contexts/IntelligenceOSContext";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import type { InspectorTab } from "@/types/intelligence-os";

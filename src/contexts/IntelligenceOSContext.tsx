@@ -1,32 +1,18 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router-dom";
+import {
+  IntelligenceOSContext,
+  type IntelligenceOSContextValue,
+} from "@/contexts/intelligence-os-context";
 import type { AICISEntity, AICISEntityType, InspectorTab } from "@/types/intelligence-os";
 
 const ENTITY_PARAM = "entity";
-
-interface IntelligenceOSContextValue {
-  selectedEntity: AICISEntity | null;
-  isInspectorOpen: boolean;
-  activeInspectorTab: InspectorTab;
-  isCommandPaletteOpen: boolean;
-  selectEntity: (entity: AICISEntity) => void;
-  clearEntity: () => void;
-  openInspector: (tab?: InspectorTab) => void;
-  closeInspector: () => void;
-  setInspectorTab: (tab: InspectorTab) => void;
-  openAsk: () => void;
-  setCommandPaletteOpen: (open: boolean) => void;
-}
-
-const IntelligenceOSContext = createContext<IntelligenceOSContextValue | null>(null);
 
 const serializeEntity = (entity: AICISEntity) => [entity.type, entity.id].join(":");
 
@@ -138,12 +124,4 @@ export const IntelligenceOSProvider = ({ children }: { children: ReactNode }) =>
   );
 
   return <IntelligenceOSContext.Provider value={value}>{children}</IntelligenceOSContext.Provider>;
-};
-
-export const useIntelligenceOS = () => {
-  const context = useContext(IntelligenceOSContext);
-  if (!context) {
-    throw new Error("useIntelligenceOS must be used inside IntelligenceOSProvider");
-  }
-  return context;
 };

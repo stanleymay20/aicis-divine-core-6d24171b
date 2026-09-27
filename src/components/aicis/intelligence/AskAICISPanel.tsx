@@ -3,7 +3,7 @@ import { BrainCircuit, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useIntelligenceOS } from "@/contexts/IntelligenceOSContext";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 
 export const AskAICISPanel = () => {
   const navigate = useNavigate();

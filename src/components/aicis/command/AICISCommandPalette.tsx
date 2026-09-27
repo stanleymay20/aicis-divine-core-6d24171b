@@ -20,7 +20,7 @@ import {
   CommandList,
   CommandShortcut,
 } from "@/components/ui/command";
-import { useIntelligenceOS } from "@/contexts/IntelligenceOSContext";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import { useUserRoles } from "@/hooks/useUserRoles";
 
 const baseWorkspaces = [
