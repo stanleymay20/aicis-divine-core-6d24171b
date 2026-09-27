@@ -18,11 +18,20 @@ type ScreenMatch = {
   identifier_match?: boolean;
 };
 
+type EvidenceRef = {
+  source_id?: string;
+  source_type?: string;
+  source_url?: string;
+  observed_at?: string;
+  sha256?: string;
+};
+
 type SourceStatus = {
   source?: string;
   ok?: boolean;
   error?: string;
   records?: number;
+  evidence_ref?: EvidenceRef;
 };
 
 type ScreenResponse = {
@@ -202,6 +211,71 @@ export function SanctionsScreenPanel() {
 
             <div className="rounded-md bg-muted/25 p-3 text-[11px] text-muted-foreground">
               {response.compliance_boundary?.notice || "Human compliance review remains required before transaction eligibility."}
+            </div>
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const evidenceRefs = (response.sources || [])
+                    .map((source) => source.evidence_ref)
+                    .filter((ref): ref is EvidenceRef => Boolean(ref?.source_id && ref?.observed_at && ref?.sha256));
+                  const screenedAt = evidenceRefs
+                    .map((ref) => ref.observed_at || "")
+                    .filter(Boolean)
+                    .sort()
+                    .at(-1) || new Date().toISOString();
+                  window.dispatchEvent(new CustomEvent("aicis:verify-counterparty", {
+                    detail: {
+                      dossier: {
+                        as_of: new Date().toISOString(),
+                        role: "supplier",
+                        legal_identity: {
+                          legal_name: legalName.trim(),
+                          jurisdiction: "",
+                          registration_id: registrationId.trim(),
+                          evidence_refs: [],
+                        },
+                        official_site: {
+                          domain: "",
+                          url: "",
+                          evidence_refs: [],
+                        },
+                        compliance: {
+                          status: "review",
+                          screened_at: screenedAt,
+                          evidence_refs: evidenceRefs,
+                        },
+                        commercial_quote: {
+                          quote_id: "",
+                          product_id: "",
+                          unit_price: 0,
+                          currency: "",
+                          min_quantity: null,
+                          max_quantity: null,
+                          incoterm: "",
+                          valid_until: "",
+                          evidence_status: "verified_quote",
+                          evidence_refs: [],
+                        },
+                        capacity: {
+                          status: "verified",
+                          evidence_refs: [],
+                        },
+                        payment_terms: {
+                          terms: "",
+                          evidence_refs: [],
+                        },
+                        contact_channels: [],
+                        evidence_score: 0,
+                        counterparty_quality_score: 50,
+                      },
+                    },
+                  }));
+                }}
+              >
+                Prepare verification dossier
+              </Button>
             </div>
           </div>
         ) : null}
