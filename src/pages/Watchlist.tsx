@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Eye, Plus, AlertTriangle, TrendingUp, Bell, Globe } from "lucide-react";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useNavigate } from "react-router-dom";
+import { DecisionWorkspaceNav } from "@/components/decisions/DecisionWorkspaceNav";
 
 export default function Watchlist() {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ export default function Watchlist() {
   return (
     <AICISLayout>
       <div className="p-4 md:p-6 lg:p-8 max-w-[1100px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
+        <DecisionWorkspaceNav />
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold text-foreground tracking-tight flex items-center gap-2">
