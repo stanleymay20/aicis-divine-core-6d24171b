@@ -136,6 +136,64 @@ function ukCell(row, fields, name) {
   return typeof index === "number" ? String(row[index] ?? "").trim() : "";
 }
 
+function xmlAttribute(tag, name) {
+  const match = String(tag).match(new RegExp(name + "=['\\\"]([^'\\\"]*)['\\\"]", "i"));
+  return match ? decodeXml(match[1]) : "";
+}
+
+export function parseEuFsfEntities(xml) {
+  const source = String(xml ?? "");
+  const blocks = source.match(/<sanctionEntity(?:\s[^>]*)?>[\s\S]*?<\/sanctionEntity>/gi) || [];
+  const records = [];
+
+  for (const block of blocks) {
+    const openTag = block.match(/<sanctionEntity(?:\s[^>]*)?>/i)?.[0] || "";
+    const subjectTag = block.match(/<subjectType(?:\s[^>]*)?\/?>/i)?.[0] || "";
+    const subjectCode = xmlAttribute(subjectTag, "code").toLowerCase();
+    const classificationCode = xmlAttribute(subjectTag, "classificationCode").toUpperCase();
+
+    const looksLikeEntity =
+      classificationCode === "E" ||
+      ["enterprise", "entity", "organisation", "organization", "company"].includes(subjectCode);
+    if (!looksLikeEntity) continue;
+
+    const names = [];
+    const nameTags = block.match(/<nameAlias(?:\s[^>]*)?\/?>/gi) || [];
+    for (const nameTag of nameTags) {
+      const wholeName = xmlAttribute(nameTag, "wholeName");
+      const constructed = [
+        xmlAttribute(nameTag, "firstName"),
+        xmlAttribute(nameTag, "middleName"),
+        xmlAttribute(nameTag, "lastName"),
+      ].filter(Boolean).join(" ").trim();
+      const name = wholeName || constructed;
+      if (name) names.push(name);
+    }
+
+    const uniqueNames = unique(names);
+    if (!uniqueNames.length) continue;
+
+    const regulationTags = block.match(/<regulation(?:\s[^>]*)?>/gi) || [];
+    const programs = unique(regulationTags.map((tag) => xmlAttribute(tag, "programme")).filter(Boolean));
+
+    const euReferenceNumber = xmlAttribute(openTag, "euReferenceNumber");
+    const unitedNationId = xmlAttribute(openTag, "unitedNationId");
+    const logicalId = xmlAttribute(openTag, "logicalId");
+
+    records.push({
+      source: "eu_sanctions",
+      source_authority: "European Commission",
+      record_id: euReferenceNumber || logicalId || null,
+      primary_name: uniqueNames[0],
+      aliases: uniqueNames.slice(1),
+      identifiers: unique([euReferenceNumber, unitedNationId]),
+      programs,
+    });
+  }
+
+  return records;
+}
+
 export function parseUkSanctionsCsv(csv) {
   const rows = parseCsvRows(csv);
   if (rows.length < 2) return [];
