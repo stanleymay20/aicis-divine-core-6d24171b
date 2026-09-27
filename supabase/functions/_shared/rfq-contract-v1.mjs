@@ -281,6 +281,7 @@ export function normalizeRfqResponse(input = {}, asOf = new Date().toISOString()
   const evidence = input.evidence_refs;
   const role = clean(input.role).toLowerCase();
   const currency = upper(input.currency);
+  const costCompleteness = clean(input.cost_completeness).toLowerCase() || "quoted_price_only";
   const validUntil = clean(input.valid_until);
   const validUntilMs = Date.parse(validUntil);
 
@@ -298,7 +299,28 @@ export function normalizeRfqResponse(input = {}, asOf = new Date().toISOString()
   if (!clean(input.quantity_unit)) reasons.push("quantity_unit_missing");
   if (!clean(input.incoterm)) reasons.push("incoterm_missing");
   if (!clean(input.payment_terms)) reasons.push("payment_terms_missing");
+  if (!["quoted_price_only", "explicit_additional_costs", "full_landed_cost"].includes(costCompleteness)) {
+    reasons.push("cost_completeness_invalid");
+  }
+  if (
+    costCompleteness !== "quoted_price_only" &&
+    !evidenceSetValid(input.cost_completeness_evidence_refs)
+  ) {
+    reasons.push("cost_completeness_evidence_invalid");
+  }
   if (!evidenceSetValid(evidence)) reasons.push("quote_evidence_invalid");
+
+  for (const cost of list(input.additional_costs)) {
+    if (!cost || typeof cost !== "object" || Array.isArray(cost)) {
+      reasons.push("additional_cost_invalid");
+      continue;
+    }
+    if (!clean(cost.type)) reasons.push("additional_cost_type_missing");
+    if (!finite(cost.amount) || cost.amount < 0) reasons.push("additional_cost_amount_invalid");
+    if (!["fixed", "per_unit"].includes(clean(cost.basis))) reasons.push("additional_cost_basis_invalid");
+    if (!CURRENCY.test(upper(cost.currency))) reasons.push("additional_cost_currency_invalid");
+    if (!evidenceSetValid(cost.evidence_refs)) reasons.push("additional_cost_evidence_invalid");
+  }
   if (!validUntil || !Number.isFinite(validUntilMs)) {
     reasons.push("valid_until_invalid");
   } else if (Number.isFinite(asOfMs) && validUntilMs < asOfMs) {
@@ -326,7 +348,15 @@ export function normalizeRfqResponse(input = {}, asOf = new Date().toISOString()
     lead_time_days: finite(input.lead_time_days) ? input.lead_time_days : null,
     delivery_window: clean(input.delivery_window) || null,
     quote_valid_until: validUntil,
-    additional_costs: list(input.additional_costs),
+    additional_costs: list(input.additional_costs).map((cost) => ({
+      type: clean(cost.type),
+      amount: cost.amount,
+      basis: clean(cost.basis),
+      currency: upper(cost.currency),
+      evidence_refs: list(cost.evidence_refs),
+    })),
+    cost_completeness: costCompleteness,
+    cost_completeness_evidence_refs: list(input.cost_completeness_evidence_refs),
     evidence_status: "rfq_response_unverified",
     evidence_refs: list(evidence),
     contact: input.contact ?? null,
