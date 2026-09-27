@@ -227,6 +227,7 @@ Deno.serve(async (req) => {
     const whatIfData = Array.isArray(whatIfResponse.data)
       ? asRecord(whatIfResponse.data[0])
       : asRecord(whatIfResponse.data);
+    const whatIfObservedAt = new Date().toISOString();
 
     const snapshotAudit = await hashStrategicSnapshot(snapshot);
     const whatIfAudit = await hashStrategicSnapshot(whatIfData);
@@ -248,6 +249,7 @@ Deno.serve(async (req) => {
       whatif: whatIfData,
       snapshot_hash: snapshotAudit.hash,
       whatif_hash: whatIfAudit.hash,
+      whatif_observed_at: whatIfObservedAt,
       server_attested: true,
     });
 
