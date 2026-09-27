@@ -13,6 +13,7 @@ import { TransactionPathLab } from "@/components/opportunities/TransactionPathLa
 import { CounterpartyDiscoveryPanel } from "@/components/opportunities/CounterpartyDiscoveryPanel";
 import { OpportunityHypothesesPanel } from "@/components/opportunities/OpportunityHypothesesPanel";
 import { SanctionsScreenPanel } from "@/components/opportunities/SanctionsScreenPanel";
+import { CounterpartyVerificationLab } from "@/components/opportunities/CounterpartyVerificationLab";
 import {
   ArrowRight,
   CircleDollarSign,
@@ -370,6 +371,8 @@ export default function OpportunityRadar() {
       <CounterpartyDiscoveryPanel />
 
       <SanctionsScreenPanel />
+
+      <CounterpartyVerificationLab />
 
       <TransactionPathLab />
 
