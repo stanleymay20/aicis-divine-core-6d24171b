@@ -162,6 +162,27 @@ export function CounterpartyVerificationLab() {
               <pre className="max-h-[360px] overflow-auto rounded-md bg-muted/30 p-3 text-[10px] whitespace-pre-wrap">
                 {JSON.stringify(result.normalized_offer, null, 2)}
               </pre>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const role = result.normalized_offer?.role;
+                    if (role !== "supplier" && role !== "buyer") {
+                      toast({
+                        title: "Offer role missing",
+                        description: "The normalized offer must identify itself as supplier or buyer.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    window.dispatchEvent(new CustomEvent("aicis:add-verified-offer", {
+                      detail: { role, offer: result.normalized_offer },
+                    }));
+                  }}
+                >
+                  Add verified {String(result.normalized_offer.role || "counterparty")} to Transaction Lab
+                </Button>
+              </div>
               <p className="text-[10px] text-muted-foreground">{result.verification_scope_notice}</p>
             </div>
           ) : (
