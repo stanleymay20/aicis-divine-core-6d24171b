@@ -2,7 +2,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export const jsonHeaders = { "Content-Type": "application/json" };
 
+// Rejections must carry CORS headers, otherwise browsers report a misleading CORS
+// failure instead of the real 401/403 reason.
+const defaultCorsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-cron-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
 const authHeaders = (extraHeaders: Record<string, string> = {}) => ({
+  ...defaultCorsHeaders,
   ...extraHeaders,
   ...jsonHeaders,
 });
