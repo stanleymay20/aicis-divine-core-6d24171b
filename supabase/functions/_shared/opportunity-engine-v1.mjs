@@ -309,6 +309,19 @@ export function evaluateOpportunity(candidate, preferences = {}) {
     rejection_reasons,
     execution_ready: dossier.execution_ready,
     execution_dossier: dossier,
+    cycle_days: candidate.cycle_days,
+    downside_loss: candidate.downside_loss,
+    required_capabilities: candidate.required_capabilities ?? [],
+    invalidation_rules: candidate.invalidation_rules ?? [],
+    switching_rules: candidate.switching_rules ?? [],
+    scenarios: candidate.scenarios ?? [],
+    no_action_scenarios: candidate.no_action_scenarios ?? [],
+    indirect_strategies: candidate.indirect_strategies ?? [],
+    position_options: candidate.position_options ?? [],
+    information_actions: candidate.information_actions ?? [],
+    evidence_refs: candidate.evidence_manifest
+      ? Object.values(candidate.evidence_manifest).flatMap((value) => Array.isArray(value) ? value : [])
+      : [],
     human_approval_required: true,
     recommendation_semantics: "ranked_decision_support_not_profit_guarantee",
   };
