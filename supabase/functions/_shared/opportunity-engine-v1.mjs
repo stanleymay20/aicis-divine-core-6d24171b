@@ -316,6 +316,8 @@ export function evaluateOpportunity(candidate, preferences = {}) {
     switching_rules: candidate.switching_rules ?? [],
     scenarios: candidate.scenarios ?? [],
     no_action_scenarios: candidate.no_action_scenarios ?? [],
+    assumptions: candidate.assumptions ?? [],
+    sensitivity_cases: candidate.sensitivity_cases ?? [],
     indirect_strategies: candidate.indirect_strategies ?? [],
     position_options: candidate.position_options ?? [],
     information_actions: candidate.information_actions ?? [],
