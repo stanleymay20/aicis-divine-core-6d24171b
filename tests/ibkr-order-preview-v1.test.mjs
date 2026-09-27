@@ -90,6 +90,7 @@ test("server-attested what-if becomes provider order preview but never execution
     whatif,
     snapshot_hash: HASH,
     whatif_hash: "f".repeat(64),
+    whatif_observed_at: "2026-09-27T14:02:00Z",
     server_attested: true,
   });
 
@@ -101,6 +102,7 @@ test("server-attested what-if becomes provider order preview but never execution
   assert.equal(result.execution_boundary.order_submitted, false);
   assert.equal(result.execution_boundary.money_moved, false);
   assert.equal(result.approval.approval_token, null);
+  assert.equal(result.provider_preview.observed_at, "2026-09-27T14:02:00.000Z");
 });
 
 test("unattested what-if payload remains research-only", () => {
@@ -121,6 +123,7 @@ test("unattested what-if payload remains research-only", () => {
     whatif,
     snapshot_hash: HASH,
     whatif_hash: "f".repeat(64),
+    whatif_observed_at: "2026-09-27T14:02:00Z",
   });
 
   assert.equal(result.valid, true);
@@ -156,6 +159,7 @@ test("v1 adapter refuses market orders and non-DAY tif", () => {
     whatif,
     snapshot_hash: HASH,
     whatif_hash: "f".repeat(64),
+    whatif_observed_at: "2026-09-27T14:02:00Z",
     server_attested: true,
   });
 
