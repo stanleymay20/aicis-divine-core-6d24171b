@@ -2,22 +2,31 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, ShieldAlert, Activity, DollarSign, ArrowUpRight } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowUpRight,
+  Globe2,
+  ShieldAlert,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export function BusinessExposureStrip() {
   const navigate = useNavigate();
+
   const { data, isLoading } = useQuery({
     queryKey: ["business-exposure-strip"],
     queryFn: async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const startOfTodayUtc = new Date();
+      startOfTodayUtc.setUTCHours(0, 0, 0, 0);
+
       const [signalsRes, decisionsRes, riskRes] = await Promise.all([
         supabase
           .from("global_signals")
-          .select("id, impact_score, category", { count: "exact" })
+          .select("id, impact_score", { count: "exact" })
           .eq("enrichment_status", "enriched")
           .gte("impact_score", 60)
-          .gte("first_detected_at", today),
+          .gte("first_detected_at", startOfTodayUtc.toISOString()),
         supabase
           .from("decision_outcome_log")
           .select("id", { count: "exact", head: true })
@@ -25,23 +34,36 @@ export function BusinessExposureStrip() {
           .is("outcome_success", null),
         supabase
           .from("vulnerability_scores")
-          .select("overall_score")
-          .gte("overall_score", 60)
-          .limit(100),
+          .select("country, overall_score, calculated_at")
+          .order("calculated_at", { ascending: false, nullsFirst: false })
+          .limit(1000),
       ]);
 
-      const criticalSignals = signalsRes.data?.filter(s => s.impact_score >= 75).length || 0;
-      const totalHighSignals = signalsRes.count || 0;
-      const pendingDecisions = decisionsRes.count || 0;
-      const marketsAtRisk = riskRes.data?.length || 0;
+      const queryError = signalsRes.error || decisionsRes.error || riskRes.error;
+      if (queryError) throw queryError;
 
-      // Estimate exposure from high-impact signals
-      const totalExposure = (signalsRes.data || []).reduce((sum, s) => {
-        const base = s.impact_score >= 80 ? 2_000_000 : s.impact_score >= 70 ? 500_000 : 200_000;
-        return sum + base;
-      }, 0);
+      const criticalSignals =
+        signalsRes.data?.filter((signal) => signal.impact_score >= 75).length ?? 0;
+      const totalHighSignals = signalsRes.count ?? 0;
+      const pendingDecisions = decisionsRes.count ?? 0;
 
-      return { criticalSignals, totalHighSignals, pendingDecisions, marketsAtRisk, totalExposure };
+      const latestByCountry = new Map<string, number>();
+      for (const score of riskRes.data ?? []) {
+        if (!latestByCountry.has(score.country)) {
+          latestByCountry.set(score.country, score.overall_score);
+        }
+      }
+
+      const highVulnerabilityCountries = [...latestByCountry.values()].filter(
+        (score) => score >= 60,
+      ).length;
+
+      return {
+        criticalSignals,
+        totalHighSignals,
+        pendingDecisions,
+        highVulnerabilityCountries,
+      };
     },
     staleTime: 60_000,
   });
@@ -49,55 +71,42 @@ export function BusinessExposureStrip() {
   if (isLoading) return <Skeleton className="h-20 w-full" />;
   if (!data) return null;
 
-  const fmt = (val: number) => {
-    if (val >= 1_000_000) return `€${(val / 1_000_000).toFixed(1)}M`;
-    if (val >= 1_000) return `€${(val / 1_000).toFixed(0)}K`;
-    return `€${val}`;
-  };
-
-  const allItems = [
+  const items = [
     {
-      icon: ShieldAlert,
-      value: data.marketsAtRisk,
-      label: "Markets at risk (open)",
-      color: data.marketsAtRisk > 5 ? "text-destructive" : "text-amber-500",
-      show: data.marketsAtRisk > 0,
-      to: "/risk-atlas",
+      icon: Activity,
+      value: data.totalHighSignals,
+      label: "High-impact signals today",
+      color: data.totalHighSignals > 0 ? "text-primary" : "text-emerald-500",
+      to: "/live?minImpact=60",
     },
     {
       icon: AlertTriangle,
       value: data.criticalSignals,
-      label: "Critical signals (today)",
+      label: "Critical signals today",
       color: data.criticalSignals > 0 ? "text-destructive" : "text-emerald-500",
-      show: data.criticalSignals > 0,
       to: "/live?severity=critical",
     },
     {
-      icon: Activity,
+      icon: ShieldAlert,
       value: data.pendingDecisions,
       label: "Decisions awaiting outcome",
       color: data.pendingDecisions > 3 ? "text-amber-500" : "text-foreground",
-      show: data.pendingDecisions > 0,
       to: "/decision-ops",
     },
     {
-      icon: DollarSign,
-      value: fmt(data.totalExposure),
-      label: "Cost exposure (today)",
-      color: data.totalExposure > 1_000_000 ? "text-destructive" : "text-amber-500",
-      isString: true,
-      show: data.totalExposure > 0,
-      to: "/evidence-command",
+      icon: Globe2,
+      value: data.highVulnerabilityCountries,
+      label: "Countries at ≥60 vulnerability",
+      color:
+        data.highVulnerabilityCountries > 5
+          ? "text-amber-500"
+          : "text-foreground",
+      to: "/world?layer=vulnerability",
     },
   ];
 
-  const items = allItems.filter(i => i.show);
-  if (items.length === 0) return null;
-
-  const cols = items.length === 1 ? "grid-cols-1" : items.length === 2 ? "grid-cols-2" : items.length === 3 ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4";
-
   return (
-    <div className={`grid ${cols} gap-2`}>
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {items.map((item) => {
         const Icon = item.icon;
         return (
@@ -105,19 +114,21 @@ export function BusinessExposureStrip() {
             key={item.label}
             type="button"
             onClick={() => navigate(item.to)}
-            className="text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-lg"
+            className="group rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             aria-label={`${item.label} — drill into details`}
           >
             <Card className="border-border/50 transition-all group-hover:border-primary/40 group-hover:bg-primary/5">
-              <CardContent className="p-3 flex items-center gap-3 relative">
-                <Icon className={`h-5 w-5 ${item.color} shrink-0`} />
-                <div className="flex-1 min-w-0">
-                  <p className={`text-xl font-bold font-mono tabular-nums leading-none ${item.color}`}>
+              <CardContent className="relative flex items-center gap-3 p-3">
+                <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`font-mono text-xl font-bold leading-none tabular-nums ${item.color}`}
+                  >
                     {item.value}
                   </p>
                   <p className="text-[10px] text-muted-foreground">{item.label}</p>
                 </div>
-                <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary transition-colors absolute top-2 right-2" />
+                <ArrowUpRight className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground/40 transition-colors group-hover:text-primary" />
               </CardContent>
             </Card>
           </button>

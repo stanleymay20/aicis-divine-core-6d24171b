@@ -1,96 +1,133 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Search, Mic, Loader2 } from "lucide-react";
+import { Loader2, Mic, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 
 interface PersistentAskBarProps {
   className?: string;
 }
 
-/**
- * The "front door" for non-technical users. Always visible at the top
- * of the brief. Routes any natural-language question to the Decision
- * Chat / Risk Atlas, so users never have to learn the menu structure.
- */
+interface SpeechRecognitionResultEventLike {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
+  start: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
 export const PersistentAskBar = ({ className }: PersistentAskBarProps) => {
   const navigate = useNavigate();
+  const { selectedEntity } = useIntelligenceOS();
   const [query, setQuery] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const submit = useCallback(
     (text: string) => {
-      const q = text.trim();
-      if (!q) return;
+      const question = text.trim();
+      if (!question) return;
+
       setSubmitting(true);
-      // Route to the unified intelligence chat — single canonical entry point
-      navigate(`/app?q=${encodeURIComponent(q)}`);
-      // Soft reset for re-use
-      setTimeout(() => setSubmitting(false), 400);
+
+      const params = new URLSearchParams({ question });
+      if (selectedEntity) {
+        params.set("entity", [selectedEntity.type, selectedEntity.id].join(":"));
+      }
+
+      navigate(`/intelligence-engine?${params.toString()}`);
+      window.setTimeout(() => setSubmitting(false), 400);
     },
-    [navigate]
+    [navigate, selectedEntity],
   );
 
   const handleVoice = () => {
-    const SR =
-      (window as any).webkitSpeechRecognition ||
-      (window as any).SpeechRecognition;
-    if (!SR) {
+    const speechWindow = window as SpeechRecognitionWindow;
+    const Recognition =
+      speechWindow.webkitSpeechRecognition || speechWindow.SpeechRecognition;
+
+    if (!Recognition) {
       toast.error("Voice input isn't supported in this browser");
       return;
     }
-    const r = new SR();
-    r.lang = "en-US";
-    r.interimResults = false;
-    r.continuous = false;
-    r.onstart = () => setIsListening(true);
-    r.onend = () => setIsListening(false);
-    r.onerror = () => {
+
+    const recognition = new Recognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => {
       setIsListening(false);
       toast.error("Couldn't hear you — try again");
     };
-    r.onresult = (e: any) => {
-      const text = e.results[0][0].transcript;
-      setQuery(text);
-      submit(text);
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (!transcript) return;
+      setQuery(transcript);
+      submit(transcript);
     };
-    r.start();
+    recognition.start();
   };
 
   return (
     <div
       className={cn(
-        "sticky top-0 z-30 -mx-3 sm:-mx-4 px-3 sm:px-4 py-1.5",
+        "sticky top-0 z-30 -mx-3 px-3 py-1.5 sm:-mx-4 sm:px-4",
         "bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
         "border-b border-border/50",
-        className
+        className,
       )}
       data-tour="ask-bar"
     >
       <div className="relative">
-        <Sparkles className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary pointer-events-none" />
+        <Sparkles className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-primary" />
 
         <Input
           type="text"
           inputMode="search"
-          placeholder="Ask AICIS — e.g. 'biggest risk in Europe?'"
+          placeholder={
+            selectedEntity
+              ? `Ask AICIS about ${selectedEntity.name}…`
+              : "Ask AICIS — e.g. 'what changed in West Africa?'"
+          }
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit(query)}
-          className="h-8 pl-8 pr-20 text-xs sm:text-sm bg-muted/40 border-border focus:border-primary placeholder:text-muted-foreground/70"
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => event.key === "Enter" && submit(query)}
+          className="h-8 border-border bg-muted/40 pl-8 pr-20 text-xs placeholder:text-muted-foreground/70 focus:border-primary sm:text-sm"
           aria-label="Ask AICIS a question"
         />
 
-        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
             className={cn(
               "h-6 w-6",
-              isListening && "bg-destructive/15 text-destructive animate-pulse"
+              isListening && "animate-pulse bg-destructive/15 text-destructive",
             )}
             onClick={handleVoice}
             aria-label="Ask by voice"
@@ -101,7 +138,7 @@ export const PersistentAskBar = ({ className }: PersistentAskBarProps) => {
             size="sm"
             onClick={() => submit(query)}
             disabled={submitting || !query.trim()}
-            className="h-6 px-2 gap-1 text-[11px]"
+            className="h-6 gap-1 px-2 text-[11px]"
           >
             {submitting ? (
               <Loader2 className="h-3 w-3 animate-spin" />
