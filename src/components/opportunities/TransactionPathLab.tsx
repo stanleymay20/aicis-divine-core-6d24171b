@@ -142,8 +142,47 @@ export function TransactionPathLab() {
       });
     };
 
+    const routeHandler = (event: Event) => {
+      const detail = (event as CustomEvent<{ route?: Record<string, unknown> }>).detail || {};
+      if (!detail.route) return;
+
+      setPayload((current) => {
+        let parsed: Record<string, unknown> = {};
+        try {
+          const value: unknown = current.trim() ? JSON.parse(current) : {};
+          if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+            parsed = value as Record<string, unknown>;
+          }
+        } catch {
+          parsed = {};
+        }
+
+        const existing = Array.isArray(parsed.routes) ? parsed.routes : [];
+        const routeId = typeof detail.route?.id === "string" ? detail.route.id : null;
+        const withoutDuplicate = routeId
+          ? existing.filter((item) => {
+              if (typeof item !== "object" || item === null || Array.isArray(item)) return true;
+              return (item as Record<string, unknown>).id !== routeId;
+            })
+          : existing;
+
+        return JSON.stringify({
+          ...parsed,
+          routes: [...withoutDuplicate, detail.route],
+        }, null, 2);
+      });
+
+      window.requestAnimationFrame(() => {
+        document.getElementById("transaction-path-lab")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+
     window.addEventListener("aicis:add-verified-offer", handler as EventListener);
-    return () => window.removeEventListener("aicis:add-verified-offer", handler as EventListener);
+    window.addEventListener("aicis:add-verified-route", routeHandler as EventListener);
+    return () => {
+      window.removeEventListener("aicis:add-verified-offer", handler as EventListener);
+      window.removeEventListener("aicis:add-verified-route", routeHandler as EventListener);
+    };
   }, []);
 
   const addReferenceFx = async () => {
