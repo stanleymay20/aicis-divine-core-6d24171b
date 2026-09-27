@@ -4,12 +4,14 @@ import {
   parseOfacSdnEntities,
   parseUnConsolidatedEntities,
   parseUkSanctionsCsv,
+  parseEuFsfEntities,
   screenEntityAgainstOfficialSnapshots,
 } from "../_shared/official-sanctions-screen-v1.mjs";
 
 const OFAC_SDN_XML = "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML";
 const UN_CONSOLIDATED_XML = "https://scsanctions.un.org/resources/xml/en/name/consolidated.xml";
 const UK_SANCTIONS_CSV = "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv";
+const EU_FSF_XML = "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw";
 const MAX_SOURCE_BYTES = 40 * 1024 * 1024;
 
 const corsHeaders = {
@@ -18,7 +20,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type SourceKey = "ofac_sdn" | "un_consolidated" | "uk_sanctions";
+type SourceKey = "ofac_sdn" | "un_consolidated" | "uk_sanctions" | "eu_sanctions";
 type EvidenceRef = {
   source_id: string;
   source_type: string;
@@ -147,6 +149,7 @@ Deno.serve(async (req) => {
       fetchSource("ofac_sdn", OFAC_SDN_XML, "application/xml,text/xml;q=0.9,*/*;q=0.1"),
       fetchSource("un_consolidated", UN_CONSOLIDATED_XML, "application/xml,text/xml;q=0.9,*/*;q=0.1"),
       fetchSource("uk_sanctions", UK_SANCTIONS_CSV, "text/csv,text/plain;q=0.9,*/*;q=0.1"),
+      fetchSource("eu_sanctions", EU_FSF_XML, "application/xml,text/xml;q=0.9,*/*;q=0.1"),
     ]);
 
     const snapshots: Snapshot[] = [];
@@ -167,7 +170,21 @@ Deno.serve(async (req) => {
         ? parseOfacSdnEntities(result.content)
         : result.source === "un_consolidated"
           ? parseUnConsolidatedEntities(result.content)
-          : parseUkSanctionsCsv(result.content);
+          : result.source === "uk_sanctions"
+            ? parseUkSanctionsCsv(result.content)
+            : parseEuFsfEntities(result.content);
+
+      if (records.length === 0) {
+        sources.push({
+          source: result.source,
+          ok: false,
+          error: "PARSE_RETURNED_ZERO_RECORDS",
+          records: 0,
+          bytes: result.bytes ?? null,
+          evidence_ref: result.evidence_ref,
+        });
+        continue;
+      }
 
       snapshots.push({
         source: result.source,
