@@ -479,6 +479,20 @@ export function buildTransactionPaths(input = {}) {
             },
             fx_conversions: fxConversions,
             fx_execution_ready: fxConversions.every((conversion) => conversion.execution_eligible_fx === true),
+            required_capabilities: Array.isArray(structure.required_capabilities) ? structure.required_capabilities : [],
+            invalidation_rules: [
+              ...(Array.isArray(input.invalidation_rules) ? input.invalidation_rules : []),
+              ...(Array.isArray(structure.invalidation_rules) ? structure.invalidation_rules : []),
+            ],
+            switching_rules: [
+              ...(Array.isArray(input.switching_rules) ? input.switching_rules : []),
+              ...(Array.isArray(structure.switching_rules) ? structure.switching_rules : []),
+            ],
+            scenarios: Array.isArray(input.strategic_scenarios) ? input.strategic_scenarios : [],
+            no_action_scenarios: Array.isArray(input.no_action_scenarios) ? input.no_action_scenarios : [],
+            indirect_strategies: Array.isArray(input.indirect_strategies) ? input.indirect_strategies : [],
+            position_options: Array.isArray(input.position_options) ? input.position_options : [],
+            information_actions: Array.isArray(input.information_actions) ? input.information_actions : [],
             builder_version: TRANSACTION_PATH_BUILDER_VERSION,
             candidate_scope_notice: "Constructed only from the supplied source offers, sale offers, routes and transaction structures.",
           });
