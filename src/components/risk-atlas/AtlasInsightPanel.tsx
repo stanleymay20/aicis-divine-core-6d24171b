@@ -87,7 +87,7 @@ export function AtlasInsightPanel({
       } else {
         toast.success(`${countryName} added to watchlist`);
       }
-    } catch (e: any) {
+    } catch {
       toast.error("Failed to add to watchlist");
     }
   };
