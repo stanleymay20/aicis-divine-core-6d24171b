@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TransactionPathLab } from "@/components/opportunities/TransactionPathLab";
 import { CounterpartyDiscoveryPanel } from "@/components/opportunities/CounterpartyDiscoveryPanel";
 import { OpportunityHypothesesPanel } from "@/components/opportunities/OpportunityHypothesesPanel";
+import { SanctionsScreenPanel } from "@/components/opportunities/SanctionsScreenPanel";
 import {
   ArrowRight,
   CircleDollarSign,
@@ -367,6 +368,8 @@ export default function OpportunityRadar() {
       <OpportunityHypothesesPanel />
 
       <CounterpartyDiscoveryPanel />
+
+      <SanctionsScreenPanel />
 
       <TransactionPathLab />
 
