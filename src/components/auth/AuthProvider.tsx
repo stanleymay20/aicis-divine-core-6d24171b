@@ -14,6 +14,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
+  const [recoveryToken, setRecoveryToken] = useState<string | null>(null);
   const initialValidationComplete = useRef(false);
   const lastValidatedAccessToken = useRef<string | null>(null);
   const validationInFlightAccessToken = useRef<string | null>(null);
@@ -41,6 +42,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       validationInFlightAccessToken.current = null;
       setSession(null);
       setUser(null);
+      setRecoveryToken(null);
       setUnavailable(false);
       setLoading(false);
     };
@@ -115,7 +117,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
-        if (tokenClaimsContainAuthMethod(claims, "recovery")) {
+        if (tokenClaimsContainAuthMethod(claims, "recovery") || recoveryEventAccessToken.current === candidate.access_token) {
           isolateRecoverySession();
           return;
         }
