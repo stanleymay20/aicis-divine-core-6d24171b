@@ -287,6 +287,7 @@ export function buildExecutionPreview({
   strategic_audit_hash = "",
   idempotency_key = "",
   as_of = new Date().toISOString(),
+  provider_attested = false,
 } = {}) {
   const quoteValidation = validateExecutionQuote(quote, as_of);
   const reasons = [];
@@ -309,7 +310,8 @@ export function buildExecutionPreview({
 
   const normalized = quoteValidation.normalized;
   const economics = previewEconomics(normalized);
-  const executableQuote = normalized.status === EXECUTABLE_STATUS && quoteValidation.valid;
+  const quoteClaimsExecutable = normalized.status === EXECUTABLE_STATUS && quoteValidation.valid;
+  const executableQuote = quoteClaimsExecutable && provider_attested === true;
   const candidateExecutionReady = candidate.execution_ready === true;
   const rebuildRequired = executableQuote && !candidateExecutionReady;
 
@@ -321,7 +323,9 @@ export function buildExecutionPreview({
       ? "rejected"
       : executableQuote
         ? "previewed_order"
-        : "indicative_only",
+        : quoteClaimsExecutable
+          ? "unattested_quote"
+          : "indicative_only",
     candidate: {
       candidate_id: candidateId || null,
       title: candidate.title ?? null,
@@ -332,14 +336,20 @@ export function buildExecutionPreview({
     },
     quote: normalized,
     economics,
-    normalized_fx_rate: reasons.length ? null : normalizedFxRate(normalized),
+    normalized_fx_rate: reasons.length || provider_attested !== true ? null : normalizedFxRate(normalized),
     fx_handoff_blocked_reason:
       reasons.length === 0 &&
+      provider_attested === true &&
       clean(normalized?.instrument?.kind).toLowerCase() === "fx" &&
       normalized.status === EXECUTABLE_STATUS &&
       (normalized.estimated_costs_total ?? 0) > 0
         ? "explicit_fx_costs_require_transaction_cost_integration"
         : null,
+    provider_attestation: {
+      required_for_execution_evidence: true,
+      attested: provider_attested === true,
+      quote_claims_executable: quoteClaimsExecutable,
+    },
     approval: {
       human_approval_required: true,
       human_approval_package_ready: reasons.length === 0 && executableQuote && candidateExecutionReady,
@@ -360,7 +370,9 @@ export function buildExecutionPreview({
       external_execution_performed: false,
     },
     semantics: executableQuote
-      ? "provider_normalized_executable_quote_preview_not_execution"
-      : "indicative_or_reference_quote_not_execution_ready",
+      ? "provider_attested_executable_quote_preview_not_execution"
+      : quoteClaimsExecutable
+        ? "unattested_executable_quote_claim_research_only"
+        : "indicative_or_reference_quote_not_execution_ready",
   };
 }
