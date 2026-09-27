@@ -7,6 +7,8 @@ const validationPath = new URL("../src/pages/ForecastValidation.tsx", import.met
 const predictionsPath = new URL("../src/pages/Predictions.tsx", import.meta.url);
 const simulationPath = new URL("../src/pages/Simulation.tsx", import.meta.url);
 const outcomePath = new URL("../src/pages/OutcomeCockpit.tsx", import.meta.url);
+const learningPath = new URL("../src/pages/LearningIntelligence.tsx", import.meta.url);
+const loopPath = new URL("../src/pages/LearningLoop.tsx", import.meta.url);
 
 test("Forecast workspace exposes validation, predictions, scenarios, outcomes, and learning", async () => {
   const nav = await readFile(navPath, "utf8");
@@ -20,7 +22,7 @@ test("Forecast workspace exposes validation, predictions, scenarios, outcomes, a
 });
 
 test("Primary forecast surfaces render the shared workspace navigation", async () => {
-  for (const path of [validationPath, predictionsPath, simulationPath, outcomePath]) {
+  for (const path of [validationPath, predictionsPath, simulationPath, outcomePath, learningPath, loopPath]) {
     const source = await readFile(path, "utf8");
     assert.match(source, /ForecastWorkspaceNav/);
     assert.match(source, /<ForecastWorkspaceNav \/>/);
