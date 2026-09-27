@@ -15,6 +15,14 @@ const FN = "pull-entsoe";
 // energy-charts.info supports per-bidding-zone queries via the `bzn` param.
 // energy-charts.info uses ENTSO-E country codes (uppercase ISO-2 in most cases).
 // Verified working list — drops bidding zones that 404.
+type EnergyChartsResponse = {
+  unix_seconds?: number[];
+  production_types?: Array<{
+    name?: string;
+    data?: number[];
+  }>;
+};
+
 const ZONES: { bzn: string; iso3: string }[] = [
   { bzn: "DE", iso3: "DEU" }, { bzn: "FR", iso3: "FRA" },
   { bzn: "ES", iso3: "ESP" }, { bzn: "IT", iso3: "ITA" },
@@ -43,7 +51,7 @@ serve(async (req) => {
   try {
     // Resilient fetch: retry once with backoff, then fall back to last cached snapshot
     // from normalized_metrics for that ISO3 (keeps the L4 layer fresh during API outages).
-    async function fetchWithRetry(bzn: string): Promise<any | null> {
+    async function fetchWithRetry(bzn: string): Promise<EnergyChartsResponse | null> {
       const url = `https://api.energy-charts.info/total_power?bzn=${encodeURIComponent(bzn)}`;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
@@ -75,7 +83,7 @@ serve(async (req) => {
     // never re-stamped as today's readings.
     const fallbackUsed = 0;
     const DEADLINE_MS = 45000;
-    const fetched: (any | null)[] = [];
+    const fetched: (EnergyChartsResponse | null)[] = [];
     const deadlineAt = start + DEADLINE_MS;
     for (let i = 0; i < ZONES.length; i += 3) {
       if (Date.now() > deadlineAt) {
@@ -92,7 +100,7 @@ serve(async (req) => {
         const data = fetched[zi];
         if (!data) continue;
         const ts: number[] = data.unix_seconds || [];
-        const series: { name: string; data: number[] }[] = data.production_types || [];
+        const series = data.production_types || [];
         if (!ts.length || !series.length) continue;
         const lastIdx = ts.length - 1;
         const period = new Date(ts[lastIdx] * 1000).toISOString().slice(0, 10);
@@ -104,7 +112,7 @@ serve(async (req) => {
           const v = Number(s.data?.[lastIdx] ?? 0);
           if (!Number.isFinite(v)) continue;
           total += v;
-          if (RENEW.some((k) => s.name.toLowerCase().includes(k))) renewable += v;
+          if (RENEW.some((k) => (s.name ?? "").toLowerCase().includes(k))) renewable += v;
         }
         if (total <= 0) continue;
         rows.push(
