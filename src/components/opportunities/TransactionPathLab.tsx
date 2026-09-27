@@ -871,6 +871,7 @@ export function TransactionPathLab() {
         {top && result?.strategic?.audit?.hash ? (
           <>
             <RfqDraftPanel
+              key={top.candidate_id + ":" + result.strategic.audit.hash}
               candidate={{
                 candidate_id: top.candidate_id,
                 title: top.title,
