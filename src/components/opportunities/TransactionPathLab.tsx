@@ -314,6 +314,21 @@ const SCHEMA_HINT = [
   "}"
 ].join("\n");
 
+function extractFxRates(payload: string): Array<Record<string, unknown>> {
+  try {
+    const parsed: unknown = payload.trim() ? JSON.parse(payload) : {};
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
+    const value = (parsed as Record<string, unknown>).fx_rates;
+    return Array.isArray(value)
+      ? value.filter((item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null && !Array.isArray(item)
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export function TransactionPathLab() {
   const [payload, setPayload] = useState("");
   const [result, setResult] = useState<BuildResponse | null>(null);
@@ -887,6 +902,8 @@ export function TransactionPathLab() {
                 },
               }}
               strategicAuditHash={result.strategic.audit.hash}
+              comparisonCurrency={top.currency ?? null}
+              fxRates={extractFxRates(payload)}
             />
 
             <ExecutionPreviewPanel
