@@ -357,3 +357,32 @@ test("sensitivity cases remain scoped to their declared transaction path", () =>
     item.sensitivity_cases.some((scenario) => scenario.id === "premium-route-freight-shock")
   ));
 });
+
+
+test("preserves verified procurement metadata for RFQ drafting", () => {
+  const input = baseInput();
+  input.product.specification = "Grade 1 export quality";
+  input.source_offers[0].registration_id = "GH-REG-001";
+  input.source_offers[0].official_website = "https://supplier.example.test";
+  input.source_offers[0].product_id = input.product.id;
+  input.source_offers[0].payment_terms = "LC at sight";
+  input.source_offers[0].contact = {
+    company: input.source_offers[0].name,
+    channel: "official_sales",
+    value: "sales@supplier.example.test",
+    source: "https://supplier.example.test/contact",
+  };
+
+  const result = buildTransactionPaths(input);
+  const candidate = result.candidates.find((item) => item.id.includes("src-cheap"));
+
+  assert.ok(candidate);
+  assert.equal(candidate.product.id, input.product.id);
+  assert.equal(candidate.product.specification, "Grade 1 export quality");
+  assert.equal(candidate.source_offer.registration_id, "GH-REG-001");
+  assert.equal(candidate.source_offer.official_website, "https://supplier.example.test");
+  assert.equal(candidate.source_offer.payment_terms, "LC at sight");
+  assert.equal(candidate.source_offer.contact.value, "sales@supplier.example.test");
+  assert.equal(candidate.execution_dossier.where.source.registration_id, "GH-REG-001");
+  assert.equal(candidate.execution_dossier.where.source.contact.channel, "official_sales");
+});
