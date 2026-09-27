@@ -133,6 +133,7 @@ type StrategicResponse = {
 type ReferenceFxResponse = {
   ok: boolean;
   rates?: Array<Record<string, unknown>>;
+  evidence_refs?: Array<Record<string, unknown>>;
   effective_date?: string;
   error?: string;
   message?: string;
@@ -302,6 +303,17 @@ export function TransactionPathLab() {
         }, null, 2);
       });
 
+      const evidenceRefs = Array.isArray(detail.offer.evidence_refs) ? detail.offer.evidence_refs : [];
+      if (evidenceRefs.length) {
+        window.dispatchEvent(new CustomEvent("aicis:research-evidence-satisfied", {
+          detail: {
+            completion_kind: detail.role === "supplier" ? "supplier_quote_verified" : "buyer_quote_verified",
+            evidence_refs: evidenceRefs,
+            metadata: { offer_id: detail.offer.id ?? null },
+          },
+        }));
+      }
+
       window.requestAnimationFrame(() => {
         document.getElementById("transaction-path-lab")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -336,6 +348,17 @@ export function TransactionPathLab() {
           routes: [...withoutDuplicate, detail.route],
         }, null, 2);
       });
+
+      const evidenceRefs = Array.isArray(detail.route.evidence_refs) ? detail.route.evidence_refs : [];
+      if (evidenceRefs.length) {
+        window.dispatchEvent(new CustomEvent("aicis:research-evidence-satisfied", {
+          detail: {
+            completion_kind: "logistics_route_verified",
+            evidence_refs: evidenceRefs,
+            metadata: { route_id: detail.route.id ?? null },
+          },
+        }));
+      }
 
       window.requestAnimationFrame(() => {
         document.getElementById("transaction-path-lab")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -391,6 +414,18 @@ export function TransactionPathLab() {
       fx_rates: [...existingRates, ...response.rates],
     };
     setPayload(JSON.stringify(next, null, 2));
+    if (response.evidence_refs?.length) {
+      window.dispatchEvent(new CustomEvent("aicis:research-evidence-satisfied", {
+        detail: {
+          completion_kind: "reference_fx_attached",
+          evidence_refs: response.evidence_refs,
+          metadata: {
+            effective_date: response.effective_date ?? null,
+            rate_count: response.rates.length,
+          },
+        },
+      }));
+    }
     toast({
       title: "ECB reference FX added",
       description: `${response.rates.length} reference rates added for research comparison only. Executable FX is still required before transaction approval.`,
@@ -533,6 +568,72 @@ export function TransactionPathLab() {
       return;
     }
   };
+
+  const strategicAuditHash = result?.strategic?.audit?.hash ?? null;
+
+  useEffect(() => {
+    if (!strategicAuditHash) return;
+
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        completion_kind?: string;
+        evidence_refs?: unknown[];
+        source_candidate_id?: string | null;
+        metadata?: Record<string, unknown>;
+      }>).detail || {};
+
+      if (!detail.completion_kind || !Array.isArray(detail.evidence_refs) || detail.evidence_refs.length === 0) return;
+
+      void (async () => {
+        const { data, error } = await supabase.functions.invoke("complete-strategic-research-actions", {
+          body: {
+            strategic_audit_hash: strategicAuditHash,
+            completion_kind: detail.completion_kind,
+            source_candidate_id: detail.source_candidate_id ?? null,
+            evidence_refs: detail.evidence_refs,
+            metadata: detail.metadata || {},
+          },
+        });
+
+        if (error) {
+          toast({
+            title: "Research evidence added, tracker update failed",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const response = data as { ok?: boolean; resolved_run_count?: number; runs?: ResearchRun[]; error?: string };
+        if (!response.ok) {
+          toast({
+            title: "Research evidence added, tracker update failed",
+            description: response.error || "The matching research task could not be resolved.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (response.runs?.length) {
+          setResearchRuns((current) => {
+            const next = { ...current };
+            for (const run of response.runs || []) next[run.action_id] = run;
+            return next;
+          });
+        }
+
+        if ((response.resolved_run_count || 0) > 0) {
+          toast({
+            title: "Research blocker resolved",
+            description: `${response.resolved_run_count} audited research task${response.resolved_run_count === 1 ? "" : "s"} resolved with attributable evidence.`,
+          });
+        }
+      })();
+    };
+
+    window.addEventListener("aicis:research-evidence-satisfied", handler as EventListener);
+    return () => window.removeEventListener("aicis:research-evidence-satisfied", handler as EventListener);
+  }, [strategicAuditHash, toast]);
 
   const build = async () => {
     let parsed: unknown;
