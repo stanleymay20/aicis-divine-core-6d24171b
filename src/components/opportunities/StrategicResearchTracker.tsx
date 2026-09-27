@@ -86,6 +86,13 @@ export function StrategicResearchTracker() {
 
   useEffect(() => {
     void load();
+
+    const handler = () => {
+      void load();
+    };
+
+    window.addEventListener("aicis:research-tracker-refresh", handler);
+    return () => window.removeEventListener("aicis:research-tracker-refresh", handler);
   }, []);
 
   const setInProgress = async (run: ResearchRun) => {
