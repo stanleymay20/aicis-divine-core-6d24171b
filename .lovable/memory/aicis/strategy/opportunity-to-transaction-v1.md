@@ -213,24 +213,79 @@ Before financial-market candidates can be executable, add:
 
 # Current v1 implementation
 
-Canonical shared deterministic engine:
-`supabase/functions/_shared/opportunity-engine-v1.mjs`
+## Personalized research surface
+- `/opportunities` → `src/pages/OpportunityRadar.tsx`
+- existing AICIS relevance preferences are reused rather than duplicated;
+- user controls now include objective, risk tolerance, available capital, cash reserve, cycle limit, minimum margin/evidence/relevance/rank, single-position concentration, country/sector concentration, position count and allowed transaction types.
 
-Authenticated ranking endpoint:
-`supabase/functions/rank-opportunities/index.ts`
+## Signal → opportunity hypothesis
+- `supabase/functions/_shared/opportunity-hypothesis-v1.mjs`
+- `supabase/functions/generate-opportunity-hypotheses/index.ts`
+- `src/components/opportunities/OpportunityHypothesesPanel.tsx`
+- maps only explicitly supported products mentioned in relevant signals;
+- produces research hypotheses, never price direction, profit or causal claims;
+- one-click handoff pre-fills counterparty discovery.
 
-Tests:
-`tests/opportunity-transaction-engine-v1.test.mjs`
+## Counterparty discovery
+- `supabase/functions/_shared/counterparty-discovery-v1.mjs`
+- `supabase/functions/discover-transaction-counterparties/index.ts`
+- `src/components/opportunities/CounterpartyDiscoveryPanel.tsx`
+- Firecrawl/open-web results remain `discovery_only_unverified`;
+- discovery candidates are always `transaction_eligible=false`;
+- only generic public business mailboxes are surfaced; personal-looking addresses are excluded.
 
-Workspace:
-`/opportunities` → `src/pages/OpportunityRadar.tsx`
+## Counterparty verification
+- `supabase/functions/_shared/counterparty-verification-v1.mjs`
+- `supabase/functions/verify-transaction-counterparty/index.ts`
+- requires legal identity, jurisdiction/registration, official-site evidence, compliance evidence, current attributable quote, capacity evidence and payment terms;
+- only a complete clear dossier normalizes into a supplier/buyer offer;
+- compliance `review` or `blocked` never becomes transaction eligible.
 
-The workspace currently:
-- reads existing personalized signal relevance;
-- lets a user set transaction-objective constraints;
-- stores those constraints in the existing relevance preference record;
-- surfaces a research queue;
-- clearly separates research signals from executable transaction candidates.
+## Transaction path construction
+- `supabase/functions/_shared/transaction-path-builder-v1.mjs`
+- `supabase/functions/build-transaction-paths/index.ts`
+- `src/components/opportunities/TransactionPathLab.tsx`
+- enumerates supplied supplier × buyer × route × structure combinations;
+- calculates quote-backed purchase, route and structure costs;
+- rejects expired, provenance-free, route-incompatible and currency-incompatible paths;
+- cross-currency paths fail closed until a verified FX layer exists.
+
+## Personalized transaction ranking
+- `supabase/functions/_shared/opportunity-engine-v1.mjs`
+- `supabase/functions/rank-opportunities/index.ts`
+- evaluates economics, relevance, evidence, counterparty quality, liquidity, risk and user constraints;
+- `no transaction` is a valid recommendation;
+- every ranking is explicitly scoped to evaluated candidates.
+
+## Execution dossier
+Every ranked candidate can carry:
+- source and destination;
+- counterparties and public/licensed business contacts;
+- route and logistics;
+- timing and quote validity;
+- full cost breakdown;
+- downside/base/upside scenario fields;
+- next actions;
+- explicit missing execution fields.
+
+A candidate can be rankable yet remain `execution_ready=false`.
+
+## Portfolio allocation
+- `supabase/functions/_shared/opportunity-portfolio-optimizer-v1.mjs`
+- exact subset optimization for small candidate sets;
+- heuristic allocation for larger sets with `optimality_proven=false`;
+- preserves a configured cash reserve;
+- enforces country, sector and position-count concentration limits;
+- mixed currencies fail closed pending a verified FX layer;
+- allocation remains advisory and requires human approval.
+
+## Current tests
+- `tests/opportunity-hypothesis-v1.test.mjs`
+- `tests/counterparty-discovery-v1.test.mjs`
+- `tests/counterparty-verification-v1.test.mjs`
+- `tests/transaction-path-builder-v1.test.mjs`
+- `tests/opportunity-transaction-engine-v1.test.mjs`
+- `tests/opportunity-portfolio-optimizer-v1.test.mjs`
 
 # Required next build sequence
 
