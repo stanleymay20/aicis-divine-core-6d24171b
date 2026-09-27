@@ -184,6 +184,18 @@ export function CounterpartyDiscoveryPanel() {
                   <ShieldAlert className="h-3 w-3" />
                   Verification still required before quote or transaction use.
                 </div>
+                <div className="mt-2 flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => window.dispatchEvent(new CustomEvent("aicis:screen-counterparty", {
+                      detail: { legal_name: candidate.title || candidate.domain },
+                    }))}
+                  >
+                    Screen official lists
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
