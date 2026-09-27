@@ -7,11 +7,11 @@ export interface ForecastValidationBundle {
   domains: DomainRow[];
   horizons: HorizonRow[];
   models: ModelRow[];
-  readiness: any;
-  accumulation: any;
-  matchQuality: any;
-  coverageGaps: any;
-  snapshots: any[];
+  readiness: unknown;
+  accumulation: unknown;
+  matchQuality: unknown;
+  coverageGaps: unknown;
+  snapshots: unknown[];
   policies: DomainPolicy[];
   health: { ok: boolean; alerts: HealthAlert[] } | null;
 }
