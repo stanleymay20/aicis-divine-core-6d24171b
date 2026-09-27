@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Database } from "lucide-react";
+import { PanelEmpty } from "@/components/ui/panel-empty";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 export function DataSourceHealthCard({ sourceHealth }: { sourceHealth: { name: string; value: number; color: string }[] }) {
@@ -9,6 +10,14 @@ export function DataSourceHealthCard({ sourceHealth }: { sourceHealth: { name: s
         <CardTitle className="text-sm flex items-center gap-2"><Database className="h-4 w-4 text-emerald-400" /> Data Source Health</CardTitle>
       </CardHeader>
       <CardContent>
+        {sourceHealth.length === 0 ? (
+          <PanelEmpty
+            title="Source health not available yet"
+            reason="No attributable source-status rows were returned. AICIS will not infer online, degraded, or offline counts."
+            nextStep="Restore or populate the live source-health contract, then refresh this panel."
+            compact
+          />
+        ) : (
         <div className="flex items-center gap-3">
           <div className="h-32 w-32">
             <ResponsiveContainer>
@@ -35,6 +44,7 @@ export function DataSourceHealthCard({ sourceHealth }: { sourceHealth: { name: s
             </div>
           </div>
         </div>
+        )}
       </CardContent>
     </Card>
   );
