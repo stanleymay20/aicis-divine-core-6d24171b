@@ -60,7 +60,7 @@ export default function DecisionOperations() {
             </p>
           </div>
           <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground border border-border rounded px-2 py-1">
-            Live · auto-refresh 30s
+            Operational views · refresh up to 30s
           </span>
         </div>
 
