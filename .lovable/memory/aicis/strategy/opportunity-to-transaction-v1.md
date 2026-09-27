@@ -287,6 +287,62 @@ A candidate can be rankable yet remain `execution_ready=false`.
 - `tests/opportunity-transaction-engine-v1.test.mjs`
 - `tests/opportunity-portfolio-optimizer-v1.test.mjs`
 
+## Official sanctions coverage
+- `supabase/functions/_shared/official-sanctions-screen-v1.mjs`
+- `supabase/functions/screen-transaction-counterparty/index.ts`
+- `src/components/opportunities/SanctionsScreenPanel.tsx`
+- current official-source adapters:
+  - US OFAC SDN;
+  - UN Consolidated List;
+  - UK Sanctions List;
+  - EU Financial Sanctions File (FSF), with fail-closed handling if the Commission bulk endpoint is unavailable or parses to zero records;
+- exact normalized-name and exact identifier matches are review triggers, never automatic legal determinations;
+- incomplete source coverage can never be labelled clear;
+- even a complete no-match screen remains `compliance_status=review` until an explicit human compliance decision supplies clear evidence.
+
+## FX truth floor
+- `supabase/functions/_shared/verified-fx-v1.mjs`
+- `supabase/functions/_shared/ecb-reference-fx-v1.mjs`
+- `supabase/functions/fetch-reference-fx/index.ts`
+- research-comparison FX and execution-ready FX are distinct:
+  - `official_reference` and `verified_market` may support comparative economics;
+  - only `executable_quote` may satisfy final FX execution readiness;
+- stale, provenance-free or missing FX fails closed;
+- saved opportunity preferences include a comparison/base currency;
+- ECB reference rates are explicitly labelled non-executable.
+
+## Counterparty verification UX
+- `src/components/opportunities/CounterpartyVerificationLab.tsx`
+- sanctions evidence can seed a verification dossier only as `review`;
+- legal identity, official-site evidence, current quote, capacity and payment terms remain required;
+- a successful normalized supplier/buyer offer can be injected directly into the Transaction Lab;
+- normalized offer IDs are de-duplicated on insertion.
+
+## Logistics verification
+- `supabase/functions/_shared/logistics-route-verification-v1.mjs`
+- `supabase/functions/verify-logistics-route/index.ts`
+- `src/components/opportunities/LogisticsRouteVerificationLab.tsx`
+- a logistics company is not a route;
+- a route becomes transaction-eligible input only after provider identity/compliance, current route quote, transit time, capacity and all cost components have attributable evidence;
+- verified routes can be inserted directly into the Transaction Lab;
+- logistics candidates pass through the same official sanctions review before route verification.
+
+## Transaction-lab handoff chain
+The intended UI path is now:
+1. personalized signal;
+2. product hypothesis;
+3. supplier / buyer / logistics discovery;
+4. official sanctions screening;
+5. supplier/buyer verification or logistics-route verification;
+6. verified offer/route insertion into Transaction Lab;
+7. verified/reference FX attachment as needed;
+8. path build;
+9. personalized rank;
+10. portfolio allocation;
+11. explicit human approval boundary.
+
+No step may silently promote discovery-only or review-only evidence into executable state.
+
 # Required next build sequence
 
 1. Candidate schema and immutable evidence links.
