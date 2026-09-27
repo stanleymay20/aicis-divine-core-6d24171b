@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, CheckCircle2, CircleDollarSign, Compass, Loader2, MapPin, RefreshCw, ShieldAlert, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleDollarSign, Compass, Loader2, MapPin, RefreshCw, Search, ShieldAlert, Users } from "lucide-react";
 
 type RankItem = {
   candidate_id: string;
@@ -138,6 +138,31 @@ type ReferenceFxResponse = {
   message?: string;
 };
 
+type ResearchAction = {
+  id: string;
+  kind: string;
+  title: string;
+  priority: "blocking" | "high" | "normal";
+  source_candidate_id: string | null;
+  trigger: string;
+  required_evidence: string[];
+  completion_criteria: string[];
+  suggested_next_step: string | null;
+  research_only: true;
+  transaction_eligible: false;
+  expected_value: null;
+};
+
+type ResearchPlan = {
+  planner_version: string;
+  action_count: number;
+  blocking_count: number;
+  high_count: number;
+  actions: ResearchAction[];
+  execution_performed: false;
+  scope_notice: string;
+};
+
 type BuildResponse = {
   ok: boolean;
   build?: {
@@ -153,6 +178,7 @@ type BuildResponse = {
     ranking_scope_notice: string;
   };
   strategic?: StrategicResponse;
+  research_plan?: ResearchPlan;
   portfolio?: {
     allocation_available: boolean;
     reason?: string;
@@ -454,6 +480,8 @@ export function TransactionPathLab() {
 
         {result?.strategic ? <StrategicRecommendation strategic={result.strategic} /> : null}
 
+        {result?.research_plan ? <ResearchPlanPanel plan={result.research_plan} /> : null}
+
         {result?.portfolio ? <PortfolioAllocation portfolio={result.portfolio} /> : null}
       </CardContent>
     </Card>
@@ -558,6 +586,86 @@ function TopPath({ candidate, result }: { candidate: RankItem; result: BuildResp
       )}
 
       <BuildStats result={result} />
+    </div>
+  );
+}
+
+function ResearchPlanPanel({ plan }: { plan: ResearchPlan }) {
+  if (!plan.actions.length) {
+    return (
+      <div className="rounded-lg border border-border p-4">
+        <div className="flex items-center gap-2">
+          <Search className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold">Evidence acquisition plan</p>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          No additional blocker-driven research tasks were generated from the supplied build, ranking, and strategy results.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2">
+            <Search className="h-4 w-4 text-primary" />
+            <p className="text-sm font-semibold">Evidence acquisition plan</p>
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Concrete research tasks generated from unresolved dependencies. None of these tasks is an execution recommendation or profit claim.
+          </p>
+        </div>
+        <div className="flex gap-1.5">
+          {plan.blocking_count ? <Badge variant="destructive">{plan.blocking_count} blocking</Badge> : null}
+          {plan.high_count ? <Badge variant="secondary">{plan.high_count} high</Badge> : null}
+          <Badge variant="outline">{plan.action_count} total</Badge>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {plan.actions.map((item, index) => (
+          <div key={item.id} className="rounded-md border border-border/70 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-medium">{index + 1}. {item.title}</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">{item.trigger}</p>
+              </div>
+              <Badge
+                variant={item.priority === "blocking" ? "destructive" : item.priority === "high" ? "secondary" : "outline"}
+                className="text-[10px]"
+              >
+                {item.priority}
+              </Badge>
+            </div>
+
+            {item.required_evidence.length ? (
+              <div className="mt-2">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Evidence needed</p>
+                <p className="mt-0.5 text-[11px]">{item.required_evidence.join(" · ")}</p>
+              </div>
+            ) : null}
+
+            {item.completion_criteria.length ? (
+              <div className="mt-2">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Complete when</p>
+                <ul className="mt-0.5 space-y-0.5 text-[11px]">
+                  {item.completion_criteria.map((criterion) => <li key={criterion}>• {criterion}</li>)}
+                </ul>
+              </div>
+            ) : null}
+
+            {item.suggested_next_step ? (
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                Next: {item.suggested_next_step}
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[10px] text-muted-foreground">{plan.scope_notice}</p>
     </div>
   );
 }
