@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Download, FileDown, Lock, Loader2, ShieldCheck, History, ExternalLink, Eye, Archive } from "lucide-react";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 import { formatDistanceToNow } from "date-fns";
 
 type DatasetKey = "local_events" | "early_warnings" | "geo_audit"
@@ -178,6 +179,7 @@ export default function ExportCenter() {
     <AICISLayout>
       <div className="overflow-y-auto h-full">
         <div className="container mx-auto py-6 max-w-[1400px] space-y-5 px-4 md:px-6 lg:px-8 animate-fade-in">
+          <SystemWorkspaceNav />
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
