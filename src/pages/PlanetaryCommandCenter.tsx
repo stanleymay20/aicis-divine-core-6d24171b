@@ -135,6 +135,11 @@ const notDeployed = (...queries: { error: unknown }[]) =>
 const retryUnlessMissing = (failureCount: number, error: unknown) =>
   !isSchemaUnavailableError(error) && failureCount < 2;
 
+const pollUnlessMissing =
+  (ms: number) =>
+  (query: { state: { error: unknown } }) =>
+    isSchemaUnavailableError(query.state.error) ? false : ms;
+
 export default function PlanetaryCommandCenter() {
   const navigate = useNavigate();
 
