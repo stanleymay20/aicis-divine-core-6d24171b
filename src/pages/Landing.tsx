@@ -19,7 +19,14 @@ import {
   BarChart3,
   Network,
   Eye,
+  Menu,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Landing = () => {
   const { user, loading } = useAuth();
@@ -41,18 +48,18 @@ const Landing = () => {
       />
 
       {/* Nav */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/90 border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <Link to="/" className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
               <Shield className="h-4 w-4 text-primary-foreground" />
             </div>
             <span className="text-base font-semibold tracking-tight">AICIS</span>
-            <Badge variant="outline" className="ml-1 text-[10px] uppercase tracking-wider border-primary/30 text-primary">
+            <Badge variant="outline" className="hidden sm:inline-flex ml-1 text-[10px] uppercase tracking-wider border-primary/30 text-primary">
               Decision Intelligence
             </Badge>
           </Link>
-          <nav className="flex items-center gap-2">
+          <nav className="hidden md:flex items-center gap-2">
             <PlanetaryHeartbeat />
             <Button variant="ghost" size="sm" asChild>
               <Link to="/status">Status</Link>
@@ -66,49 +73,64 @@ const Landing = () => {
               </Link>
             </Button>
           </nav>
+          <div className="flex md:hidden items-center gap-2">
+            <Button size="sm" asChild>
+              <Link to="/auth">Sign In</Link>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Open navigation menu">
+                  <Menu className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem asChild>
+                  <Link to="/morning-brief?demo=true" className="min-h-9 cursor-pointer">View Live Demo</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/status" className="min-h-9 cursor-pointer">System Status</Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
+      <section className="relative overflow-hidden border-b border-border">
         <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-background to-background pointer-events-none" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-primary/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative max-w-7xl mx-auto px-6 pt-20 pb-24 text-center">
-          <Badge className="mb-6 bg-primary/10 text-primary border-primary/20 hover:bg-primary/15">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-10 sm:pt-20 pb-10 sm:pb-20 text-center">
+          <Badge className="mb-4 sm:mb-6 bg-primary/10 text-primary border-primary/20 hover:bg-primary/15 max-w-full">
             <Activity className="h-3 w-3 mr-1.5" />
-            Live across 211 countries · 10M+ metrics
+            Live planetary intelligence
           </Badge>
 
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-6 leading-[1.05]">
-            Decision intelligence
-            <br />
-            <span className="bg-gradient-to-r from-primary via-primary-glow to-secondary bg-clip-text text-transparent">
-              at planetary scale.
-            </span>
+          <p className="text-xs font-mono uppercase tracking-wider text-primary mb-3">AICIS · Decision Intelligence</p>
+          <h1 className="text-[2.6rem] sm:text-5xl md:text-7xl font-bold mb-4 sm:mb-6 leading-[1.02] max-w-5xl mx-auto">
+            Make better decisions with intelligence <span className="text-primary">you can verify.</span>
           </h1>
 
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-            AICIS turns global signals into auditable decisions for sovereign operators —
-            without surveillance, without black boxes, without compromise.
+          <p className="text-sm sm:text-lg md:text-xl text-foreground/70 max-w-2xl mx-auto mb-6 sm:mb-10 leading-relaxed">
+            Global signals become evidence-backed priorities, actions, and outcomes — without surveillance or black boxes.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Button size="lg" asChild className="text-base px-8 h-12">
+          <div className="grid grid-cols-1 sm:flex sm:flex-row items-center justify-center gap-3 max-w-sm sm:max-w-none mx-auto">
+            <Button size="lg" asChild className="text-sm sm:text-base px-8 h-12 w-full sm:w-auto">
               <Link to="/morning-brief?demo=true">
-                Explore Live Demo <ArrowRight className="h-4 w-4 ml-2" />
+                Open Live Brief <ArrowRight className="h-4 w-4 ml-2" />
               </Link>
             </Button>
-            <Button size="lg" variant="outline" asChild className="text-base px-8 h-12">
+            <Button size="lg" variant="outline" asChild className="text-sm sm:text-base px-8 h-12 w-full sm:w-auto">
               <Link to="/auth">Request Access</Link>
             </Button>
           </div>
 
-          <div className="mt-12 max-w-5xl mx-auto">
-            <PlanetaryPulseMap height={420} />
+          <div className="mt-8 sm:mt-12 max-w-5xl mx-auto">
+            <PlanetaryPulseMap height="clamp(280px, 45vw, 420px)" />
           </div>
 
-          <div className="mt-8 flex items-center justify-center gap-6 text-xs text-muted-foreground">
+          <div className="mt-5 sm:mt-8 grid grid-cols-1 sm:flex sm:items-center sm:justify-center gap-2 sm:gap-6 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Lock className="h-3.5 w-3.5 text-success" />
               Non-Surveillance Guaranteed
@@ -122,23 +144,6 @@ const Landing = () => {
               GDPR · ISO 27001
             </span>
           </div>
-        </div>
-      </section>
-
-      {/* Trust strip */}
-      <section className="border-y border-border bg-card/30">
-        <div className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-          {[
-            { v: "211", l: "Countries Tracked" },
-            { v: "10M+", l: "Live Metrics" },
-            { v: "<10min", l: "Threat Auto-Response" },
-            { v: "92%", l: "Forecast Accuracy" },
-          ].map((s) => (
-            <div key={s.l}>
-              <div className="text-3xl md:text-4xl font-bold font-mono text-primary tracking-tight">{s.v}</div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground mt-1">{s.l}</div>
-            </div>
-          ))}
         </div>
       </section>
 

@@ -52,7 +52,7 @@ const CENTROIDS: Record<string, [number, number]> = {
 
 type Pulse = { id: string; iso3: string; ingestion_source: string | null; first_detected_at: string };
 
-export function PlanetaryPulseMap({ height = 380 }: { height?: number }) {
+export function PlanetaryPulseMap({ height = 380 }: { height?: number | string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -162,19 +162,19 @@ export function PlanetaryPulseMap({ height = 380 }: { height?: number }) {
   }, []);
 
   return (
-    <div className="relative rounded-xl overflow-hidden border border-border bg-[#0a0e1a]" style={{ height }}>
+    <div className="relative rounded-lg overflow-hidden border border-border bg-card" style={{ height }}>
       <div ref={containerRef} className="absolute inset-0" />
-      <div className="absolute top-3 left-3 z-[1000] bg-background/80 backdrop-blur-sm rounded-md px-3 py-2 text-[10px] font-mono space-y-1 pointer-events-none">
-        <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" /> live planetary nervous system</div>
-        <div className="text-muted-foreground">last 60 min · realtime</div>
+      <div className="absolute top-3 left-3 z-[1000] bg-background/90 backdrop-blur-sm rounded-md border border-border px-3 py-2 text-[10px] font-mono space-y-1 pointer-events-none text-left">
+        <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success animate-pulse" /> Live global signals</div>
+        <div className="text-muted-foreground">Last 60 minutes · real time</div>
       </div>
-      <div className="absolute bottom-2 right-2 z-[1000] flex items-center gap-2 text-[9px] font-mono text-muted-foreground bg-background/70 rounded px-2 py-1">
-        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-violet-400" /> GDELT</span>
-        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> ReliefWeb</span>
-        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-orange-400" /> USGS</span>
-        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-purple-400" /> Web</span>
-        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Recovered</span>
-        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Wire</span>
+      <div className="absolute bottom-7 left-2 right-2 z-[1000] flex flex-wrap justify-center gap-x-2.5 gap-y-1 text-[9px] font-mono text-muted-foreground bg-background/85 backdrop-blur-sm rounded border border-border px-2 py-1.5 pointer-events-none">
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-primary" /> GDELT</span>
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-destructive" /> ReliefWeb</span>
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-warning" /> USGS</span>
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-secondary" /> Web</span>
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-warning" /> Recovered</span>
+        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-success" /> Wire</span>
       </div>
     </div>
   );
