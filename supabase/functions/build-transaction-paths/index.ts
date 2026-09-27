@@ -83,7 +83,31 @@ Deno.serve(async (req) => {
       ? opportunityProfile.capital_available
       : null;
     const actorState = {
-      ...suppliedActorState,
+      capabilities: Array.isArray(suppliedActorState.capabilities)
+        ? suppliedActorState.capabilities
+        : Array.isArray(opportunityProfile.strategic_capabilities)
+          ? opportunityProfile.strategic_capabilities
+          : [],
+      licenses: Array.isArray(suppliedActorState.licenses)
+        ? suppliedActorState.licenses
+        : Array.isArray(opportunityProfile.strategic_licenses)
+          ? opportunityProfile.strategic_licenses
+          : [],
+      relationships: Array.isArray(suppliedActorState.relationships)
+        ? suppliedActorState.relationships
+        : Array.isArray(opportunityProfile.strategic_relationships)
+          ? opportunityProfile.strategic_relationships
+          : [],
+      infrastructure: Array.isArray(suppliedActorState.infrastructure)
+        ? suppliedActorState.infrastructure
+        : Array.isArray(opportunityProfile.strategic_infrastructure)
+          ? opportunityProfile.strategic_infrastructure
+          : [],
+      constraints: Array.isArray(suppliedActorState.constraints)
+        ? suppliedActorState.constraints
+        : Array.isArray(opportunityProfile.strategic_constraints)
+          ? opportunityProfile.strategic_constraints
+          : [],
       capital_available: typeof suppliedActorState.capital_available === "number"
         ? suppliedActorState.capital_available
         : configuredCapital,
