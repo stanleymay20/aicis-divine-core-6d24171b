@@ -436,7 +436,13 @@ export default function PlanetaryCommandCenter() {
                 <div className="mt-4 text-sm font-semibold">{stage.label}</div>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{stage.description}</p>
                 <div className="mt-3 text-[10px] font-mono text-muted-foreground">
-                  {stage.loading ? "checking…" : stage.error ? "query unavailable" : `${stage.rows} recent evidence row${stage.rows === 1 ? "" : "s"}`}
+                  {stage.undeployed
+                    ? "capability not deployed on this environment"
+                    : stage.loading
+                      ? "checking…"
+                      : stage.error
+                        ? "query unavailable"
+                        : `${stage.rows} recent evidence row${stage.rows === 1 ? "" : "s"}`}
                 </div>
                 {index < stages.length - 1 && (
                   <ArrowRight aria-hidden="true" className="absolute -right-2.5 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 text-border 2xl:block" />
