@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Globe2, AlertTriangle, Languages } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 type GapRow = {
   id: string;
@@ -64,7 +65,7 @@ export default function CoverageEquity() {
   const totalQueries = latestRows.reduce((acc, r) => acc + r.queries_generated, 0);
 
   return (
-    <div className="container mx-auto py-6 max-w-6xl space-y-5">
+    <div className="container mx-auto py-6 max-w-6xl space-y-5">\n      <DataTrustWorkspaceNav />
       <div>
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
           <Globe2 className="h-7 w-7 text-primary" /> Coverage Equity
