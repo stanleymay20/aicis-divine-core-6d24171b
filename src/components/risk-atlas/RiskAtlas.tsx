@@ -585,12 +585,12 @@ interface AtlasMapProps {
 
 const BASEMAP_TILES: Record<Basemap, { url: string; attr: string; subdomains?: string }> = {
   dark: {
-    url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
     attr: "© OpenStreetMap, © CARTO",
     subdomains: "abcd",
   },
   light: {
-    url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
     attr: "© OpenStreetMap, © CARTO",
     subdomains: "abcd",
   },
