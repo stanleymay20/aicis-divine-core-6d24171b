@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { SEO } from "@/components/SEO";
 import { TrainingFreshnessPanel } from "@/components/data-pipeline/TrainingFreshnessPanel";
 import { PipelineReplayPanel } from "@/components/data-pipeline/PipelineReplayPanel";
+import { AICISLayout } from "@/components/aicis/AICISLayout";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 
 interface IntegrityRow {
@@ -106,8 +108,10 @@ export default function DataIntegrity() {
     : [];
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6 max-w-7xl">
-      <SEO
+    <AICISLayout>
+      <div className="container mx-auto px-4 py-8 space-y-6 max-w-7xl overflow-y-auto h-full">
+        <DataTrustWorkspaceNav />
+        <SEO
         title="Data Integrity | AICIS Planetary Nervous System"
         description="Live G7-grade data integrity surface: entity-graph link completeness, country coverage, ingestion heartbeat, and freshness."
         path="/data-integrity"
@@ -182,6 +186,7 @@ export default function DataIntegrity() {
           <code className="text-primary">f_normalize_iso3</code> at link time.
         </p>
       </Card>
-    </div>
+      </div>
+    </AICISLayout>
   );
 }
