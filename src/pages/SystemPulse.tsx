@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Activity, AlertTriangle, CheckCircle2, RefreshCw, Zap } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 
 interface Heartbeat {
   pipeline_name: string;
@@ -65,7 +66,7 @@ export default function SystemPulse() {
         .order("inserted_at", { ascending: false }).limit(20),
     ]);
     setHeartbeats((hb as Heartbeat[]) || []);
-    const layersData = (lh as any)?.layers || [];
+    const layersData = (lh as { layers?: LayerHealth[] } | null)?.layers ?? [];
     setLayers(layersData);
     setCanaries((cp as CanaryProbe[]) || []);
     setLoading(false);
@@ -92,6 +93,7 @@ export default function SystemPulse() {
   return (
     <div className="min-h-screen bg-background p-6 lg:p-10">
       <div className="max-w-7xl mx-auto space-y-6">
+        <SystemWorkspaceNav />
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div>
