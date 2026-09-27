@@ -51,7 +51,7 @@ export function LearningSection({ isPrivileged }: { isPrivileged: boolean }) {
     queryKey: ["recommendation-quality-score"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("recommendation_quality_score" as any)
+        .from("recommendation_quality_score" as never)
         .select("*")
         .order("quality_score", { ascending: false });
       if (error) throw error;
@@ -63,7 +63,7 @@ export function LearningSection({ isPrivileged }: { isPrivileged: boolean }) {
     queryKey: ["risk-action-learning-leaderboard"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("risk_action_learning_leaderboard" as any)
+        .from("risk_action_learning_leaderboard" as never)
         .select("*");
       if (error) throw error;
       return (data ?? []) as unknown as LeaderRow[];
@@ -84,12 +84,13 @@ export function LearningSection({ isPrivileged }: { isPrivileged: boolean }) {
 
   const refresh = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.rpc("refresh_recommendation_quality_scores" as any);
+      const { data, error } = await supabase.rpc("refresh_recommendation_quality_scores" as never);
       if (error) throw error;
       return data;
     },
-    onSuccess: (rows: any) => {
-      toast.success(`Recomputed ${(rows ?? []).length} intervention scores`);
+    onSuccess: (rows: unknown) => {
+      const count = Array.isArray(rows) ? rows.length : 0;
+      toast.success(`Recomputed ${count} intervention scores`);
       qc.invalidateQueries({ queryKey: ["recommendation-quality-score"] });
       qc.invalidateQueries({ queryKey: ["risk-action-learning-leaderboard"] });
       qc.invalidateQueries({ queryKey: ["risk-action-score-adjustments"] });
