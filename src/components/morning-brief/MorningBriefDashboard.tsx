@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { PriorityDecisionsPanel } from "./PriorityDecisionsPanel";
+import { ForecastMovementPanel } from "./ForecastMovementPanel";
 import { SystemHealthBadge } from "./SystemHealthBadge";
 import { useNavigate } from "react-router-dom";
 import {
@@ -127,6 +128,18 @@ export const MorningBriefDashboard = () => {
           </p>
         </div>
         <PriorityDecisionsPanel />
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            What became more or less likely
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Movement between the two latest comparable stored risk-ranking batches.
+          </p>
+        </div>
+        <ForecastMovementPanel />
       </section>
 
       <section className="space-y-3">
