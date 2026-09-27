@@ -106,8 +106,8 @@ export const MorningBriefDashboard = () => {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Priority Decisions</h2>
-          <p className="text-xs text-muted-foreground">Highest-impact risks translated into recommended action.</p>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Priority Signals</h2>
+          <p className="text-xs text-muted-foreground">Highest-impact signals with stored evidence, uncertainty, and proposed actions.</p>
         </div>
         <PriorityDecisionsPanel />
       </section>
