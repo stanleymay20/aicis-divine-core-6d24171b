@@ -1,1 +1,2 @@
 - Scheduled jobs calling backend functions must send header x-cron-secret read from vault secret 'cron_secret' (matches CRON_SECRET env) — hardened function auth rejects anon-key calls.
+- Export functions select only columns verified live (GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS / runtime probe); ~165 descriptive-named repo migrations are NOT applied live and must not be replayed without per-file review — why: repo/live schema drift broke all exports.

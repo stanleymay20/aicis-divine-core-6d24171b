@@ -218,7 +218,7 @@ function queryCall<T>(query: T, method: string, ...args: unknown[]): T {
   const callable = query as unknown as Record<string, (...methodArgs: unknown[]) => T>;
   const fn = callable[method];
   if (typeof fn !== "function") throw new TypeError(`Query builder does not support ${method}`);
-  return fn(...args);
+  return fn.apply(query, args);
 }
 
 function requireUsableSemantics<T>(query: T, column: string): T {
@@ -347,7 +347,24 @@ serve(async (req) => {
     });
   }
 
-  const spec = DATASETS[body.dataset_name];
+  const declaredSpec = DATASETS[body.dataset_name];
+  // Live-schema adapter: the repo migration backlog is not applied, so some
+  // declared columns may be absent. Absent columns are never selected and are
+  // exported as null (unknown); semantics-gated filters on absent semantics
+  // columns are refused rather than silently passed.
+  let liveColumns: Set<string> | null = null;
+  if (declaredSpec.columns[0] !== "*") {
+    const { data: probe } = await admin.from(declaredSpec.table).select("*").limit(1);
+    if (probe && probe[0]) liveColumns = new Set(Object.keys(probe[0] as Record<string, unknown>));
+  }
+  const absentColumns = liveColumns ? declaredSpec.columns.filter((c) => !liveColumns!.has(c)) : [];
+  const isLive = (c?: string) => (c && liveColumns ? liveColumns.has(c) : !!c);
+  const spec: DatasetSpec = {
+    ...declaredSpec,
+    confidenceSemanticsCol: isLive(declaredSpec.confidenceSemanticsCol) ? declaredSpec.confidenceSemanticsCol : undefined,
+    severitySemanticsCol: isLive(declaredSpec.severitySemanticsCol) ? declaredSpec.severitySemanticsCol : undefined,
+  };
+  const selectColumns = liveColumns ? declaredSpec.columns.filter((c) => liveColumns!.has(c)) : declaredSpec.columns;
   const filters = body.filters || {};
   const semanticFilterError = validateSemanticFilters(spec, filters);
   if (semanticFilterError) {
@@ -402,7 +419,7 @@ serve(async (req) => {
   const logId = logRow.id;
 
   try {
-    const columns = spec.columns[0] === "*" ? "*" : spec.columns.join(",");
+    const columns = spec.columns[0] === "*" ? "*" : selectColumns.join(",");
     const rawRows: Record<string, unknown>[] = [];
     let from = 0;
 
@@ -410,7 +427,9 @@ serve(async (req) => {
       const pageSize = Math.min(PAGE, limit - rawRows.length);
       let query = admin.from(spec.table).select(columns).range(from, from + pageSize - 1);
       query = applyFilters(query, spec, filters);
-      if (spec.dateCol) query = query.order(spec.dateCol, { ascending: false, nullsFirst: false });
+      if (spec.dateCol) // global_signals: match idx_global_signals_first_detected (DESC NULLS FIRST) so the
+      // 1.45M-row table is read by index instead of a full sort (statement timeout).
+      query = query.order(spec.dateCol, { ascending: false, nullsFirst: spec.table === "global_signals" });
       if (spec.idCol) query = query.order(spec.idCol, { ascending: false });
       const { data: page, error: pageError } = await query;
       if (pageError) throw new Error(`query: ${pageError.message}`);
@@ -420,7 +439,17 @@ serve(async (req) => {
       from += pageSize;
     }
 
-    const rows = annotateRows(rawRows, body.dataset_name, spec);
+    const rows = annotateRows(rawRows.map((row) => {
+      const out: Record<string, unknown> = { ...row };
+      for (const c of absentColumns) out[c] = null;
+      return out;
+    }), body.dataset_name, spec).map((row) => ({
+      ...row,
+      _aicis_export_semantics: {
+        ...(row._aicis_export_semantics as Record<string, unknown>),
+        fields_absent_from_live_schema_exported_as_null: absentColumns,
+      },
+    }));
     const columnList = spec.columns[0] === "*"
       ? (rows[0] ? Object.keys(rows[0]) : ["_aicis_export_semantics"])
       : [...spec.columns, "_aicis_export_semantics"];
