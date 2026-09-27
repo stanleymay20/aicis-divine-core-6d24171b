@@ -145,6 +145,7 @@ function buildExecutionDossier(candidate, metrics) {
   if (costBreakdown.length === 0) missing.push("cost_breakdown");
   if (contacts.length === 0) missing.push("contacts");
   if (!candidate?.timing) missing.push("timing");
+  if (candidate?.fx_execution_ready === false) missing.push("executable_fx_quote");
 
   return {
     execution_ready: missing.length === 0 &&
