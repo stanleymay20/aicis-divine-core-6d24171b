@@ -10,6 +10,7 @@ import {
   Users, Zap, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 import { OverviewTab } from "@/components/admin-dashboard/OverviewTab";
 import { DivisionsTab } from "@/components/admin-dashboard/DivisionsTab";
 import { ActionsTab } from "@/components/admin-dashboard/ActionsTab";
@@ -135,6 +136,7 @@ const AdminDashboard = () => {
   return (
     <AICISLayout>
       <div className="p-6 container mx-auto space-y-6">
+        <SystemWorkspaceNav />
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
