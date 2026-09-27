@@ -33,6 +33,15 @@ const tabs: Array<{ id: InspectorTab; label: string }> = [
   { id: "ask", label: "Ask" },
 ];
 
+const tabAvailable = (
+  tab: InspectorTab,
+  selectedEntity: ReturnType<typeof useIntelligenceOS>["selectedEntity"],
+) => {
+  if (tab === "overview" || tab === "ask") return true;
+  if (tab === "evidence") return Boolean(selectedEntity?.provenance?.length);
+  return false;
+};
+
 const EmptyState = ({ children }: { children: React.ReactNode }) => (
   <div className="rounded-lg border border-dashed border-border p-4 text-[11px] leading-relaxed text-muted-foreground">
     {children}
@@ -176,21 +185,33 @@ const InspectorBody = () => {
 
       <div className="shrink-0 overflow-x-auto border-b border-border/70 px-2 py-2 scrollbar-hide">
         <div className="flex min-w-max gap-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setInspectorTab(tab.id)}
-              className={cn(
-                "rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors",
-                activeInspectorTab === tab.id
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {tabs.map((tab) => {
+            const available = tabAvailable(tab.id, selectedEntity);
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => available && setInspectorTab(tab.id)}
+                disabled={!available}
+                aria-disabled={!available}
+                title={
+                  available
+                    ? undefined
+                    : `${tab.label} context has not been supplied by the current workspace.`
+                }
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors",
+                  activeInspectorTab === tab.id
+                    ? "bg-primary/10 text-primary"
+                    : available
+                      ? "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                      : "cursor-not-allowed text-muted-foreground/35",
+                )}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
