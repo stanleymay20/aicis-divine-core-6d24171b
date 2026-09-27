@@ -452,3 +452,7 @@ verify_jwt = true
 
 [functions.preview-execution-ibkr]
 verify_jwt = true
+
+
+[functions.execution-provider-status]
+verify_jwt = true
