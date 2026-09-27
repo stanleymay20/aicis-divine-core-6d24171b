@@ -17,6 +17,7 @@ import { SanctionsScreenPanel } from "@/components/opportunities/SanctionsScreen
 import { CounterpartyVerificationLab } from "@/components/opportunities/CounterpartyVerificationLab";
 import { LogisticsRouteVerificationLab } from "@/components/opportunities/LogisticsRouteVerificationLab";
 import { StrategicResearchTracker } from "@/components/opportunities/StrategicResearchTracker";
+import { OpportunityWorkspaceNav } from "@/components/opportunities/OpportunityWorkspaceNav";
 import {
   BrainCircuit,
   CircleDollarSign,
@@ -305,7 +306,9 @@ export default function OpportunityRadar() {
         </Badge>
       </div>
 
-      <Card>
+      <OpportunityWorkspaceNav />
+
+      <Card id="opportunity-profile" className="scroll-mt-16">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Target className="h-4 w-4 text-primary" />
@@ -507,21 +510,22 @@ export default function OpportunityRadar() {
         </Card>
       </div>
 
-      <OpportunityHypothesesPanel />
+      <section id="opportunity-hypotheses" className="scroll-mt-16">
+        <OpportunityHypothesesPanel />
+      </section>
 
       <StrategicResearchTracker />
 
-      <CounterpartyDiscoveryPanel />
-
-      <SanctionsScreenPanel />
-
-      <CounterpartyVerificationLab />
-
-      <LogisticsRouteVerificationLab />
+      <section id="opportunity-verification" className="space-y-5 scroll-mt-16">
+        <CounterpartyDiscoveryPanel />
+        <SanctionsScreenPanel />
+        <CounterpartyVerificationLab />
+        <LogisticsRouteVerificationLab />
+      </section>
 
       <TransactionPathLab />
 
-      <Card>
+      <Card id="opportunity-research-queue" className="scroll-mt-16">
         <CardHeader className="pb-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
