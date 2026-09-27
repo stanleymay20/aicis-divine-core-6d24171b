@@ -45,7 +45,7 @@ type PendingAction = Pick<
 >;
 
 const cleanSignalTitle = (title: string) =>
-  title.replace(/^\s*\[[A-Z0-9_\-]+\]\s*/i, "").trim();
+  title.replace(/^\s*\[[A-Z0-9_-]+\]\s*/i, "").trim();
 
 const isPast = (value: string | null) =>
   value ? new Date(value).getTime() < Date.now() : false;
