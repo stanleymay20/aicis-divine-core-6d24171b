@@ -193,6 +193,115 @@ export function parseUkSanctionsCsv(csv) {
     }));
 }
 
+function parseCsvRows(csv) {
+  const source = String(csv ?? "").replace(/^\uFEFF/, "");
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (quoted) {
+      if (char === '"' && source[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        field += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = true;
+    } else if (char === ",") {
+      row.push(field);
+      field = "";
+    } else if (char === "\n") {
+      row.push(field.replace(/\r$/, ""));
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+
+  row.push(field.replace(/\r$/, ""));
+  if (row.some((value) => String(value).length > 0)) rows.push(row);
+  return rows;
+}
+
+function rowObject(headers, values) {
+  const record = {};
+  for (let index = 0; index < headers.length; index += 1) {
+    record[String(headers[index] ?? "").trim()] = String(values[index] ?? "").trim();
+  }
+  return record;
+}
+
+export function parseUkSanctionsCsv(csv) {
+  const rows = parseCsvRows(csv);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map((value) => String(value).trim());
+  const required = ["Unique ID", "Name 6", "Name type", "Individual, Entity, Ship"];
+  if (!required.every((field) => headers.includes(field))) return [];
+
+  const grouped = new Map();
+
+  for (const values of rows.slice(1)) {
+    const row = rowObject(headers, values);
+    if (String(row["Individual, Entity, Ship"] || "").trim().toLowerCase() !== "entity") continue;
+
+    const id = String(row["Unique ID"] || "").trim();
+    const name = String(row["Name 6"] || "").trim();
+    const nameType = String(row["Name type"] || "").trim().toLowerCase();
+    if (!id || !name) continue;
+
+    const existing = grouped.get(id) || {
+      source: "uk_sanctions",
+      source_authority: "UK Foreign, Commonwealth & Development Office",
+      record_id: id,
+      primary_name: null,
+      aliases: [],
+      identifiers: [],
+      programs: [],
+    };
+
+    if (nameType === "primary name" || nameType === "primary name variation") {
+      if (!existing.primary_name || nameType === "primary name") existing.primary_name = name;
+      if (nameType === "primary name variation" && existing.primary_name !== name) existing.aliases.push(name);
+    } else if (nameType === "alias") {
+      existing.aliases.push(name);
+    } else if (!existing.primary_name) {
+      existing.primary_name = name;
+    }
+
+    const businessRegistration = String(row["Business registration number (s)"] || "").trim();
+    if (businessRegistration) existing.identifiers.push(businessRegistration);
+
+    const unRef = String(row["UN Reference Number"] || "").trim();
+    if (unRef) existing.identifiers.push(unRef);
+
+    const regime = String(row["Regime Name"] || "").trim();
+    if (regime) existing.programs.push(regime);
+
+    grouped.set(id, existing);
+  }
+
+  return [...grouped.values()]
+    .filter((record) => record.primary_name)
+    .map((record) => ({
+      ...record,
+      aliases: unique(record.aliases),
+      identifiers: unique(record.identifiers),
+      programs: unique(record.programs),
+    }));
+}
+
 export function parseUnConsolidatedEntities(xml) {
   const source = String(xml ?? "");
   const blocks = source.match(/<ENTITY(?:\s[^>]*)?>[\s\S]*?<\/ENTITY>/gi) || [];
