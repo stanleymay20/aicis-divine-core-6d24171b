@@ -32,6 +32,7 @@ const securityQuote = {
   observed_at: "2026-09-27T14:00:00Z",
   valid_until: "2026-09-27T14:05:00Z",
   instrument: { kind: "security", symbol: "ABC" },
+  execution_context: { candidate_id: "tx:cocoa", purpose: "primary_transaction" },
   side: "buy",
   quantity: 10,
   quantity_unit: "shares",
@@ -157,11 +158,12 @@ test("executable FX quote emits existing verified-FX schema", () => {
       quote_currency: "EUR",
       symbol: "USD/EUR",
     },
+    execution_context: { candidate_id: "tx:cocoa", purpose: "fx_conversion" },
     side: "convert",
     quantity: 1000,
     quantity_unit: "USD",
     pricing: { rate: 0.85, currency: "EUR" },
-    costs: [{ type: "commission", amount: 1.5, currency: "EUR" }],
+    costs: [],
     evidence_refs: evidence("fx-executable-source"),
   };
 
@@ -202,6 +204,7 @@ test("FX quote cannot pretend to be a buy order", () => {
     quote_id: "fx-bad",
     provider_quote_id: "fx-bad-provider",
     instrument: { kind: "fx", base_currency: "USD", quote_currency: "EUR" },
+    execution_context: { candidate_id: "tx:cocoa", purpose: "fx_conversion" },
     side: "buy",
     quantity: 1000,
     quantity_unit: "USD",
@@ -210,4 +213,77 @@ test("FX quote cannot pretend to be a buy order", () => {
   const validation = validateExecutionQuote(quote, "2026-09-27T14:01:00Z");
   assert.equal(validation.valid, false);
   assert.ok(validation.reasons.includes("fx_side_must_be_convert"));
+});
+
+
+test("quote candidate binding mismatch fails closed", () => {
+  const result = buildExecutionPreview({
+    candidate,
+    quote: {
+      ...securityQuote,
+      execution_context: { candidate_id: "tx:other", purpose: "primary_transaction" },
+    },
+    strategic_audit_hash: HASH,
+    idempotency_key: "preview:mismatch:001",
+    as_of: "2026-09-27T14:01:00Z",
+  });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.reasons.includes("quote_candidate_binding_mismatch"));
+});
+
+test("FX quote with explicit costs is previewable but cannot be injected as a bare rate", () => {
+  const quote = {
+    quote_id: "fx-cost-q-1",
+    provider_quote_id: "fx-cost-provider-q-1",
+    provider_name: "Example FX Provider",
+    provider_adapter: "example-fx-v1",
+    status: "executable_quote",
+    observed_at: "2026-09-27T14:00:00Z",
+    valid_until: "2026-09-27T14:03:00Z",
+    instrument: {
+      kind: "fx",
+      base_currency: "USD",
+      quote_currency: "EUR",
+      symbol: "USD/EUR",
+    },
+    execution_context: { candidate_id: "tx:cocoa", purpose: "fx_conversion" },
+    side: "convert",
+    quantity: 1000,
+    quantity_unit: "USD",
+    pricing: { rate: 0.85, currency: "EUR" },
+    costs: [{ type: "commission", amount: 1.5, currency: "EUR" }],
+    evidence_refs: evidence("fx-cost-source"),
+  };
+
+  const result = buildExecutionPreview({
+    candidate: { ...candidate, execution_ready: false },
+    quote,
+    strategic_audit_hash: HASH,
+    idempotency_key: "preview:fx:withcost1",
+    as_of: "2026-09-27T14:01:00Z",
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.preview_status, "previewed_order");
+  assert.equal(result.normalized_fx_rate, null);
+  assert.equal(result.fx_handoff_blocked_reason, "explicit_fx_costs_require_transaction_cost_integration");
+});
+
+test("FX quote purpose must be explicit and correct", () => {
+  const validation = validateExecutionQuote({
+    ...securityQuote,
+    quote_id: "fx-purpose-bad",
+    provider_quote_id: "fx-purpose-provider",
+    instrument: { kind: "fx", base_currency: "USD", quote_currency: "EUR" },
+    execution_context: { candidate_id: "tx:cocoa", purpose: "primary_transaction" },
+    side: "convert",
+    quantity: 1000,
+    quantity_unit: "USD",
+    pricing: { rate: 0.85, currency: "EUR" },
+    costs: [],
+  }, "2026-09-27T14:01:00Z");
+
+  assert.equal(validation.valid, false);
+  assert.ok(validation.reasons.includes("fx_quote_purpose_must_be_fx_conversion"));
 });
