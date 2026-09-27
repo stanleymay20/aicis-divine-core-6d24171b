@@ -82,6 +82,117 @@ export function parseOfacSdnEntities(xml) {
   return records;
 }
 
+function parseCsvRows(csv) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  const source = String(csv ?? "");
+
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
+
+    if (char === '"') {
+      if (quoted && next === '"') {
+        field += '"';
+        i += 1;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+
+    if (char === "," && !quoted) {
+      row.push(field);
+      field = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") i += 1;
+      row.push(field);
+      field = "";
+      if (row.some((value) => String(value).trim() !== "")) rows.push(row);
+      row = [];
+      continue;
+    }
+
+    field += char;
+  }
+
+  row.push(field);
+  if (row.some((value) => String(value).trim() !== "")) rows.push(row);
+  return rows;
+}
+
+function ukFieldMap(header) {
+  const normalized = header.map((value) => String(value).replace(/^\uFEFF/, "").trim());
+  return new Map(normalized.map((value, index) => [value, index]));
+}
+
+function ukCell(row, fields, name) {
+  const index = fields.get(name);
+  return typeof index === "number" ? String(row[index] ?? "").trim() : "";
+}
+
+export function parseUkSanctionsCsv(csv) {
+  const rows = parseCsvRows(csv);
+  if (rows.length < 2) return [];
+
+  const fields = ukFieldMap(rows[0]);
+  const required = ["Unique ID", "Name 6", "Name type", "Individual, Entity, Ship"];
+  if (required.some((field) => !fields.has(field))) return [];
+
+  const grouped = new Map();
+
+  for (const row of rows.slice(1)) {
+    const kind = ukCell(row, fields, "Individual, Entity, Ship").toLowerCase();
+    if (kind !== "entity") continue;
+
+    const uniqueId = ukCell(row, fields, "Unique ID");
+    const name = ukCell(row, fields, "Name 6");
+    const nameType = ukCell(row, fields, "Name type").toLowerCase();
+    if (!uniqueId || !name) continue;
+
+    const existing = grouped.get(uniqueId) || {
+      source: "uk_sanctions",
+      source_authority: "UK Foreign, Commonwealth & Development Office",
+      record_id: uniqueId,
+      primary_name: "",
+      aliases: [],
+      identifiers: [],
+      programs: [],
+    };
+
+    if (nameType === "primary name" || (!existing.primary_name && !nameType)) {
+      existing.primary_name = name;
+    } else if (nameType === "alias" || nameType === "primary name variation") {
+      existing.aliases.push(name);
+    } else if (!existing.primary_name) {
+      existing.primary_name = name;
+    }
+
+    const businessRegistration = ukCell(row, fields, "Business registration number (s)");
+    const nationalIdentifier = ukCell(row, fields, "National Identifier number");
+    const regime = ukCell(row, fields, "Regime Name");
+    if (businessRegistration) existing.identifiers.push(businessRegistration);
+    if (nationalIdentifier) existing.identifiers.push(nationalIdentifier);
+    if (regime) existing.programs.push(regime);
+
+    grouped.set(uniqueId, existing);
+  }
+
+  return [...grouped.values()]
+    .filter((record) => record.primary_name)
+    .map((record) => ({
+      ...record,
+      aliases: unique(record.aliases),
+      identifiers: unique(record.identifiers),
+      programs: unique(record.programs),
+    }));
+}
+
 export function parseUnConsolidatedEntities(xml) {
   const source = String(xml ?? "");
   const blocks = source.match(/<ENTITY(?:\s[^>]*)?>[\s\S]*?<\/ENTITY>/gi) || [];
