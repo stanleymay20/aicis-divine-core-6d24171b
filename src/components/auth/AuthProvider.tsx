@@ -15,6 +15,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
   const initialValidationComplete = useRef(false);
+  const lastValidatedAccessToken = useRef<string | null>(null);
+  const validationInFlightAccessToken = useRef<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,6 +37,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const clearSession = () => {
       if (!mounted) return;
+      lastValidatedAccessToken.current = null;
+      validationInFlightAccessToken.current = null;
       setSession(null);
       setUser(null);
       setUnavailable(false);
@@ -43,6 +47,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const isolateRecoverySession = () => {
       if (!mounted) return;
+      lastValidatedAccessToken.current = null;
+      validationInFlightAccessToken.current = null;
       // Supabase keeps the recovery credential internally so /reset-password can
       // use it, but the application AuthContext deliberately exposes no normal
       // user/session. Recovery possession is not general AICIS authorization.
@@ -54,8 +60,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const applyTrustedSession = (candidate: Session, verifiedUser: User) => {
       if (!mounted) return;
-      setSession({ ...candidate, user: verifiedUser });
-      setUser(verifiedUser);
+      lastValidatedAccessToken.current = candidate.access_token;
+      validationInFlightAccessToken.current = null;
+
+      setSession((current) => {
+        if (
+          current?.access_token === candidate.access_token &&
+          current?.user?.id === verifiedUser.id
+        ) {
+          return current;
+        }
+        return { ...candidate, user: verifiedUser };
+      });
+      setUser((current) => current?.id === verifiedUser.id ? current : verifiedUser);
       setUnavailable(false);
       setLoading(false);
     };
@@ -117,15 +134,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     };
 
-    const beginValidation = (candidate: Session | null, clearWhileValidating: boolean) => {
+    const beginValidation = (
+      candidate: Session | null,
+      clearWhileValidating: boolean,
+      force = false,
+    ) => {
+      const token = candidate?.access_token ?? null;
+
+      if (
+        !force &&
+        token &&
+        (
+          token === lastValidatedAccessToken.current ||
+          token === validationInFlightAccessToken.current
+        )
+      ) {
+        return;
+      }
+
       const generation = ++validationGeneration;
+      validationInFlightAccessToken.current = token;
+
       if (clearWhileValidating && mounted) {
-        setSession(null);
-        setUser(null);
         setUnavailable(false);
         setLoading(true);
       }
-      void validateSessionCandidate(candidate, generation);
+
+      void validateSessionCandidate(candidate, generation)
+        .finally(() => {
+          if (validationInFlightAccessToken.current === token) {
+            validationInFlightAccessToken.current = null;
+          }
+        });
     };
 
     const validateInitialSession = (candidate: Session | null) => {
@@ -159,9 +199,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+      if (event === "TOKEN_REFRESHED") {
         initialValidationComplete.current = true;
         beginValidation(nextSession, false);
+        return;
+      }
+
+      if (event === "USER_UPDATED") {
+        initialValidationComplete.current = true;
+        beginValidation(nextSession, false, true);
       }
     };
 
@@ -201,6 +247,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       mounted = false;
       validationGeneration += 1;
+      validationInFlightAccessToken.current = null;
       window.clearTimeout(bootstrapTimer);
       subscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
