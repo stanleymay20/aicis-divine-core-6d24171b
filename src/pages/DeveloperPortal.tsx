@@ -9,6 +9,7 @@ import { errorMessage, functionErrorMessage, EVENTS } from "@/components/develop
 import { PortalHeader } from "@/components/developer-portal/PortalHeader";
 import { ApiDocsTab, SdkTab, UsageTab } from "@/components/developer-portal/DocsUsageSdkTabs";
 import { KeysTab, WebhooksTab } from "@/components/developer-portal/KeysWebhooksTabs";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 
 export default function DeveloperPortal() {
   const queryClient = useQueryClient();
@@ -134,7 +135,7 @@ export default function DeveloperPortal() {
       setNewKeyName("");
       queryClient.invalidateQueries({ queryKey: ["api-keys-dev"] });
     },
-    onError: (e: any) => toast.error(errorMessage(e, "Unable to create API key")),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Unable to create API key")),
   });
 
   const createWorkspace = useMutation({
@@ -150,7 +151,7 @@ export default function DeveloperPortal() {
       queryClient.setQueryData(["user-org-dev"], data?.organization ?? null);
       queryClient.invalidateQueries({ queryKey: ["user-org-dev"] });
     },
-    onError: (e: any) => toast.error(errorMessage(e, "Unable to enable developer access")),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Unable to enable developer access")),
   });
 
   const revokeKey = useMutation({
@@ -165,7 +166,7 @@ export default function DeveloperPortal() {
       toast.success("API key revoked");
       queryClient.invalidateQueries({ queryKey: ["api-keys-dev"] });
     },
-    onError: (e: any) => toast.error(errorMessage(e, "Unable to revoke key")),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Unable to revoke key")),
   });
 
   const createWebhook = useMutation({
@@ -182,7 +183,7 @@ export default function DeveloperPortal() {
       setNewWebhookUrl("");
       queryClient.invalidateQueries({ queryKey: ["webhooks-dev"] });
     },
-    onError: (e: any) => toast.error(errorMessage(e, "Unable to create webhook")),
+    onError: (e: unknown) => toast.error(errorMessage(e, "Unable to create webhook")),
   });
 
   const deleteWebhook = useMutation({
@@ -201,6 +202,7 @@ export default function DeveloperPortal() {
   return (
     <AICISLayout>
       <div className="max-w-5xl mx-auto space-y-6 p-4 md:p-6">
+        <SystemWorkspaceNav />
         <PortalHeader
           activeKeysCount={activeKeysCount}
           webhooksCount={(webhooks || []).length}
