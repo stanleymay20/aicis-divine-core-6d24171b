@@ -423,11 +423,57 @@ export const corsHeaders = {
 };
 
 function requireUsableSemantics<T>(q: T, column: string): T {
+  if (GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS.has(column)) {
+    // Semantics column is absent from the live schema, so no score can be proven
+    // usable. Truth floor: the threshold matches nothing (id is a non-null PK).
+    return queryCall(q, "is", "id", null);
+  }
   q = queryCall(q, "not", column, "is", null);
   for (const token of UNUSABLE_SEMANTIC_TOKENS) {
     q = queryCall(q, "not", column, "ilike", `%${token}%`);
   }
   return q;
+}
+
+// Columns the export code expects but that are verified absent from the live
+// global_signals table (audited 2026-09-27; the August migration backlog that
+// defines them is intentionally NOT applied). They are never selected and are
+// exported as null (unknown), never synthesized.
+export const GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS = new Set<string>([
+  "confidence_score_semantics",
+  "impact_score_semantics",
+  "urgency_score_semantics",
+  "source_rank_score_semantics",
+  "affected_entities",
+  "source_count_semantics",
+  "source_identifier_count",
+  "source_identifier_count_semantics",
+  "merged_source_count_semantics",
+  "source_independence_status",
+  "independent_origin_count",
+  "source_independence_semantics",
+  "official_source_present_semantics",
+  "source_published_at",
+  "source_published_at_semantics",
+  "occurred_at_semantics",
+  "first_detected_at_semantics",
+  "source_urls",
+]);
+
+export function liveSignalSelect(columns: string): string {
+  return columns.split(",").map((c) => c.trim()).filter((c) => c && !GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS.has(c)).join(",");
+}
+
+export function withMissingLiveColumns<T extends Record<string, unknown>>(row: T, columns: string): T {
+  const out: Record<string, unknown> = { ...row };
+  for (const c of columns.split(",").map((s) => s.trim())) {
+    if (GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS.has(c) && !(c in out)) out[c] = null;
+  }
+  return out as T;
+}
+
+export function missingLiveColumnsIn(columns: string): string[] {
+  return columns.split(",").map((c) => c.trim()).filter((c) => GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS.has(c));
 }
 
 export function applyProfileFilters<T>(q: T, profile: ExportProfile): T {
