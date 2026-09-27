@@ -397,6 +397,17 @@ export default function PlanetaryCommandCenter() {
         </div>
       </section>
 
+      {undeployedStages.length > 0 && (
+        <section className="flex items-start gap-3 rounded-2xl border border-dashed border-border/70 bg-muted/10 px-5 py-4">
+          <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 text-muted-foreground" />
+          <div className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Not deployed on this environment: </span>
+            {undeployedStages.join(", ")}. These stages report no value rather than an estimate, because their
+            backing tables do not exist here.
+          </div>
+        </section>
+      )}
+
       <section aria-labelledby="neural-flow-title" className="rounded-2xl border border-border/70 bg-background/65 p-4 md:p-5">
         <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
