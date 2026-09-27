@@ -325,7 +325,7 @@ serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("exports-runner", message);
+    console.error("exports-runner", message, error instanceof Error ? error.stack : "");
     if (runId) {
       try {
         await admin.from("export_runs").update({
