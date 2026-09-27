@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycleControls";
 import { ClipboardCheck, AlertTriangle, Clock, FlaskConical } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { formatDistanceToNow } from "date-fns";
 import { ForecastWorkspaceNav } from "@/components/forecast/ForecastWorkspaceNav";
@@ -32,7 +33,7 @@ type Row = {
   days_pending: number;
 };
 
-const REASON_META: Record<Row["review_reason"], { label: string; tone: string; icon: any }> = {
+const REASON_META: Record<Row["review_reason"], { label: string; tone: string; icon: LucideIcon }> = {
   pilot_pending:    { label: "Pilot — outcome pending", tone: "bg-violet-500/15 text-violet-600 border-violet-500/30", icon: FlaskConical },
   executed_overdue: { label: "Executed >7d ago",         tone: "bg-amber-500/15 text-amber-600 border-amber-500/30",   icon: Clock },
   accepted_overdue: { label: "Accepted >7d, no exec",    tone: "bg-rose-500/15 text-rose-600 border-rose-500/30",      icon: AlertTriangle },
@@ -63,7 +64,7 @@ export default function OutcomeCockpit() {
     queryKey: ["outcome-cockpit-queue"],
     queryFn: async (): Promise<Row[]> => {
       const { data, error } = await supabase
-        .from("v_outcome_cockpit_queue" as any)
+        .from("v_outcome_cockpit_queue" as never)
         .select("*")
         .order("days_pending", { ascending: false })
         .limit(500);
