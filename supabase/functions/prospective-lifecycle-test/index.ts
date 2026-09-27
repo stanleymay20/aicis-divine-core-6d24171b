@@ -1,4 +1,4 @@
-import { requireUserOrTrustedWorker } from "../_shared/auth.ts";
+import { requireUser, requireUserOrTrustedWorker } from "../_shared/auth.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { structuredLog, handleCors, errorResponse, jsonResponse } from "../_shared/resilience.ts";
@@ -6,11 +6,17 @@ import { structuredLog, handleCors, errorResponse, jsonResponse } from "../_shar
 const FN = "prospective-lifecycle-test";
 
 serve(async (req) => {
-  const callerAuth = await requireUserOrTrustedWorker(req);
-  if (callerAuth.response) return callerAuth.response;
-
   const cors = handleCors(req);
   if (cors) return cors;
+
+  const body = await req.json().catch(() => ({}));
+  const action = body.action || "lifecycle_test";
+
+  // Read-only health check only needs a signed-in user; mutations stay privileged.
+  const callerAuth = action === "health_check"
+    ? await requireUser(req)
+    : await requireUserOrTrustedWorker(req);
+  if (callerAuth.response) return callerAuth.response;
 
   const start = Date.now();
   const supabase = createClient(
@@ -19,14 +25,12 @@ serve(async (req) => {
   );
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const action = body.action || "lifecycle_test";
-
     // ── HEALTH CHECK ──────────────────────────────
     if (action === "health_check") {
       const { data: healthData } = await supabase.rpc("check_prospective_health");
       return jsonResponse({ ok: true, health: healthData });
     }
+
 
     // ── LIFECYCLE TEST ────────────────────────────
     // Creates a synthetic forecast with realization_due_at in the past,
