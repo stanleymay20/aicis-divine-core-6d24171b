@@ -444,3 +444,7 @@ verify_jwt = false
 
 [functions.federation-verify-bundle]
 verify_jwt = false
+
+
+[functions.preview-execution]
+verify_jwt = true
