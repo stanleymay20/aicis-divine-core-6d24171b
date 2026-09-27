@@ -32,7 +32,7 @@ type InterventionRow = {
   generated_at: string | null;
 };
 
-type StreamEvent = {
+export type RealtimeStreamEvent = {
   id: string;
   title: string;
   domain: string;
@@ -65,7 +65,13 @@ const eventIcon = (domain?: string) => {
   return RadioTower;
 };
 
-export function RealtimeOperationsStream() {
+export function RealtimeOperationsStream({
+  compact = false,
+  onEventSelect,
+}: {
+  compact?: boolean;
+  onEventSelect?: (event: RealtimeStreamEvent) => void;
+}) {
   const [livePulse, setLivePulse] = useState(false);
 
   const telemetry = useQuery({
@@ -115,7 +121,7 @@ export function RealtimeOperationsStream() {
   }, []);
 
   const stream = useMemo(() => {
-    const telemetryEvents: StreamEvent[] = (telemetry.data ?? []).map((row, index) => ({
+    const telemetryEvents: RealtimeStreamEvent[] = (telemetry.data ?? []).map((row, index) => ({
       id: `telemetry-${index}`,
       title: `${row.source_domain ?? "domain"} telemetry update`,
       domain: row.source_domain ?? "telemetry",
@@ -125,7 +131,7 @@ export function RealtimeOperationsStream() {
       source: "Telemetry Backbone",
     }));
 
-    const causalEvents: StreamEvent[] = (causal.data ?? []).map((row, index) => ({
+    const causalEvents: RealtimeStreamEvent[] = (causal.data ?? []).map((row, index) => ({
       id: `causal-${index}`,
       title: row.source_event ?? "Propagation event",
       domain: row.source_domain ?? "causal",
@@ -135,7 +141,7 @@ export function RealtimeOperationsStream() {
       source: "Causal Engine",
     }));
 
-    const interventionEvents: StreamEvent[] = (interventions.data ?? []).map((row, index) => ({
+    const interventionEvents: RealtimeStreamEvent[] = (interventions.data ?? []).map((row, index) => ({
       id: `intervention-${index}`,
       title: row.simulation_name ?? "Intervention workflow",
       domain: "governance",
@@ -155,8 +161,8 @@ export function RealtimeOperationsStream() {
   const failed = telemetry.isError || causal.isError || interventions.isError;
 
   return (
-    <Card className="border-border bg-card/70 overflow-hidden">
-      <CardHeader className="pb-3">
+    <Card className={compact ? "border-0 bg-transparent shadow-none overflow-hidden" : "border-border bg-card/70 overflow-hidden"}>
+      <CardHeader className={compact ? "sr-only" : "pb-3"}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
@@ -180,7 +186,7 @@ export function RealtimeOperationsStream() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className={compact ? "p-0" : undefined}>
         {loading ? (
           <div className="space-y-2">
             <Skeleton className="h-16 w-full" />
@@ -200,12 +206,19 @@ export function RealtimeOperationsStream() {
             No realtime operational activity yet. Populate telemetry and governance command views.
           </div>
         ) : (
-          <ScrollArea className="h-[340px] pr-2">
+          <ScrollArea className={compact ? "h-[148px] pr-2 sm:h-[168px]" : "h-[340px] pr-2"}>
             <div className="space-y-2">
               {stream.map((event, index) => {
                 const Icon = eventIcon(event.domain);
                 return (
-                  <div key={event.id} className="relative overflow-hidden rounded-xl border border-border bg-background/40 p-3">
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => onEventSelect?.(event)}
+                    disabled={!onEventSelect}
+                    className="relative block w-full overflow-hidden rounded-xl border border-border bg-background/40 p-3 text-left transition-colors enabled:hover:border-primary/30 enabled:hover:bg-primary/[0.03] disabled:cursor-default"
+                    aria-label={onEventSelect ? `Inspect ${event.title}` : undefined}
+                  >
                     <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-primary/40" />
                     <div className="flex items-start gap-3">
                       <div className="mt-0.5 rounded-lg border border-border bg-card p-2">
@@ -244,7 +257,7 @@ export function RealtimeOperationsStream() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>

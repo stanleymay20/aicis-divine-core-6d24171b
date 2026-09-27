@@ -21,12 +21,23 @@ import { useIncidentMarkers } from "./IncidentMarkers";
 import { QuickActions } from "./QuickActions";
 import { useNetworkMapLayer } from "./useNetworkMapLayer";
 
-interface CountryData {
+export interface CountryData {
   country: string;
   iso3: string;
   latitude: number;
   longitude: number;
   overall_score?: number;
+}
+
+export interface IncidentData {
+  id: string;
+  latitude: number;
+  longitude: number;
+  severity: number;
+  event_type: string;
+  headline: string;
+  country?: string;
+  triggered_at: string;
 }
 
 export interface GlobalMapRef {
@@ -38,6 +49,7 @@ export interface GlobalMapRef {
 
 interface GlobalMapProps {
   onCountrySelect?: (country: CountryData) => void;
+  onIncidentSelect?: (incident: IncidentData) => void;
   className?: string;
   isMobile?: boolean;
   showSelectionOverlay?: boolean;
@@ -51,6 +63,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
   (
     {
       onCountrySelect,
+      onIncidentSelect,
       className,
       isMobile,
       showSelectionOverlay = true,
@@ -83,7 +96,11 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
           overall_score: incident.severity,
         };
         setSelectedCountry(selected);
-        onCountrySelect?.(selected);
+        if (onIncidentSelect) {
+          onIncidentSelect(incident);
+        } else {
+          onCountrySelect?.(selected);
+        }
       },
     });
 
