@@ -290,6 +290,10 @@ export function evaluateOpportunity(candidate, preferences = {}) {
     candidate_id: candidate.id,
     title: candidate.title,
     transaction_type: candidate.transaction_type,
+    capital_required: candidate.capital_required,
+    currency: candidate.currency ?? null,
+    countries: candidate.countries ?? [],
+    sectors: candidate.sectors ?? [],
     score,
     metrics,
     components: {
