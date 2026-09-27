@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { TransactionPathLab } from "@/components/opportunities/TransactionPathLab";
 import {
   ArrowRight,
   CircleDollarSign,
@@ -307,6 +308,8 @@ export default function OpportunityRadar() {
           </CardContent>
         </Card>
       </div>
+
+      <TransactionPathLab />
 
       <Card>
         <CardHeader className="pb-3">
