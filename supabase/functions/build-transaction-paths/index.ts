@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
 import { buildTransactionPaths } from "../_shared/transaction-path-builder-v1.mjs";
 import { rankOpportunities } from "../_shared/opportunity-engine-v1.mjs";
 import { optimizeOpportunityPortfolio } from "../_shared/opportunity-portfolio-optimizer-v1.mjs";
+import { evaluateStrategicOptions } from "../_shared/strategic-doctrine-engine-v1.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,6 +75,31 @@ Deno.serve(async (req) => {
     const ranked = rankOpportunities(built.candidates, preferences);
     const portfolio = optimizeOpportunityPortfolio(ranked, preferences);
 
+    const strategicContext = asRecord(rawInput.strategic_context);
+    const suppliedActorState = asRecord(strategicContext.actor_state);
+    const terrain = asRecord(strategicContext.terrain);
+    const timing = asRecord(strategicContext.timing);
+    const configuredCapital = typeof opportunityProfile.capital_available === "number"
+      ? opportunityProfile.capital_available
+      : null;
+    const actorState = {
+      ...suppliedActorState,
+      capital_available: typeof suppliedActorState.capital_available === "number"
+        ? suppliedActorState.capital_available
+        : configuredCapital,
+    };
+    const strategicCandidates = [
+      ...ranked.ranked,
+      ...ranked.rejected.filter((item) => item?.candidate_id && item?.title && item?.transaction_type),
+    ];
+    const strategic = evaluateStrategicOptions({
+      ranked_candidates: strategicCandidates,
+      actor_state: actorState,
+      terrain,
+      timing,
+      preferences,
+    });
+
     await sb.from("system_logs").insert({
       user_id: user.id,
       division: "finance",
@@ -90,6 +116,9 @@ Deno.serve(async (req) => {
         human_approval_required: true,
         portfolio_selected_count: portfolio.selected?.length ?? 0,
         portfolio_expected_value: portfolio.expected_value ?? null,
+        strategic_engine_version: strategic.engine_version,
+        strategic_option_count: strategic.option_count,
+        primary_strategy_id: strategic.primary_strategy?.id ?? null,
       },
     });
 
@@ -98,6 +127,7 @@ Deno.serve(async (req) => {
       build: built,
       ranking: ranked,
       portfolio,
+      strategic,
       execution_boundary: {
         human_approval_required: true,
         external_execution_performed: false,
