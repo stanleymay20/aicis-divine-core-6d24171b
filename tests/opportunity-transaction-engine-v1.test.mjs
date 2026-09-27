@@ -46,6 +46,25 @@ const good = {
   compliance_status: "clear",
   economics_status: "verified_quotes",
   market_freshness_minutes: 120,
+  source_offer: { name: "Verified Supplier Ltd", country: "Ghana", quote_ref: "Q-SRC-1" },
+  sale_offer: { name: "Verified Buyer GmbH", country: "Germany", quote_ref: "Q-BUY-1" },
+  counterparties: [
+    { role: "supplier", name: "Verified Supplier Ltd" },
+    { role: "buyer", name: "Verified Buyer GmbH" },
+  ],
+  route: ["Kumasi", "Tema", "Hamburg"],
+  cost_breakdown: [
+    { type: "goods", amount: 50000 },
+    { type: "freight", amount: 3000 },
+    { type: "insurance", amount: 1000 },
+    { type: "other", amount: 2000 },
+  ],
+  contacts: [
+    { company: "Verified Supplier Ltd", channel: "official_sales" },
+    { company: "Verified Buyer GmbH", channel: "official_procurement" },
+  ],
+  timing: { quote_valid_until: "2026-10-02T12:00:00Z", expected_cycle_days: 35 },
+  next_actions: ["Confirm firm supplier quote", "Confirm buyer purchase indication", "Lock freight"],
 };
 
 test("eligible opportunity gets economics and relevance scoring", () => {
@@ -54,6 +73,8 @@ test("eligible opportunity gets economics and relevance scoring", () => {
   assert.equal(result.metrics.base_profit, 6000);
   assert.ok(result.components.relevance_score >= 70);
   assert.equal(result.human_approval_required, true);
+  assert.equal(result.execution_ready, true);
+  assert.equal(result.execution_dossier.who.counterparties.length, 2);
 });
 
 test("unverified economics fail closed", () => {
@@ -106,4 +127,19 @@ test("ranking chooses the strongest supplied eligible candidate, not a claimed g
   assert.equal(result.no_transaction_recommended, false);
   assert.equal(result.top_ranked.candidate_id, "opp-6");
   assert.match(result.ranking_scope_notice, /only among candidates supplied/i);
+});
+
+
+test("rankable economics can remain non-executable when transaction details are incomplete", () => {
+  const incomplete = {
+    ...good,
+    id: "opp-7",
+    source_offer: null,
+    contacts: [],
+  };
+  const result = evaluateOpportunity(incomplete, prefs);
+  assert.equal(result.eligible, true);
+  assert.equal(result.execution_ready, false);
+  assert.ok(result.execution_dossier.missing_execution_fields.includes("source_offer"));
+  assert.ok(result.execution_dossier.missing_execution_fields.includes("contacts"));
 });
