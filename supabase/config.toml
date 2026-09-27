@@ -456,3 +456,11 @@ verify_jwt = true
 
 [functions.execution-provider-status]
 verify_jwt = true
+
+
+[functions.generate-rfq-draft]
+verify_jwt = true
+
+
+[functions.normalize-rfq-response]
+verify_jwt = true
