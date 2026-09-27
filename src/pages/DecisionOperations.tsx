@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Activity, PlayCircle, BarChart3, Beaker, Flame, Inbox, ListChecks, Sparkles } from "lucide-react";
@@ -13,7 +14,37 @@ import { DecisionOpsKPIStrip } from "@/components/decision-engine/DecisionOpsKPI
 import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { DecisionWorkspaceNav } from "@/components/decisions/DecisionWorkspaceNav";
 
+const DECISION_OPS_TABS = [
+  "today",
+  "recommended",
+  "review",
+  "execution",
+  "backlog",
+  "outcomes",
+  "pilot",
+] as const;
+
+type DecisionOpsTab = (typeof DECISION_OPS_TABS)[number];
+
+const readDecisionOpsTab = (value: string | null): DecisionOpsTab =>
+  value && (DECISION_OPS_TABS as readonly string[]).includes(value)
+    ? (value as DecisionOpsTab)
+    : "today";
+
 export default function DecisionOperations() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = readDecisionOpsTab(searchParams.get("tab"));
+
+  const setActiveTab = (value: string) => {
+    if (!(DECISION_OPS_TABS as readonly string[]).includes(value)) return;
+
+    const next = new URLSearchParams(searchParams);
+    if (value === "today") next.delete("tab");
+    else next.set("tab", value);
+
+    setSearchParams(next, { replace: true });
+  };
+
   return (
     <AICISLayout>
       <div className="p-4 md:p-6 lg:p-8 space-y-5 max-w-[1400px] mx-auto animate-fade-in overflow-y-auto h-full">
@@ -35,7 +66,7 @@ export default function DecisionOperations() {
 
         <DecisionOpsKPIStrip />
 
-        <Tabs defaultValue="today" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="bg-muted/50 p-0.5 h-auto flex-wrap">
             <TabsTrigger value="today" className="text-xs gap-1.5 data-[state=active]:bg-card">
               <Inbox className="h-3.5 w-3.5" /> Today's queue

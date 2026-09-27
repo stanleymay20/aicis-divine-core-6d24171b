@@ -31,10 +31,30 @@ const modes = [
   },
 ] as const;
 
+const persistedDecisionSearch = (search: string) => {
+  const current = new URLSearchParams(search);
+  const next = new URLSearchParams();
+
+  for (const key of ["entity", "question"]) {
+    const value = current.get(key);
+    if (value) next.set(key, value);
+  }
+
+  return next.toString();
+};
+
 export const DecisionWorkspaceNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { selectedEntity, openAsk } = useIntelligenceOS();
+
+  const navigateMode = (path: string) => {
+    const search = persistedDecisionSearch(location.search);
+    navigate({
+      pathname: path,
+      search: search ? `?${search}` : "",
+    });
+  };
 
   return (
     <div className="rounded-xl border border-border/70 bg-card/35 p-2">
@@ -59,9 +79,7 @@ export const DecisionWorkspaceNav = () => {
             {modes.map((mode) => {
               const active =
                 location.pathname === mode.path ||
-                mode.aliases.includes(
-                  location.pathname as (typeof mode.aliases)[number],
-                );
+                (mode.aliases as readonly string[]).includes(location.pathname);
               const Icon = mode.icon;
 
               return (
@@ -70,7 +88,7 @@ export const DecisionWorkspaceNav = () => {
                   type="button"
                   variant={active ? "secondary" : "ghost"}
                   size="sm"
-                  onClick={() => navigate(mode.path)}
+                  onClick={() => navigateMode(mode.path)}
                   className={cn(
                     "h-8 shrink-0 gap-1.5 px-2.5 text-[11px]",
                     active &&
