@@ -78,9 +78,16 @@ export const PublicIntelligenceShowcase = () => {
       <div className="max-w-7xl mx-auto px-6 py-20">
         {/* Header */}
         <div className="text-center mb-12">
-          <Badge variant="outline" className="mb-4 border-success/40 text-success bg-success/5">
-            <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse mr-2" />
-            Live Intelligence Feed
+          <Badge
+            variant="outline"
+            className={err
+              ? "mb-4 border-border text-muted-foreground bg-muted/20"
+              : "mb-4 border-success/40 text-success bg-success/5"}
+          >
+            <span className={err
+              ? "w-1.5 h-1.5 rounded-full bg-muted-foreground mr-2"
+              : "w-1.5 h-1.5 rounded-full bg-success animate-pulse mr-2"} />
+            {err ? "Intelligence Feed Unavailable" : "Live Intelligence Feed"}
           </Badge>
           <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
             See it operating right now.
@@ -98,7 +105,7 @@ export const PublicIntelligenceShowcase = () => {
           </div>
         ) : err ? (
           <div className="text-center py-12 text-sm text-muted-foreground">
-            Live feed temporarily unavailable.
+            Live intelligence is not available yet because the sanitized production snapshot could not be loaded. No sample predictions or simulations are being substituted.
           </div>
         ) : data && (
           <>
