@@ -3,9 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronUp, Shield } from "lucide-react";
+import { BrainCircuit, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 
 interface ReviewItem {
   id: string;
@@ -22,20 +23,49 @@ interface ReviewItem {
 export default function DecisionReviewQueue() {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { selectEntity } = useIntelligenceOS();
 
   const { data: items = [], isLoading } = useQuery<ReviewItem[]>({
     queryKey: ["decision-review-queue"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("adi_decisions")
         .select("id, signal_summary, domain, severity_score, confidence, review_notes, country_iso3, created_at, reasoning_md")
         .eq("status", "needs_review")
         .order("severity_score", { ascending: false })
         .limit(50);
-      return (data as any) || [];
+      if (error) throw error;
+      return (data ?? []) as unknown as ReviewItem[];
     },
     staleTime: 30_000,
   });
+
+  const inspectDecision = (item: ReviewItem) => {
+    selectEntity({
+      id: item.id,
+      type: "decision",
+      name: item.signal_summary,
+      description:
+        item.review_notes ||
+        item.reasoning_md ||
+        "Decision awaiting human review.",
+      confidence:
+        item.confidence == null
+          ? undefined
+          : Math.max(0, Math.min(100, item.confidence * 100)),
+      observedAt: item.created_at,
+      geography: item.country_iso3
+        ? { country: item.country_iso3 }
+        : undefined,
+      metadata: {
+        domain: item.domain,
+        severityScore: item.severity_score,
+        reviewStatus: "needs_review",
+        reviewNotes: item.review_notes,
+        reasoning: item.reasoning_md,
+      },
+    });
+  };
 
   const reviewAction = useMutation({
     mutationFn: async ({ id, action }: { id: string; action: "approve" | "reject" }) => {
@@ -111,6 +141,19 @@ export default function DecisionReviewQueue() {
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 gap-1 px-2 text-[10px]"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      inspectDecision(item);
+                    }}
+                    aria-label={`Inspect decision ${item.signal_summary}`}
+                  >
+                    <BrainCircuit className="h-2.5 w-2.5" />
+                    Inspect
+                  </Button>
                   <Button
                     size="sm"
                     variant="default"
