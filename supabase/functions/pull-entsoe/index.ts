@@ -52,8 +52,8 @@ serve(async (req) => {
             signal: AbortSignal.timeout(10000),
           });
           if (r.ok) return await r.json();
-          if (r.status >= 500 && attempt === 0) {
-            await new Promise((res) => setTimeout(res, 1500));
+          if ((r.status >= 500 || r.status === 429) && attempt === 0) {
+            await new Promise((res) => setTimeout(res, 3000));
             continue;
           }
           errors.push(`${bzn}:${r.status}`);
@@ -70,38 +70,27 @@ serve(async (req) => {
       return null;
     }
 
-    let fallbackUsed = 0;
-    for (const { bzn, iso3 } of ZONES) {
+    // Fetch all zones in parallel with a hard overall deadline so a slow upstream
+    // can never hang the job. Missing zones are reported as gaps — old values are
+    // never re-stamped as today's readings.
+    const fallbackUsed = 0;
+    const DEADLINE_MS = 45000;
+    const fetched: (any | null)[] = [];
+    const deadlineAt = start + DEADLINE_MS;
+    for (let i = 0; i < ZONES.length; i += 3) {
+      if (Date.now() > deadlineAt) {
+        for (const z of ZONES.slice(i)) { errors.push(`${z.bzn}:deadline`); fetched.push(null); }
+        break;
+      }
+      const batch = await Promise.all(ZONES.slice(i, i + 3).map(({ bzn }) => fetchWithRetry(bzn)));
+      fetched.push(...batch);
+      await new Promise((res) => setTimeout(res, 1200));
+    }
+    for (let zi = 0; zi < ZONES.length; zi++) {
+      const { iso3 } = ZONES[zi];
       try {
-        const data = await fetchWithRetry(bzn);
-        if (!data) {
-          // Fallback: re-stamp most recent snapshot for this ISO3 with today's period
-          // so freshness counters keep moving even when the upstream API is degraded.
-          const { data: cached } = await supabase
-            .from("normalized_metrics")
-            .select("metric_name,value,unit,provenance_source")
-            .eq("provider_name", "entsoe")
-            .eq("iso3", iso3)
-            .order("created_at", { ascending: false })
-            .limit(2);
-          if (cached && cached.length > 0) {
-            const period = new Date().toISOString().slice(0, 10);
-            for (const c of cached) {
-              rows.push({
-                provider_name: "entsoe",
-                domain: "energy",
-                metric_name: c.metric_name,
-                iso3,
-                period,
-                value: c.value,
-                unit: c.unit,
-                provenance_source: `${c.provenance_source} (cached fallback)`,
-              });
-            }
-            fallbackUsed++;
-          }
-          continue;
-        }
+        const data = fetched[zi];
+        if (!data) continue;
         const ts: number[] = data.unix_seconds || [];
         const series: { name: string; data: number[] }[] = data.production_types || [];
         if (!ts.length || !series.length) continue;
@@ -123,7 +112,7 @@ serve(async (req) => {
           { provider_name: "entsoe", domain: "energy", metric_name: "renewable_share_pct", iso3, period, value: (renewable / total) * 100, unit: "pct", provenance_source: "ENTSO-E via energy-charts" }
         );
       } catch (e) {
-        errors.push(`${bzn}:${(e as Error).message}`);
+        errors.push(`${ZONES[zi].bzn}:${(e as Error).message}`);
       }
     }
 
