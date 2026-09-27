@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { TransactionPathLab } from "@/components/opportunities/TransactionPathLab";
 import { CounterpartyDiscoveryPanel } from "@/components/opportunities/CounterpartyDiscoveryPanel";
+import { OpportunityHypothesesPanel } from "@/components/opportunities/OpportunityHypothesesPanel";
 import {
   ArrowRight,
   CircleDollarSign,
@@ -347,6 +348,8 @@ export default function OpportunityRadar() {
           </CardContent>
         </Card>
       </div>
+
+      <OpportunityHypothesesPanel />
 
       <CounterpartyDiscoveryPanel />
 
