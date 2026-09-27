@@ -27,35 +27,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-const PAGE_TITLES: Record<string, string> = {
-  "/world": "World",
-  "/command-center": "Legacy Command Center",
-  "/morning-brief": "Brief",
-  "/analyst": "Analysis",
-  "/analyst-dashboard": "Analysis",
-  "/forecast-validation": "Forecasts",
-  "/predictions": "Forecasts",
-  "/simulation": "Forecasts",
-  "/opportunities": "Opportunities",
-  "/decision-ops": "Decisions",
-  "/decisions": "Decisions",
-  "/watchlist": "Decisions",
-  "/governance": "Data & Trust",
-  "/evidence-command": "Data & Trust",
-  "/data-pipeline": "System",
-  "/system-pulse": "System",
-  "/admin": "System",
-};
-
-const titleFor = (pathname: string): string => {
-  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
-  if (pathname.startsWith("/deepdive/") || pathname.startsWith("/local-events/") || pathname.startsWith("/atlas/")) return "World";
-  if (pathname.startsWith("/learning") || pathname.startsWith("/training") || pathname.startsWith("/forecast")) return "Forecasts";
-  if (pathname.startsWith("/governance") || pathname.startsWith("/operational-truth") || pathname.startsWith("/signal-validation")) return "Data & Trust";
-  if (pathname.startsWith("/system") || pathname.startsWith("/infra") || pathname.startsWith("/api-audit")) return "System";
-  return "AICIS";
-};
+import {
+  persistedWorkspaceSearch,
+  workspaceForPath,
+} from "@/lib/aicis-workspaces";
 
 const backTargetFor = (pathname: string): string | null => {
   if (pathname === "/world") return null;
@@ -71,8 +46,16 @@ export const AICISTopBar = () => {
   const { openAsk, setCommandPaletteOpen } = useIntelligenceOS();
   const isMobile = useIsMobile();
 
-  const pageTitle = titleFor(location.pathname);
+  const pageTitle = workspaceForPath(location.pathname)?.label ?? "AICIS";
   const backTarget = backTargetFor(location.pathname);
+
+  const navigateWithContext = (path: string) => {
+    const search = persistedWorkspaceSearch(location.search);
+    navigate({
+      pathname: path,
+      search: search ? `?${search}` : "",
+    });
+  };
 
   const { data: lastSignalAt, isError: freshnessUnavailable } = useQuery({
     queryKey: ["topbar-data-freshness"],
@@ -134,7 +117,7 @@ export const AICISTopBar = () => {
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0"
-            onClick={() => navigate(backTarget)}
+            onClick={() => navigateWithContext(backTarget)}
             aria-label="Back to World workspace"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -143,7 +126,7 @@ export const AICISTopBar = () => {
 
         <button
           type="button"
-          onClick={() => navigate("/world")}
+          onClick={() => navigateWithContext("/world")}
           className="flex min-w-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Open AICIS World workspace"
         >
@@ -224,8 +207,8 @@ export const AICISTopBar = () => {
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">Operations</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => navigate("/data-pipeline")}>
-                  <Server className="mr-2 h-4 w-4" /> Data & Trust
+                <DropdownMenuItem onClick={() => navigateWithContext("/data-pipeline")}>
+                  <Server className="mr-2 h-4 w-4" /> System · Data Pipeline
                 </DropdownMenuItem>
               </>
             )}
@@ -233,7 +216,7 @@ export const AICISTopBar = () => {
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">Administration</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => navigate("/admin")}>
+                <DropdownMenuItem onClick={() => navigateWithContext("/admin")}>
                   <Shield className="mr-2 h-4 w-4" /> System
                 </DropdownMenuItem>
               </>
