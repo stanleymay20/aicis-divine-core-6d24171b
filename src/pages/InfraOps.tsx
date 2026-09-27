@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Database, Activity, AlertTriangle, Server, Clock, BarChart3 } from "lucide-react";
 import { PanelEmpty } from "@/components/ui/panel-empty";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 
 const tierColors: Record<string, string> = {
   hot: "bg-destructive/10 text-destructive border-destructive/20",
@@ -67,12 +68,13 @@ const InfraOps = () => {
 
   if (authLoading || !user) return null;
 
-  const byTier = (tier: string) => registry?.filter((r: any) => r.tier === tier) || [];
-  const byStatus = (status: string) => registry?.filter((r: any) => r.status === status) || [];
+  const byTier = (tier: string) => registry?.filter((r) => r.tier === tier) || [];
+  const byStatus = (status: string) => registry?.filter((r) => r.status === status) || [];
 
   return (
     <AICISLayout>
       <div className="space-y-6 p-4 md:p-6 max-w-6xl mx-auto">
+        <SystemWorkspaceNav />
         <div>
           <h1 className="text-2xl font-orbitron font-bold flex items-center gap-3">
             <Server className="h-7 w-7 text-primary" />
@@ -174,7 +176,7 @@ const InfraOps = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {registry?.map((r: any) => (
+                      {registry?.map((r) => (
                         <tr key={r.id} className="border-b border-border/20 hover:bg-muted/20">
                           <td className="py-2 font-mono text-[11px]">{r.table_name}</td>
                           <td className="py-2 text-center">
@@ -220,7 +222,7 @@ const InfraOps = () => {
                   />
                 ) : (
                   <div className="space-y-2">
-                    {pipelines.map((p: any) => (
+                    {pipelines.map((p) => (
                       <div key={p.id} className="flex items-center justify-between border-b border-border/20 py-2">
                         <span className="text-xs font-mono">{p.pipeline_name}</span>
                         <div className="flex items-center gap-2">
