@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { describeFunctionError } from "@/lib/supabase-errors";
+import { useMfaAssurance } from "@/hooks/useMfaAssurance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,11 +38,17 @@ export default function DailyTaskPanel() {
     staleTime: 30_000,
   });
 
+  const { currentLevel } = useMfaAssurance();
+  const needsMfa = currentLevel !== "aal2";
   const triggerDailyInference = async () => {
+    if (needsMfa) { toast.error("This action needs two-step sign-in (MFA). It still runs automatically on schedule."); return; }
     setRunning(true);
     try {
       const { data, error } = await supabase.functions.invoke("trigger-daily-inference");
-      if (error) throw error;
+      if (error) {
+        toast.error(await describeFunctionError(error, "Failed to trigger daily inference"));
+        return;
+      }
       toast.success(`Generated ${data?.total_recommendations || 0} recommendations across ${7 - (data?.failed_domains || 0)} domains`);
     } catch (e: any) {
       toast.error(e.message || "Failed to trigger daily inference");
@@ -56,7 +64,7 @@ export default function DailyTaskPanel() {
           <CardTitle className="text-sm flex items-center gap-1.5">
             <CalendarClock className="h-3.5 w-3.5 text-primary" /> Daily Operations
           </CardTitle>
-          <Button size="sm" variant="default" className="h-7 text-xs" onClick={triggerDailyInference} disabled={running}>
+          <Button size="sm" variant="default" className="h-7 text-xs" onClick={triggerDailyInference} disabled={running} title={needsMfa ? "Requires two-step sign-in (MFA)" : undefined}>
             {running ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Zap className="h-3 w-3 mr-1" />}
             {running ? "Running..." : "Generate Recommendations"}
           </Button>

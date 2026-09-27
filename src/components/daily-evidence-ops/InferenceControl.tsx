@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { describeFunctionError } from "@/lib/supabase-errors";
+import { useMfaAssurance } from "@/hooks/useMfaAssurance";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,10 +13,12 @@ export default function InferenceControl() {
   const queryClient = useQueryClient();
   const [result, setResult] = useState<{ total: number; failed: number } | null>(null);
 
+  const { currentLevel } = useMfaAssurance();
+  const needsMfa = currentLevel !== "aal2";
   const run = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke("trigger-daily-inference");
-      if (error) throw error;
+      if (error) throw new Error(await describeFunctionError(error, "Failed to run inference"));
       return data;
     },
     onSuccess: (data) => {
@@ -25,7 +29,7 @@ export default function InferenceControl() {
       queryClient.invalidateQueries({ queryKey: ["measured-evidence-today"] });
       toast.success(`Generated ${data?.total_recommendations ?? 0} recommendations`);
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
   });
 
   return (
@@ -42,7 +46,7 @@ export default function InferenceControl() {
               {result.total} recs
             </Badge>
           )}
-          <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending} className="h-9 text-xs px-4">
+          <Button size="sm" onClick={() => (needsMfa ? toast.error("This action needs two-step sign-in (MFA). It still runs automatically on schedule.") : run.mutate())} title={needsMfa ? "Requires two-step sign-in (MFA)" : undefined} disabled={run.isPending} className="h-9 text-xs px-4">
             {run.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1.5" />}
             {run.isPending ? "Running…" : "Run Now"}
           </Button>

@@ -45,3 +45,18 @@ export function isAuthorizationDeniedError(error: unknown): boolean {
     .toLowerCase();
   return /permission denied|row-level security|forbidden|not authorized/.test(text);
 }
+
+/** Reads the real reason from a failed edge function call and returns a user-facing message. */
+export async function describeFunctionError(error: unknown, fallback = "Request failed"): Promise<string> {
+  const ctx = (error as { context?: Response })?.context;
+  if (ctx && typeof ctx.clone === "function") {
+    try {
+      const body = await ctx.clone().json();
+      if (body?.reason === "mfa_required") {
+        return "This action needs two-step sign-in (MFA). It still runs automatically on schedule.";
+      }
+      if (body?.message || body?.error) return String(body.message ?? body.error);
+    } catch { /* not JSON */ }
+  }
+  return (error as Error)?.message || fallback;
+}
