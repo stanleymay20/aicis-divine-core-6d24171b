@@ -25,6 +25,7 @@ function directCandidate() {
     transaction_type: "physical_trade",
     score: 88,
     execution_ready: true,
+    currency: "EUR",
     capital_required: 48000,
     components: { evidence_score: 91 },
     metrics: {
@@ -214,4 +215,60 @@ test("research-only strategic ideas never enter the Pareto selection set", () =>
   const position = result.options.find((item) => item.id === "exclusive-distribution");
   assert.equal(position.research_only, true);
   assert.equal(position.pareto_frontier, false);
+});
+
+
+test("mixed-currency strategic options fail closed instead of comparing nominal values", () => {
+  const candidate = directCandidate();
+  candidate.indirect_strategies.push({
+    id: "usd-broker",
+    title: "USD brokerage alternative",
+    expected_value: 4000,
+    base_profit: 4500,
+    capital_required: 1000,
+    cycle_days: 15,
+    evidence_score: 85,
+    downside_loss: 200,
+    reversibility_score: 90,
+    execution_friction_score: 20,
+    required_capabilities: ["brokerage"],
+    currency: "USD",
+  });
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: {
+      alert_preferences: {
+        opportunity_profile: {
+          ...prefs.alert_preferences.opportunity_profile,
+          capital_available: 100000,
+        },
+      },
+    },
+  });
+  assert.equal(result.primary_strategy, null);
+  assert.equal(result.comparison_blocked_reason, "mixed_currency_strategy_options_require_verified_fx_normalization");
+});
+
+test("economic option with unknown currency remains infeasible", () => {
+  const candidate = directCandidate();
+  candidate.currency = null;
+  candidate.indirect_strategies = [{
+    id: "unknown-currency",
+    title: "Unknown currency option",
+    expected_value: 2000,
+    capital_required: 500,
+    cycle_days: 10,
+    evidence_score: 80,
+    downside_loss: 100,
+    required_capabilities: ["brokerage"],
+  }];
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+  const option = result.options.find((item) => item.id === "unknown-currency");
+  assert.equal(option.feasible, false);
+  assert.ok(option.feasibility_reasons.includes("currency_unknown"));
 });
