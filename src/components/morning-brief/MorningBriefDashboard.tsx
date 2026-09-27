@@ -11,7 +11,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { PriorityDecisionsPanel } from "./PriorityDecisionsPanel";
 import { SystemHealthBadge } from "./SystemHealthBadge";
-import { SignalDrillDown } from "@/components/command-center/SignalDrillDown";
 import { useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BusinessExposureStrip } from "./BusinessExposureStrip";
@@ -30,8 +29,6 @@ export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isAdmin, isOperator } = useUserRoles();
-  const [selectedSignal, setSelectedSignal] = useState<any>(null);
-  const [drillDownOpen, setDrillDownOpen] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
   const { data: profile } = useQuery({
@@ -207,12 +204,6 @@ export const MorningBriefDashboard = () => {
           </Card>
         </CollapsibleContent>
       </Collapsible>
-
-      <SignalDrillDown
-        signal={selectedSignal}
-        open={drillDownOpen}
-        onOpenChange={setDrillDownOpen}
-      />
     </div>
   );
 };
