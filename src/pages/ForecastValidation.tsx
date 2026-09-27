@@ -24,7 +24,7 @@ export default function ForecastValidation() {
   const health = data?.health ?? null;
   const accumulation = data?.accumulation ?? null;
 
-  const sampleStatus = !stats ? "AWAITING_DATA" : stats.locked === 0 ? "AWAITING_DATA" : stats.locked < 30 ? "INSUFFICIENT_SAMPLE" : stats.locked < 50 ? "EMERGING" : readiness?.ready ? "DECISION_GRADE" : "EVALUABLE";
+  const sampleStatus = !stats ? "AWAITING_DATA" : stats.locked === 0 ? "AWAITING_DATA" : stats.locked < 30 ? "INSUFFICIENT_SAMPLE" : stats.locked < 50 ? "EMERGING" : (readiness as { ready?: boolean } | null)?.ready ? "DECISION_GRADE" : "EVALUABLE";
 
   async function handleLifecycleTest() {
     setTestRunning(true);
