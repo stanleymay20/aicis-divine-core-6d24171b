@@ -299,3 +299,68 @@ test("cash reserve reduces deployable strategic capital", () => {
   assert.equal(broker.feasible, false);
   assert.ok(broker.feasibility_reasons.includes("capital_required_exceeds_deployable_after_reserve"));
 });
+
+
+test("expected value of information can become the primary strategy when its inputs are evidenced", () => {
+  const candidate = directCandidate();
+  candidate.information_actions = [{
+    id: "inspect-before-commitment",
+    title: "Inspect supplier capacity before commitment",
+    information_cost: 300,
+    expected_decision_loss_reduction: 6000,
+    capital_required: 300,
+    cycle_days: 3,
+    evidence_score: 95,
+    downside_loss: 300,
+    reversibility_score: 98,
+    execution_friction_score: 10,
+    currency: "EUR",
+    evidence_refs: [{
+      source_id: "inspection-estimate",
+      observed_at: "2026-09-27T08:00:00Z",
+      sha256: "f".repeat(64),
+    }],
+  }];
+
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  const info = result.options.find((item) => item.id === "inspect-before-commitment");
+  assert.equal(info.research_only, false);
+  assert.equal(info.information_value_estimate, 5700);
+  assert.equal(info.expected_value, 5700);
+  assert.equal(result.primary_information_action.id, "inspect-before-commitment");
+  assert.equal(result.primary_strategy.id, "inspect-before-commitment");
+});
+
+test("information-value claim without provenance remains research-only", () => {
+  const candidate = directCandidate();
+  candidate.information_actions = [{
+    id: "unproven-inspection-value",
+    title: "Unproven inspection value",
+    information_cost: 300,
+    expected_decision_loss_reduction: 6000,
+    capital_required: 300,
+    cycle_days: 3,
+    evidence_score: 95,
+    downside_loss: 300,
+    reversibility_score: 98,
+    execution_friction_score: 10,
+    currency: "EUR",
+    evidence_refs: [],
+  }];
+
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  const info = result.options.find((item) => item.id === "unproven-inspection-value");
+  assert.equal(info.research_only, true);
+  assert.equal(info.information_value_estimate, null);
+  assert.equal(info.feasible, false);
+});
