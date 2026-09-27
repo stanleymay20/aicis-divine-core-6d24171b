@@ -194,6 +194,20 @@ function identity(source, buyer, route, structure, quantity) {
   ].map((value) => String(value).replace(/[^a-zA-Z0-9._-]+/g, "-")).join(":");
 }
 
+function strategicAlternativeApplies(option, source, buyer, route, structure) {
+  if (!option || typeof option !== "object") return false;
+  if (option.source_id && String(option.source_id) !== String(source?.id)) return false;
+  if (option.buyer_id && String(option.buyer_id) !== String(buyer?.id)) return false;
+  if (option.route_id && String(option.route_id) !== String(route?.id)) return false;
+  if (option.transaction_type && normalize(option.transaction_type) !== normalize(structure?.transaction_type)) return false;
+  return true;
+}
+
+function scopedStrategicAlternatives(input, key, source, buyer, route, structure) {
+  const values = Array.isArray(input?.[key]) ? input[key] : [];
+  return values.filter((option) => strategicAlternativeApplies(option, source, buyer, route, structure));
+}
+
 function sourceOfferSummary(source, quantity) {
   return {
     id: source.id,
@@ -490,9 +504,9 @@ export function buildTransactionPaths(input = {}) {
             ],
             scenarios: Array.isArray(input.strategic_scenarios) ? input.strategic_scenarios : [],
             no_action_scenarios: Array.isArray(input.no_action_scenarios) ? input.no_action_scenarios : [],
-            indirect_strategies: Array.isArray(input.indirect_strategies) ? input.indirect_strategies : [],
-            position_options: Array.isArray(input.position_options) ? input.position_options : [],
-            information_actions: Array.isArray(input.information_actions) ? input.information_actions : [],
+            indirect_strategies: scopedStrategicAlternatives(input, "indirect_strategies", source, buyer, route, structure),
+            position_options: scopedStrategicAlternatives(input, "position_options", source, buyer, route, structure),
+            information_actions: scopedStrategicAlternatives(input, "information_actions", source, buyer, route, structure),
             builder_version: TRANSACTION_PATH_BUILDER_VERSION,
             candidate_scope_notice: "Constructed only from the supplied source offers, sale offers, routes and transaction structures.",
           });
