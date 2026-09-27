@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, CircleDollarSign, Loader2, ShieldAlert } from "lucide-react";
+import { IbkrWhatIfPreviewPanel } from "@/components/opportunities/IbkrWhatIfPreviewPanel";
 
 type Candidate = {
   candidate_id: string;
@@ -359,6 +360,11 @@ export function ExecutionPreviewPanel({
               </p>
             </div>
           ) : null}
+
+          <IbkrWhatIfPreviewPanel
+            candidateId={candidate.candidate_id}
+            strategicAuditHash={strategicAuditHash}
+          />
 
           {response?.ok && preview ? (
             <div className="space-y-3">
