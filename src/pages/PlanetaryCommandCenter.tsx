@@ -411,7 +411,12 @@ export default function PlanetaryCommandCenter() {
 
         <div className="grid gap-2 md:grid-cols-3 2xl:grid-cols-6">
           {stages.map((stage, index) => {
-            const status = stageStatus({ loading: stage.loading, error: stage.error, rows: stage.rows });
+            const status = stageStatus({
+              loading: stage.loading,
+              error: stage.error,
+              undeployed: stage.undeployed,
+              rows: stage.rows,
+            });
             const Icon = stage.icon;
             return (
               <button
