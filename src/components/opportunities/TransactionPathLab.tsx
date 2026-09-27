@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, CheckCircle2, CircleDollarSign, Loader2, MapPin, ShieldAlert, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleDollarSign, Loader2, MapPin, RefreshCw, ShieldAlert, Users } from "lucide-react";
 
 type RankItem = {
   candidate_id: string;
@@ -33,6 +33,14 @@ type RankItem = {
     how?: { next_actions?: string[] };
     cost_breakdown?: Array<{ type?: string; amount?: number; currency?: string }>;
   };
+};
+
+type ReferenceFxResponse = {
+  ok: boolean;
+  rates?: Array<Record<string, unknown>>;
+  effective_date?: string;
+  error?: string;
+  message?: string;
 };
 
 type BuildResponse = {
@@ -80,6 +88,8 @@ const SCHEMA_HINT = [
   '  "signal": {"id":"...","domain":"supply_chain","sectors":["..."]},',
   '  "product": {"id":"...","name":"...","unit":"tonne","sectors":["..."]},',
   '  "quantity": 10,',
+  '  "comparison_currency": "EUR",',
+  '  "fx_rates": [...verified or reference FX observations...],'
   '  "source_offers": [...verified supplier quotes...],',
   '  "sale_offers": [...verified buyer quotes...],',
   '  "routes": [...verified logistics quotes and costs...],',
@@ -92,7 +102,55 @@ export function TransactionPathLab() {
   const [payload, setPayload] = useState("");
   const [result, setResult] = useState<BuildResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fxLoading, setFxLoading] = useState(false);
   const { toast } = useToast();
+
+  const addReferenceFx = async () => {
+    let current: Record<string, unknown>;
+    try {
+      const parsed: unknown = payload.trim() ? JSON.parse(payload) : {};
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error("Transaction bundle must be a JSON object");
+      }
+      current = parsed as Record<string, unknown>;
+    } catch (error) {
+      toast({
+        title: "Invalid JSON",
+        description: error instanceof Error ? error.message : "Transaction bundle must be valid JSON.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setFxLoading(true);
+    const { data, error } = await supabase.functions.invoke("fetch-reference-fx", { body: {} });
+    setFxLoading(false);
+    if (error) {
+      toast({ title: "Reference FX fetch failed", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    const response = data as ReferenceFxResponse;
+    if (!response.ok || !response.rates?.length) {
+      toast({
+        title: "Reference FX unavailable",
+        description: response.message || response.error || "No ECB reference rates were returned.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const existingRates = Array.isArray(current.fx_rates) ? current.fx_rates : [];
+    const next = {
+      ...current,
+      fx_rates: [...existingRates, ...response.rates],
+    };
+    setPayload(JSON.stringify(next, null, 2));
+    toast({
+      title: "ECB reference FX added",
+      description: `${response.rates.length} reference rates added for research comparison only. Executable FX is still required before transaction approval.`,
+    });
+  };
 
   const build = async () => {
     let parsed: unknown;
@@ -156,10 +214,16 @@ export function TransactionPathLab() {
               <p className="text-[11px] text-muted-foreground">
                 Evidence refs require a source id, observation time and either a citation id or SHA-256 digest.
               </p>
-              <Button onClick={build} disabled={loading || !payload.trim()} className="gap-2">
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                Build & rank paths
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={addReferenceFx} disabled={fxLoading} className="gap-2">
+                  {fxLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Add ECB reference FX
+                </Button>
+                <Button onClick={build} disabled={loading || !payload.trim()} className="gap-2">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                  Build & rank paths
+                </Button>
+              </div>
             </div>
           </div>
 
