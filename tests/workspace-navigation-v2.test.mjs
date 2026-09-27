@@ -74,3 +74,15 @@ test("System Pulse is read-only for non-operators", async () => {
   assert.match(source, /isOperator \? \(/);
   assert.match(source, /Read-only system health/);
 });
+
+
+test("Workspace roots do not show a misleading back-to-World action", async () => {
+  const source = await readFile(topBarPath, "utf8");
+
+  assert.match(source, /pathname\.startsWith\("\/deepdive\/"\)/);
+  assert.match(source, /pathname\.startsWith\("\/local-events\/"\)/);
+  assert.match(source, /pathname\.startsWith\("\/atlas\/"\)/);
+  assert.match(source, /return null;/);
+  assert.doesNotMatch(source, /if \(pathname === "\/world"\) return null;[\s\S]*return "\/world";/);
+  assert.match(source, /navigateWithContext\("\/world"\)/);
+});
