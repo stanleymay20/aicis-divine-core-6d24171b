@@ -25,7 +25,7 @@ import NotFound from "./pages/NotFound";
 
 const WorldWorkspace = lazy(() => import("./pages/WorldWorkspace"));
 const PlanetaryCommandCenter = lazy(() => import("./pages/PlanetaryCommandCenter"));
-const MorningBrief = lazy(() => import("./pages/MorningBrief"));
+const MorningBrief = lazy(() => import("./pages/MorningBrief"));\nconst OpportunityRadar = lazy(() => import("./pages/OpportunityRadar"));
 const LiveCommandFeed = lazy(() => import("./pages/LiveCommandFeed"));
 const Decisions = lazy(() => import("./pages/Decisions"));
 const DecisionOperations = lazy(() => import("./pages/DecisionOperations"));
@@ -174,7 +174,7 @@ const App = () => (
                 <Route path="/command-center" element={<Shell><PlanetaryCommandCenter /></Shell>} />
                 <Route path="/spatial-cockpit" element={<Protected><SpatialCockpit /></Protected>} />
                 <Route path="/cockpit" element={<Protected><SpatialCockpit /></Protected>} />
-                <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
+                <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />\n                <Route path="/opportunities" element={<Shell><OpportunityRadar /></Shell>} />
                 <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />
                 <Route path="/live-signals" element={<Protected><LiveCommandFeed /></Protected>} />
                 <Route path="/live-stream" element={<Shell><LiveSignalStream /></Shell>} />
