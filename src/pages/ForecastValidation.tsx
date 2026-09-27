@@ -12,6 +12,7 @@ import { MatchPolicyCoverage } from "@/components/forecast-validation/MatchPolic
 import { MatchQualityAudit } from "@/components/forecast-validation/MatchQualityAudit";
 import { PromotionReadiness, CoverageGaps } from "@/components/forecast-validation/ReadinessAndGaps";
 import { BreakdownTables } from "@/components/forecast-validation/BreakdownTables";
+import { ForecastWorkspaceNav } from "@/components/forecast/ForecastWorkspaceNav";
 
 export default function ForecastValidation() {
   const { data, isLoading } = useForecastValidation();
@@ -51,6 +52,7 @@ export default function ForecastValidation() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 space-y-6">
+      <ForecastWorkspaceNav />
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">Prospective Forecast Validation</h1>
