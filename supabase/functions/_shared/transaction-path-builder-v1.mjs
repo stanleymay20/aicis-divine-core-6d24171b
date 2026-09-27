@@ -124,6 +124,7 @@ function sumCosts(costs, quantity, currency, fxRates, asOfIso) {
       original_currency: cost.currency,
       fx_conversion: fxConversion,
       evidence_refs: cost.evidence_refs,
+      landed_cost_component_id: cost.landed_cost_component_id ?? null,
     });
   }
   return { compatible: true, total: round(total), breakdown, fx_conversions: fxConversions };
@@ -266,6 +267,98 @@ function nextActions(source, buyer, route, compliance) {
   return actions;
 }
 
+const LANDED_COST_VERSION = "aicis-landed-cost-evidence-v1";
+
+function landedCostScopeMatches(entry, source, buyer, route, structure) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.source_id && String(entry.source_id) !== String(source?.id)) return false;
+  if (entry.buyer_id && String(entry.buyer_id) !== String(buyer?.id)) return false;
+  if (entry.route_id && String(entry.route_id) !== String(route?.id)) return false;
+  if (entry.transaction_type && normalize(entry.transaction_type) !== normalize(structure?.transaction_type)) return false;
+  return true;
+}
+
+function findLandedCostPack(packs, source, buyer, route, structure) {
+  return packs.find((entry) => landedCostScopeMatches(entry, source, buyer, route, structure)) || null;
+}
+
+function validateLandedCostPack(entry, candidateId, product, quantity, currency) {
+  if (!entry) {
+    return {
+      supplied: false,
+      valid: false,
+      execution_ready: false,
+      reasons: ["landed_cost_evidence_missing"],
+      costs: [],
+      recoverable_tax_cash_flow: 0,
+      evidence_refs: [],
+      evidence: null,
+    };
+  }
+
+  const evidence = entry.evidence && typeof entry.evidence === "object"
+    ? entry.evidence
+    : entry;
+  const reasons = [];
+
+  if (evidence.verification_version !== LANDED_COST_VERSION) reasons.push("landed_cost_version_invalid");
+  if (evidence.coverage_complete !== true || evidence.research_complete !== true) {
+    reasons.push("landed_cost_coverage_incomplete");
+  }
+  if (evidence.candidate_id && String(evidence.candidate_id) !== String(candidateId)) {
+    reasons.push("landed_cost_candidate_binding_mismatch");
+  }
+  if (evidence.product_id && String(evidence.product_id) !== String(product?.id)) {
+    reasons.push("landed_cost_product_mismatch");
+  }
+  if (finite(evidence.quantity) && evidence.quantity !== quantity) {
+    reasons.push("landed_cost_quantity_mismatch");
+  }
+  if (evidence.quantity_unit && normalize(evidence.quantity_unit) !== normalize(product?.unit)) {
+    reasons.push("landed_cost_quantity_unit_mismatch");
+  }
+  if (evidence.comparison_currency && String(evidence.comparison_currency).toUpperCase() !== currency) {
+    reasons.push("landed_cost_currency_mismatch");
+  }
+  if (!finite(evidence.recoverable_tax_cash_flow) || evidence.recoverable_tax_cash_flow < 0) {
+    reasons.push("recoverable_tax_cash_flow_invalid");
+  }
+  if (!evidenceSetValid(evidence.evidence_refs)) reasons.push("landed_cost_evidence_refs_invalid");
+
+  const costs = Array.isArray(evidence.normalized_structure_costs)
+    ? evidence.normalized_structure_costs
+    : [];
+  if (!Array.isArray(evidence.normalized_structure_costs)) {
+    reasons.push("normalized_landed_costs_missing");
+  }
+
+  const seenIds = new Set();
+  for (const cost of costs) {
+    if (!cost || !cost.type || !finite(cost.amount) || cost.amount < 0) {
+      reasons.push("normalized_landed_cost_invalid");
+      continue;
+    }
+    if (cost.basis !== "fixed") reasons.push("normalized_landed_cost_basis_invalid");
+    if (String(cost.currency || "").toUpperCase() !== currency) reasons.push("normalized_landed_cost_currency_invalid");
+    if (!evidenceSetValid(cost.evidence_refs)) reasons.push("normalized_landed_cost_evidence_invalid");
+    const id = String(cost.landed_cost_component_id || "");
+    if (!id) reasons.push("landed_cost_component_id_missing");
+    else if (seenIds.has(id)) reasons.push("duplicate_landed_cost_component_id");
+    else seenIds.add(id);
+  }
+
+  return {
+    supplied: true,
+    valid: reasons.length === 0,
+    execution_ready: reasons.length === 0 && evidence.execution_ready_cost_stack === true,
+    reasons: [...new Set(reasons)],
+    costs: reasons.length === 0 ? costs : [],
+    recoverable_tax_cash_flow: reasons.length === 0 ? evidence.recoverable_tax_cash_flow : 0,
+    evidence_refs: reasons.length === 0 ? (evidence.evidence_refs || []) : [],
+    evidence,
+  };
+}
+
 export function buildTransactionPaths(input = {}) {
   const asOf = input.as_of ? Date.parse(input.as_of) : Date.now();
   if (!Number.isFinite(asOf)) {
@@ -285,6 +378,7 @@ export function buildTransactionPaths(input = {}) {
   const structures = Array.isArray(input.structures) ? input.structures : [];
   const scenario = input.scenario || null;
   const fxRates = Array.isArray(input.fx_rates) ? input.fx_rates : [];
+  const landedCostPacks = Array.isArray(input.landed_cost_packs) ? input.landed_cost_packs : [];
   const requestedComparisonCurrency = String(input.comparison_currency || "").trim().toUpperCase();
   const asOfIso = new Date(asOf).toISOString();
 
@@ -301,6 +395,7 @@ export function buildTransactionPaths(input = {}) {
       for (const route of routes) {
         for (const structure of structures) {
           const pathKey = [source?.id, buyer?.id, route?.id, structure?.transaction_type].join("|");
+          const candidateId = identity(source, buyer, route, structure, quantity);
           const reasons = [];
 
           if (!product.id || !product.name || !product.unit) reasons.push("product_incomplete");
@@ -314,15 +409,36 @@ export function buildTransactionPaths(input = {}) {
           if (!quantityFeasible(buyer, quantity)) reasons.push("buyer_quantity_infeasible");
           if (!routeCompatible(source, buyer, route)) reasons.push("route_geography_mismatch");
 
+          const landedCostEntry = findLandedCostPack(landedCostPacks, source, buyer, route, structure);
+          const landedCostRaw = landedCostEntry?.evidence && typeof landedCostEntry.evidence === "object"
+            ? landedCostEntry.evidence
+            : landedCostEntry;
+          const landedCostRawCosts = Array.isArray(landedCostRaw?.normalized_structure_costs)
+            ? landedCostRaw.normalized_structure_costs
+            : [];
           const pathCurrencies = [
             source?.currency,
             buyer?.currency,
             ...(Array.isArray(route?.costs) ? route.costs.map((cost) => cost?.currency) : []),
             ...(Array.isArray(structure?.costs) ? structure.costs.map((cost) => cost?.currency) : []),
+            ...landedCostRawCosts.map((cost) => cost?.currency),
           ].filter(Boolean).map((value) => String(value).trim().toUpperCase());
           const uniqueCurrencies = [...new Set(pathCurrencies)];
           const currency = requestedComparisonCurrency || (uniqueCurrencies.length === 1 ? uniqueCurrencies[0] : "");
           if (!currency) reasons.push("comparison_currency_required_for_mixed_currency_path");
+
+          const landedCost = currency
+            ? validateLandedCostPack(landedCostEntry, candidateId, product, quantity, currency)
+            : {
+                supplied: Boolean(landedCostEntry),
+                valid: false,
+                execution_ready: false,
+                reasons: ["comparison_currency_required_for_landed_cost"],
+                costs: [],
+                recoverable_tax_cash_flow: 0,
+                evidence_refs: [],
+                evidence: null,
+              };
 
           const sourceGross = finite(source?.unit_price) ? source.unit_price * quantity : NaN;
           const buyerGross = finite(buyer?.unit_price) ? buyer.unit_price * quantity : NaN;
@@ -340,8 +456,12 @@ export function buildTransactionPaths(input = {}) {
             : { compatible: false };
           if (!routeCosts.compatible) reasons.push("route_cost_fx_missing_or_unverified");
 
+          const combinedStructureCosts = [
+            ...(Array.isArray(structure?.costs) ? structure.costs : []),
+            ...(landedCost.valid ? landedCost.costs : []),
+          ];
           const structureCosts = structureValid(structure) && currency
-            ? sumCosts(structure.costs, quantity, currency, fxRates, asOfIso)
+            ? sumCosts(combinedStructureCosts, quantity, currency, fxRates, asOfIso)
             : { compatible: false };
           if (!structureCosts.compatible) reasons.push("structure_cost_fx_missing_or_unverified");
 
@@ -366,9 +486,10 @@ export function buildTransactionPaths(input = {}) {
           const purchaseCost = sourceConversion.amount;
           const expectedRevenue = buyerConversion.amount;
           const expectedCost = purchaseCost + routeCosts.total + structureCosts.total;
+          const recoverableTaxCashFlow = landedCost.valid ? landedCost.recoverable_tax_cash_flow : 0;
           const capitalRequired = structure.capital_model === "explicit"
             ? explicitCapitalConversion.amount
-            : expectedCost;
+            : expectedCost + recoverableTaxCashFlow;
           const fxConversions = [
             sourceConversion,
             buyerConversion,
@@ -396,7 +517,7 @@ export function buildTransactionPaths(input = {}) {
             : [source.country, buyer.country];
 
           candidates.push({
-            id: identity(source, buyer, route, structure, quantity),
+            id: candidateId,
             source_signal_id: input.signal?.id ?? null,
             title: `${product.name}: ${source.name} → ${buyer.name}`,
             summary: `${quantity} ${product.unit} via ${route.name || route.id}; generated only from supplied verified inputs.`,
@@ -417,8 +538,23 @@ export function buildTransactionPaths(input = {}) {
             unit: product.unit,
             currency,
             capital_required: round(capitalRequired),
+            cash_required: round(capitalRequired),
+            recoverable_tax_cash_flow: round(recoverableTaxCashFlow),
             expected_revenue: round(expectedRevenue),
             expected_cost: round(expectedCost),
+            landed_cost_complete: landedCost.valid,
+            landed_cost_execution_ready: landedCost.execution_ready,
+            landed_cost_missing_fields: landedCost.valid ? [] : landedCost.reasons,
+            landed_cost_evidence: landedCost.evidence
+              ? {
+                  verification_version: landedCost.evidence.verification_version ?? null,
+                  coverage_complete: landedCost.evidence.coverage_complete === true,
+                  execution_ready_cost_stack: landedCost.evidence.execution_ready_cost_stack === true,
+                  supplemental_landed_cost: landedCost.evidence.supplemental_landed_cost ?? null,
+                  recoverable_tax_cash_flow: landedCost.evidence.recoverable_tax_cash_flow ?? null,
+                  audit_hash: landedCostEntry?.audit?.hash ?? null,
+                }
+              : null,
             downside_loss: scenario.downside_loss,
             upside_profit: scenario.upside_profit ?? null,
             cycle_days: scenario.cycle_days,
@@ -503,12 +639,22 @@ export function buildTransactionPaths(input = {}) {
               ...routeCosts.breakdown,
               ...structureCosts.breakdown,
             ],
+            cash_flow_adjustments: recoverableTaxCashFlow > 0
+              ? [{
+                  type: "recoverable_tax_cash_requirement",
+                  amount: round(recoverableTaxCashFlow),
+                  currency,
+                  economic_cost: false,
+                  evidence_refs: landedCost.evidence_refs,
+                }]
+              : [],
             evidence_manifest: {
               source_offer: source.evidence_refs,
               sale_offer: buyer.evidence_refs,
               route: route.evidence_refs,
               scenario: scenario.evidence_refs,
               structure: structure.evidence_refs ?? [],
+              landed_cost: landedCost.evidence_refs,
               fx: fxConversions.flatMap((conversion) => conversion.evidence_refs || []),
             },
             fx_conversions: fxConversions,
@@ -557,6 +703,7 @@ export function buildTransactionPaths(input = {}) {
       sale_offers: buyers.length,
       routes: routes.length,
       structures: structures.length,
+      landed_cost_packs: landedCostPacks.length,
     },
     candidates,
     rejected_paths: rejected,
