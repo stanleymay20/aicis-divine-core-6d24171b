@@ -332,3 +332,28 @@ test("unscoped strategic alternative intentionally applies across the supplied c
     item.position_options.some((option) => option.id === "global-position-option")
   ));
 });
+
+
+test("sensitivity cases remain scoped to their declared transaction path", () => {
+  const input = baseInput();
+  input.sensitivity_cases = [{
+    id: "premium-route-freight-shock",
+    route_id: "route-expensive",
+    assumption: "premium route freight",
+    baseline_value: 650,
+    shocked_value: 800,
+    shocked_expected_value: 500,
+    evidence_refs: ref("premium-sensitivity"),
+  }];
+
+  const result = buildTransactionPaths(input);
+  const cheapRoute = result.candidates.filter((item) => item.id.includes("route-cheap"));
+  const premiumRoute = result.candidates.filter((item) => item.id.includes("route-expensive"));
+
+  assert.ok(cheapRoute.every((item) =>
+    !item.sensitivity_cases.some((scenario) => scenario.id === "premium-route-freight-shock")
+  ));
+  assert.ok(premiumRoute.every((item) =>
+    item.sensitivity_cases.some((scenario) => scenario.id === "premium-route-freight-shock")
+  ));
+});
