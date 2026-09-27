@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,20 @@ export function CounterpartyDiscoveryPanel() {
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<Response | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ product?: string; countries?: string[] }>).detail || {};
+      if (detail.product) setProduct(detail.product);
+      if (Array.isArray(detail.countries)) setCountriesText(detail.countries.join(", "));
+      setRole("supplier");
+      window.requestAnimationFrame(() => {
+        document.getElementById("counterparty-discovery")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+    window.addEventListener("aicis:investigate-product", handler as EventListener);
+    return () => window.removeEventListener("aicis:investigate-product", handler as EventListener);
+  }, []);
 
   const countries = useMemo(
     () => countriesText.split(",").map((value) => value.trim()).filter(Boolean),
@@ -88,7 +102,7 @@ export function CounterpartyDiscoveryPanel() {
   };
 
   return (
-    <Card>
+    <Card id="counterparty-discovery">
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" />
