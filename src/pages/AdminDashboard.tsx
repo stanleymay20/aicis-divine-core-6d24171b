@@ -19,6 +19,9 @@ import {
   UsersTab,
 } from "@/components/admin-dashboard/UsersAuditSettingsTabs";
 
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
+
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -100,7 +103,7 @@ const AdminDashboard = () => {
       toast({ title: "Predictions Generated", description: `Successfully generated ${data.predictions_generated} predictions` });
       queryClient.invalidateQueries({ queryKey: ["admin-predictions-count"] });
     },
-    onError: (error: any) => toast({ title: "Generation Failed", description: error.message, variant: "destructive" }),
+    onError: (error: unknown) => toast({ title: "Generation Failed", description: errorMessage(error), variant: "destructive" }),
   });
 
   const triggerDataSync = useMutation({
@@ -113,7 +116,7 @@ const AdminDashboard = () => {
       toast({ title: "Data Sync Complete", description: "Live data has been refreshed from global sources" });
       refetchHealth();
     },
-    onError: (error: any) => toast({ title: "Sync Failed", description: error.message, variant: "destructive" }),
+    onError: (error: unknown) => toast({ title: "Sync Failed", description: errorMessage(error), variant: "destructive" }),
   });
 
   const runVulnerabilityScan = useMutation({
@@ -123,7 +126,7 @@ const AdminDashboard = () => {
       return data;
     },
     onSuccess: () => toast({ title: "Vulnerability Scan Complete", description: "All regions have been analyzed" }),
-    onError: (error: any) => toast({ title: "Scan Failed", description: error.message, variant: "destructive" }),
+    onError: (error: unknown) => toast({ title: "Scan Failed", description: errorMessage(error), variant: "destructive" }),
   });
 
   const activeDivisions = systemHealth?.filter(d => d.status === "active").length || 0;
