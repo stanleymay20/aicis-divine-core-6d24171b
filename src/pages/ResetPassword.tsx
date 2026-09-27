@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
   const [verificationFailed, setVerificationFailed] = useState(false);
+  const recoveryEventToken = useRef<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -27,7 +28,6 @@ const ResetPassword = () => {
     // Auth's PASSWORD_RECOVERY event is the proof of the link type. The token's
     // AMR can report "otp" rather than "recovery" after a legitimate reset.
     // Bind the event to its exact server-validated token, not to URL text.
-    let recoveryEventToken: string | null = null;
     let validationInFlight: string | null = null;
 
     const acceptRecovery = () => {
@@ -51,7 +51,7 @@ const ResetPassword = () => {
 
         const claims = decodeAuthTokenClaims(candidate.access_token);
         const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery")
-          || recoveryEventToken === candidate.access_token;
+          || recoveryEventToken.current === candidate.access_token;
         const sameSubject = claims?.sub === data.user.id && candidate.user.id === data.user.id;
 
         if (recoveryBearing && sameSubject) acceptRecovery();
@@ -64,7 +64,7 @@ const ResetPassword = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY" && session) {
-        recoveryEventToken = session.access_token;
+        recoveryEventToken.current = session.access_token;
       }
       if ((event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") && session) {
         // Keep auth network calls outside the auth callback itself.
@@ -120,7 +120,7 @@ const ResetPassword = () => {
       const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
       const claims = decodeAuthTokenClaims(session.access_token);
       const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery")
-        || recoveryEventToken === session.access_token;
+        || recoveryEventToken.current === session.access_token;
       const sameSubject = Boolean(
         !userError
         && userData.user
