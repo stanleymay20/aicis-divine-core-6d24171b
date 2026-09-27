@@ -3,11 +3,13 @@ import {
   OFFICIAL_SANCTIONS_SCREEN_VERSION,
   parseOfacSdnEntities,
   parseUnConsolidatedEntities,
+  parseUkSanctionsCsv,
   screenEntityAgainstOfficialSnapshots,
 } from "../_shared/official-sanctions-screen-v1.mjs";
 
 const OFAC_SDN_XML = "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML";
 const UN_CONSOLIDATED_XML = "https://scsanctions.un.org/resources/xml/en/name/consolidated.xml";
+const UK_SANCTIONS_CSV = "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.csv";
 const MAX_SOURCE_BYTES = 40 * 1024 * 1024;
 
 const corsHeaders = {
@@ -16,7 +18,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type SourceKey = "ofac_sdn" | "un_consolidated";
+type SourceKey = "ofac_sdn" | "un_consolidated" | "uk_sanctions";
 type EvidenceRef = {
   source_id: string;
   source_type: string;
@@ -52,11 +54,11 @@ async function sha256(value: string) {
     .join("");
 }
 
-async function fetchXml(source: SourceKey, url: string): Promise<{
+async function fetchSource(source: SourceKey, url: string, accept: string): Promise<{
   ok: boolean;
   source: SourceKey;
   url: string;
-  xml?: string;
+  content?: string;
   evidence_ref?: EvidenceRef;
   bytes?: number;
   error?: string;
@@ -65,7 +67,7 @@ async function fetchXml(source: SourceKey, url: string): Promise<{
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Accept: "application/xml,text/xml;q=0.9,*/*;q=0.1",
+        Accept: accept,
         "User-Agent": "AICIS/1.0 official-sanctions-screen",
       },
       redirect: "follow",
@@ -81,19 +83,19 @@ async function fetchXml(source: SourceKey, url: string): Promise<{
       return { ok: false, source, url, error: "SOURCE_TOO_LARGE" };
     }
 
-    const xml = await response.text();
-    const bytes = new TextEncoder().encode(xml).byteLength;
+    const content = await response.text();
+    const bytes = new TextEncoder().encode(content).byteLength;
     if (bytes > MAX_SOURCE_BYTES) {
       return { ok: false, source, url, error: "SOURCE_TOO_LARGE" };
     }
 
     const observedAt = new Date().toISOString();
-    const digest = await sha256(xml);
+    const digest = await sha256(content);
     return {
       ok: true,
       source,
       url,
-      xml,
+      content,
       bytes,
       evidence_ref: {
         source_id: source + ":official-current",
@@ -142,15 +144,16 @@ Deno.serve(async (req) => {
     }
 
     const results = await Promise.all([
-      fetchXml("ofac_sdn", OFAC_SDN_XML),
-      fetchXml("un_consolidated", UN_CONSOLIDATED_XML),
+      fetchSource("ofac_sdn", OFAC_SDN_XML, "application/xml,text/xml;q=0.9,*/*;q=0.1"),
+      fetchSource("un_consolidated", UN_CONSOLIDATED_XML, "application/xml,text/xml;q=0.9,*/*;q=0.1"),
+      fetchSource("uk_sanctions", UK_SANCTIONS_CSV, "text/csv,text/plain;q=0.9,*/*;q=0.1"),
     ]);
 
     const snapshots: Snapshot[] = [];
     const sources = [];
 
     for (const result of results) {
-      if (!result.ok || !result.xml || !result.evidence_ref) {
+      if (!result.ok || !result.content || !result.evidence_ref) {
         sources.push({
           source: result.source,
           ok: false,
@@ -161,8 +164,10 @@ Deno.serve(async (req) => {
       }
 
       const records = result.source === "ofac_sdn"
-        ? parseOfacSdnEntities(result.xml)
-        : parseUnConsolidatedEntities(result.xml);
+        ? parseOfacSdnEntities(result.content)
+        : result.source === "un_consolidated"
+          ? parseUnConsolidatedEntities(result.content)
+          : parseUkSanctionsCsv(result.content);
 
       snapshots.push({
         source: result.source,
