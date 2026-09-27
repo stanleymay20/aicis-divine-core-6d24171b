@@ -11,11 +11,13 @@ import DecisionReviewQueue from "@/components/decision-engine/DecisionReviewQueu
 import { RecommendedActionsPanel } from "@/components/risk-ranking/RecommendedActionsPanel";
 import { DecisionOpsKPIStrip } from "@/components/decision-engine/DecisionOpsKPIStrip";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
+import { DecisionWorkspaceNav } from "@/components/decisions/DecisionWorkspaceNav";
 
 export default function DecisionOperations() {
   return (
     <AICISLayout>
       <div className="p-4 md:p-6 lg:p-8 space-y-5 max-w-[1400px] mx-auto animate-fade-in overflow-y-auto h-full">
+        <DecisionWorkspaceNav />
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
