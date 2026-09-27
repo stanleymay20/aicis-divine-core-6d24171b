@@ -472,3 +472,7 @@ verify_jwt = true
 
 [functions.verify-landed-cost-evidence]
 verify_jwt = true
+
+
+[functions.plan-official-customs-evidence-sources]
+verify_jwt = true
