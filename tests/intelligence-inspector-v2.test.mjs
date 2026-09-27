@@ -32,3 +32,15 @@ test("Desktop inspector preserves more workspace width on tablet breakpoints", a
   assert.match(source, /lg:w-\[320px\]/);
   assert.match(source, /xl:w-\[360px\]/);
 });
+
+
+test("Inspector disables context tabs until a workspace supplies their data", async () => {
+  const source = await readFile(inspectorPath, "utf8");
+
+  assert.match(source, /const tabAvailable =/);
+  assert.match(source, /tab === "overview" \|\| tab === "ask"/);
+  assert.match(source, /tab === "evidence"/);
+  assert.match(source, /selectedEntity\?\.provenance\?\.length/);
+  assert.match(source, /disabled=\{!available\}/);
+  assert.match(source, /context has not been supplied by the current workspace/);
+});
