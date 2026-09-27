@@ -146,6 +146,8 @@ function buildExecutionDossier(candidate, metrics) {
   if (contacts.length === 0) missing.push("contacts");
   if (!candidate?.timing) missing.push("timing");
   if (candidate?.fx_execution_ready === false) missing.push("executable_fx_quote");
+  if (candidate?.landed_cost_complete === false) missing.push("complete_landed_cost_evidence");
+  else if (candidate?.landed_cost_execution_ready === false) missing.push("execution_grade_landed_cost_evidence");
 
   return {
     execution_ready: missing.length === 0 &&
@@ -178,6 +180,10 @@ function buildExecutionDossier(candidate, metrics) {
       profit_per_day: metrics?.profit_per_day ?? null,
     },
     cost_breakdown: costBreakdown,
+    cash_flow_adjustments: Array.isArray(candidate?.cash_flow_adjustments)
+      ? candidate.cash_flow_adjustments
+      : [],
+    landed_cost_evidence: candidate?.landed_cost_evidence ?? null,
   };
 }
 
@@ -224,6 +230,9 @@ export function evaluateOpportunity(candidate, preferences = {}) {
   if (!candidate?.compliance_status) rejection_reasons.push("missing_compliance_status");
   if (!candidate?.economics_status || ["insufficient", "synthetic", "unverified"].includes(candidate.economics_status)) {
     rejection_reasons.push("economics_not_verified");
+  }
+  if (candidate?.transaction_type === "physical_trade" && candidate?.landed_cost_complete === false) {
+    rejection_reasons.push("landed_cost_incomplete");
   }
   if (candidate?.compliance_status === "blocked") rejection_reasons.push("compliance_blocked");
   if (candidate?.compliance_status === "unknown") rejection_reasons.push("compliance_unknown");
@@ -273,6 +282,7 @@ export function evaluateOpportunity(candidate, preferences = {}) {
 
   const hardReject = rejection_reasons.some((reason) => [
     "economics_not_verified",
+    "landed_cost_incomplete",
     "compliance_blocked",
     "compliance_unknown",
     "capital_required_exceeds_available",
