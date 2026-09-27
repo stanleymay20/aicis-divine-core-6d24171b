@@ -36,7 +36,10 @@ export default function DailyTaskPanel() {
     staleTime: 30_000,
   });
 
+  const { currentLevel } = useMfaAssurance();
+  const needsMfa = currentLevel !== "aal2";
   const triggerDailyInference = async () => {
+    if (needsMfa) { toast.error("This action needs two-step sign-in (MFA). It still runs automatically on schedule."); return; }
     setRunning(true);
     try {
       const { data, error } = await supabase.functions.invoke("trigger-daily-inference");
@@ -56,7 +59,7 @@ export default function DailyTaskPanel() {
           <CardTitle className="text-sm flex items-center gap-1.5">
             <CalendarClock className="h-3.5 w-3.5 text-primary" /> Daily Operations
           </CardTitle>
-          <Button size="sm" variant="default" className="h-7 text-xs" onClick={triggerDailyInference} disabled={running}>
+          <Button size="sm" variant="default" className="h-7 text-xs" onClick={triggerDailyInference} disabled={running} title={needsMfa ? "Requires two-step sign-in (MFA)" : undefined}>
             {running ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Zap className="h-3 w-3 mr-1" />}
             {running ? "Running..." : "Generate Recommendations"}
           </Button>
