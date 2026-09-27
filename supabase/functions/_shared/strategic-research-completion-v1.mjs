@@ -8,6 +8,8 @@ const COMPLETION_MAP = {
   reference_fx_attached: "verified_fx_normalization",
   executable_fx_verified: "obtain_executable_fx_quote",
   business_contact_verified: "verify_business_contact",
+  landed_cost_verified: "verify_landed_cost_evidence",
+  landed_cost_execution_evidence_verified: "upgrade_landed_cost_execution_evidence",
 };
 
 export function researchActionKindForCompletion(completionKind) {
