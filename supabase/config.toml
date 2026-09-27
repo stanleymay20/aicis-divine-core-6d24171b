@@ -464,3 +464,7 @@ verify_jwt = true
 
 [functions.normalize-rfq-response]
 verify_jwt = true
+
+
+[functions.compare-rfq-responses]
+verify_jwt = true
