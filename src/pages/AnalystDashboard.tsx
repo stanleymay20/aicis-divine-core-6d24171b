@@ -19,6 +19,8 @@ import { CausalNetworkCard } from "@/components/analyst-dashboard/CausalNetworkC
 import { ScenarioProjectionsCard } from "@/components/analyst-dashboard/ScenarioProjectionsCard";
 import { DataSourceHealthCard } from "@/components/analyst-dashboard/DataSourceHealthCard";
 
+type TrendMetric = "global" | "cyber" | "economic" | "environmental" | "geopolitical";
+
 export default function AnalystDashboard() {
   const qc = useQueryClient();
   const kpis = useAnalystKpis();
@@ -28,9 +30,8 @@ export default function AnalystDashboard() {
 
   // Sparklines derived from live 24h event series — last 16 hourly buckets per category.
   const sparkSeries = useMemo(() => {
-    const rows = (trend.data ?? []) as any[];
-    const tail = rows.slice(-16);
-    const build = (key: string) => tail.map(r => ({ v: Number(r[key] ?? 0) }));
+    const tail = (trend.data ?? []).slice(-16);
+    const build = (key: TrendMetric) => tail.map((row) => ({ v: Number(row[key] ?? 0) }));
     return {
       global: build("global"),
       cyber: build("cyber"),
@@ -42,15 +43,13 @@ export default function AnalystDashboard() {
 
   const k = kpis.data;
   const sourceHealth = useMemo(() => {
-    const total = k?.sourcesTotal || 312;
-    const online = k?.sourcesOnline || 284;
-    const degraded = Math.max(0, Math.round(total * 0.06));
-    const offline = Math.max(0, total - online - degraded);
+    if (!k || k.sourcesTotal === 0) return [];
     return [
-      { name: "Online", value: online, color: "#10b981" },
-      { name: "Degraded", value: degraded, color: "#f59e0b" },
-      { name: "Offline", value: offline, color: "#ef4444" },
-    ];
+      { name: "Online", value: k.sourcesOnline, color: "#10b981" },
+      { name: "Degraded", value: k.sourcesDegraded, color: "#f59e0b" },
+      { name: "Offline", value: k.sourcesOffline, color: "#ef4444" },
+      { name: "Unknown", value: k.sourcesUnknown, color: "#64748b" },
+    ].filter((item) => item.value > 0);
   }, [k]);
 
   return (
@@ -64,7 +63,7 @@ export default function AnalystDashboard() {
               <Globe2 className="h-5 w-5 text-cyan-400" />
               <h1 className="text-xl md:text-2xl font-semibold tracking-tight">Analyst Dashboard</h1>
               <Badge variant="outline" className="uppercase tracking-wider text-[10px] border-rose-500/40 text-rose-300 bg-rose-500/10">
-                Threat Level · {k && k.criticalAlerts > 5 ? "HIGH" : k && k.criticalAlerts > 0 ? "ELEVATED" : "STABLE"}
+                Threat Level · {!k ? "UNKNOWN" : k.criticalAlerts > 5 ? "HIGH" : k.criticalAlerts > 0 ? "ELEVATED" : "STABLE"}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -98,8 +97,8 @@ export default function AnalystDashboard() {
           <PanelBoundary><KpiTile icon={AlertTriangle} label="Active Incidents" value={fmt(k?.activeAlerts)} delta={k?.eventsDelta ?? 0} deltaLabel="vs 6h" sparkColor="#f97316" sparkData={sparkSeries.global} loading={kpis.isLoading} /></PanelBoundary>
           <PanelBoundary><KpiTile icon={ShieldAlert} label="Systemic Threats" value={fmt(k?.systemicThreats)} delta={null} deltaLabel="≥75 score" sparkColor="#a78bfa" sparkData={sparkSeries.geopolitical} loading={kpis.isLoading} /></PanelBoundary>
           <PanelBoundary><KpiTile icon={Users} label="Countries at Risk" value={fmt(k?.countriesAtRisk)} delta={null} deltaLabel="≥75 score" sparkColor="#fbbf24" sparkData={sparkSeries.economic} loading={kpis.isLoading} /></PanelBoundary>
-          <PanelBoundary><KpiTile icon={Activity} label="Confidence" value={`${fmt(k?.confidence)}%`} delta={null} deltaLabel="rolling" sparkColor="#10b981" sparkData={sparkSeries.environmental} loading={kpis.isLoading} /></PanelBoundary>
-          <PanelBoundary><KpiTile icon={Database} label="Data Sources" value={fmt(k?.sourcesTotal)} delta={null} deltaLabel={`${k?.sourcesOnline ?? 0} online`} sparkColor="#22d3ee" sparkData={sparkSeries.cyber} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Activity} label="Confidence" value={k?.confidence == null ? "—" : `${fmt(k.confidence)}%`} delta={null} deltaLabel="rolling" sparkColor="#10b981" sparkData={sparkSeries.environmental} loading={kpis.isLoading} /></PanelBoundary>
+          <PanelBoundary><KpiTile icon={Database} label="Data Sources" value={fmt(k?.sourcesTotal)} delta={null} deltaLabel={k ? `${k.sourcesOnline} online` : "unavailable"} sparkColor="#22d3ee" sparkData={sparkSeries.cyber} loading={kpis.isLoading} /></PanelBoundary>
         </div>
 
 
