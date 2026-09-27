@@ -80,6 +80,31 @@ type RfqNormalizeResponse = {
   transaction_eligible?: false;
 };
 
+type RfqComparisonResponse = {
+  ok: boolean;
+  ordering_allowed?: boolean;
+  blocking_reasons?: string[];
+  comparison_currency?: string | null;
+  quotes?: Array<{
+    quote_id: string | null;
+    supplier_name: string | null;
+    total_comparable_cost: number | null;
+    payment_terms: string | null;
+    lead_time_days: number | null;
+    cost_completeness: string;
+    reasons: string[];
+  }>;
+  lowest_evaluated_landed_cost_response?: {
+    quote_id: string;
+    supplier_name: string | null;
+    total_comparable_cost: number;
+    currency: string;
+  } | null;
+  audit?: { hash?: string };
+  scope_notice?: string;
+  error?: string;
+};
+
 function deadlineDefault() {
   const date = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
   date.setUTCMinutes(0, 0, 0);
@@ -148,9 +173,13 @@ function seedFromCandidate(candidate: Candidate, strategicAuditHash: string) {
 export function RfqDraftPanel({
   candidate,
   strategicAuditHash,
+  comparisonCurrency,
+  fxRates,
 }: {
   candidate: Candidate;
   strategicAuditHash: string;
+  comparisonCurrency: string | null;
+  fxRates: Array<Record<string, unknown>>;
 }) {
   const [draftInput, setDraftInput] = useState(() =>
     JSON.stringify(seedFromCandidate(candidate, strategicAuditHash), null, 2)
@@ -160,6 +189,9 @@ export function RfqDraftPanel({
   const [responseInput, setResponseInput] = useState("");
   const [responseLoading, setResponseLoading] = useState(false);
   const [responseResult, setResponseResult] = useState<RfqNormalizeResponse | null>(null);
+  const [comparisonResponses, setComparisonResponses] = useState<Array<Record<string, unknown>>>([]);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonResult, setComparisonResult] = useState<RfqComparisonResponse | null>(null);
   const { toast } = useToast();
 
   const source = candidate.execution_dossier.where.source;
@@ -247,6 +279,66 @@ export function RfqDraftPanel({
         variant: "destructive",
       });
     }
+  };
+
+  const addResponseToComparison = () => {
+    const normalized = responseResult?.normalized_response;
+    if (!normalized) return;
+    const quoteId = String(normalized.id || "");
+    if (!quoteId) {
+      toast({
+        title: "Quote ID missing",
+        description: "The normalized response needs a quote ID before it can enter the comparison set.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setComparisonResponses((current) => [
+      ...current.filter((item) => String(item.id || "") !== quoteId),
+      normalized,
+    ]);
+    setComparisonResult(null);
+    toast({
+      title: "Quote added to comparison",
+      description: "The response remains unverified and research-only.",
+    });
+  };
+
+  const compareResponses = async () => {
+    if (comparisonResponses.length < 2) return;
+    if (!comparisonCurrency) {
+      toast({
+        title: "Comparison currency missing",
+        description: "Rebuild the transaction with a comparison currency before comparing RFQ responses.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setComparisonLoading(true);
+    const { data, error } = await supabase.functions.invoke("compare-rfq-responses", {
+      body: {
+        strategic_audit_hash: strategicAuditHash,
+        responses: comparisonResponses,
+        comparison_currency: comparisonCurrency,
+        fx_rates: fxRates,
+        as_of: new Date().toISOString(),
+      },
+    });
+    setComparisonLoading(false);
+
+    if (error) {
+      toast({
+        title: "RFQ comparison failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const result = data as RfqComparisonResponse;
+    setComparisonResult(result);
   };
 
   const seedVerification = () => {
@@ -383,7 +475,7 @@ export function RfqDraftPanel({
             setResponseResult(null);
           }}
           className="min-h-[220px] font-mono text-xs"
-          placeholder='{"rfq_id":"...","quote_id":"...","role":"supplier","counterparty_id":"...","legal_name":"...","jurisdiction":"...","product_id":"...","unit_price":0,"currency":"EUR","quantity":0,"quantity_unit":"tonnes","incoterm":"CIF","payment_terms":"...","valid_until":"...","evidence_refs":[...]}'
+          placeholder='{"rfq_id":"...","quote_id":"...","role":"supplier","counterparty_id":"...","legal_name":"...","jurisdiction":"...","product_id":"...","unit_price":0,"currency":"EUR","quantity":0,"quantity_unit":"tonnes","incoterm":"CIF","named_place_or_port":"Hamburg","payment_terms":"...","cost_completeness":"quoted_price_only","cost_completeness_evidence_refs":[],"additional_costs":[],"valid_until":"...","evidence_refs":[...]}'
         />
         <div className="flex justify-end">
           <Button
@@ -407,12 +499,105 @@ export function RfqDraftPanel({
               <p className="text-[10px] text-muted-foreground">
                 transaction_eligible=false · next gate: {responseResult.next_required_gate || "verification"}
               </p>
-              <Button type="button" size="sm" onClick={seedVerification}>
-                Verify response dossier
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={addResponseToComparison}>
+                  Add to comparison
+                </Button>
+                <Button type="button" size="sm" onClick={seedVerification}>
+                  Verify response dossier
+                </Button>
+              </div>
             </div>
           </div>
         ) : null}
+
+        <div className="border-t border-border/70 pt-4 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold">RFQ quote comparison</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Compares only normalized responses. A lowest-landed-cost result is allowed only when RFQ, product, quantity, Incoterm, named place, payment terms, full landed-cost evidence and currency normalization are comparable.
+              </p>
+            </div>
+            <Badge variant="outline">{comparisonResponses.length} quotes</Badge>
+          </div>
+
+          {comparisonResponses.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {comparisonResponses.map((item) => (
+                <Badge key={String(item.id)} variant="secondary">
+                  {String(item.name || item.id || "quote")}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={comparisonResponses.length < 2 || comparisonLoading}
+              onClick={compareResponses}
+            >
+              {comparisonLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Compare landed economics
+            </Button>
+          </div>
+
+          {comparisonResult ? (
+            <div className="space-y-2">
+              {comparisonResult.ordering_allowed && comparisonResult.lowest_evaluated_landed_cost_response ? (
+                <div className="rounded-md bg-muted/20 p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Lowest evaluated landed cost among supplied responses
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {comparisonResult.lowest_evaluated_landed_cost_response.supplier_name || comparisonResult.lowest_evaluated_landed_cost_response.quote_id}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {comparisonResult.lowest_evaluated_landed_cost_response.total_comparable_cost.toLocaleString()} {comparisonResult.lowest_evaluated_landed_cost_response.currency}
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed p-3 text-[11px] text-muted-foreground">
+                  No landed-cost winner declared. Blocking reasons: {(comparisonResult.blocking_reasons || []).join(" · ") || "insufficient comparable evidence"}.
+                </div>
+              )}
+
+              {comparisonResult.quotes?.length ? (
+                <div className="space-y-1.5">
+                  {comparisonResult.quotes.map((item) => (
+                    <div key={String(item.quote_id)} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 p-2.5 text-[11px]">
+                      <div>
+                        <p className="font-medium">{item.supplier_name || item.quote_id || "Quote"}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {item.payment_terms || "payment terms unknown"} · {item.cost_completeness.replaceAll("_", " ")}
+                        </p>
+                      </div>
+                      <span className="font-semibold">
+                        {item.total_comparable_cost == null
+                          ? "—"
+                          : item.total_comparable_cost.toLocaleString() + " " + (comparisonResult.comparison_currency || "")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="flex items-start gap-2 rounded-md border border-dashed p-3 text-[10px] text-muted-foreground">
+                <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Research ordering only · supplier not selected for execution · transaction_eligible=false · every response still requires verification.
+                </span>
+              </div>
+
+              <p className="text-[10px] text-muted-foreground">
+                Comparison fingerprint: <code>{comparisonResult.audit?.hash?.slice(0, 16) || "—"}…</code>
+              </p>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
