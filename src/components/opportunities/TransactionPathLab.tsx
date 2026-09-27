@@ -55,6 +55,8 @@ type StrategicOption = {
   information_value_estimate?: number | null;
   feasibility_reasons: string[];
   missing_capabilities: string[];
+  invalidation_rules: unknown[];
+  switching_rules: unknown[];
   robustness: {
     scenario_count: number;
     worst_case: number | null;
@@ -85,6 +87,15 @@ type StrategicResponse = {
   options: StrategicOption[];
   comparison_currency?: string | null;
   comparison_blocked_reason?: string | null;
+  learning_packet?: {
+    strategy_id: string;
+    doctrine_ids: string[];
+    comparator_strategy_id: string | null;
+    pre_registered_outcome_metrics: string[];
+    pre_commit_invalidation_rules: unknown[];
+    pre_commit_switching_rules: unknown[];
+    epistemic_boundary: string;
+  } | null;
   scope_notice: string;
 };
 
@@ -581,6 +592,43 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
                   {item.id.replaceAll("_", " ")}
                 </Badge>
               ))}
+            </div>
+          ) : null}
+
+          {primary.invalidation_rules.length || primary.switching_rules.length ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-md border border-border/70 p-2.5">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Invalidate if</p>
+                {primary.invalidation_rules.length ? (
+                  <ul className="mt-1 space-y-1 text-[11px]">
+                    {primary.invalidation_rules.map((rule, index) => (
+                      <li key={"invalidate-" + index}>• {String(rule)}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-[10px] text-muted-foreground">No explicit invalidation rule supplied.</p>
+                )}
+              </div>
+              <div className="rounded-md border border-border/70 p-2.5">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Switch strategy if</p>
+                {primary.switching_rules.length ? (
+                  <ul className="mt-1 space-y-1 text-[11px]">
+                    {primary.switching_rules.map((rule, index) => (
+                      <li key={"switch-" + index}>• {String(rule)}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-[10px] text-muted-foreground">No explicit switching rule supplied.</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {strategic.learning_packet ? (
+            <div className="rounded-md bg-muted/25 p-2.5 text-[10px] text-muted-foreground">
+              Learning packet pre-registered for {strategic.learning_packet.doctrine_ids.length} doctrine
+              {strategic.learning_packet.doctrine_ids.length === 1 ? "" : "s"} before outcome observation.
+              Comparator: {strategic.learning_packet.comparator_strategy_id || "none supplied"}.
             </div>
           ) : null}
 
