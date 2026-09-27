@@ -17,6 +17,22 @@ function json(body: unknown, status = 200) {
   });
 }
 
+type JsonRecord = Record<string, unknown>;
+
+type RelevanceRow = {
+  signal_id: string;
+  relevance_score: number;
+  relevance_tier: string;
+  relevance_reason: unknown;
+  computed_at: string;
+};
+
+function asRecord(value: unknown): JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as JsonRecord
+    : {};
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
@@ -43,14 +59,15 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    const opportunityProfile = (prefs?.alert_preferences as any)?.opportunity_profile ?? {};
+    const alertPreferences = asRecord(prefs?.alert_preferences);
+    const opportunityProfile = asRecord(alertPreferences.opportunity_profile);
     const minRelevance = Number.isFinite(Number(body.min_relevance_score))
       ? Number(body.min_relevance_score)
       : Number.isFinite(Number(opportunityProfile.min_relevance_score))
         ? Number(opportunityProfile.min_relevance_score)
         : 45;
 
-    const { data: relevanceRows, error: relevanceError } = await (sb as any)
+    const { data: relevanceRows, error: relevanceError } = await sb
       .from("signal_relevance_scores")
       .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
       .eq("user_id", user.id)
@@ -59,7 +76,8 @@ Deno.serve(async (req) => {
       .limit(limit);
     if (relevanceError) throw relevanceError;
 
-    const ids = (relevanceRows ?? []).map((row: any) => row.signal_id).filter(Boolean);
+    const typedRelevanceRows = (relevanceRows ?? []) as RelevanceRow[];
+    const ids = typedRelevanceRows.map((row) => row.signal_id).filter(Boolean);
     if (ids.length === 0) {
       return json({
         ok: true,
@@ -70,15 +88,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: signals, error: signalError } = await (sb as any)
+    const { data: signals, error: signalError } = await sb
       .from("global_signals")
       .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status")
       .in("id", ids);
     if (signalError) throw signalError;
 
-    const relevanceBySignal: Record<string, any> = {};
-    for (const row of relevanceRows ?? []) {
-      relevanceBySignal[String((row as any).signal_id)] = row;
+    const relevanceBySignal: Record<string, RelevanceRow> = {};
+    for (const row of typedRelevanceRows) {
+      relevanceBySignal[row.signal_id] = row;
     }
 
     const hypotheses = generateOpportunityHypotheses(signals ?? [], relevanceBySignal);
