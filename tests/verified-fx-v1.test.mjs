@@ -32,6 +32,8 @@ test("converts direct quoted currency using verified rate", () => {
   assert.equal(result.ok, true);
   assert.equal(result.amount, 120);
   assert.equal(result.direction, "direct");
+  assert.equal(result.execution_eligible_fx, false);
+  assert.equal(result.evidence_status, "verified_market");
 });
 
 test("supports inverse conversion without inventing a second rate", () => {
@@ -67,4 +69,13 @@ test("returns only FX pairs needed for the requested comparison currency", () =>
     { from_currency: "USD", to_currency: "EUR" },
     { from_currency: "GHS", to_currency: "EUR" },
   ]);
+});
+
+
+test("only explicit executable FX quotes clear the FX execution boundary", () => {
+  const executable = { ...eurUsd, evidence_status: "executable_quote" };
+  const result = convertVerifiedAmount(100, "EUR", "USD", [executable], "2026-09-27T06:00:00Z");
+  assert.equal(result.ok, true);
+  assert.equal(result.execution_eligible_fx, true);
+  assert.equal(result.evidence_status, "executable_quote");
 });
