@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Activity, CheckCircle, XCircle, Clock, Server, Database, Zap, AlertTriangle, Radio, Shield, TrendingUp, BarChart3, Layers } from "lucide-react";
 import { PanelEmpty } from "@/components/ui/panel-empty";
 import { format, formatDistanceToNow } from "date-fns";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 
 interface PipelineStatus {
   name: string;
@@ -19,6 +21,14 @@ interface PipelineStatus {
   lastStatus: string;
   successRate: number;
 }
+
+type DataQualityAuditRow =
+  Database["public"]["Tables"]["data_quality_audits"]["Row"];
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 
 const SystemStatus = () => {
   const navigate = useNavigate();
@@ -88,18 +98,28 @@ const SystemStatus = () => {
       const failingPipelines = activePipelines.filter(p => p.lastStatus === "error");
 
       // Parse truth scores
-      const truthScores = (truthRes.data || []).map((t: any) => ({
-        score: t.overall_truth_score,
-        grade: t.evidence?.grade,
-        audits: t.evidence?.audits,
-        allPassed: t.evidence?.all_passed,
-        durationMs: t.evidence?.duration_ms,
-        createdAt: t.created_at,
-      }));
+      const truthScores = (truthRes.data || []).map((row) => {
+        const evidence = asRecord(row.evidence);
+        return {
+          score: row.overall_truth_score,
+          grade:
+            typeof evidence.grade === "string" ? evidence.grade : undefined,
+          audits: evidence.audits,
+          allPassed:
+            typeof evidence.all_passed === "boolean"
+              ? evidence.all_passed
+              : undefined,
+          durationMs:
+            typeof evidence.duration_ms === "number"
+              ? evidence.duration_ms
+              : undefined,
+          createdAt: row.created_at,
+        };
+      });
 
       // Parse quality audits by layer
-      const qualityByLayer: Record<string, any> = {};
-      for (const audit of (accumRes.data || [])) {
+      const qualityByLayer: Record<string, DataQualityAuditRow> = {};
+      for (const audit of accumRes.data || []) {
         if (!qualityByLayer[audit.layer]) {
           qualityByLayer[audit.layer] = audit;
         }
@@ -132,6 +152,7 @@ const SystemStatus = () => {
   return (
     <AICISLayout>
       <div className="space-y-6 p-4 md:p-6 max-w-6xl mx-auto">
+        <SystemWorkspaceNav />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -343,16 +364,16 @@ const SystemStatus = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {data.divisions.map((d: any) => (
-                      <div key={d.name} className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/20">
+                    {data.divisions.map((division) => (
+                      <div key={division.name} className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/20">
                         <div>
-                          <p className="text-sm font-medium">{d.name}</p>
+                          <p className="text-sm font-medium">{division.name}</p>
                           <p className="text-[10px] text-muted-foreground">
-                            Last check: {d.last_check ? formatDistanceToNow(new Date(d.last_check), { addSuffix: true }) : "—"}
+                            Last check: {division.last_check ? formatDistanceToNow(new Date(division.last_check), { addSuffix: true }) : "—"}
                           </p>
                         </div>
-                        <Badge variant={d.status === "operational" ? "default" : "destructive"} className="text-[9px]">
-                          {d.status}
+                        <Badge variant={division.status === "operational" ? "default" : "destructive"} className="text-[9px]">
+                          {division.status}
                         </Badge>
                       </div>
                     ))}
