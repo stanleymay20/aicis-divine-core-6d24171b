@@ -11,6 +11,7 @@ import {
   Loader2, RefreshCw, BarChart3,
 } from "lucide-react";
 import { PanelEmpty } from "@/components/ui/panel-empty";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 const GOVERNED_SIGNAL_SCORE_SEMANTICS =
   "deterministic_source_registry_trust_and_source_event_recency_screen_v1_not_probability_source_independence_excluded";
@@ -379,6 +380,7 @@ export default function SignalValidation() {
     <AICISLayout>
       <ScrollArea className="h-full">
         <div className="p-4 max-w-4xl mx-auto space-y-4">
+          <DataTrustWorkspaceNav />
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-semibold flex items-center gap-2">
