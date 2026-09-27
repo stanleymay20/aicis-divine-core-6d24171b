@@ -12,12 +12,13 @@ import MeasuredOutcomeFastPath from "@/components/decision-engine/MeasuredOutcom
 import AuditCompletenessChecker from "@/components/decision-engine/AuditCompletenessChecker";
 import BillingHealthPanel from "@/components/decision-engine/BillingHealthPanel";
 import PilotConversionReport from "@/components/decision-engine/PilotConversionReport";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 export default function EvidenceCommand() {
   return (
     <AICISLayout>
       <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <div className="p-4 md:p-6 lg:p-8 space-y-5 max-w-[1400px] mx-auto animate-fade-in">
+        <div className="p-4 md:p-6 lg:p-8 space-y-5 max-w-[1400px] mx-auto animate-fade-in">\n          <DataTrustWorkspaceNav />
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
