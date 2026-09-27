@@ -196,7 +196,7 @@ export const IntelligenceInspector = () => {
   }
 
   return (
-    <aside className="hidden w-[360px] shrink-0 border-l border-border/70 bg-background/96 md:flex md:flex-col">
+    <aside className="hidden w-[300px] shrink-0 border-l border-border/70 bg-background/96 md:flex md:flex-col lg:w-[320px] xl:w-[360px]">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/70 px-2">
         <div className="flex items-center gap-1.5 px-1 text-[10px] text-muted-foreground">
           {selectedEntity ? <ChevronLeft className="h-3 w-3" /> : <CircleHelp className="h-3 w-3" />}
