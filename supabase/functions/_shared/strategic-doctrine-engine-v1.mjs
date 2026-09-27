@@ -79,6 +79,7 @@ function normalizedOption(raw, fallback = {}) {
     source_candidate_id: raw.source_candidate_id || fallback.source_candidate_id || null,
     directness: raw.directness || fallback.directness || "direct",
     transaction_type: raw.transaction_type || fallback.transaction_type || null,
+    currency: String(raw.currency || fallback.currency || "").trim().toUpperCase() || null,
     research_only: raw.research_only === true,
     executable_input: raw.executable_input === true,
     capital_required: finite(raw.capital_required) ? raw.capital_required : null,
@@ -131,6 +132,7 @@ function transactionOption(candidate) {
     source_candidate_id: id || null,
     directness: transactionDirectness(candidate.transaction_type),
     transaction_type: candidate.transaction_type || null,
+    currency: candidate.currency || null,
     research_only: false,
     executable_input: candidate.execution_ready === true,
     capital_required: candidate.capital_required,
@@ -170,6 +172,7 @@ function suppliedAlternatives(candidate) {
         strategy_type: raw.strategy_type || type,
         source_candidate_id: candidate.candidate_id || candidate.id || null,
         directness: type === "indirect" ? "indirect" : "non_transactional",
+        currency: raw.currency || candidate.currency || null,
         research_only: raw.research_only === true || !finite(raw.expected_value),
         executable_input: raw.executable_input === true,
       }));
@@ -186,6 +189,7 @@ function noActionOption(candidate) {
     strategy_type: "no_action",
     source_candidate_id: id || null,
     directness: "none",
+    currency: candidate.currency || null,
     research_only: false,
     executable_input: true,
     capital_required: 0,
@@ -217,6 +221,7 @@ function feasibility(option, actorState, preferences) {
   if (finite(option.cycle_days) && option.cycle_days > p.max_cycle_days) reasons.push("cycle_exceeds_user_limit");
   if (option.strategy_type !== "no_action" && !optionEvidenceValid(option)) reasons.push("evidence_score_missing");
   if (option.strategy_type !== "no_action" && option.expected_value == null) reasons.push("expected_value_unknown");
+  if (option.strategy_type !== "no_action" && !option.currency) reasons.push("currency_unknown");
   if (option.research_only) reasons.push("research_only");
 
   const hard = reasons.some((reason) => [
@@ -225,6 +230,7 @@ function feasibility(option, actorState, preferences) {
     "cycle_exceeds_user_limit",
     "evidence_score_missing",
     "expected_value_unknown",
+    "currency_unknown",
   ].includes(reason));
 
   return { feasible: !hard, reasons, missing_capabilities: missingCapabilities };
@@ -408,8 +414,17 @@ export function evaluateStrategicOptions({
     return result.feasible && !option.research_only && finite(option.expected_value);
   });
 
-  const regrets = regretByScenario(economicallyComparable);
-  const frontierIds = new Set(paretoFront(economicallyComparable).map((option) => option.id));
+  const comparableCurrencies = [...new Set(
+    economicallyComparable
+      .filter((option) => option.strategy_type !== "no_action")
+      .map((option) => option.currency)
+      .filter(Boolean)
+  )];
+  const mixedCurrencyBlocked = comparableCurrencies.length > 1;
+  const comparableForSelection = mixedCurrencyBlocked ? [] : economicallyComparable;
+
+  const regrets = regretByScenario(comparableForSelection);
+  const frontierIds = new Set(paretoFront(comparableForSelection).map((option) => option.id));
 
   const evaluated = unique.map((option) => {
     const result = feasibilityById.get(option.id);
@@ -449,8 +464,10 @@ export function evaluateStrategicOptions({
     option_count: evaluated.length,
     feasible_count: evaluated.filter((option) => option.feasible).length,
     pareto_frontier_count: evaluated.filter((option) => option.pareto_frontier).length,
-    primary_strategy: selectable[0] || null,
+    primary_strategy: mixedCurrencyBlocked ? null : (selectable[0] || null),
     no_action_option: selectable.find((option) => option.strategy_type === "no_action") || null,
+    comparison_currency: comparableCurrencies.length === 1 ? comparableCurrencies[0] : null,
+    comparison_blocked_reason: mixedCurrencyBlocked ? "mixed_currency_strategy_options_require_verified_fx_normalization" : null,
     options: evaluated,
     doctrine_registry: Object.values(DOCTRINES),
     human_approval_required: true,
