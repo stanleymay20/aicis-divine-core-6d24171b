@@ -16,7 +16,8 @@ import {
   LayoutDashboard,
   ShieldCheck,
   Sparkles,
-  Target,\n  TrendingUp,
+  Target,
+  TrendingUp,
   Workflow,
   X,
 } from "lucide-react";
@@ -73,7 +74,8 @@ const primaryItems: NavItem[] = [
     icon: Target,
     path: "/forecast-validation",
     match: ["/forecast-validation", "/predictions", "/simulation", "/learning", "/learning-loop", "/outcome-cockpit"],
-  },\n  {
+  },
+  {
     id: "opportunities",
     label: "Opportunities",
     description: "Personalized transaction research and ranking",
