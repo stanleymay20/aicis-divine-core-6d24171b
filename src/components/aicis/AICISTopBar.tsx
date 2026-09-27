@@ -7,6 +7,7 @@ import {
   BrainCircuit,
   LogOut,
   Menu,
+  Search,
   Server,
   Shield,
   User,
@@ -17,6 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,12 +37,13 @@ const PAGE_TITLES: Record<string, string> = {
   "/forecast-validation": "Forecasts",
   "/predictions": "Forecasts",
   "/simulation": "Forecasts",
+  "/opportunities": "Opportunities",
   "/decision-ops": "Decisions",
   "/decisions": "Decisions",
   "/watchlist": "Decisions",
   "/governance": "Data & Trust",
   "/evidence-command": "Data & Trust",
-  "/data-pipeline": "Data & Trust",
+  "/data-pipeline": "System",
   "/system-pulse": "System",
   "/admin": "System",
 };
@@ -65,6 +68,7 @@ export const AICISTopBar = () => {
   const location = useLocation();
   const { user, signOut } = useAuth();
   const { isAdmin, isOperator } = useUserRoles();
+  const { openAsk, setCommandPaletteOpen } = useIntelligenceOS();
   const isMobile = useIsMobile();
 
   const pageTitle = titleFor(location.pathname);
@@ -154,10 +158,22 @@ export const AICISTopBar = () => {
       </div>
 
       <div className="ml-auto flex items-center gap-1.5 md:gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="hidden h-8 gap-1.5 text-xs md:flex"
+          onClick={() => setCommandPaletteOpen(true)}
+          aria-label="Open AICIS search and command palette"
+        >
+          <Search className="h-3.5 w-3.5" />
+          Search
+          <span className="ml-1 rounded border border-border px-1 py-0.5 font-mono text-[9px] text-muted-foreground">⌘K</span>
+        </Button>
+
         <Badge
           variant="outline"
-          className={`hidden h-6 gap-1.5 px-2 text-[10px] font-mono tracking-wide sm:inline-flex ${sensingTone}`}
-          title={lastSignalAt ? `Latest signal detected ${lastSignalAt.toISOString()}` : "No current signal timestamp available"}
+          className={"hidden h-6 gap-1.5 px-2 text-[10px] font-mono tracking-wide sm:inline-flex " + sensingTone}
+          title={lastSignalAt ? "Latest signal detected " + lastSignalAt.toISOString() : "No current signal timestamp available"}
         >
           <Activity className="h-3 w-3" />
           {lastSignalAt ? formatDistanceToNow(lastSignalAt, { addSuffix: false }) : "NO FRESHNESS"}
@@ -166,10 +182,12 @@ export const AICISTopBar = () => {
         {isAdmin && (
           <Badge
             variant="outline"
-            className={environment === "LIVE"
-              ? "hidden h-6 px-2 text-[10px] font-mono border-primary/30 bg-primary/5 text-primary lg:inline-flex"
-              : "hidden h-6 px-2 text-[10px] font-mono border-amber-500/30 bg-amber-500/5 text-amber-400 lg:inline-flex"}
-            title={`Runtime environment: ${environment}`}
+            className={
+              environment === "LIVE"
+                ? "hidden h-6 px-2 text-[10px] font-mono border-primary/30 bg-primary/5 text-primary lg:inline-flex"
+                : "hidden h-6 px-2 text-[10px] font-mono border-amber-500/30 bg-amber-500/5 text-amber-400 lg:inline-flex"
+            }
+            title={"Runtime environment: " + environment}
           >
             {environment}
           </Badge>
@@ -179,7 +197,7 @@ export const AICISTopBar = () => {
           variant="ghost"
           size="sm"
           className="hidden h-8 gap-1.5 text-xs sm:flex"
-          onClick={() => navigate("/intelligence-engine")}
+          onClick={openAsk}
         >
           <BrainCircuit className="h-3.5 w-3.5" /> Ask
         </Button>
@@ -199,7 +217,7 @@ export const AICISTopBar = () => {
             <DropdownMenuItem onClick={() => navigate("/world")}>
               <Activity className="mr-2 h-4 w-4" /> World workspace
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate("/intelligence-engine")}>
+            <DropdownMenuItem onClick={openAsk}>
               <BrainCircuit className="mr-2 h-4 w-4" /> Ask AICIS
             </DropdownMenuItem>
             {isOperator && (
