@@ -7,6 +7,8 @@ const authPagePath = new URL("../src/pages/Auth.tsx", import.meta.url);
 const authProviderPath = new URL("../src/components/auth/AuthProvider.tsx", import.meta.url);
 const supabaseClientPath = new URL("../src/integrations/supabase/client.ts", import.meta.url);
 const resetPath = new URL("../src/pages/ResetPassword.tsx", import.meta.url);
+const recoveryClientPath = new URL("../src/lib/recoveryAuth.ts", import.meta.url);
+const appEntryPath = new URL("../src/main.tsx", import.meta.url);
 const tokenClaimsPath = new URL("../src/lib/authTokenClaims.ts", import.meta.url);
 const sharedAuthPath = new URL("../supabase/functions/_shared/auth.ts", import.meta.url);
 const crisisScanPath = new URL("../supabase/functions/crisis-scan/index.ts", import.meta.url);
@@ -97,6 +99,21 @@ test("password recovery requires a server-validated recovery-bearing token and r
   assert.match(source, /signOut\(\{ scope: "global" \}\)/);
   assert.match(source, /MIN_NEW_PASSWORD_LENGTH = 12/);
   assert.doesNotMatch(source, /carriesRecoveryIntent/);
+});
+
+test("recovery emails use a separate cross-browser flow and initialize before app auth", async () => {
+  const [auth, client, entry, reset] = await Promise.all([
+    readFile(authPagePath, "utf8"),
+    readFile(recoveryClientPath, "utf8"),
+    readFile(appEntryPath, "utf8"),
+    readFile(resetPath, "utf8"),
+  ]);
+  assert.match(auth, /recoveryAuth\.resetPasswordForEmail/);
+  assert.match(client, /flowType: "implicit"/);
+  assert.match(client, /storageKey: "aicis-password-recovery-only"/);
+  assert.match(entry, /await recoveryAuth\.initialize\(\)/);
+  assert.match(entry, /await import\("\.\/App\.tsx"\)/);
+  assert.match(reset, /recoveryAuth\.updateUser\(\{ password \}\)/);
 });
 
 test("trusted worker secrets are compared exactly, never by substring", async () => {

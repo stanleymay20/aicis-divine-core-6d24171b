@@ -1,3 +1,4 @@
 - Scheduled jobs calling backend functions must send header x-cron-secret read from vault secret 'cron_secret' (matches CRON_SECRET env) — hardened function auth rejects anon-key calls.
 - Export functions select only columns verified live (GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS / runtime probe); ~165 descriptive-named repo migrations are NOT applied live and must not be replayed without per-file review — why: repo/live schema drift broke all exports.
 - Recovery authorization binds the auth service's PASSWORD_RECOVERY event to its exact server-validated access token and keeps it out of normal route authorization — because legitimate OTP/recovery links may not carry a "recovery" AMR claim and the reset page loads lazily.
+- Password-reset emails use a separate implicit-flow auth client initialized before the normal PKCE app client — because emailed PKCE codes fail across browsers without the originating browser's verifier; recovery sessions never unlock app routes.
