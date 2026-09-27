@@ -11,6 +11,9 @@ import {
   compressSignals,
   validateExport,
   applyProfileFilters,
+  liveSignalSelect,
+  withMissingLiveColumns,
+  missingLiveColumnsIn,
   sha256Hex,
   EXPORT_SCHEMA_VERSION_DEFAULT,
   ExportProfile,
@@ -243,7 +246,7 @@ async function signalPage(
   const until = url.searchParams.get("until");
   const cursor = decodeCursor(url.searchParams.get("cursor"));
 
-  let query = admin.from("global_signals").select(SIGNAL_EXPORT_COLUMNS, { count: "exact" });
+  let query = admin.from("global_signals").select(liveSignalSelect(SIGNAL_EXPORT_COLUMNS), { count: "exact" });
   query = applyProfileFilters(query, profile);
   if (since) query = query.gte("latest_update_at", since);
   if (until) query = query.lte("latest_update_at", until);
@@ -261,7 +264,7 @@ async function signalPage(
       error: jsonResponse({ error: "query_failed", detail: error.message }, 500),
     };
   }
-  const list = (data ?? []) as Array<Record<string, unknown>>;
+  const list = ((data ?? []) as Array<Record<string, unknown>>).map((row) => withMissingLiveColumns(row, SIGNAL_EXPORT_COLUMNS));
   const hasMore = list.length > limit;
   const page = hasMore ? list.slice(0, limit) : list;
   const last = page[page.length - 1];
@@ -291,6 +294,7 @@ async function handleSignals(req: Request, ctx: AuthCtx): Promise<Response> {
       cluster_semantics: "country_domain_day_aggregation_bucket_not_event_identity",
       clusters: compressed.clusters,
       validation_issues_count: issues.length,
+      fields_absent_from_live_schema_exported_as_null: missingLiveColumnsIn(SIGNAL_EXPORT_COLUMNS),
       validation_issues_preview: issues.slice(0, 10),
     },
   });

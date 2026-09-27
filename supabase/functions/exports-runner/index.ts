@@ -9,6 +9,9 @@ import {
   compressSignals,
   validateExport,
   applyProfileFilters,
+  liveSignalSelect,
+  withMissingLiveColumns,
+  missingLiveColumnsIn,
   rowsToCsv,
   buildEnvelope,
   ExportProfile,
@@ -145,7 +148,7 @@ async function execRun(runId: string) {
     .maybeSingle();
   if (cursorError) throw cursorError;
 
-  let query = admin.from("global_signals").select(SIGNAL_EXPORT_COLUMNS);
+  let query = admin.from("global_signals").select(liveSignalSelect(SIGNAL_EXPORT_COLUMNS));
   query = applyProfileFilters(query, prof);
   if (cursor?.last_signal_updated_at) {
     query = query.gte("latest_update_at", cursor.last_signal_updated_at);
@@ -157,7 +160,7 @@ async function execRun(runId: string) {
 
   const { data: rowData, error } = await query;
   if (error) throw new Error(`query: ${error.message}`);
-  const raw = (rowData ?? []) as SignalRow[];
+  const raw = ((rowData ?? []) as SignalRow[]).map((row) => withMissingLiveColumns(row, SIGNAL_EXPORT_COLUMNS));
 
   const countries = [...new Set(
     raw.flatMap((row) => asStringArray(row.affected_countries)).map((country) => country.toUpperCase()),
@@ -182,6 +185,7 @@ async function execRun(runId: string) {
       clusters,
       validation_issues: issues.slice(0, 50),
       null_semantics: "missing_or_withheld_evidence_is_exported_as_null_not_zero",
+      fields_absent_from_live_schema_exported_as_null: missingLiveColumnsIn(SIGNAL_EXPORT_COLUMNS),
     },
   });
 
