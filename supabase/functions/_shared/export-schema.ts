@@ -42,7 +42,7 @@ function queryCall<T>(query: T, method: string, ...args: unknown[]): T {
   const callable = query as unknown as Record<string, (...methodArgs: unknown[]) => T>;
   const fn = callable[method];
   if (typeof fn !== "function") throw new TypeError(`Query builder does not support ${method}`);
-  return fn(...args);
+  return fn.apply(query, args);
 }
 
 export interface ExportProfile {
