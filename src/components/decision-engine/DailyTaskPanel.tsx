@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { describeFunctionError } from "@/lib/supabase-errors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,10 @@ export default function DailyTaskPanel() {
     setRunning(true);
     try {
       const { data, error } = await supabase.functions.invoke("trigger-daily-inference");
-      if (error) throw error;
+      if (error) {
+        toast.error(await describeFunctionError(error, "Failed to trigger daily inference"));
+        return;
+      }
       toast.success(`Generated ${data?.total_recommendations || 0} recommendations across ${7 - (data?.failed_domains || 0)} domains`);
     } catch (e: any) {
       toast.error(e.message || "Failed to trigger daily inference");
