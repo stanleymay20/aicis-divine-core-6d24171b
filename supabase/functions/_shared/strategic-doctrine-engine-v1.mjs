@@ -72,6 +72,13 @@ function optionEvidenceValid(option) {
 
 function normalizedOption(raw, fallback = {}) {
   const metrics = raw.metrics || {};
+  const informationCost = finite(raw.information_cost) ? Math.max(0, raw.information_cost) : null;
+  const decisionLossReduction = finite(raw.expected_decision_loss_reduction)
+    ? Math.max(0, raw.expected_decision_loss_reduction)
+    : null;
+  const derivedInformationValue = informationCost != null && decisionLossReduction != null
+    ? decisionLossReduction - informationCost
+    : null;
   return {
     id: raw.id || fallback.id,
     title: raw.title || fallback.title,
@@ -90,12 +97,19 @@ function normalizedOption(raw, fallback = {}) {
       ? raw.expected_value
       : finite(metrics.expected_value)
         ? metrics.expected_value
-        : null,
+        : finite(derivedInformationValue)
+          ? derivedInformationValue
+          : null,
     base_profit: finite(raw.base_profit)
       ? raw.base_profit
       : finite(metrics.base_profit)
         ? metrics.base_profit
-        : null,
+        : finite(derivedInformationValue)
+          ? derivedInformationValue
+          : null,
+    information_cost: informationCost,
+    expected_decision_loss_reduction: decisionLossReduction,
+    information_value_estimate: finite(derivedInformationValue) ? round(derivedInformationValue) : null,
     reversibility_score: finite(raw.reversibility_score) ? clamp(raw.reversibility_score) : 50,
     execution_friction_score: finite(raw.execution_friction_score) ? clamp(raw.execution_friction_score) : 50,
     required_capabilities: list(raw.required_capabilities).map(String),
@@ -173,7 +187,12 @@ function suppliedAlternatives(candidate) {
         source_candidate_id: candidate.candidate_id || candidate.id || null,
         directness: type === "indirect" ? "indirect" : "non_transactional",
         currency: raw.currency || candidate.currency || null,
-        research_only: raw.research_only === true || !finite(raw.expected_value),
+        research_only: raw.research_only === true || (
+          !finite(raw.expected_value) &&
+          !(type === "information_gathering" &&
+            finite(raw.information_cost) &&
+            finite(raw.expected_decision_loss_reduction))
+        ),
         executable_input: raw.executable_input === true,
       }));
     }
@@ -451,7 +470,9 @@ export function evaluateStrategicOptions({
       doctrine_trace: doctrineTrace(option),
       recommendation_semantics: option.research_only
         ? "research_option_not_economic_recommendation"
-        : "strategic_decision_support_not_guaranteed_outcome",
+        : option.strategy_type === "information_gathering"
+          ? "information_value_decision_support_from_supplied_inputs"
+          : "strategic_decision_support_not_guaranteed_outcome",
     };
   });
 
@@ -471,6 +492,9 @@ export function evaluateStrategicOptions({
     feasible_count: evaluated.filter((option) => option.feasible).length,
     pareto_frontier_count: evaluated.filter((option) => option.pareto_frontier).length,
     primary_strategy: mixedCurrencyBlocked ? null : (selectable[0] || null),
+    primary_information_action: mixedCurrencyBlocked
+      ? null
+      : (selectable.find((option) => option.strategy_type === "information_gathering") || null),
     no_action_option: selectable.find((option) => option.strategy_type === "no_action") || null,
     comparison_currency: comparableCurrencies.length === 1 ? comparableCurrencies[0] : null,
     comparison_blocked_reason: mixedCurrencyBlocked ? "mixed_currency_strategy_options_require_verified_fx_normalization" : null,
