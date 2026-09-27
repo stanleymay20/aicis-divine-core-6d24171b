@@ -130,6 +130,7 @@ export function buildIbkrOrderPreview({
   whatif = {},
   snapshot_hash = "",
   whatif_hash = "",
+  whatif_observed_at = "",
   server_attested = false,
 } = {}) {
   const reasons = [];
@@ -155,6 +156,8 @@ export function buildIbkrOrderPreview({
   if (!clean(account_ref)) reasons.push("account_ref_missing");
   if (!SHA256.test(clean(snapshot_hash))) reasons.push("snapshot_hash_invalid");
   if (!SHA256.test(clean(whatif_hash))) reasons.push("whatif_hash_invalid");
+  const whatIfObservedAt = Date.parse(whatif_observed_at);
+  if (!Number.isFinite(whatIfObservedAt)) reasons.push("whatif_observed_at_invalid");
 
   const snapshotResult = normalizeIbkrMarketSnapshot(snapshot, conid);
   const whatifResult = normalizeIbkrWhatIf(whatif);
@@ -191,7 +194,12 @@ export function buildIbkrOrderPreview({
       limit_price: finite(limitPrice) ? limitPrice : null,
     },
     market_snapshot: snapshotResult.snapshot,
-    provider_preview: whatifResult.preview,
+    provider_preview: {
+      ...whatifResult.preview,
+      observed_at: Number.isFinite(whatIfObservedAt)
+        ? new Date(whatIfObservedAt).toISOString()
+        : null,
+    },
     evidence_refs: valid
       ? [
           {
@@ -201,7 +209,9 @@ export function buildIbkrOrderPreview({
           },
           {
             source_id: "ibkr:order-whatif:" + conid,
-            observed_at: snapshotResult.snapshot.observed_at,
+            observed_at: Number.isFinite(whatIfObservedAt)
+              ? new Date(whatIfObservedAt).toISOString()
+              : null,
             sha256: clean(whatif_hash),
           },
         ]
