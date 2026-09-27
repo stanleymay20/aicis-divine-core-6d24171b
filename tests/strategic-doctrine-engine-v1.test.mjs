@@ -407,3 +407,98 @@ test("learning packet carries switching and invalidation policy before execution
   assert.deepEqual(result.learning_packet.pre_commit_invalidation_rules, ["buyer_indication_withdrawn"]);
   assert.deepEqual(result.learning_packet.pre_commit_switching_rules, ["switch_to_no_action_if_quote_expires"]);
 });
+
+
+test("evidence-backed position value can compete with transaction strategies", () => {
+  const candidate = directCandidate();
+  candidate.position_options = [{
+    id: "exclusive-representation",
+    title: "Secure 90-day exclusive sales representation",
+    commitment_cost: 1200,
+    option_value_estimate: 6500,
+    capital_required: 1200,
+    cycle_days: 10,
+    evidence_score: 90,
+    downside_loss: 1200,
+    reversibility_score: 80,
+    execution_friction_score: 30,
+    currency: "EUR",
+    evidence_refs: [{
+      source_id: "representation-economics",
+      observed_at: "2026-09-27T09:00:00Z",
+      sha256: "a".repeat(64),
+    }],
+    sequence_steps: [
+      "verify supplier authority to appoint representative",
+      "obtain buyer demand indication",
+      "negotiate time-limited exclusive mandate",
+    ],
+  }];
+
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  const position = result.options.find((item) => item.id === "exclusive-representation");
+  assert.equal(position.research_only, false);
+  assert.equal(position.net_position_value_estimate, 5300);
+  assert.equal(position.expected_value, 5300);
+  assert.deepEqual(position.sequence_steps, [
+    "verify supplier authority to appoint representative",
+    "obtain buyer demand indication",
+    "negotiate time-limited exclusive mandate",
+  ]);
+  assert.equal(result.primary_strategy.id, "exclusive-representation");
+});
+
+test("position-value claim without provenance remains research-only", () => {
+  const candidate = directCandidate();
+  candidate.position_options = [{
+    id: "unproven-exclusive",
+    title: "Unproven exclusive position",
+    commitment_cost: 1200,
+    option_value_estimate: 6500,
+    capital_required: 1200,
+    cycle_days: 10,
+    evidence_score: 90,
+    downside_loss: 1200,
+    reversibility_score: 80,
+    execution_friction_score: 30,
+    currency: "EUR",
+    evidence_refs: [],
+  }];
+
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  const position = result.options.find((item) => item.id === "unproven-exclusive");
+  assert.equal(position.research_only, true);
+  assert.equal(position.net_position_value_estimate, null);
+  assert.equal(position.feasible, false);
+});
+
+test("learning packet freezes the selected strategy sequence before outcome", () => {
+  const candidate = directCandidate();
+  candidate.indirect_strategies[0].sequence_steps = [
+    "obtain buyer indication",
+    "reconfirm supplier quote",
+    "lock logistics",
+  ];
+
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  assert.deepEqual(result.learning_packet.pre_commit_sequence_steps, [
+    "obtain buyer indication",
+    "reconfirm supplier quote",
+    "lock logistics",
+  ]);
+});
