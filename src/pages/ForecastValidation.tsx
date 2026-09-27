@@ -15,7 +15,7 @@ import { BreakdownTables } from "@/components/forecast-validation/BreakdownTable
 import { ForecastWorkspaceNav } from "@/components/forecast/ForecastWorkspaceNav";
 
 export default function ForecastValidation() {
-  const { data, isLoading } = useForecastValidation();
+  const { data, isLoading, isError, error } = useForecastValidation();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [testRunning, setTestRunning] = useState(false);
@@ -48,7 +48,49 @@ export default function ForecastValidation() {
     else { toast({ title: "Snapshot saved" }); qc.invalidateQueries({ queryKey: ["forecast-validation"] }); }
   }
 
-  if (isLoading) return <div className="flex items-center justify-center min-h-screen bg-background"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  if (isLoading) {
+    return (
+      <div className="min-h-full space-y-6 bg-background p-4 md:p-8">
+        <ForecastWorkspaceNav />
+        <div className="flex min-h-[320px] items-center justify-center rounded-lg border border-border/70 bg-card/30">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            Loading prospective forecast validation…
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="min-h-full space-y-6 bg-background p-4 md:p-8">
+        <ForecastWorkspaceNav />
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/5 p-4"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div>
+              <p className="text-sm font-medium text-destructive">
+                Forecast validation unavailable
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                The validation query did not complete, so AICIS is not treating
+                this state as awaiting data.
+              </p>
+              {error instanceof Error && (
+                <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+                  {error.message}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 space-y-6">
