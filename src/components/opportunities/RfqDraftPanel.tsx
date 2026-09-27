@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -161,12 +161,6 @@ export function RfqDraftPanel({
   const [responseLoading, setResponseLoading] = useState(false);
   const [responseResult, setResponseResult] = useState<RfqNormalizeResponse | null>(null);
   const { toast } = useToast();
-
-  useEffect(() => {
-    setDraftInput(JSON.stringify(seedFromCandidate(candidate, strategicAuditHash), null, 2));
-    setDraftResult(null);
-    setResponseResult(null);
-  }, [candidate.candidate_id, strategicAuditHash]);
 
   const source = candidate.execution_dossier.where.source;
   const contactReady = useMemo(() => Boolean(
