@@ -1,0 +1,323 @@
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { ArrowRight, CheckCircle2, CircleDollarSign, Loader2, MapPin, ShieldAlert, Users } from "lucide-react";
+
+type RankItem = {
+  candidate_id: string;
+  title: string;
+  transaction_type: string;
+  score: number;
+  execution_ready: boolean;
+  metrics: {
+    base_profit: number;
+    base_margin_pct: number;
+    return_on_capital_pct: number;
+    expected_value: number;
+    profit_per_day: number;
+  };
+  execution_dossier: {
+    missing_execution_fields: string[];
+    where: {
+      source?: { name?: string; country?: string; unit_price?: number; currency?: string } | null;
+      destination?: { name?: string; country?: string; unit_price?: number; currency?: string } | null;
+      route?: string[];
+    };
+    who: {
+      contacts?: Array<{ company?: string; channel?: string; value?: string | null }>;
+    };
+    how?: { next_actions?: string[] };
+    cost_breakdown?: Array<{ type?: string; amount?: number; currency?: string }>;
+  };
+};
+
+type BuildResponse = {
+  ok: boolean;
+  build?: {
+    candidates: unknown[];
+    rejected_paths: unknown[];
+    build_warnings: string[];
+  };
+  ranking?: {
+    no_transaction_recommended: boolean;
+    no_transaction_reason: string | null;
+    top_ranked: RankItem | null;
+    ranked: RankItem[];
+    ranking_scope_notice: string;
+  };
+  error?: string;
+};
+
+const SCHEMA_HINT = [
+  "{",
+  '  "as_of": "ISO timestamp",',
+  '  "signal": {"id":"...","domain":"supply_chain","sectors":["..."]},',
+  '  "product": {"id":"...","name":"...","unit":"tonne","sectors":["..."]},',
+  '  "quantity": 10,',
+  '  "source_offers": [...verified supplier quotes...],',
+  '  "sale_offers": [...verified buyer quotes...],',
+  '  "routes": [...verified logistics quotes and costs...],',
+  '  "structures": [...transaction structures...],',
+  '  "scenario": {...validated downside/completion/cycle inputs...}',
+  "}"
+].join("\n");
+
+export function TransactionPathLab() {
+  const [payload, setPayload] = useState("");
+  const [result, setResult] = useState<BuildResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const build = async () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payload);
+    } catch {
+      toast({
+        title: "Invalid JSON",
+        description: "Paste a valid verified offer bundle before building transaction paths.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    const { data, error } = await supabase.functions.invoke("build-transaction-paths", {
+      body: { input: parsed },
+    });
+    setLoading(false);
+
+    if (error) {
+      toast({ title: "Transaction build failed", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    const response = data as BuildResponse;
+    setResult(response);
+    if (!response.ok) {
+      toast({
+        title: "Transaction build failed",
+        description: response.error || "The verified offer bundle could not be evaluated.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const top = result?.ranking?.top_ranked ?? null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <CircleDollarSign className="h-4 w-4 text-primary" />
+          Verified Transaction Lab
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Build and compare transaction paths from real supplier, buyer, logistics and scenario inputs.
+          AICIS will not invent missing prices, FX rates, quotes, contacts or profitability.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="space-y-2">
+            <Textarea
+              value={payload}
+              onChange={(event) => setPayload(event.target.value)}
+              placeholder={SCHEMA_HINT}
+              className="min-h-[300px] font-mono text-xs"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] text-muted-foreground">
+                Evidence refs require a source id, observation time and either a citation id or SHA-256 digest.
+              </p>
+              <Button onClick={build} disabled={loading || !payload.trim()} className="gap-2">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                Build & rank paths
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border p-4 space-y-4">
+            {!result ? (
+              <div className="h-full min-h-[260px] flex flex-col items-center justify-center text-center text-muted-foreground">
+                <CircleDollarSign className="h-8 w-8 mb-3 opacity-50" />
+                <p className="text-sm font-medium text-foreground">No verified bundle evaluated yet</p>
+                <p className="text-xs mt-1 max-w-sm">
+                  Results will show the top supplied path for your saved relevance, capital, risk and objective settings.
+                </p>
+              </div>
+            ) : result.ranking?.no_transaction_recommended ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+                  No transaction recommended
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {result.ranking.no_transaction_reason || "No supplied path cleared the configured thresholds."}
+                </p>
+                <BuildStats result={result} />
+              </div>
+            ) : top ? (
+              <TopPath candidate={top} result={result} />
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                The bundle was processed, but no ranked path was returned.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {result?.build?.build_warnings?.length ? (
+          <div className="rounded-md border border-border bg-muted/20 p-3">
+            <p className="text-xs font-medium">Build warnings</p>
+            <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">
+              {result.build.build_warnings.map((warning) => <li key={warning}>• {warning}</li>)}
+            </ul>
+          </div>
+        ) : null}
+
+        {result?.ranking?.ranking_scope_notice ? (
+          <p className="text-[10px] text-muted-foreground">{result.ranking.ranking_scope_notice}</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TopPath({ candidate, result }: { candidate: RankItem; result: BuildResponse }) {
+  const source = candidate.execution_dossier?.where?.source;
+  const destination = candidate.execution_dossier?.where?.destination;
+  const route = candidate.execution_dossier?.where?.route || [];
+  const contacts = candidate.execution_dossier?.who?.contacts || [];
+  const actions = candidate.execution_dossier?.how?.next_actions || [];
+  const costs = candidate.execution_dossier?.cost_breakdown || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Top supplied path</p>
+          <h3 className="text-sm font-semibold mt-0.5">{candidate.title}</h3>
+        </div>
+        <div className="flex gap-1.5">
+          <Badge variant="outline">score {candidate.score.toFixed(1)}</Badge>
+          <Badge variant={candidate.execution_ready ? "default" : "secondary"}>
+            {candidate.execution_ready ? "execution-ready inputs" : "research-only"}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Metric label="Base profit" value={formatMoney(candidate.metrics.base_profit, source?.currency)} />
+        <Metric label="Expected value" value={formatMoney(candidate.metrics.expected_value, source?.currency)} />
+        <Metric label="Base margin" value={candidate.metrics.base_margin_pct.toFixed(2) + "%"} />
+        <Metric label="Return on capital" value={candidate.metrics.return_on_capital_pct.toFixed(2) + "%"} />
+      </div>
+
+      <section className="space-y-2">
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          <MapPin className="h-3.5 w-3.5 text-primary" />
+          Where
+        </div>
+        <div className="text-xs text-muted-foreground">
+          <span className="text-foreground font-medium">{source?.name || "Source unknown"}</span>
+          {source?.country ? " · " + source.country : ""}
+          <span className="mx-2">→</span>
+          <span className="text-foreground font-medium">{destination?.name || "Buyer unknown"}</span>
+          {destination?.country ? " · " + destination.country : ""}
+        </div>
+        {route.length ? <p className="text-[11px] text-muted-foreground">{route.join(" → ")}</p> : null}
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          <Users className="h-3.5 w-3.5 text-primary" />
+          Who & contact
+        </div>
+        {contacts.length ? (
+          <div className="space-y-1">
+            {contacts.map((contact, index) => (
+              <div key={(contact.company || "contact") + "-" + index} className="text-[11px] text-muted-foreground">
+                <span className="text-foreground">{contact.company}</span> · {contact.channel}
+                {contact.value ? " · " + contact.value : ""}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">No verified business contact channels supplied.</p>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <p className="text-xs font-semibold">Cost chain</p>
+        <div className="space-y-1">
+          {costs.map((cost, index) => (
+            <div key={(cost.type || "cost") + "-" + index} className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">{cost.type || "cost"}</span>
+              <span>{formatMoney(cost.amount, cost.currency || source?.currency)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <p className="text-xs font-semibold">Next actions</p>
+        <ol className="space-y-1 text-[11px] text-muted-foreground">
+          {actions.slice(0, 5).map((action, index) => <li key={action}>{index + 1}. {action}</li>)}
+        </ol>
+      </section>
+
+      {!candidate.execution_ready && candidate.execution_dossier?.missing_execution_fields?.length ? (
+        <div className="rounded-md bg-muted/30 p-2.5">
+          <p className="text-[11px] font-medium">Missing before execution</p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {candidate.execution_dossier.missing_execution_fields.join(", ")}
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+          Input dossier is complete enough for human review; no external execution has occurred.
+        </div>
+      )}
+
+      <BuildStats result={result} />
+    </div>
+  );
+}
+
+function BuildStats({ result }: { result: BuildResponse }) {
+  return (
+    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
+      <Metric label="Built" value={String(result.build?.candidates?.length ?? 0)} />
+      <Metric label="Rejected paths" value={String(result.build?.rejected_paths?.length ?? 0)} />
+      <Metric label="Ranked" value={String(result.ranking?.ranked?.length ?? 0)} />
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-muted/25 p-2">
+      <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-xs font-semibold mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+function formatMoney(value: number | null | undefined, currency?: string | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || "EUR",
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return ((currency || "") + " " + value.toFixed(2)).trim();
+  }
+}
