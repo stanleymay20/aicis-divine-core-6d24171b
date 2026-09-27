@@ -83,6 +83,9 @@ type ResearchSignal = {
   };
 };
 
+type RelevanceScoreRow = Omit<ResearchSignal, "signal">;
+type GlobalSignalRow = NonNullable<ResearchSignal["signal"]>;
+
 function toNumber(value: string, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -114,7 +117,7 @@ export default function OpportunityRadar() {
     enabled: Boolean(user?.id),
     queryFn: async (): Promise<ResearchSignal[]> => {
       if (!user?.id) return [];
-      const { data: scores, error: scoreError } = await (supabase as any)
+      const { data: scores, error: scoreError } = await supabase
         .from("signal_relevance_scores")
         .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
         .eq("user_id", user.id)
@@ -123,15 +126,17 @@ export default function OpportunityRadar() {
       if (scoreError) throw scoreError;
       if (!scores?.length) return [];
 
-      const ids = scores.map((row: any) => row.signal_id).filter(Boolean);
-      const { data: signals, error: signalError } = await (supabase as any)
+      const typedScores = (scores ?? []) as RelevanceScoreRow[];
+      const ids = typedScores.map((row) => row.signal_id).filter(Boolean);
+      const { data: signals, error: signalError } = await supabase
         .from("global_signals")
         .select("id,title,summary,category,affected_countries,affected_sectors,urgency_score,impact_score,confidence_score,latest_update_at")
         .in("id", ids);
       if (signalError) throw signalError;
 
-      const byId = new Map((signals || []).map((signal: any) => [signal.id, signal]));
-      return scores.map((row: any) => ({ ...row, signal: byId.get(row.signal_id) }));
+      const typedSignals = (signals ?? []) as GlobalSignalRow[];
+      const byId = new Map<string, GlobalSignalRow>(typedSignals.map((signal) => [signal.id, signal]));
+      return typedScores.map((row) => ({ ...row, signal: byId.get(row.signal_id) }));
     },
     staleTime: 60_000,
   });
