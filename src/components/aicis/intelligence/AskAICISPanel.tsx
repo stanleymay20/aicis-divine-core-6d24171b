@@ -1,14 +1,21 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { BrainCircuit, ExternalLink } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 
 export const AskAICISPanel = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const { selectedEntity } = useIntelligenceOS();
-  const [question, setQuestion] = useState("");
+  const activeQuestion =
+    new URLSearchParams(location.search).get("question")?.trim() ?? "";
+  const [question, setQuestion] = useState(activeQuestion);
+
+  useEffect(() => {
+    setQuestion(activeQuestion);
+  }, [activeQuestion]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -32,9 +39,11 @@ export const AskAICISPanel = () => {
           Contextual Ask AICIS
         </div>
         <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-          {selectedEntity
-            ? "The selected " + selectedEntity.type + " is carried into the research workspace."
-            : "Ask from the current workspace or select an entity first for stronger context."}
+          {activeQuestion
+            ? "The active investigation question is preloaded. Edit it here or open it in full research."
+            : selectedEntity
+              ? "The selected " + selectedEntity.type + " is carried into the research workspace."
+              : "Ask from the current workspace or select an entity first for stronger context."}
         </p>
       </div>
 
@@ -42,7 +51,11 @@ export const AskAICISPanel = () => {
         <Input
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder={selectedEntity ? "Ask about " + selectedEntity.name + "…" : "Ask AICIS…"}
+          placeholder={
+            selectedEntity
+              ? "Ask about " + selectedEntity.name + "…"
+              : "Ask AICIS…"
+          }
           aria-label="Ask AICIS"
         />
         <Button type="submit" className="w-full gap-2" disabled={!question.trim()}>
