@@ -12,6 +12,7 @@ import { PilotQueueSection } from "@/components/pilot-truth/PilotQueueSection";
 import { ControlledPilotRunPanel } from "@/components/pilot-truth/ControlledPilotRunPanel";
 import { EvidenceTimelineSection } from "@/components/pilot-truth/EvidenceTimelineSection";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 type TruthRow = {
   outcome_id: string | null;
@@ -66,6 +67,13 @@ type LifecycleMetrics = {
   action_conversion_rate: number;
 };
 
+type EvidenceBadgeRow = {
+  outcome_id: string;
+  evidence_quality_score: number | null;
+  evidence_badge: "strong" | "acceptable" | "weak" | "inconclusive" | null;
+  excluded_from_learning: boolean | null;
+};
+
 const fmtEur = (n: number | null) =>
   n == null ? "—" : new Intl.NumberFormat("en-EU", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 
@@ -90,7 +98,7 @@ export default function PilotTruthFeed() {
     queryKey: ["pilot-truth-feed"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("pilot_truth_feed" as any)
+        .from("pilot_truth_feed" as never)
         .select("*")
         .order("outcome_recorded_at", { ascending: false })
         .limit(100);
@@ -99,10 +107,13 @@ export default function PilotTruthFeed() {
       const ids = rows.map((r) => r.outcome_id).filter(Boolean) as string[];
       if (ids.length === 0) return rows;
       const { data: badges } = await supabase
-        .from("pilot_outcome_evidence_badges" as any)
+        .from("pilot_outcome_evidence_badges" as never)
         .select("outcome_id,evidence_quality_score,evidence_badge,excluded_from_learning")
         .in("outcome_id", ids);
-      const byId = new Map<string, any>((badges ?? []).map((b: any) => [b.outcome_id, b]));
+      const badgeRows = (badges ?? []) as unknown as EvidenceBadgeRow[];
+      const byId = new Map<string, EvidenceBadgeRow>(
+        badgeRows.map((badge) => [badge.outcome_id, badge]),
+      );
       return rows.map((r) => {
         const b = r.outcome_id ? byId.get(r.outcome_id) : null;
         return b
@@ -130,7 +141,7 @@ export default function PilotTruthFeed() {
     queryKey: ["risk-action-lifecycle-metrics"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("risk_action_lifecycle_metrics" as any)
+        .from("risk_action_lifecycle_metrics" as never)
         .select("*")
         .single();
       if (error) throw error;
@@ -154,6 +165,8 @@ export default function PilotTruthFeed() {
 
   return (
     <div className="container max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+      <DataTrustWorkspaceNav />
+
       <header className="space-y-2">
         <div className="flex items-center gap-2">
           <Lock className="h-6 w-6 text-primary" />

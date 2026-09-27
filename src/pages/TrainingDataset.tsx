@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Database, Download, Play, Target, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 
 type Stats = {
@@ -113,6 +114,9 @@ export default function TrainingDataset() {
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
+      <div className="mb-5">
+        <DataTrustWorkspaceNav />
+      </div>
 
       <header className="mb-6">
         <div className="flex items-center gap-2 mb-2">

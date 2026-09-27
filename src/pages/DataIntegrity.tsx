@@ -81,7 +81,7 @@ export default function DataIntegrity() {
     queryKey: ["data-integrity-snapshot"],
     refetchInterval: 30_000,
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_data_integrity_snapshot" as any).select("*");
+      const { data, error } = await supabase.from("v_data_integrity_snapshot" as never).select("*");
       if (error) throw error;
       return (data ?? []) as unknown as IntegrityRow[];
     },

@@ -7,6 +7,7 @@ import { DomainCard } from "@/components/accumulation/DomainCard";
 import { ProvidersTab } from "@/components/accumulation/ProvidersTab";
 import { StorageTab } from "@/components/accumulation/StorageTab";
 import { useAccumulationData } from "@/components/accumulation/queries";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 export default function Accumulation() {
   const { data, isLoading } = useAccumulationData();
@@ -23,6 +24,8 @@ export default function Accumulation() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <DataTrustWorkspaceNav />
+
         <header className="space-y-2">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
