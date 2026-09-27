@@ -261,3 +261,74 @@ test("scope notice forbids claiming global optimality from partial inputs", () =
   assert.match(result.scope_notice, /supplied inputs/i);
   assert.match(result.candidates[0].candidate_scope_notice, /supplied source offers/i);
 });
+
+
+test("strategic alternatives stay scoped to their declared supplier buyer route or transaction type", () => {
+  const input = baseInput();
+  input.indirect_strategies = [{
+    id: "cheap-supplier-brokerage",
+    title: "Broker only Supplier Cheap",
+    source_id: "src-cheap",
+    expected_value: 2000,
+    capital_required: 500,
+    cycle_days: 10,
+    evidence_score: 85,
+    downside_loss: 100,
+    currency: "EUR",
+    evidence_refs: ref("brokerage-cheap"),
+  }];
+  input.information_actions = [{
+    id: "premium-route-inspection",
+    title: "Inspect premium route capacity",
+    route_id: "route-expensive",
+    information_cost: 100,
+    expected_decision_loss_reduction: 700,
+    capital_required: 100,
+    cycle_days: 2,
+    evidence_score: 90,
+    downside_loss: 100,
+    currency: "EUR",
+    evidence_refs: ref("route-info"),
+  }];
+
+  const result = buildTransactionPaths(input);
+  const cheapSupplier = result.candidates.filter((item) => item.id.includes("src-cheap"));
+  const betterSupplier = result.candidates.filter((item) => item.id.includes("src-better"));
+  const cheapRoute = result.candidates.filter((item) => item.id.includes("route-cheap"));
+  const premiumRoute = result.candidates.filter((item) => item.id.includes("route-expensive"));
+
+  assert.ok(cheapSupplier.every((item) =>
+    item.indirect_strategies.some((strategy) => strategy.id === "cheap-supplier-brokerage")
+  ));
+  assert.ok(betterSupplier.every((item) =>
+    !item.indirect_strategies.some((strategy) => strategy.id === "cheap-supplier-brokerage")
+  ));
+  assert.ok(cheapRoute.every((item) =>
+    !item.information_actions.some((action) => action.id === "premium-route-inspection")
+  ));
+  assert.ok(premiumRoute.every((item) =>
+    item.information_actions.some((action) => action.id === "premium-route-inspection")
+  ));
+});
+
+test("unscoped strategic alternative intentionally applies across the supplied candidate set", () => {
+  const input = baseInput();
+  input.position_options = [{
+    id: "global-position-option",
+    title: "Product-wide position option",
+    commitment_cost: 300,
+    option_value_estimate: 1000,
+    capital_required: 300,
+    cycle_days: 5,
+    evidence_score: 80,
+    downside_loss: 300,
+    currency: "EUR",
+    evidence_refs: ref("position-global"),
+  }];
+
+  const result = buildTransactionPaths(input);
+  assert.equal(result.candidates.length, 4);
+  assert.ok(result.candidates.every((item) =>
+    item.position_options.some((option) => option.id === "global-position-option")
+  ));
+});
