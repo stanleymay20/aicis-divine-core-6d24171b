@@ -5,6 +5,7 @@ import { CountryDrilldown } from "@/components/resolution/CountryDrilldown";
 import { RegionDrilldown } from "@/components/resolution/RegionDrilldown";
 import { ResolutionBreadcrumb } from "@/components/resolution/ResolutionBreadcrumb";
 import { AnalysisWorkspaceNav } from "@/components/analysis/AnalysisWorkspaceNav";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 
 export type ResolutionLevel = "global" | "country" | "region" | "village";
 
@@ -17,13 +18,47 @@ export interface DrillState {
 }
 
 export default function ResolutionExplorer() {
+  const { selectEntity } = useIntelligenceOS();
   const [drill, setDrill] = useState<DrillState>({ level: "global" });
 
   const goGlobal = () => setDrill({ level: "global" });
-  const goCountry = (iso3: string, name: string) =>
+
+  const goCountry = (iso3: string, name: string) => {
     setDrill({ level: "country", countryIso3: iso3, countryName: name });
-  const goRegion = (regionId: string, regionName: string) =>
-    setDrill((prev) => ({ ...prev, level: "region", regionId, regionName }));
+    selectEntity({
+      id: iso3,
+      type: "country",
+      name,
+      geography: {
+        country: name,
+      },
+      metadata: {
+        iso3,
+      },
+    });
+  };
+
+  const goRegion = (regionId: string, regionName: string) => {
+    setDrill((prev) => ({
+      ...prev,
+      level: "region",
+      regionId,
+      regionName,
+    }));
+    selectEntity({
+      id: regionId,
+      type: "region",
+      name: regionName,
+      geography: {
+        country: drill.countryName ?? drill.countryIso3,
+        region: regionName,
+      },
+      metadata: {
+        countryIso3: drill.countryIso3 ?? null,
+        regionId,
+      },
+    });
+  };
 
   return (
     <AICISLayout>

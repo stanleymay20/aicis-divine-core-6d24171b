@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { SEO } from "@/components/SEO";
 import { AnalysisWorkspaceNav } from "@/components/analysis/AnalysisWorkspaceNav";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -290,6 +291,7 @@ async function getCount(status?: EvidenceStatus) {
 }
 
 export default function PlanetaryGraphExplorer() {
+  const { selectEntity } = useIntelligenceOS();
   const [evidenceFilter, setEvidenceFilter] = useState<EvidenceFilter>("measured");
   const [relationFilter, setRelationFilter] = useState("all");
   const [minWeight, setMinWeight] = useState(0);
@@ -429,11 +431,33 @@ export default function PlanetaryGraphExplorer() {
     return rankedNodes.filter((node) => node.label.toLowerCase().includes(query) || node.key.toLowerCase().includes(query)).slice(0, 6);
   }, [rankedNodes, search]);
 
+  const focusNode = (node: GraphNode) => {
+    setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+    selectEntity({
+      id: node.id,
+      type: "graph_node",
+      name: node.label,
+      description: `${titleCase(node.kind)} node in the current evidence-filtered graph view.`,
+      metadata: {
+        graphKind: node.kind,
+        graphKey: node.key,
+        visibleDegree: node.degree,
+        visibleWeightedDegree: Number(node.weightedDegree.toFixed(4)),
+      },
+    });
+  };
+
+  const focusNodeById = (id: string) => {
+    const node = nodeIndex.get(id);
+    if (!node) return;
+    focusNode(node);
+  };
+
   const focusSearch = () => {
     const match = searchMatches[0];
     if (!match) return;
-    setSelectedNodeId(match.id);
-    setSelectedEdgeId(null);
+    focusNode(match);
     setSearch(match.label);
   };
 
@@ -523,8 +547,7 @@ export default function PlanetaryGraphExplorer() {
                     type="button"
                     className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted/60"
                     onClick={() => {
-                      setSelectedNodeId(node.id);
-                      setSelectedEdgeId(null);
+                      focusNode(node);
                       setSearch(node.label);
                     }}
                   >
@@ -695,15 +718,11 @@ export default function PlanetaryGraphExplorer() {
                           aria-label={`Focus ${node.label}`}
                           className="cursor-pointer outline-none"
                           opacity={dimmed ? 0.22 : 1}
-                          onClick={() => {
-                            setSelectedNodeId(node.id);
-                            setSelectedEdgeId(null);
-                          }}
+                          onClick={() => focusNode(node)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
-                              setSelectedNodeId(node.id);
-                              setSelectedEdgeId(null);
+                              focusNode(node);
                             }
                           }}
                         >
@@ -748,10 +767,7 @@ export default function PlanetaryGraphExplorer() {
               connections={topConnections}
               entityLabels={entityLabels}
               shockHopCount={shockMode ? Math.max(0, shockRadius.size - 1) : null}
-              onSelectNode={(id) => {
-                setSelectedNodeId(id);
-                setSelectedEdgeId(null);
-              }}
+              onSelectNode={focusNodeById}
               onSelectEdge={setSelectedEdgeId}
             />
           ) : null}

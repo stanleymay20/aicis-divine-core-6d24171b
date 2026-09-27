@@ -14,7 +14,8 @@ export type AICISEntityType =
   | "opportunity"
   | "decision"
   | "source"
-  | "pipeline";
+  | "pipeline"
+  | "graph_node";
 
 export type InspectorTab =
   | "overview"
