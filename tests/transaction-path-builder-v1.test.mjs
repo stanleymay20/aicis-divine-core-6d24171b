@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildTransactionPaths } from "../supabase/functions/_shared/transaction-path-builder-v1.mjs";
+import { evaluateLandedCostEvidence } from "../supabase/functions/_shared/landed-cost-evidence-v1.mjs";
 
 const HASH = "a".repeat(64);
 const ref = (source_id) => [{ source_id, observed_at: "2026-09-27T05:00:00Z", sha256: HASH }];
@@ -123,6 +124,91 @@ function baseInput() {
       evidence_score: 82,
       evidence_refs: ref("scenario"),
     },
+  };
+}
+
+
+
+function verifiedLandedCostPack(candidateId, {
+  source_id = "src-cheap",
+  buyer_id = "buyer-de",
+  route_id = "route-cheap",
+  transaction_type = "physical_trade",
+} = {}) {
+  const coverage = [
+    { category: "origin_inland_transport", status: "covered_elsewhere", existing_cost_id: "route-origin", evidence_refs: ref("origin-existing") },
+    { category: "origin_handling", status: "not_applicable", reason: "No separate evidenced origin handling charge", evidence_refs: ref("origin-handling-na") },
+    { category: "export_customs", status: "not_applicable", reason: "No separate evidenced export customs charge", evidence_refs: ref("export-customs-na") },
+    { category: "export_duty_tax", status: "not_applicable", reason: "No evidenced export duty/tax in supplied scenario", evidence_refs: ref("export-duty-na") },
+    { category: "international_freight", status: "covered_elsewhere", existing_cost_id: "freight-cheap", evidence_refs: ref("freight-cheap") },
+    { category: "cargo_insurance", status: "covered_elsewhere", existing_cost_id: "insurance-cheap", evidence_refs: ref("insurance-cheap") },
+    { category: "import_duty", status: "included_here" },
+    { category: "import_tax", status: "included_here" },
+    { category: "customs_brokerage", status: "not_applicable", reason: "Brokerage waived in supplied scenario", evidence_refs: ref("brokerage-na") },
+    { category: "destination_handling", status: "not_applicable", reason: "Included in evidenced route", evidence_refs: ref("destination-na") },
+    { category: "inspection_certification", status: "covered_elsewhere", existing_cost_id: "inspection", evidence_refs: ref("inspection") },
+    { category: "financing", status: "not_applicable", reason: "No financing used in supplied scenario", evidence_refs: ref("financing-na") },
+    { category: "storage_distribution", status: "not_applicable", reason: "Buyer takes delivery at destination", evidence_refs: ref("storage-na") },
+  ];
+  const components = [
+    {
+      id: "import-duty",
+      category: "import_duty",
+      calculation_kind: "percent_of_basis",
+      rate_pct: 5,
+      basis: {
+        name: "declared_customs_value",
+        amount: 30000,
+        currency: "EUR",
+        evidence_refs: ref("customs-value"),
+      },
+      cash_flow_treatment: "cost",
+      evidence_status: "official_rule",
+      source_kind: "official_customs_tariff",
+      effective_from: "2026-01-01T00:00:00Z",
+      evidence_refs: ref("import-duty-rule"),
+    },
+    {
+      id: "import-tax",
+      category: "import_tax",
+      calculation_kind: "percent_of_basis",
+      rate_pct: 19,
+      basis: {
+        name: "declared_tax_basis",
+        amount: 31500,
+        currency: "EUR",
+        evidence_refs: ref("tax-basis"),
+      },
+      cash_flow_treatment: "recoverable_tax",
+      evidence_status: "official_rule",
+      source_kind: "official_tax_rule",
+      effective_from: "2026-01-01T00:00:00Z",
+      evidence_refs: ref("import-tax-rule"),
+    },
+  ];
+  const evidence = evaluateLandedCostEvidence({
+    as_of: "2026-09-27T06:00:00Z",
+    candidate_id: candidateId,
+    product_id: "cocoa-beans",
+    hs_code: "180100",
+    origin_country: "GHA",
+    destination_country: "DEU",
+    quantity: 10,
+    quantity_unit: "tonne",
+    comparison_currency: "EUR",
+    coverage,
+    components,
+    fx_rates: [],
+  });
+
+  assert.equal(evidence.coverage_complete, true);
+  return {
+    source_id,
+    buyer_id,
+    route_id,
+    transaction_type,
+    evidence,
+    audit: { hash: HASH },
   };
 }
 
@@ -385,4 +471,76 @@ test("preserves verified procurement metadata for RFQ drafting", () => {
   assert.equal(candidate.source_offer.contact.value, "sales@supplier.example.test");
   assert.equal(candidate.execution_dossier.where.source.registration_id, "GH-REG-001");
   assert.equal(candidate.execution_dossier.where.source.contact.channel, "official_sales");
+});
+
+
+test("missing landed-cost pack keeps a research candidate but marks economics incomplete", () => {
+  const result = buildTransactionPaths(baseInput());
+  const candidate = result.candidates.find((item) =>
+    item.id.includes("src-cheap") && item.id.includes("route-cheap")
+  );
+
+  assert.ok(candidate);
+  assert.equal(candidate.landed_cost_complete, false);
+  assert.equal(candidate.landed_cost_execution_ready, false);
+  assert.ok(candidate.landed_cost_missing_fields.includes("landed_cost_evidence_missing"));
+});
+
+test("scoped landed-cost evidence changes only the intended transaction path", () => {
+  const input = baseInput();
+  const firstPass = buildTransactionPaths(input);
+  const target = firstPass.candidates.find((item) =>
+    item.id.includes("src-cheap") && item.id.includes("route-cheap")
+  );
+  assert.ok(target);
+
+  input.landed_cost_packs = [verifiedLandedCostPack(target.id)];
+  const result = buildTransactionPaths(input);
+  const updated = result.candidates.find((item) => item.id === target.id);
+  const untouched = result.candidates.find((item) =>
+    item.id.includes("src-better") && item.id.includes("route-cheap")
+  );
+
+  assert.equal(updated.landed_cost_complete, true);
+  assert.equal(updated.landed_cost_execution_ready, true);
+  assert.equal(updated.expected_cost, 36800);
+  assert.equal(updated.recoverable_tax_cash_flow, 5985);
+  assert.equal(updated.capital_required, 42785);
+  assert.equal(updated.cash_required, 42785);
+  assert.ok(updated.evidence_manifest.landed_cost.length > 0);
+
+  assert.equal(untouched.landed_cost_complete, false);
+  assert.equal(untouched.expected_cost, 35800);
+});
+
+test("recoverable import tax increases cash requirement without inflating economic cost", () => {
+  const input = baseInput();
+  const firstPass = buildTransactionPaths(input);
+  const target = firstPass.candidates.find((item) =>
+    item.id.includes("src-cheap") && item.id.includes("route-cheap")
+  );
+  input.landed_cost_packs = [verifiedLandedCostPack(target.id)];
+
+  const updated = buildTransactionPaths(input).candidates.find((item) => item.id === target.id);
+  const economicBreakdown = updated.cost_breakdown.reduce((sum, item) => sum + item.amount, 0);
+
+  assert.equal(economicBreakdown, updated.expected_cost);
+  assert.equal(updated.capital_required - updated.expected_cost, 5985);
+  assert.equal(updated.cash_flow_adjustments[0].economic_cost, false);
+  assert.equal(updated.cash_flow_adjustments[0].amount, 5985);
+});
+
+test("mismatched landed-cost candidate binding fails closed without contaminating economics", () => {
+  const input = baseInput();
+  const firstPass = buildTransactionPaths(input);
+  const target = firstPass.candidates.find((item) =>
+    item.id.includes("src-cheap") && item.id.includes("route-cheap")
+  );
+  const pack = verifiedLandedCostPack("different-candidate");
+  input.landed_cost_packs = [pack];
+
+  const updated = buildTransactionPaths(input).candidates.find((item) => item.id === target.id);
+  assert.equal(updated.landed_cost_complete, false);
+  assert.ok(updated.landed_cost_missing_fields.includes("landed_cost_candidate_binding_mismatch"));
+  assert.equal(updated.expected_cost, 35300);
 });
