@@ -213,10 +213,16 @@ function feasibility(option, actorState, preferences) {
   const capabilities = capabilitySet(actorState);
   const reasons = [];
   const missingCapabilities = option.required_capabilities.filter((item) => !capabilities.has(lower(item)));
+  const capitalAvailable = finite(actorState?.capital_available)
+    ? actorState.capital_available
+    : p.capital_available;
+  const deployableCapital = finite(capitalAvailable)
+    ? capitalAvailable * (1 - p.required_reserve_pct / 100)
+    : null;
 
   if (missingCapabilities.length) reasons.push("missing_required_capabilities");
-  if (finite(p.capital_available) && finite(option.capital_required) && option.capital_required > p.capital_available) {
-    reasons.push("capital_required_exceeds_available");
+  if (finite(deployableCapital) && finite(option.capital_required) && option.capital_required > deployableCapital) {
+    reasons.push("capital_required_exceeds_deployable_after_reserve");
   }
   if (finite(option.cycle_days) && option.cycle_days > p.max_cycle_days) reasons.push("cycle_exceeds_user_limit");
   if (option.strategy_type !== "no_action" && !optionEvidenceValid(option)) reasons.push("evidence_score_missing");
@@ -226,7 +232,7 @@ function feasibility(option, actorState, preferences) {
 
   const hard = reasons.some((reason) => [
     "missing_required_capabilities",
-    "capital_required_exceeds_available",
+    "capital_required_exceeds_deployable_after_reserve",
     "cycle_exceeds_user_limit",
     "evidence_score_missing",
     "expected_value_unknown",
