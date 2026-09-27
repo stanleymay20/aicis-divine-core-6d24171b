@@ -9,6 +9,7 @@ import { OperationalDecisionWorkflow } from "@/components/aicis/OperationalDecis
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isSchemaUnavailableError } from "@/lib/supabase-errors";
 import {
   Activity,
   AlertTriangle,
@@ -56,7 +57,7 @@ type InsightRow = {
 
 type CommandRow = Record<string, unknown>;
 
-type StageStatus = "active" | "degraded" | "syncing" | "waiting";
+type StageStatus = "active" | "degraded" | "syncing" | "waiting" | "not deployed";
 
 const viewQuery = async <T,>(
   view: string,
@@ -106,12 +107,15 @@ const severityTone = (severity?: string | null) => {
 const stageStatus = ({
   loading,
   error,
+  undeployed,
   rows,
 }: {
   loading: boolean;
   error: boolean;
+  undeployed?: boolean;
   rows: number;
 }): StageStatus => {
+  if (undeployed) return "not deployed";
   if (loading) return "syncing";
   if (error) return "degraded";
   if (rows > 0) return "active";
@@ -123,7 +127,19 @@ const stageTone: Record<StageStatus, string> = {
   degraded: "border-destructive/30 bg-destructive/5 text-destructive",
   syncing: "border-primary/30 bg-primary/5 text-primary",
   waiting: "border-border bg-muted/20 text-muted-foreground",
+  "not deployed": "border-border bg-muted/20 text-muted-foreground",
 };
+
+const notDeployed = (...queries: { error: unknown }[]) =>
+  queries.length > 0 && queries.every((query) => isSchemaUnavailableError(query.error));
+
+const retryUnlessMissing = (failureCount: number, error: unknown) =>
+  !isSchemaUnavailableError(error) && failureCount < 2;
+
+const pollUnlessMissing =
+  (ms: number) =>
+  (query: { state: { error: unknown } }) =>
+    isSchemaUnavailableError(query.state.error) ? false : ms;
 
 export default function PlanetaryCommandCenter() {
   const navigate = useNavigate();
@@ -131,42 +147,50 @@ export default function PlanetaryCommandCenter() {
   const kpis = useQuery({
     queryKey: ["planetary-command-kpis"],
     queryFn: () => viewQuery<KpiRow>("executive_planetary_dashboard_kpis_view", 1),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const readiness = useQuery({
     queryKey: ["planetary-command-readiness"],
     queryFn: () => viewQuery<ReadinessRow>("enterprise_readiness_command_view", 1, { column: "generated_at" }),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const insights = useQuery({
     queryKey: ["planetary-command-insights"],
     queryFn: () => viewQuery<InsightRow>("executive_planetary_insights_view", 5, { column: "generated_at" }),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const telemetry = useQuery({
     queryKey: ["planetary-command-telemetry"],
     queryFn: () => viewQuery<CommandRow>("telemetry_backbone_command_view", 8),
-    refetchInterval: 45_000,
+    refetchInterval: pollUnlessMissing(45_000),
+    retry: retryUnlessMissing,
   });
   const agents = useQuery({
     queryKey: ["planetary-command-agents"],
     queryFn: () => viewQuery<CommandRow>("agent_task_command_view", 8),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const causal = useQuery({
     queryKey: ["planetary-command-causal"],
     queryFn: () => viewQuery<CommandRow>("planetary_causal_command_view", 8),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const interventions = useQuery({
     queryKey: ["planetary-command-interventions"],
     queryFn: () => viewQuery<CommandRow>("intervention_governance_command_view", 8),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const memory = useQuery({
     queryKey: ["planetary-command-memory"],
     queryFn: () => viewQuery<CommandRow>("memory_forecast_command_view", 8),
-    refetchInterval: 120_000,
+    refetchInterval: pollUnlessMissing(120_000),
+    retry: retryUnlessMissing,
   });
 
   const kpi = kpis.data?.[0];
@@ -194,6 +218,7 @@ export default function PlanetaryCommandCenter() {
       rows: telemetry.data?.length ?? 0,
       loading: telemetry.isLoading,
       error: telemetry.isError,
+      undeployed: notDeployed(telemetry),
       route: "/live",
     },
     {
@@ -204,6 +229,7 @@ export default function PlanetaryCommandCenter() {
       rows: summary.coverage != null ? 1 : 0,
       loading: kpis.isLoading || readiness.isLoading,
       error: kpis.isError && readiness.isError,
+      undeployed: notDeployed(kpis, readiness),
       route: "/data-pipeline",
     },
     {
@@ -214,6 +240,7 @@ export default function PlanetaryCommandCenter() {
       rows: causal.data?.length ?? 0,
       loading: causal.isLoading,
       error: causal.isError,
+      undeployed: notDeployed(causal),
       route: "/intelligence-engine",
     },
     {
@@ -224,6 +251,7 @@ export default function PlanetaryCommandCenter() {
       rows: (insights.data?.length ?? 0) + (agents.data?.length ?? 0),
       loading: insights.isLoading || agents.isLoading,
       error: insights.isError || agents.isError,
+      undeployed: notDeployed(insights, agents),
       route: "/decision-ops",
     },
     {
@@ -234,6 +262,7 @@ export default function PlanetaryCommandCenter() {
       rows: interventions.data?.length ?? 0,
       loading: interventions.isLoading,
       error: interventions.isError,
+      undeployed: notDeployed(interventions),
       route: "/predictions",
     },
     {
@@ -244,9 +273,12 @@ export default function PlanetaryCommandCenter() {
       rows: memory.data?.length ?? 0,
       loading: memory.isLoading,
       error: memory.isError,
+      undeployed: notDeployed(memory),
       route: "/learning-loop",
     },
   ];
+
+  const undeployedStages = stages.filter((stage) => stage.undeployed).map((stage) => stage.label);
 
   const nextAction =
     topInsight?.recommended_action ??
@@ -365,6 +397,17 @@ export default function PlanetaryCommandCenter() {
         </div>
       </section>
 
+      {undeployedStages.length > 0 && (
+        <section className="flex items-start gap-3 rounded-2xl border border-dashed border-border/70 bg-muted/10 px-5 py-4">
+          <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 text-muted-foreground" />
+          <div className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Not deployed on this environment: </span>
+            {undeployedStages.join(", ")}. These stages report no value rather than an estimate, because their
+            backing tables do not exist here.
+          </div>
+        </section>
+      )}
+
       <section aria-labelledby="neural-flow-title" className="rounded-2xl border border-border/70 bg-background/65 p-4 md:p-5">
         <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
@@ -379,7 +422,12 @@ export default function PlanetaryCommandCenter() {
 
         <div className="grid gap-2 md:grid-cols-3 2xl:grid-cols-6">
           {stages.map((stage, index) => {
-            const status = stageStatus({ loading: stage.loading, error: stage.error, rows: stage.rows });
+            const status = stageStatus({
+              loading: stage.loading,
+              error: stage.error,
+              undeployed: stage.undeployed,
+              rows: stage.rows,
+            });
             const Icon = stage.icon;
             return (
               <button
@@ -399,7 +447,13 @@ export default function PlanetaryCommandCenter() {
                 <div className="mt-4 text-sm font-semibold">{stage.label}</div>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{stage.description}</p>
                 <div className="mt-3 text-[10px] font-mono text-muted-foreground">
-                  {stage.loading ? "checking…" : stage.error ? "query unavailable" : `${stage.rows} recent evidence row${stage.rows === 1 ? "" : "s"}`}
+                  {stage.undeployed
+                    ? "capability not deployed on this environment"
+                    : stage.loading
+                      ? "checking…"
+                      : stage.error
+                        ? "query unavailable"
+                        : `${stage.rows} recent evidence row${stage.rows === 1 ? "" : "s"}`}
                 </div>
                 {index < stages.length - 1 && (
                   <ArrowRight aria-hidden="true" className="absolute -right-2.5 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 text-border 2xl:block" />

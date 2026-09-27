@@ -12,4 +12,5 @@
 - [x] Server-function rejections missing browser headers (200 functions)
 - [x] Opportunities page crash on missing research-run storage
 - [ ] Latest-signals / citations indexes — scheduled 01:10/01:40 UTC tonight
-- [ ] Missing command-center views + trust-score/accumulation timeouts — need per-file migration review
+- [x] Command-center views: telemetry/intervention/agent/memory/enterprise backbone tables do not exist live (only planetary_causal_command_view). Page now reports "not deployed" per stage instead of erroring or polling 404s. Deploying the backbone would require replaying the unapplied truth-floor migration set — not done (repo/live schema drift risk).
+- [ ] Trust-score + forecast accumulation timeouts — still blocked on the same unapplied migration set (per-file review required)
