@@ -141,13 +141,16 @@ export const GovernedResearchPanel = () => {
               ? response.summary
               : null;
 
+      const evidenceCount = finiteNumber(metadata.evidence_count);
+
       setResult({
         question: trimmed,
         briefing,
-        severity: severityOf(response.severity),
+        severity:
+          evidenceCount === 0 ? "unknown" : severityOf(response.severity),
         confidence: finiteNumber(response.confidence),
         dataCompleteness: finiteNumber(response.dataCompleteness),
-        evidenceCount: finiteNumber(metadata.evidence_count),
+        evidenceCount,
         sources: stringArray(response.sources),
         divisions: stringArray(response.divisions),
         truthFloor:
