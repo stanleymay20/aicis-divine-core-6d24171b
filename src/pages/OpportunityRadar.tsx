@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRelevancePreferences } from "@/hooks/useRelevancePreferences";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,7 @@ import { CounterpartyVerificationLab } from "@/components/opportunities/Counterp
 import { LogisticsRouteVerificationLab } from "@/components/opportunities/LogisticsRouteVerificationLab";
 import { StrategicResearchTracker } from "@/components/opportunities/StrategicResearchTracker";
 import {
-  ArrowRight,
+  BrainCircuit,
   CircleDollarSign,
   Loader2,
   RefreshCw,
@@ -96,6 +97,11 @@ type ResearchSignal = {
     impact_score: number | null;
     confidence_score: number | null;
     latest_update_at: string | null;
+    source_count: number | null;
+    primary_source: string | null;
+    source_trust_tier: string | null;
+    uncertainty_notes: string | null;
+    impact_reasoning: string | null;
   };
 };
 
@@ -111,6 +117,7 @@ export default function OpportunityRadar() {
   const { user } = useAuth();
   const { prefs, save, loaded } = useRelevancePreferences();
   const { toast } = useToast();
+  const { selectEntity } = useIntelligenceOS();
   const [profile, setProfile] = useState<OpportunityProfile>(DEFAULT_PROFILE);
   const [saving, setSaving] = useState(false);
   const [rescoring, setRescoring] = useState(false);
@@ -160,7 +167,7 @@ export default function OpportunityRadar() {
       const ids = typedScores.map((row) => row.signal_id).filter(Boolean);
       const { data: signals, error: signalError } = await supabase
         .from("global_signals")
-        .select("id,title,summary,category,affected_countries,affected_sectors,urgency_score,impact_score,confidence_score,latest_update_at")
+        .select("id,title,summary,category,affected_countries,affected_sectors,urgency_score,impact_score,confidence_score,latest_update_at,source_count,primary_source,source_trust_tier,uncertainty_notes,impact_reasoning")
         .in("id", ids);
       if (signalError) throw signalError;
 
@@ -170,6 +177,52 @@ export default function OpportunityRadar() {
     },
     staleTime: 60_000,
   });
+
+  const inspectResearchSignal = (item: ResearchSignal) => {
+    const signal = item.signal;
+
+    selectEntity({
+      id: item.signal_id,
+      type: "signal",
+      name: signal?.title || "Opportunity research signal",
+      description:
+        signal?.summary ||
+        "High-relevance signal selected for opportunity research.",
+      confidence:
+        signal?.confidence_score == null
+          ? undefined
+          : signal.confidence_score,
+      sourceCount: signal?.source_count ?? undefined,
+      updatedAt: signal?.latest_update_at ?? item.computed_at,
+      geography:
+        signal?.affected_countries?.length === 1
+          ? { country: signal.affected_countries[0] }
+          : undefined,
+      provenance: signal?.primary_source
+        ? [
+            {
+              id: `signal-source:${item.signal_id}`,
+              label: signal.primary_source,
+              sourceType: signal.source_trust_tier || "signal source",
+              observedAt: signal.latest_update_at ?? item.computed_at,
+            },
+          ]
+        : undefined,
+      metadata: {
+        relevanceScore: item.relevance_score,
+        relevanceTier: item.relevance_tier,
+        category: signal?.category ?? null,
+        impactScore: signal?.impact_score ?? null,
+        urgencyScore: signal?.urgency_score ?? null,
+        uncertaintyNotes: signal?.uncertainty_notes ?? null,
+        impactReasoning: signal?.impact_reasoning ?? null,
+        affectedCountries:
+          signal?.affected_countries?.join(", ") || null,
+        affectedSectors:
+          signal?.affected_sectors?.join(", ") || null,
+      },
+    });
+  };
 
   const configuredContext = useMemo(() => {
     return (
@@ -514,7 +567,17 @@ export default function OpportunityRadar() {
                       {(item.signal?.affected_sectors || []).slice(0, 4).map((sector) => <span key={sector}>· {sector}</span>)}
                     </div>
                   </div>
-                  <ArrowRight className="h-4 w-4 shrink-0 self-center text-muted-foreground" />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 gap-1.5 self-center text-[11px]"
+                    onClick={() => inspectResearchSignal(item)}
+                    aria-label={`Inspect opportunity research signal ${item.signal?.title || item.signal_id}`}
+                  >
+                    <BrainCircuit className="h-3.5 w-3.5 text-primary" />
+                    Inspect
+                  </Button>
                 </div>
               ))}
             </div>
