@@ -15,6 +15,7 @@ function context() {
     origin_country: "Ghana",
     destination_country: "Germany",
     comparison_currency: "EUR",
+    hs_code: "180100",
   };
 }
 
@@ -150,4 +151,39 @@ test("ready workflows never claim external execution", () => {
 
   assert.ok(result.actions.every((item) => item.workflow.external_execution_performed === false));
   assert.ok(result.actions.every((item) => item.workflow.read_only_or_research_only === true));
+});
+
+
+test("transaction workflow context preserves supplied HS classification without inventing one", () => {
+  const withHs = researchWorkflowContextFromTransactionInput({
+    product: { id: "cocoa", name: "Cocoa beans", hs_code: "180100" },
+    comparison_currency: "EUR",
+    source_offers: [{ country: "Ghana" }],
+    sale_offers: [{ country: "Germany" }],
+  });
+  assert.equal(withHs.hs_code, "180100");
+
+  const withoutHs = researchWorkflowContextFromTransactionInput({
+    product: { id: "cocoa", name: "Cocoa beans" },
+  });
+  assert.equal(withoutHs.hs_code, "");
+});
+
+test("landed-cost blockers route to the verification surface", () => {
+  for (const kind of [
+    "verify_landed_cost_evidence",
+    "upgrade_landed_cost_execution_evidence",
+  ]) {
+    const workflow = resolveStrategicResearchWorkflow({
+      kind,
+      source_candidate_id: "tx-1",
+    }, context());
+
+    assert.equal(workflow.status, "ready");
+    assert.equal(workflow.kind, "landed_cost_verification");
+    assert.equal(workflow.payload.source_candidate_id, "tx-1");
+    assert.equal(workflow.payload.hs_code, "180100");
+    assert.match(workflow.execution_boundary, /no_customs_filing/);
+    assert.equal(workflow.external_execution_performed, false);
+  }
 });
