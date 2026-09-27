@@ -87,6 +87,10 @@ test("password recovery requires a server-validated recovery-bearing token and r
   assert.match(source, /getUser\(candidate\.access_token\)/);
   assert.match(source, /decodeAuthTokenClaims\(candidate\.access_token\)/);
   assert.match(source, /tokenClaimsContainAuthMethod\(claims, "recovery"\)/);
+  assert.match(source, /event === "PASSWORD_RECOVERY" && session/);
+  assert.match(source, /recoveryEventToken = session\.access_token/);
+  assert.match(source, /recoveryEventToken === candidate\.access_token/);
+  assert.match(source, /recoveryEventToken === session\.access_token/);
   assert.match(source, /claims\?\.sub === data\.user\.id/);
   assert.match(source, /getUser\(session\.access_token\)/);
   assert.match(source, /if \(!recoveryBearing \|\| !sameSubject\)/);
