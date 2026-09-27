@@ -6,6 +6,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+
+type AicisMapWindow = Window & {
+  __aicisSelectCountry?: (iso3: string, name: string) => void;
+  __aicisSelectRegion?: (id: string, name: string) => void;
+};
+
 const COUNTRY_COORDS: Record<string, [number, number]> = {
   AFG:[33.93,67.71],AGO:[-11.20,17.87],ARG:[-38.42,-63.62],AUS:[-25.27,133.78],
   BDI:[-3.37,29.92],BFA:[12.24,-1.56],BGD:[23.68,90.36],BRA:[-14.24,-51.93],
@@ -78,13 +84,16 @@ function useLeafletMap(
   zoom: number,
 ) {
   const mapRef = useRef<L.Map | null>(null);
+  const initialCenterRef = useRef(center);
+  const initialZoomRef = useRef(zoom);
+  const [centerLat, centerLng] = center;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const map = L.map(containerRef.current, {
-      center,
-      zoom,
+      center: initialCenterRef.current,
+      zoom: initialZoomRef.current,
       scrollWheelZoom: true,
       zoomControl: true,
     });
@@ -106,14 +115,14 @@ function useLeafletMap(
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [containerRef]);
 
   // Fly to new center when it changes
   useEffect(() => {
     if (mapRef.current) {
-      mapRef.current.flyTo(center, zoom, { duration: 1.2 });
+      mapRef.current.flyTo([centerLat, centerLng], zoom, { duration: 1.2 });
     }
-  }, [center[0], center[1], zoom]);
+  }, [centerLat, centerLng, zoom]);
 
   return mapRef;
 }
@@ -199,15 +208,16 @@ export function GlobalRiskMap({ onSelectCountry }: GlobalMapProps) {
 
       markersRef.current.push(marker);
     }
-  }, [data, mapRef.current]);
+  }, [data, mapRef]);
 
   // Expose click handler globally for popup buttons
   useEffect(() => {
-    (window as any).__aicisSelectCountry = (iso3: string, name: string) => {
+    const mapWindow = window as AicisMapWindow;
+    mapWindow.__aicisSelectCountry = (iso3: string, name: string) => {
       onSelectCountry(iso3, name);
     };
     return () => {
-      delete (window as any).__aicisSelectCountry;
+      delete mapWindow.__aicisSelectCountry;
     };
   }, [onSelectCountry]);
 
@@ -342,13 +352,14 @@ export function CountryRiskMap({ iso3, countryName, onSelectRegion }: CountryMap
 
       markersRef.current.push(marker);
     }
-  }, [regions, indicatorCounts, mapRef.current]);
+  }, [regions, indicatorCounts, mapRef]);
 
   useEffect(() => {
-    (window as any).__aicisSelectRegion = (id: string, name: string) => {
+    const mapWindow = window as AicisMapWindow;
+    mapWindow.__aicisSelectRegion = (id: string, name: string) => {
       onSelectRegion(id, name);
     };
-    return () => { delete (window as any).__aicisSelectRegion; };
+    return () => { delete mapWindow.__aicisSelectRegion; };
   }, [onSelectRegion]);
 
   if (isLoading) return <Skeleton className="h-[400px] w-full rounded-xl" />;
@@ -493,7 +504,7 @@ export function RegionRiskMap({ regionId, regionName, countryIso3 }: RegionMapPr
 
       markersRef.current.push(marker);
     }
-  }, [children, childIndicators, region, mapRef.current]);
+  }, [children, childIndicators, region, mapRef, regionName]);
 
   if (isLoading) return <Skeleton className="h-[350px] w-full rounded-xl" />;
 
