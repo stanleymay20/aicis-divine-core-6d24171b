@@ -1,3 +1,5 @@
+import { convertVerifiedAmount } from "./verified-fx-v1.mjs";
+
 export const TRANSACTION_PATH_BUILDER_VERSION = "aicis-transaction-path-builder-v1";
 
 const ALLOWED_EVIDENCE_STATUSES = new Set([
@@ -90,23 +92,39 @@ function costValue(cost, quantity) {
   return cost.basis === "per_unit" ? cost.amount * quantity : cost.amount;
 }
 
-function sumCosts(costs, quantity, currency) {
+function sumCosts(costs, quantity, currency, fxRates, asOfIso) {
   let total = 0;
   const breakdown = [];
+  const fxConversions = [];
   for (const cost of costs || []) {
-    if (normalize(cost.currency) !== normalize(currency)) {
-      return { compatible: false, total: null, breakdown: [] };
+    const originalValue = costValue(cost, quantity);
+    const converted = convertVerifiedAmount(originalValue, cost.currency, currency, fxRates, asOfIso);
+    if (!converted.ok) {
+      return { compatible: false, total: null, breakdown: [], fx_conversions: [] };
     }
-    const value = costValue(cost, quantity);
-    total += value;
+    total += converted.amount;
+    const fxConversion = converted.direction === "identity" ? null : {
+      from_currency: converted.from_currency,
+      to_currency: converted.to_currency,
+      rate: converted.rate,
+      direction: converted.direction,
+      fx_rate_id: converted.fx_rate_id,
+      provider: converted.provider ?? null,
+      observed_at: converted.observed_at ?? null,
+      evidence_refs: converted.evidence_refs ?? [],
+    };
+    if (fxConversion) fxConversions.push(fxConversion);
     breakdown.push({
       type: cost.type,
-      amount: round(value),
+      amount: round(converted.amount),
       currency,
+      original_amount: round(originalValue),
+      original_currency: cost.currency,
+      fx_conversion: fxConversion,
       evidence_refs: cost.evidence_refs,
     });
   }
-  return { compatible: true, total: round(total), breakdown };
+  return { compatible: true, total: round(total), breakdown, fx_conversions: fxConversions };
 }
 
 function quantityFeasible(offer, quantity) {
@@ -236,6 +254,9 @@ export function buildTransactionPaths(input = {}) {
   const routes = Array.isArray(input.routes) ? input.routes : [];
   const structures = Array.isArray(input.structures) ? input.structures : [];
   const scenario = input.scenario || null;
+  const fxRates = Array.isArray(input.fx_rates) ? input.fx_rates : [];
+  const requestedComparisonCurrency = String(input.comparison_currency || "").trim().toUpperCase();
+  const asOfIso = new Date(asOf).toISOString();
 
   const candidates = [];
   const rejected = [];
@@ -263,26 +284,78 @@ export function buildTransactionPaths(input = {}) {
           if (!quantityFeasible(buyer, quantity)) reasons.push("buyer_quantity_infeasible");
           if (!routeCompatible(source, buyer, route)) reasons.push("route_geography_mismatch");
 
-          const currency = source?.currency;
-          if (!currency || normalize(buyer?.currency) !== normalize(currency)) reasons.push("source_buyer_currency_mismatch");
+          const pathCurrencies = [
+            source?.currency,
+            buyer?.currency,
+            ...(Array.isArray(route?.costs) ? route.costs.map((cost) => cost?.currency) : []),
+            ...(Array.isArray(structure?.costs) ? structure.costs.map((cost) => cost?.currency) : []),
+          ].filter(Boolean).map((value) => String(value).trim().toUpperCase());
+          const uniqueCurrencies = [...new Set(pathCurrencies)];
+          const currency = requestedComparisonCurrency || (uniqueCurrencies.length === 1 ? uniqueCurrencies[0] : "");
+          if (!currency) reasons.push("comparison_currency_required_for_mixed_currency_path");
 
-          const routeCosts = routeEvidenceValid(route, asOf) ? sumCosts(route.costs, quantity, currency) : { compatible: false };
-          if (!routeCosts.compatible) reasons.push("route_cost_currency_mismatch");
+          const sourceGross = finite(source?.unit_price) ? source.unit_price * quantity : NaN;
+          const buyerGross = finite(buyer?.unit_price) ? buyer.unit_price * quantity : NaN;
+          const sourceConversion = currency
+            ? convertVerifiedAmount(sourceGross, source?.currency, currency, fxRates, asOfIso)
+            : { ok: false };
+          const buyerConversion = currency
+            ? convertVerifiedAmount(buyerGross, buyer?.currency, currency, fxRates, asOfIso)
+            : { ok: false };
+          if (!sourceConversion.ok) reasons.push("source_fx_missing_or_unverified");
+          if (!buyerConversion.ok) reasons.push("buyer_fx_missing_or_unverified");
 
-          const structureCosts = structureValid(structure) ? sumCosts(structure.costs, quantity, currency) : { compatible: false };
-          if (!structureCosts.compatible) reasons.push("structure_cost_currency_mismatch");
+          const routeCosts = routeEvidenceValid(route, asOf) && currency
+            ? sumCosts(route.costs, quantity, currency, fxRates, asOfIso)
+            : { compatible: false };
+          if (!routeCosts.compatible) reasons.push("route_cost_fx_missing_or_unverified");
+
+          const structureCosts = structureValid(structure) && currency
+            ? sumCosts(structure.costs, quantity, currency, fxRates, asOfIso)
+            : { compatible: false };
+          if (!structureCosts.compatible) reasons.push("structure_cost_fx_missing_or_unverified");
+
+          const explicitCapitalConversion = structure?.capital_model === "explicit" && currency
+            ? convertVerifiedAmount(
+                structure.capital_required,
+                structure.capital_currency || currency,
+                currency,
+                fxRates,
+                asOfIso,
+              )
+            : null;
+          if (structure?.capital_model === "explicit" && !explicitCapitalConversion?.ok) {
+            reasons.push("explicit_capital_fx_missing_or_unverified");
+          }
 
           if (reasons.length) {
             rejected.push({ path_key: pathKey, reasons: [...new Set(reasons)] });
             continue;
           }
 
-          const purchaseCost = source.unit_price * quantity;
-          const expectedRevenue = buyer.unit_price * quantity;
+          const purchaseCost = sourceConversion.amount;
+          const expectedRevenue = buyerConversion.amount;
           const expectedCost = purchaseCost + routeCosts.total + structureCosts.total;
           const capitalRequired = structure.capital_model === "explicit"
-            ? structure.capital_required
+            ? explicitCapitalConversion.amount
             : expectedCost;
+          const fxConversions = [
+            sourceConversion,
+            buyerConversion,
+            ...(routeCosts.fx_conversions || []),
+            ...(structureCosts.fx_conversions || []),
+            ...(explicitCapitalConversion ? [explicitCapitalConversion] : []),
+          ].filter((conversion) => conversion?.direction && conversion.direction !== "identity")
+            .map((conversion) => ({
+              from_currency: conversion.from_currency,
+              to_currency: conversion.to_currency,
+              rate: conversion.rate,
+              direction: conversion.direction,
+              fx_rate_id: conversion.fx_rate_id ?? null,
+              provider: conversion.provider ?? null,
+              observed_at: conversion.observed_at ?? null,
+              evidence_refs: conversion.evidence_refs ?? [],
+            }));
           const compliance = complianceStatus(source, buyer, route, structure);
           const evidenceScore = candidateEvidenceScore(source, buyer, route, scenario, structure);
           const contacts = buildContacts(source, buyer, route);
@@ -358,7 +431,9 @@ export function buildTransactionPaths(input = {}) {
             },
             settlement: structure.settlement ?? null,
             timing: {
-              as_of: new Date(asOf).toISOString(),
+              as_of: asOfIso,
+    comparison_currency: requestedComparisonCurrency || null,
+    fx_rates_supplied: fxRates.length,
               supplier_quote_valid_until: source.quote_valid_until ?? null,
               buyer_quote_valid_until: buyer.quote_valid_until ?? null,
               route_quote_valid_until: route.quote_valid_until ?? null,
@@ -371,6 +446,18 @@ export function buildTransactionPaths(input = {}) {
                 type: "purchase",
                 amount: round(purchaseCost),
                 currency,
+                original_amount: round(sourceGross),
+                original_currency: source.currency,
+                fx_conversion: sourceConversion.direction === "identity" ? null : {
+                  from_currency: sourceConversion.from_currency,
+                  to_currency: sourceConversion.to_currency,
+                  rate: sourceConversion.rate,
+                  direction: sourceConversion.direction,
+                  fx_rate_id: sourceConversion.fx_rate_id ?? null,
+                  provider: sourceConversion.provider ?? null,
+                  observed_at: sourceConversion.observed_at ?? null,
+                  evidence_refs: sourceConversion.evidence_refs ?? [],
+                },
                 evidence_refs: source.evidence_refs,
               },
               ...routeCosts.breakdown,
@@ -382,7 +469,9 @@ export function buildTransactionPaths(input = {}) {
               route: route.evidence_refs,
               scenario: scenario.evidence_refs,
               structure: structure.evidence_refs ?? [],
+              fx: fxConversions.flatMap((conversion) => conversion.evidence_refs || []),
             },
+            fx_conversions: fxConversions,
             builder_version: TRANSACTION_PATH_BUILDER_VERSION,
             candidate_scope_notice: "Constructed only from the supplied source offers, sale offers, routes and transaction structures.",
           });
