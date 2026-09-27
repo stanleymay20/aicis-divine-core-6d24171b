@@ -8788,6 +8788,155 @@ export type Database = {
         }
         Relationships: []
       }
+      intervention_approval_workflows: {
+        Row: {
+          approval_reason: string | null
+          approval_status: string | null
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          evidence_gate_status: string | null
+          id: string
+          rejection_reason: string | null
+          required_approver_role: string | null
+          response_plan_id: string | null
+          safety_rating: string | null
+          simulation_id: string | null
+          updated_at: string | null
+          workflow_key: string
+        }
+        Insert: {
+          approval_reason?: string | null
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          evidence_gate_status?: string | null
+          id?: string
+          rejection_reason?: string | null
+          required_approver_role?: string | null
+          response_plan_id?: string | null
+          safety_rating?: string | null
+          simulation_id?: string | null
+          updated_at?: string | null
+          workflow_key: string
+        }
+        Update: {
+          approval_reason?: string | null
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          evidence_gate_status?: string | null
+          id?: string
+          rejection_reason?: string | null
+          required_approver_role?: string | null
+          response_plan_id?: string | null
+          safety_rating?: string | null
+          simulation_id?: string | null
+          updated_at?: string | null
+          workflow_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intervention_approval_workflows_simulation_id_fkey"
+            columns: ["simulation_id"]
+            isOneToOne: false
+            referencedRelation: "intervention_simulations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intervention_simulations: {
+        Row: {
+          baseline_risk_score: number | null
+          confidence_score: number | null
+          confidence_semantics: string | null
+          created_at: string | null
+          evidence_status: string
+          execution_feasibility: number | null
+          feasibility_semantics: string | null
+          geopolitical_risk: number | null
+          id: string
+          intervention_cost_score: number | null
+          intervention_recommendations: Json | null
+          outcome_projection: Json | null
+          projected_economic_impact: number | null
+          projected_humanitarian_impact: number | null
+          projected_operational_stability: number | null
+          projected_risk_after_intervention: number | null
+          risk_reduction_score: number | null
+          risk_semantics: string | null
+          simulation_key: string
+          simulation_name: string | null
+          simulation_path: Json | null
+          simulation_semantics: string | null
+          simulation_status: string | null
+          simulation_summary: string | null
+          source_propagation_event_id: string | null
+          strategy_key: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          baseline_risk_score?: number | null
+          confidence_score?: number | null
+          confidence_semantics?: string | null
+          created_at?: string | null
+          evidence_status?: string
+          execution_feasibility?: number | null
+          feasibility_semantics?: string | null
+          geopolitical_risk?: number | null
+          id?: string
+          intervention_cost_score?: number | null
+          intervention_recommendations?: Json | null
+          outcome_projection?: Json | null
+          projected_economic_impact?: number | null
+          projected_humanitarian_impact?: number | null
+          projected_operational_stability?: number | null
+          projected_risk_after_intervention?: number | null
+          risk_reduction_score?: number | null
+          risk_semantics?: string | null
+          simulation_key: string
+          simulation_name?: string | null
+          simulation_path?: Json | null
+          simulation_semantics?: string | null
+          simulation_status?: string | null
+          simulation_summary?: string | null
+          source_propagation_event_id?: string | null
+          strategy_key?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          baseline_risk_score?: number | null
+          confidence_score?: number | null
+          confidence_semantics?: string | null
+          created_at?: string | null
+          evidence_status?: string
+          execution_feasibility?: number | null
+          feasibility_semantics?: string | null
+          geopolitical_risk?: number | null
+          id?: string
+          intervention_cost_score?: number | null
+          intervention_recommendations?: Json | null
+          outcome_projection?: Json | null
+          projected_economic_impact?: number | null
+          projected_humanitarian_impact?: number | null
+          projected_operational_stability?: number | null
+          projected_risk_after_intervention?: number | null
+          risk_reduction_score?: number | null
+          risk_semantics?: string | null
+          simulation_key?: string
+          simulation_name?: string | null
+          simulation_path?: Json | null
+          simulation_semantics?: string | null
+          simulation_status?: string | null
+          simulation_summary?: string | null
+          source_propagation_event_id?: string | null
+          strategy_key?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       ip_access_control: {
         Row: {
           access_type: string
@@ -14764,6 +14913,87 @@ export type Database = {
         }
         Relationships: []
       }
+      telemetry_event_bus: {
+        Row: {
+          available_at: string | null
+          created_at: string | null
+          epistemic_status: string
+          error_message: string | null
+          event_key: string
+          event_status: string | null
+          event_type: string
+          id: string
+          lineage: Json | null
+          locked_at: string | null
+          locked_by: string | null
+          max_retries: number | null
+          payload: Json | null
+          priority_score: number | null
+          priority_semantics: string | null
+          processed_at: string | null
+          reported_legacy_priority_score: number | null
+          retry_count: number | null
+          shard_key: number | null
+          source_connector_key: string | null
+          source_domain: string | null
+          source_observation_id: string | null
+          source_region: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          available_at?: string | null
+          created_at?: string | null
+          epistemic_status?: string
+          error_message?: string | null
+          event_key: string
+          event_status?: string | null
+          event_type: string
+          id?: string
+          lineage?: Json | null
+          locked_at?: string | null
+          locked_by?: string | null
+          max_retries?: number | null
+          payload?: Json | null
+          priority_score?: number | null
+          priority_semantics?: string | null
+          processed_at?: string | null
+          reported_legacy_priority_score?: number | null
+          retry_count?: number | null
+          shard_key?: number | null
+          source_connector_key?: string | null
+          source_domain?: string | null
+          source_observation_id?: string | null
+          source_region?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          available_at?: string | null
+          created_at?: string | null
+          epistemic_status?: string
+          error_message?: string | null
+          event_key?: string
+          event_status?: string | null
+          event_type?: string
+          id?: string
+          lineage?: Json | null
+          locked_at?: string | null
+          locked_by?: string | null
+          max_retries?: number | null
+          payload?: Json | null
+          priority_score?: number | null
+          priority_semantics?: string | null
+          processed_at?: string | null
+          reported_legacy_priority_score?: number | null
+          retry_count?: number | null
+          shard_key?: number | null
+          source_connector_key?: string | null
+          source_domain?: string | null
+          source_observation_id?: string | null
+          source_region?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       tenant_action_log: {
         Row: {
           action: string
@@ -17079,6 +17309,23 @@ export type Database = {
         }
         Relationships: []
       }
+      intervention_governance_command_view: {
+        Row: {
+          approval_status: string | null
+          confidence_score: number | null
+          created_at: string | null
+          evidence_gate_status: string | null
+          generated_at: string | null
+          geopolitical_risk: number | null
+          required_approver_role: string | null
+          risk_reduction_score: number | null
+          safety_rating: string | null
+          simulation_evidence_status: string | null
+          simulation_name: string | null
+          workflow_key: string | null
+        }
+        Relationships: []
+      }
       map_pipeline_health: {
         Row: {
           feed: string | null
@@ -18147,6 +18394,22 @@ export type Database = {
           model_version: string | null
           outcome_maturity_ratio: number | null
           trust_score: number | null
+        }
+        Relationships: []
+      }
+      telemetry_backbone_command_view: {
+        Row: {
+          avg_priority: number | null
+          avg_priority_semantics: string | null
+          epistemic_status: string | null
+          event_count: number | null
+          event_status: string | null
+          generated_at: string | null
+          newest_event: string | null
+          oldest_event: string | null
+          shard_key: number | null
+          source_domain: string | null
+          source_region: string | null
         }
         Relationships: []
       }
