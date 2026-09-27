@@ -104,17 +104,20 @@ export const useTopThreats = () =>
     queryKey: ["analyst-top-threats"],
     refetchInterval: 60_000,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("risk_ranking_predictions")
-        .select("country_iso3,domain,risk_probability,factors,evidence_count,generated_at")
+        .select("country_iso3,domain,risk_probability,factors,generated_at")
         .order("risk_probability", { ascending: false })
         .limit(5);
+      if (error) throw error;
       return (data ?? []).map((r: any) => ({
         country_iso3: r.country_iso3,
         domain: r.domain,
         risk_score: Math.round((r.risk_probability ?? 0) * 100),
-        confidence_score: Number(r.factors?.confidence_score ?? 0) / 100,
-        evidence_count: r.evidence_count ?? 0,
+        confidence_score: r.factors?.confidence_score == null
+          ? null
+          : Number(r.factors.confidence_score) / 100,
+        evidence_count: null,
       }));
     },
   });
