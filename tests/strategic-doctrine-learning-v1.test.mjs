@@ -98,3 +98,46 @@ test("multiple doctrines on one decision are evaluated separately without claimi
   assert.deepEqual(result.doctrines.map((item) => item.doctrine_id).sort(), ["economy_of_force", "foreknowledge"]);
   assert.equal(result.causal_claim_allowed, false);
 });
+
+
+test("duplicate decision ids are excluded instead of double-counted", () => {
+  const duplicate = row(1);
+  const result = evaluateDoctrineOutcomes([
+    duplicate,
+    { ...duplicate, realized_net_value: 999999 },
+    row(2),
+  ]);
+
+  assert.deepEqual(result.duplicate_decision_ids, [duplicate.decision_id]);
+  assert.equal(result.unique_decision_count, 1);
+  assert.equal(result.usable_outcome_count, 1);
+  assert.equal(result.doctrines[0].verified_observation_count, 1);
+});
+
+test("audit-linked outcomes are counted separately from unlinked outcomes", () => {
+  const linked = {
+    ...row(1),
+    strategic_audit_hash: "a".repeat(64),
+  };
+  const unlinked = row(2);
+
+  const result = evaluateDoctrineOutcomes([linked, unlinked]);
+  const doctrine = result.doctrines[0];
+
+  assert.equal(result.audit_linked_usable_outcome_count, 1);
+  assert.equal(doctrine.audit_linked_count, 1);
+  assert.equal(doctrine.audit_unlinked_count, 1);
+});
+
+test("malformed strategic audit hashes do not count as linked", () => {
+  const result = evaluateDoctrineOutcomes([
+    {
+      ...row(1),
+      strategic_audit_hash: "not-a-valid-hash",
+    },
+  ]);
+
+  assert.equal(result.audit_linked_usable_outcome_count, 0);
+  assert.equal(result.doctrines[0].audit_linked_count, 0);
+  assert.equal(result.doctrines[0].audit_unlinked_count, 1);
+});
