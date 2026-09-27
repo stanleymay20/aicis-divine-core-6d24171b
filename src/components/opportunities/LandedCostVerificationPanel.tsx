@@ -106,7 +106,7 @@ type VerificationResponse = {
   error?: string;
 };
 
-type Pack = {
+export type LandedCostPack = {
   source_id: string;
   buyer_id: string;
   route_id: string;
@@ -191,7 +191,7 @@ export function LandedCostVerificationPanel({
 }: {
   candidate: LandedCostCandidate;
   fxRates: Array<Record<string, unknown>>;
-  onAttach: (pack: Pack) => void;
+  onAttach: (pack: LandedCostPack) => void;
 }) {
   const [payload, setPayload] = useState(() =>
     JSON.stringify(buildSeed(candidate, fxRates), null, 2)
