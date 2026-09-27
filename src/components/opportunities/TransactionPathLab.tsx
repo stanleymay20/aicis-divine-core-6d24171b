@@ -138,6 +138,21 @@ type ReferenceFxResponse = {
   message?: string;
 };
 
+type ResearchWorkflow = {
+  workflow_version: string;
+  status: "ready" | "requires_context" | "provider_required" | "manual_research" | "unsupported";
+  kind: string;
+  label: string;
+  payload: Record<string, unknown>;
+  read_only_or_research_only: true;
+  external_execution_performed: false;
+  missing_context?: string[];
+  provider_requirement?: string;
+  execution_boundary?: string;
+  notice?: string;
+  focus_fields?: string[];
+};
+
 type ResearchAction = {
   id: string;
   kind: string;
@@ -151,6 +166,7 @@ type ResearchAction = {
   research_only: true;
   transaction_eligible: false;
   expected_value: null;
+  workflow?: ResearchWorkflow;
 };
 
 type ResearchPlan = {
@@ -160,6 +176,9 @@ type ResearchPlan = {
   high_count: number;
   actions: ResearchAction[];
   execution_performed: false;
+  workflow_version?: string;
+  workflow_status_counts?: Record<string, number>;
+  workflow_scope_notice?: string;
   scope_notice: string;
 };
 
@@ -360,6 +379,56 @@ export function TransactionPathLab() {
     });
   };
 
+  const startResearchWorkflow = async (action: ResearchAction) => {
+    const workflow = action.workflow;
+    if (!workflow || workflow.status !== "ready") return;
+
+    if (workflow.kind === "counterparty_discovery") {
+      const role = workflow.payload.role;
+      window.dispatchEvent(new CustomEvent("aicis:investigate-product", {
+        detail: {
+          product: workflow.payload.product_name,
+          countries: Array.isArray(workflow.payload.countries) ? workflow.payload.countries : [],
+          role,
+          origin_country: workflow.payload.origin_country,
+          destination_country: workflow.payload.destination_country,
+        },
+      }));
+      toast({
+        title: workflow.label,
+        description: "Research handoff opened. Discovery results remain unverified until the verification gates are completed.",
+      });
+      return;
+    }
+
+    if (workflow.kind === "reference_fx") {
+      await addReferenceFx();
+      return;
+    }
+
+    if (workflow.kind === "actor_profile") {
+      document.getElementById("strategic-capability-profile")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      toast({
+        title: "Review strategic capability profile",
+        description: "Only add a capability when it is genuinely available; AICIS will not infer it from the opportunity.",
+      });
+      return;
+    }
+
+    if (workflow.kind === "transaction_input_editor") {
+      const editor = document.getElementById("transaction-input-editor") as HTMLTextAreaElement | null;
+      editor?.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(() => editor?.focus(), 350);
+      toast({
+        title: workflow.label,
+        description: workflow.focus_fields?.length
+          ? "Update and evidence: " + workflow.focus_fields.join(", ") + "."
+          : "Update the transaction bundle with attributable evidence, then rebuild.",
+      });
+      return;
+    }
+  };
+
   const build = async () => {
     let parsed: unknown;
     try {
@@ -413,6 +482,7 @@ export function TransactionPathLab() {
         <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-2">
             <Textarea
+              id="transaction-input-editor"
               value={payload}
               onChange={(event) => setPayload(event.target.value)}
               placeholder={SCHEMA_HINT}
@@ -480,7 +550,9 @@ export function TransactionPathLab() {
 
         {result?.strategic ? <StrategicRecommendation strategic={result.strategic} /> : null}
 
-        {result?.research_plan ? <ResearchPlanPanel plan={result.research_plan} /> : null}
+        {result?.research_plan ? (
+          <ResearchPlanPanel plan={result.research_plan} onStartWorkflow={startResearchWorkflow} />
+        ) : null}
 
         {result?.portfolio ? <PortfolioAllocation portfolio={result.portfolio} /> : null}
       </CardContent>
@@ -590,7 +662,13 @@ function TopPath({ candidate, result }: { candidate: RankItem; result: BuildResp
   );
 }
 
-function ResearchPlanPanel({ plan }: { plan: ResearchPlan }) {
+function ResearchPlanPanel({
+  plan,
+  onStartWorkflow,
+}: {
+  plan: ResearchPlan;
+  onStartWorkflow: (action: ResearchAction) => void | Promise<void>;
+}) {
   if (!plan.actions.length) {
     return (
       <div className="rounded-lg border border-border p-4">
@@ -661,10 +739,49 @@ function ResearchPlanPanel({ plan }: { plan: ResearchPlan }) {
                 Next: {item.suggested_next_step}
               </p>
             ) : null}
+
+            {item.workflow ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2">
+                <div className="min-w-0">
+                  <Badge
+                    variant={item.workflow.status === "ready" ? "outline" : "secondary"}
+                    className="text-[10px]"
+                  >
+                    {item.workflow.status.replaceAll("_", " ")}
+                  </Badge>
+                  {item.workflow.status !== "ready" ? (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {item.workflow.status === "provider_required"
+                        ? item.workflow.provider_requirement || "A provider integration is required."
+                        : item.workflow.status === "requires_context"
+                          ? "Missing context: " + (item.workflow.missing_context || []).join(", ")
+                          : item.workflow.notice || "This task currently requires manual research."}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {item.workflow.execution_boundary || "Research-only handoff."}
+                    </p>
+                  )}
+                </div>
+                {item.workflow.status === "ready" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => onStartWorkflow(item)}
+                  >
+                    {item.workflow.label}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
 
+      {plan.workflow_scope_notice ? (
+        <p className="text-[10px] text-muted-foreground">{plan.workflow_scope_notice}</p>
+      ) : null}
       <p className="text-[10px] text-muted-foreground">{plan.scope_notice}</p>
     </div>
   );
