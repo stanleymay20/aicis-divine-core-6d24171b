@@ -20,6 +20,27 @@ function wilson(successes, total, z = 1.96) {
   };
 }
 
+function auditHashValid(value) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
+}
+
+function uniqueDecisionRows(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    if (!row?.decision_id) continue;
+    const id = String(row.decision_id);
+    counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  const duplicateIds = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id);
+  const duplicateSet = new Set(duplicateIds);
+  return {
+    unique_rows: rows.filter((row) => row?.decision_id && !duplicateSet.has(String(row.decision_id))),
+    duplicate_decision_ids: duplicateIds,
+  };
+}
+
 function doctrineIds(row) {
   return [...new Set(list(row?.doctrine_ids).map(String).filter(Boolean))];
 }
@@ -44,9 +65,11 @@ function associationState(sampleCount, avgIncrementalValue, successRate) {
 
 export function evaluateDoctrineOutcomes(outcomes = []) {
   const rows = list(outcomes);
+  const deduped = uniqueDecisionRows(rows);
+  const usableRows = deduped.unique_rows;
   const byDoctrine = new Map();
 
-  for (const row of rows) {
+  for (const row of usableRows) {
     if (!row?.decision_id) continue;
     if (!evidenceUsable(row)) continue;
 
@@ -100,6 +123,8 @@ export function evaluateDoctrineOutcomes(outcomes = []) {
         ? round(avgIncremental, 2)
         : null,
       domains,
+      audit_linked_count: bucket.filter((row) => auditHashValid(row.strategic_audit_hash)).length,
+      audit_unlinked_count: bucket.filter((row) => !auditHashValid(row.strategic_audit_hash)).length,
       evidence_state: associationState(bucket.length, avgIncremental, successRate),
       causal_attribution_allowed: false,
       promotion_eligible: false,
@@ -110,7 +135,15 @@ export function evaluateDoctrineOutcomes(outcomes = []) {
   return {
     evaluator_version: STRATEGIC_DOCTRINE_LEARNING_VERSION,
     supplied_outcome_count: rows.length,
-    usable_outcome_count: rows.filter((row) => row?.decision_id && evidenceUsable(row) && doctrineIds(row).length).length,
+    unique_decision_count: usableRows.length,
+    duplicate_decision_ids: deduped.duplicate_decision_ids,
+    duplicate_outcome_count: rows.length - usableRows.length,
+    usable_outcome_count: usableRows.filter((row) => evidenceUsable(row) && doctrineIds(row).length).length,
+    audit_linked_usable_outcome_count: usableRows.filter((row) =>
+      evidenceUsable(row) &&
+      doctrineIds(row).length &&
+      auditHashValid(row.strategic_audit_hash)
+    ).length,
     doctrines,
     causal_claim_allowed: false,
     automatic_doctrine_promotion_allowed: false,
