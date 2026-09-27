@@ -219,7 +219,8 @@ export function evaluateOpportunity(candidate, preferences = {}) {
   if (missing.length) rejection_reasons.push(...missing.map((key) => `missing_numeric_input:${key}`));
   if (!candidate?.id) rejection_reasons.push("missing_id");
   if (!candidate?.title) rejection_reasons.push("missing_title");
-  if (!candidate?.transaction_type) rejection_reasons.push("missing_transaction_type");\n  if (!candidate?.compliance_status) rejection_reasons.push("missing_compliance_status");
+  if (!candidate?.transaction_type) rejection_reasons.push("missing_transaction_type");
+  if (!candidate?.compliance_status) rejection_reasons.push("missing_compliance_status");
   if (!candidate?.economics_status || ["insufficient", "synthetic", "unverified"].includes(candidate.economics_status)) {
     rejection_reasons.push("economics_not_verified");
   }
@@ -243,7 +244,8 @@ export function evaluateOpportunity(candidate, preferences = {}) {
     return { eligible: false, candidate_id: candidate?.id || null, rejection_reasons, score: 0 };
   }
 
-  const metrics = economics(candidate);\n  const dossier = buildExecutionDossier(candidate, metrics);
+  const metrics = economics(candidate);
+  const dossier = buildExecutionDossier(candidate, metrics);
   if (metrics.base_margin_pct < profile.min_base_margin_pct) rejection_reasons.push("base_margin_below_threshold");
 
   const rel = relevance(candidate, preferences);
@@ -300,7 +302,9 @@ export function evaluateOpportunity(candidate, preferences = {}) {
     },
     relevance: rel,
     rejection_reasons,
-    execution_ready: dossier.execution_ready,\n    execution_dossier: dossier,\n    human_approval_required: true,
+    execution_ready: dossier.execution_ready,
+    execution_dossier: dossier,
+    human_approval_required: true,
     recommendation_semantics: "ranked_decision_support_not_profit_guarantee",
   };
 }
