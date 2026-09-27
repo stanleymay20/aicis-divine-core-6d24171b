@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { MapQuery } from "./queryParser";
 import { SignalRow } from "./useAtlasData";
-import { CN } from "./RiskAtlas";
+import { COUNTRY_NAMES as CN } from "./countryNames";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
