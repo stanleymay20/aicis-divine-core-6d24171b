@@ -76,7 +76,10 @@ function normalizedOption(raw, fallback = {}) {
   const decisionLossReduction = finite(raw.expected_decision_loss_reduction)
     ? Math.max(0, raw.expected_decision_loss_reduction)
     : null;
-  const derivedInformationValue = informationCost != null && decisionLossReduction != null
+  const informationEvidenceBacked = list(raw.evidence_refs).length > 0;
+  const derivedInformationValue = informationCost != null &&
+    decisionLossReduction != null &&
+    informationEvidenceBacked
     ? decisionLossReduction - informationCost
     : null;
   return {
@@ -191,7 +194,8 @@ function suppliedAlternatives(candidate) {
           !finite(raw.expected_value) &&
           !(type === "information_gathering" &&
             finite(raw.information_cost) &&
-            finite(raw.expected_decision_loss_reduction))
+            finite(raw.expected_decision_loss_reduction) &&
+            list(raw.evidence_refs).length > 0)
         ),
         executable_input: raw.executable_input === true,
       }));
