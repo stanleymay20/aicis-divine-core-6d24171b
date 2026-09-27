@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
 import { buildTransactionPaths } from "../_shared/transaction-path-builder-v1.mjs";
 import { rankOpportunities } from "../_shared/opportunity-engine-v1.mjs";
+import { optimizeOpportunityPortfolio } from "../_shared/opportunity-portfolio-optimizer-v1.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,6 +58,7 @@ Deno.serve(async (req) => {
     };
 
     const ranked = rankOpportunities(built.candidates, preferences);
+    const portfolio = optimizeOpportunityPortfolio(ranked, preferences);
 
     await sb.from("system_logs").insert({
       user_id: user.id,
@@ -72,6 +74,8 @@ Deno.serve(async (req) => {
         eligible_ranked: ranked.eligible_count,
         no_transaction_recommended: ranked.no_transaction_recommended,
         human_approval_required: true,
+        portfolio_selected_count: portfolio.selected?.length ?? 0,
+        portfolio_expected_value: portfolio.expected_value ?? null,
       },
     });
 
@@ -79,6 +83,7 @@ Deno.serve(async (req) => {
       ok: true,
       build: built,
       ranking: ranked,
+      portfolio,
       execution_boundary: {
         human_approval_required: true,
         external_execution_performed: false,
