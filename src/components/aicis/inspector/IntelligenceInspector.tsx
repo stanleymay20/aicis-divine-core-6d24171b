@@ -39,6 +39,19 @@ const EmptyState = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
+const metadataLabel = (key: string) =>
+  key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const metadataValue = (value: string | number | boolean | null) => {
+  if (value === null) return "Unavailable";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString() : "Unavailable";
+  return value || "Unavailable";
+};
+
 const InspectorBody = () => {
   const { selectedEntity, activeInspectorTab, setInspectorTab, clearEntity } = useIntelligenceOS();
 
@@ -74,6 +87,37 @@ const InspectorBody = () => {
               </div>
             </div>
           )}
+
+          {selectedEntity.metadata &&
+            Object.keys(selectedEntity.metadata).length > 0 && (
+              <div className="rounded-lg border border-border/70 p-3">
+                <div className="mb-2 text-[11px] font-medium text-foreground">
+                  Supplied attributes
+                </div>
+                <dl className="divide-y divide-border/60">
+                  {Object.entries(selectedEntity.metadata).map(([key, value]) => (
+                    <div
+                      key={key}
+                      className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] gap-3 py-2 text-[10px]"
+                    >
+                      <dt className="break-words text-muted-foreground">
+                        {metadataLabel(key)}
+                      </dt>
+                      <dd
+                        className="break-all text-right font-mono text-foreground"
+                        title={String(metadataValue(value))}
+                      >
+                        {metadataValue(value)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-2 text-[9px] leading-relaxed text-muted-foreground">
+                  Values are shown exactly as supplied by the selected workspace.
+                  The Inspector does not infer missing units or replace unavailable values.
+                </p>
+              </div>
+            )}
         </div>
       );
     }
