@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { ExecutionPreviewPanel } from "@/components/opportunities/ExecutionPreviewPanel";
 import { ArrowRight, CheckCircle2, CircleDollarSign, Compass, Loader2, MapPin, RefreshCw, Search, ShieldAlert, Users } from "lucide-react";
 
 type RankItem = {
@@ -13,6 +14,8 @@ type RankItem = {
   transaction_type: string;
   score: number;
   execution_ready: boolean;
+  currency?: string | null;
+  capital_required?: number | null;
   metrics: {
     base_profit: number;
     base_margin_pct: number;
@@ -432,6 +435,64 @@ export function TransactionPathLab() {
     });
   };
 
+  const addExecutableFx = (rate: Record<string, unknown>, candidateId: string) => {
+    let current: Record<string, unknown>;
+    try {
+      const parsed: unknown = payload.trim() ? JSON.parse(payload) : {};
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error("Transaction bundle must be a JSON object");
+      }
+      current = parsed as Record<string, unknown>;
+    } catch (error) {
+      toast({
+        title: "Executable FX could not be added",
+        description: error instanceof Error ? error.message : "The transaction bundle is not valid JSON.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const existingRates = Array.isArray(current.fx_rates) ? current.fx_rates : [];
+    const rateId = typeof rate.id === "string" ? rate.id : null;
+    const withoutDuplicate = rateId
+      ? existingRates.filter((item) => {
+          if (typeof item !== "object" || item === null || Array.isArray(item)) return true;
+          return (item as Record<string, unknown>).id !== rateId;
+        })
+      : existingRates;
+
+    setPayload(JSON.stringify({
+      ...current,
+      fx_rates: [...withoutDuplicate, rate],
+    }, null, 2));
+
+    const evidenceRefs = Array.isArray(rate.evidence_refs) ? rate.evidence_refs : [];
+    if (evidenceRefs.length) {
+      window.dispatchEvent(new CustomEvent("aicis:research-evidence-satisfied", {
+        detail: {
+          completion_kind: "executable_fx_verified",
+          source_candidate_id: candidateId,
+          evidence_refs: evidenceRefs,
+          metadata: {
+            fx_rate_id: rate.id ?? null,
+            provider: rate.provider ?? null,
+            provider_quote_id: rate.provider_quote_id ?? null,
+          },
+        },
+      }));
+    }
+
+    setResult(null);
+    setResearchRuns({});
+    toast({
+      title: "Executable FX evidence added",
+      description: "The previous ranking is now stale. Rebuild transaction paths before any human review or approval.",
+    });
+    window.requestAnimationFrame(() => {
+      document.getElementById("transaction-input-editor")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
+
   const syncResearchRuns = async () => {
     const auditHash = result?.strategic?.audit?.hash;
     const plan = result?.research_plan;
@@ -757,6 +818,21 @@ export function TransactionPathLab() {
         ) : null}
 
         {result?.strategic ? <StrategicRecommendation strategic={result.strategic} /> : null}
+
+        {top && result?.strategic?.audit?.hash ? (
+          <ExecutionPreviewPanel
+            candidate={{
+              candidate_id: top.candidate_id,
+              title: top.title,
+              transaction_type: top.transaction_type,
+              execution_ready: top.execution_ready,
+              currency: top.currency ?? null,
+              capital_required: top.capital_required ?? null,
+            }}
+            strategicAuditHash={result.strategic.audit.hash}
+            onAddExecutableFx={addExecutableFx}
+          />
+        ) : null}
 
         {result?.research_plan ? (
           <ResearchPlanPanel
