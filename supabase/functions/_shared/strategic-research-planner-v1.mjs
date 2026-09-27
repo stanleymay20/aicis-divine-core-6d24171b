@@ -100,6 +100,68 @@ function quoteRecoveryActions(build, store) {
   }
 }
 
+function landedCostActions(build, store) {
+  for (const candidate of list(build?.candidates)) {
+    if (candidate?.transaction_type !== "physical_trade") continue;
+    const id = candidateId(candidate);
+
+    if (candidate?.landed_cost_complete === false) {
+      addUnique(store, action({
+        id: "research:landed-cost:" + id,
+        kind: "verify_landed_cost_evidence",
+        title: "Complete the landed-cost evidence stack",
+        priority: "blocking",
+        source_candidate_id: id,
+        trigger: "The physical-trade candidate was constructed for research, but border/logistics/finance coverage is incomplete.",
+        required_evidence: [
+          "origin inland transport coverage",
+          "origin handling coverage",
+          "export customs and export duty/tax applicability",
+          "international freight coverage",
+          "cargo insurance coverage",
+          "import duty and import tax rules",
+          "customs brokerage",
+          "destination handling",
+          "inspection/certification",
+          "financing cost or evidenced non-applicability",
+          "storage/distribution coverage",
+          "HS classification where customs/tax rules depend on it",
+          "current attributable evidence for every included or not-applicable category",
+        ],
+        completion_criteria: [
+          "landed_cost_complete = true",
+          "all required categories are included, covered elsewhere, or evidenced not applicable",
+          "economic cost is separated from recoverable-tax cash requirement",
+        ],
+        suggested_next_step: "Open Landed Cost Verification, attach attributable evidence, then rebuild transaction paths.",
+      }));
+      continue;
+    }
+
+    if (candidate?.landed_cost_execution_ready === false) {
+      addUnique(store, action({
+        id: "research:landed-cost-execution:" + id,
+        kind: "upgrade_landed_cost_execution_evidence",
+        title: "Upgrade landed-cost inputs to execution-grade evidence",
+        priority: "blocking",
+        source_candidate_id: id,
+        trigger: "The landed-cost stack is complete for research but contains non-execution-grade evidence or non-executable FX.",
+        required_evidence: [
+          "current official rules or provider-issued quotes for every included cost",
+          "executable FX for cross-currency cost normalization",
+          "current validity timestamps",
+          "attributable basis evidence for percentage-based costs",
+        ],
+        completion_criteria: [
+          "execution_ready_cost_stack = true",
+          "all cross-currency landed-cost conversions are execution-eligible",
+        ],
+        suggested_next_step: "Refresh the blocked landed-cost inputs and rebuild before approval.",
+      }));
+    }
+  }
+}
+
 function strategicBlockerActions(strategic, store) {
   if (strategic?.comparison_blocked_reason === "mixed_currency_strategy_options_require_verified_fx_normalization") {
     addUnique(store, action({
@@ -271,6 +333,7 @@ export function planStrategicResearch({
   const store = new Map();
 
   quoteRecoveryActions(build, store);
+  landedCostActions(build, store);
   strategicBlockerActions(strategic, store);
   executionReadinessActions(ranking, store);
   complianceActions(ranking, store);
