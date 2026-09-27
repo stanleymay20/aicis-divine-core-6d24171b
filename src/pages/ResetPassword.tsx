@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { Shield, Loader2 } from "lucide-react";
 
 const MIN_NEW_PASSWORD_LENGTH = 12;
@@ -21,6 +22,9 @@ const ResetPassword = () => {
   const recoveryEventToken = useRef<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { recoveryToken } = useAuth();
+  const recoveryTokenRef = useRef(recoveryToken);
+  recoveryTokenRef.current = recoveryToken;
 
   useEffect(() => {
     let mounted = true;
@@ -51,7 +55,8 @@ const ResetPassword = () => {
 
         const claims = decodeAuthTokenClaims(candidate.access_token);
         const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery")
-          || recoveryEventToken.current === candidate.access_token;
+          || recoveryEventToken.current === candidate.access_token
+          || recoveryTokenRef.current === candidate.access_token;
         const sameSubject = claims?.sub === data.user.id && candidate.user.id === data.user.id;
 
         if (recoveryBearing && sameSubject) acceptRecovery();
@@ -81,6 +86,16 @@ const ResetPassword = () => {
       })
       .catch(() => undefined);
 
+    // The provider may receive the one-time recovery event before this lazy
+    // page mounts. Its token is bound to that actual event, not URL parameters.
+    if (recoveryTokenRef.current) {
+      void supabase.auth.getSession()
+        .then(({ data: { session } }) => {
+          if (mounted && session?.access_token === recoveryTokenRef.current) void validateRecoverySession(session);
+        })
+        .catch(() => undefined);
+    }
+
     const timeout = window.setTimeout(() => {
       if (mounted && !verified) setVerificationFailed(true);
     }, 8000);
@@ -90,7 +105,7 @@ const ResetPassword = () => {
       window.clearTimeout(timeout);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [recoveryToken]);
 
   const handleReset = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -120,7 +135,8 @@ const ResetPassword = () => {
       const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
       const claims = decodeAuthTokenClaims(session.access_token);
       const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery")
-        || recoveryEventToken.current === session.access_token;
+        || recoveryEventToken.current === session.access_token
+        || recoveryTokenRef.current === session.access_token;
       const sameSubject = Boolean(
         !userError
         && userData.user
