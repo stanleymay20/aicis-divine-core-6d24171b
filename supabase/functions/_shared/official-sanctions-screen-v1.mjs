@@ -82,49 +82,6 @@ export function parseOfacSdnEntities(xml) {
   return records;
 }
 
-function parseCsvRows(csv) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let quoted = false;
-  const source = String(csv ?? "");
-
-  for (let i = 0; i < source.length; i += 1) {
-    const char = source[i];
-    const next = source[i + 1];
-
-    if (char === '"') {
-      if (quoted && next === '"') {
-        field += '"';
-        i += 1;
-      } else {
-        quoted = !quoted;
-      }
-      continue;
-    }
-
-    if (char === "," && !quoted) {
-      row.push(field);
-      field = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && next === "\n") i += 1;
-      row.push(field);
-      field = "";
-      if (row.some((value) => String(value).trim() !== "")) rows.push(row);
-      row = [];
-      continue;
-    }
-
-    field += char;
-  }
-
-  row.push(field);
-  if (row.some((value) => String(value).trim() !== "")) rows.push(row);
-  return rows;
-}
 
 function ukFieldMap(header) {
   const normalized = header.map((value) => String(value).replace(/^\uFEFF/, "").trim());

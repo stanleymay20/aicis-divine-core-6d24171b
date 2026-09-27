@@ -11783,6 +11783,24 @@ export type Database = {
           },
         ]
       }
+      public_intelligence_cache: {
+        Row: {
+          generated_at: string
+          id: number
+          payload: Json
+        }
+        Insert: {
+          generated_at?: string
+          id?: number
+          payload: Json
+        }
+        Update: {
+          generated_at?: string
+          id?: number
+          payload?: Json
+        }
+        Relationships: []
+      }
       publisher_intake_queue: {
         Row: {
           curated_at: string | null
@@ -18997,6 +19015,7 @@ export type Database = {
       prospective_model_breakdown: { Args: never; Returns: Json }
       prospective_summary_stats: { Args: never; Returns: Json }
       prune_retention_logs: { Args: never; Returns: Json }
+      public_intelligence_snapshot: { Args: never; Returns: Json }
       purge_derived_community_metrics: {
         Args: { _batch?: number; _keep_days?: number }
         Returns: number
@@ -19028,6 +19047,7 @@ export type Database = {
       refresh_graph_relationship_evidence: { Args: never; Returns: Json }
       refresh_metric_scale_reference: { Args: never; Returns: Json }
       refresh_planetary_edge_evidence: { Args: never; Returns: Json }
+      refresh_public_intelligence_snapshot: { Args: never; Returns: Json }
       refresh_quantivis_materialized: { Args: never; Returns: Json }
       refresh_recommendation_quality_scores: {
         Args: never
