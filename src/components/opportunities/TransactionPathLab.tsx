@@ -182,6 +182,22 @@ type ResearchPlan = {
   scope_notice: string;
 };
 
+type ResearchRun = {
+  id: string;
+  action_id: string;
+  lifecycle_status: "pending" | "in_progress" | "blocked" | "resolved" | "stale" | "cancelled";
+  action_snapshot_hash?: string;
+  evidence_refs?: unknown[];
+  resolution?: Record<string, unknown>;
+  updated_at?: string;
+};
+
+type ResearchSyncResponse = {
+  ok: boolean;
+  runs?: ResearchRun[];
+  error?: string;
+};
+
 type BuildResponse = {
   ok: boolean;
   build?: {
@@ -250,6 +266,8 @@ export function TransactionPathLab() {
   const [result, setResult] = useState<BuildResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [fxLoading, setFxLoading] = useState(false);
+  const [researchRuns, setResearchRuns] = useState<Record<string, ResearchRun>>({});
+  const [researchSyncing, setResearchSyncing] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -379,9 +397,96 @@ export function TransactionPathLab() {
     });
   };
 
+  const syncResearchRuns = async () => {
+    const auditHash = result?.strategic?.audit?.hash;
+    const plan = result?.research_plan;
+    if (!auditHash || !plan) {
+      toast({
+        title: "Research tracking unavailable",
+        description: "Build a strategic result with an audit hash before saving the research plan.",
+        variant: "destructive",
+      });
+      return researchRuns;
+    }
+
+    setResearchSyncing(true);
+    const { data, error } = await supabase.functions.invoke("sync-strategic-research-runs", {
+      body: {
+        strategic_audit_hash: auditHash,
+        research_plan: plan,
+      },
+    });
+    setResearchSyncing(false);
+
+    if (error) {
+      toast({
+        title: "Research tracking unavailable",
+        description: error.message + " The research handoff can still proceed, but this task will not be persisted.",
+        variant: "destructive",
+      });
+      return researchRuns;
+    }
+
+    const response = data as ResearchSyncResponse;
+    if (!response.ok) {
+      toast({
+        title: "Research tracking unavailable",
+        description: response.error || "The research plan could not be synchronized.",
+        variant: "destructive",
+      });
+      return researchRuns;
+    }
+
+    const next = Object.fromEntries((response.runs || []).map((run) => [run.action_id, run]));
+    setResearchRuns(next);
+    return next;
+  };
+
+  const ensureResearchRunStarted = async (action: ResearchAction) => {
+    const runs = researchRuns[action.id] ? researchRuns : await syncResearchRuns();
+    const run = runs[action.id];
+    if (!run) return true;
+
+    if (["resolved", "stale", "cancelled"].includes(run.lifecycle_status)) {
+      toast({
+        title: "Research task is closed",
+        description: "Rebuild the strategic plan to generate a new audited task instead of reopening a terminal record.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (run.lifecycle_status === "in_progress") return true;
+
+    const { data, error } = await supabase.functions.invoke("update-strategic-research-run", {
+      body: {
+        run_id: run.id,
+        lifecycle_status: "in_progress",
+      },
+    });
+
+    if (error) {
+      toast({
+        title: "Could not update research status",
+        description: error.message + " The research handoff will still open.",
+        variant: "destructive",
+      });
+      return true;
+    }
+
+    const updated = (data as { ok?: boolean; run?: ResearchRun })?.run;
+    if (updated) {
+      setResearchRuns((current) => ({ ...current, [action.id]: updated }));
+    }
+    return true;
+  };
+
   const startResearchWorkflow = async (action: ResearchAction) => {
     const workflow = action.workflow;
     if (!workflow || workflow.status !== "ready") return;
+
+    const canStart = await ensureResearchRunStarted(action);
+    if (!canStart) return;
 
     if (workflow.kind === "counterparty_discovery") {
       const role = workflow.payload.role;
@@ -455,6 +560,7 @@ export function TransactionPathLab() {
 
     const response = data as BuildResponse;
     setResult(response);
+    setResearchRuns({});
     if (!response.ok) {
       toast({
         title: "Transaction build failed",
@@ -551,7 +657,13 @@ export function TransactionPathLab() {
         {result?.strategic ? <StrategicRecommendation strategic={result.strategic} /> : null}
 
         {result?.research_plan ? (
-          <ResearchPlanPanel plan={result.research_plan} onStartWorkflow={startResearchWorkflow} />
+          <ResearchPlanPanel
+            plan={result.research_plan}
+            runs={researchRuns}
+            syncing={researchSyncing}
+            onSyncPlan={syncResearchRuns}
+            onStartWorkflow={startResearchWorkflow}
+          />
         ) : null}
 
         {result?.portfolio ? <PortfolioAllocation portfolio={result.portfolio} /> : null}
@@ -664,9 +776,15 @@ function TopPath({ candidate, result }: { candidate: RankItem; result: BuildResp
 
 function ResearchPlanPanel({
   plan,
+  runs,
+  syncing,
+  onSyncPlan,
   onStartWorkflow,
 }: {
   plan: ResearchPlan;
+  runs: Record<string, ResearchRun>;
+  syncing: boolean;
+  onSyncPlan: () => void | Promise<Record<string, ResearchRun>>;
   onStartWorkflow: (action: ResearchAction) => void | Promise<void>;
 }) {
   if (!plan.actions.length) {
@@ -695,10 +813,20 @@ function ResearchPlanPanel({
             Concrete research tasks generated from unresolved dependencies. None of these tasks is an execution recommendation or profit claim.
           </p>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {plan.blocking_count ? <Badge variant="destructive">{plan.blocking_count} blocking</Badge> : null}
           {plan.high_count ? <Badge variant="secondary">{plan.high_count} high</Badge> : null}
           <Badge variant="outline">{plan.action_count} total</Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            disabled={syncing}
+            onClick={() => onSyncPlan()}
+          >
+            {syncing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+            Save & track
+          </Button>
         </div>
       </div>
 
@@ -716,6 +844,11 @@ function ResearchPlanPanel({
               >
                 {item.priority}
               </Badge>
+              {runs[item.id] ? (
+                <Badge variant="outline" className="text-[10px]">
+                  {runs[item.id].lifecycle_status.replaceAll("_", " ")}
+                </Badge>
+              ) : null}
             </div>
 
             {item.required_evidence.length ? (
