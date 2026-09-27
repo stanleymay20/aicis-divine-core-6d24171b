@@ -166,3 +166,62 @@ test("RFQ response cannot silently become verified quote", () => {
   assert.equal(result.normalized_response.evidence_status, "rfq_response_unverified");
   assert.equal(result.normalized_response.transaction_eligible, false);
 });
+
+
+test("full landed cost response requires evidence for that completeness claim", () => {
+  const result = normalizeRfqResponse({
+    rfq_id: "rfq:1",
+    quote_id: "supplier-quote-77",
+    role: "supplier",
+    counterparty_id: "supplier-1",
+    legal_name: "Verified Cocoa Exporter Ltd",
+    jurisdiction: "Ghana",
+    product_id: "cocoa",
+    unit_price: 3100,
+    currency: "EUR",
+    quantity: 10,
+    quantity_unit: "tonnes",
+    incoterm: "CIF",
+    payment_terms: "LC at sight",
+    cost_completeness: "full_landed_cost",
+    cost_completeness_evidence_refs: [],
+    valid_until: "2026-10-02T12:00:00Z",
+    evidence_refs: evidence("rfq-response"),
+  }, "2026-09-27T15:10:00Z");
+
+  assert.equal(result.valid, false);
+  assert.ok(result.reasons.includes("cost_completeness_evidence_invalid"));
+});
+
+test("evidenced additional costs survive normalization", () => {
+  const result = normalizeRfqResponse({
+    rfq_id: "rfq:1",
+    quote_id: "supplier-quote-77",
+    role: "supplier",
+    counterparty_id: "supplier-1",
+    legal_name: "Verified Cocoa Exporter Ltd",
+    jurisdiction: "Ghana",
+    product_id: "cocoa",
+    unit_price: 3100,
+    currency: "EUR",
+    quantity: 10,
+    quantity_unit: "tonnes",
+    incoterm: "CIF",
+    payment_terms: "LC at sight",
+    cost_completeness: "full_landed_cost",
+    cost_completeness_evidence_refs: evidence("landed-completeness"),
+    additional_costs: [{
+      type: "inspection",
+      amount: 500,
+      basis: "fixed",
+      currency: "EUR",
+      evidence_refs: evidence("inspection-cost"),
+    }],
+    valid_until: "2026-10-02T12:00:00Z",
+    evidence_refs: evidence("rfq-response"),
+  }, "2026-09-27T15:10:00Z");
+
+  assert.equal(result.valid, true);
+  assert.equal(result.normalized_response.cost_completeness, "full_landed_cost");
+  assert.equal(result.normalized_response.additional_costs[0].amount, 500);
+});
