@@ -112,7 +112,7 @@ serve(async (req) => {
           { provider_name: "entsoe", domain: "energy", metric_name: "renewable_share_pct", iso3, period, value: (renewable / total) * 100, unit: "pct", provenance_source: "ENTSO-E via energy-charts" }
         );
       } catch (e) {
-        errors.push(`${bzn}:${(e as Error).message}`);
+        errors.push(`${ZONES[zi].bzn}:${(e as Error).message}`);
       }
     }
 
