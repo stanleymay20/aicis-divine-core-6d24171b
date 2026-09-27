@@ -27,6 +27,7 @@ type OpportunityProfile = {
   objective: "balanced" | "net_profit" | "return_on_capital" | "profit_velocity" | "capital_preservation";
   risk_tolerance: "low" | "balanced" | "high";
   capital_available: number | null;
+  base_currency: string;
   max_cycle_days: number;
   min_base_margin_pct: number;
   min_evidence_score: number;
@@ -47,6 +48,7 @@ const DEFAULT_PROFILE: OpportunityProfile = {
   objective: "balanced",
   risk_tolerance: "balanced",
   capital_available: null,
+  base_currency: "",
   max_cycle_days: 90,
   min_base_margin_pct: 3,
   min_evidence_score: 60,
@@ -229,6 +231,14 @@ export default function OpportunityRadar() {
               value={profile.capital_available ?? ""}
               placeholder="e.g. 10000"
               onChange={(e) => updateProfile("capital_available", e.target.value === "" ? null : toNumber(e.target.value, 0))}
+            />
+          </Field>
+          <Field label="Comparison currency">
+            <Input
+              value={profile.base_currency}
+              maxLength={3}
+              placeholder="e.g. EUR"
+              onChange={(e) => updateProfile("base_currency", e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
             />
           </Field>
           <Field label="Objective">
