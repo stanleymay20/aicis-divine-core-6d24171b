@@ -100,6 +100,18 @@ export function OpportunityHypothesesPanel() {
                 <p className="mt-2 text-[10px] text-muted-foreground">
                   Profitability unknown until current quotes, costs, counterparties and compliance are verified.
                 </p>
+                <div className="mt-2 flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => window.dispatchEvent(new CustomEvent("aicis:investigate-product", {
+                      detail: { product: item.product.name, countries: item.countries },
+                    }))}
+                  >
+                    Investigate suppliers
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
