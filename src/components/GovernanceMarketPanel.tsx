@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,21 +5,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Store, TrendingUp, Users, BarChart3, RefreshCw } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { 
-  type GovernanceAsset, 
-  type GovernancePartner, 
+import { ArrowRight, BarChart3, RefreshCw, ShieldAlert, Store, TrendingUp, Users } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
   type GovernanceTrade,
   type GovernanceAssetsResponse,
-  getErrorMessage 
+  getErrorMessage,
 } from "@/types/aicis";
 
 export const GovernanceMarketPanel = () => {
   const { toast } = useToast();
-  const [tradeAmount, setTradeAmount] = useState("");
-  const [selectedAsset, setSelectedAsset] = useState<string>("");
+  const navigate = useNavigate();
 
   const { data: assetsData, refetch: refetchAssets } = useQuery({
     queryKey: ["governance-assets"],
@@ -40,38 +35,6 @@ export const GovernanceMarketPanel = () => {
       return (data?.trades || []) as GovernanceTrade[];
     },
   });
-
-  const handleTrade = async () => {
-    if (!selectedAsset || !tradeAmount) {
-      toast({
-        title: "Missing Information",
-        description: "Please select an asset and enter amount",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.functions.invoke("gov-initiate-trade", {
-        body: { asset_symbol: selectedAsset, asset_amount: parseFloat(tradeAmount) },
-      });
-      if (error) throw error;
-
-      toast({
-        title: "Trade Initiated",
-        description: `${tradeAmount} ${selectedAsset} trade pending execution`,
-      });
-      
-      setTradeAmount("");
-      refetchTrades();
-    } catch (error) {
-      toast({
-        title: "Trade Failed",
-        description: getErrorMessage(error),
-        variant: "destructive",
-      });
-    }
-  };
 
   const handleSyncPartners = async () => {
     try {
@@ -124,7 +87,7 @@ export const GovernanceMarketPanel = () => {
           </div>
 
           <div className="grid gap-3">
-            {assetsData?.assets?.map((asset: any) => (
+            {assetsData?.assets?.map((asset) => (
               <Card key={asset.id} className="p-4 bg-muted/20">
                 <div className="flex justify-between items-start">
                   <div>
@@ -135,33 +98,34 @@ export const GovernanceMarketPanel = () => {
                     <p className="text-sm text-muted-foreground mt-1">{asset.asset_name}</p>
                     <p className="text-xs text-muted-foreground mt-2">{asset.description_md}</p>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => setSelectedAsset(asset.asset_symbol)}
-                    variant={selectedAsset === asset.asset_symbol ? "default" : "outline"}
-                  >
-                    Select
-                  </Button>
+                  <Badge variant="secondary">View only</Badge>
                 </div>
               </Card>
             ))}
           </div>
 
-          {selectedAsset && (
-            <Card className="p-4 bg-primary/10">
-              <Label htmlFor="amount">Trade Amount</Label>
-              <div className="flex gap-2 mt-2">
-                <Input
-                  id="amount"
-                  type="number"
-                  value={tradeAmount}
-                  onChange={(e) => setTradeAmount(e.target.value)}
-                  placeholder="Amount"
-                />
-                <Button onClick={handleTrade}>Initiate Trade</Button>
+          <Card className="p-4 border-dashed bg-muted/20">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="mt-0.5 h-4 w-4 text-muted-foreground" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Legacy SC trading disabled</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  This historical panel previously used demo pricing and internal wallet mutation. It is now view-only.
+                  Use Opportunity Radar for verified transaction construction and the audited execution-preview workflow.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 gap-2"
+                  onClick={() => navigate("/opportunities")}
+                >
+                  Open Opportunity Radar
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
               </div>
-            </Card>
-          )}
+            </div>
+          </Card>
         </TabsContent>
 
         <TabsContent value="partners" className="space-y-4">
@@ -174,7 +138,7 @@ export const GovernanceMarketPanel = () => {
           </div>
 
           <div className="grid gap-3">
-            {assetsData?.partners?.map((partner: any) => (
+            {assetsData?.partners?.map((partner) => (
               <Card key={partner.id} className="p-4 bg-muted/20">
                 <div className="flex justify-between items-center">
                   <div>
@@ -198,7 +162,7 @@ export const GovernanceMarketPanel = () => {
         <TabsContent value="trades" className="space-y-4">
           <h3 className="text-lg font-orbitron font-bold text-primary mb-4">Recent Trades</h3>
           <div className="space-y-3">
-            {tradesData?.map((trade: any) => (
+            {tradesData?.map((trade) => (
               <Card key={trade.id} className="p-4 bg-muted/20">
                 <div className="flex justify-between items-center">
                   <div>
@@ -231,7 +195,7 @@ export const GovernanceMarketPanel = () => {
             <Card className="p-4 bg-muted/20">
               <p className="text-sm text-muted-foreground">Avg Trust Score</p>
               <p className="text-2xl font-bold text-primary">
-                {assetsData?.partners?.reduce((sum: number, p: any) => sum + p.trust_score, 0) / 
+                {assetsData?.partners?.reduce((sum, partner) => sum + partner.trust_score, 0) / 
                  (assetsData?.partners?.length || 1)}%
               </p>
             </Card>
@@ -242,7 +206,7 @@ export const GovernanceMarketPanel = () => {
             <Card className="p-4 bg-muted/20">
               <p className="text-sm text-muted-foreground">Active Partners</p>
               <p className="text-2xl font-bold text-primary">
-                {assetsData?.partners?.filter((p: any) => p.enabled)?.length || 0}
+                {assetsData?.partners?.filter((partner) => partner.enabled)?.length || 0}
               </p>
             </Card>
           </div>
