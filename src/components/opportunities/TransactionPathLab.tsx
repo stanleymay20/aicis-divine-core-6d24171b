@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowRight, CheckCircle2, CircleDollarSign, Loader2, MapPin, RefreshCw, ShieldAlert, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleDollarSign, Compass, Loader2, MapPin, RefreshCw, ShieldAlert, Users } from "lucide-react";
 
 type RankItem = {
   candidate_id: string;
@@ -35,6 +35,52 @@ type RankItem = {
   };
 };
 
+type StrategicOption = {
+  id: string;
+  title: string;
+  strategy_type: string;
+  directness: string;
+  feasible: boolean;
+  research_only: boolean;
+  pareto_frontier: boolean;
+  strategic_fit_score: number;
+  capital_required: number | null;
+  expected_value: number | null;
+  downside_loss: number | null;
+  reversibility_score: number;
+  execution_friction_score: number;
+  feasibility_reasons: string[];
+  missing_capabilities: string[];
+  robustness: {
+    scenario_count: number;
+    worst_case: number | null;
+    best_case: number | null;
+    average_case: number | null;
+    robustness_score: number | null;
+  };
+  regret: {
+    comparable_scenarios: number;
+    max_regret: number | null;
+    average_regret: number | null;
+  };
+  doctrine_trace: Array<{
+    id: string;
+    source: string;
+    principle: string;
+  }>;
+};
+
+type StrategicResponse = {
+  engine_version: string;
+  option_count: number;
+  feasible_count: number;
+  pareto_frontier_count: number;
+  primary_strategy: StrategicOption | null;
+  no_action_option: StrategicOption | null;
+  options: StrategicOption[];
+  scope_notice: string;
+};
+
 type ReferenceFxResponse = {
   ok: boolean;
   rates?: Array<Record<string, unknown>>;
@@ -57,6 +103,7 @@ type BuildResponse = {
     ranked: RankItem[];
     ranking_scope_notice: string;
   };
+  strategic?: StrategicResponse;
   portfolio?: {
     allocation_available: boolean;
     reason?: string;
@@ -94,7 +141,11 @@ const SCHEMA_HINT = [
   '  "sale_offers": [...verified buyer quotes...],',
   '  "routes": [...verified logistics quotes and costs...],',
   '  "structures": [...transaction structures...],',
-  '  "scenario": {...validated downside/completion/cycle inputs...}',
+  '  "scenario": {...validated downside/completion/cycle inputs...},',
+  '  "strategic_context": {"actor_state": {...}, "terrain": {...}, "timing": {...}},',
+  '  "indirect_strategies": [...evidence-backed alternatives...],',
+  '  "position_options": [...optional strategic positions...],',
+  '  "information_actions": [...decision-relevant information actions...]',
   "}"
 ].join("\n");
 
@@ -350,6 +401,8 @@ export function TransactionPathLab() {
           <p className="text-[10px] text-muted-foreground">{result.ranking.ranking_scope_notice}</p>
         ) : null}
 
+        {result?.strategic ? <StrategicRecommendation strategic={result.strategic} /> : null}
+
         {result?.portfolio ? <PortfolioAllocation portfolio={result.portfolio} /> : null}
       </CardContent>
     </Card>
@@ -454,6 +507,94 @@ function TopPath({ candidate, result }: { candidate: RankItem; result: BuildResp
       )}
 
       <BuildStats result={result} />
+    </div>
+  );
+}
+
+function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }) {
+  const primary = strategic.primary_strategy;
+  const frontier = strategic.options.filter((option) => option.pareto_frontier);
+
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2">
+            <Compass className="h-4 w-4 text-primary" />
+            <p className="text-sm font-semibold">Strategic Doctrine Engine</p>
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Compares feasible strategies, not just transactions. Sunzi-derived principles are treated as testable heuristics.
+          </p>
+        </div>
+        <Badge variant="outline">{strategic.pareto_frontier_count} frontier options</Badge>
+      </div>
+
+      {primary ? (
+        <div className="rounded-md bg-muted/20 p-3 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Primary strategy</p>
+              <p className="text-sm font-semibold">{primary.title}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {primary.strategy_type.replaceAll("_", " ")} · {primary.directness}
+              </p>
+            </div>
+            <Badge>{primary.strategic_fit_score.toFixed(1)} fit</Badge>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <Metric label="Expected value" value={formatMoney(primary.expected_value)} />
+            <Metric label="Capital required" value={formatMoney(primary.capital_required)} />
+            <Metric label="Downside" value={formatMoney(primary.downside_loss)} />
+            <Metric label="Reversibility" value={primary.reversibility_score.toFixed(0) + "/100"} />
+          </div>
+
+          {primary.doctrine_trace.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {primary.doctrine_trace.map((item) => (
+                <Badge key={item.id} variant="outline" className="text-[10px]">
+                  {item.id.replaceAll("_", " ")}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+
+          {primary.missing_capabilities.length ? (
+            <p className="text-[10px] text-muted-foreground">
+              Missing capabilities: {primary.missing_capabilities.join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+          No economically comparable strategic option cleared the feasibility and evidence boundaries.
+        </div>
+      )}
+
+      {frontier.length ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold">Pareto frontier</p>
+          {frontier.slice(0, 8).map((option) => (
+            <div key={option.id} className="flex items-center justify-between gap-3 rounded-md border border-border/70 p-2.5">
+              <div className="min-w-0">
+                <p className="text-xs font-medium truncate">{option.title}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {option.strategy_type.replaceAll("_", " ")}
+                  {option.research_only ? " · research only" : ""}
+                  {!option.feasible ? " · infeasible" : ""}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-xs font-semibold">{option.strategic_fit_score.toFixed(1)}</p>
+                <p className="text-[9px] text-muted-foreground">fit</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <p className="text-[10px] text-muted-foreground">{strategic.scope_notice}</p>
     </div>
   );
 }
