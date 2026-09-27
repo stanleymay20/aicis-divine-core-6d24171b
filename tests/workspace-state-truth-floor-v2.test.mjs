@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const forecastPath = new URL("../src/pages/ForecastValidation.tsx", import.meta.url);
+const opportunityPath = new URL("../src/pages/OpportunityRadar.tsx", import.meta.url);
 
 test("Forecast validation keeps navigation visible during loading", async () => {
   const source = await readFile(forecastPath, "utf8");
@@ -18,5 +19,15 @@ test("Forecast validation does not translate query failure into awaiting data", 
   assert.match(source, /isError/);
   assert.match(source, /Forecast validation unavailable/);
   assert.match(source, /not treating\s+this state as awaiting data/);
+  assert.match(source, /role="alert"/);
+});
+
+
+test("Opportunity research failure is not rendered as an empty queue", async () => {
+  const source = await readFile(opportunityPath, "utf8");
+
+  assert.match(source, /isError/);
+  assert.match(source, /Opportunity research unavailable/);
+  assert.match(source, /not treating this as an empty research queue/);
   assert.match(source, /role="alert"/);
 });
