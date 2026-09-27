@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnalysisWorkspaceNav } from "@/components/analysis/AnalysisWorkspaceNav";
+import { GovernedResearchPanel } from "@/components/analysis/GovernedResearchPanel";
 
 type QueryError = { message?: string };
 type QueryResponse<T> = { data: T[] | null; error: QueryError | null };
@@ -234,6 +235,8 @@ export default function IntelligenceEngine() {
             )}
           </div>
         </header>
+
+        <GovernedResearchPanel />
 
         <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
           <Metric label="Verified edges" value={metrics.verifiedEdges} icon={<Network className="h-3.5 w-3.5" />} />
