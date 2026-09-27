@@ -509,6 +509,95 @@ executable_action_available = false
 
 If new evidence changes the transaction bundle, the prior ranking is stale and the user must rebuild before approval readiness can be reconsidered.
 
+## Interactive Brokers what-if adapter v1
+
+Implementation:
+- `supabase/functions/_shared/ibkr-order-preview-v1.mjs`
+- `supabase/functions/preview-execution-ibkr/index.ts`
+- `supabase/functions/execution-provider-status/index.ts`
+- `src/components/opportunities/IbkrWhatIfPreviewPanel.tsx`
+- `tests/ibkr-order-preview-v1.test.mjs`
+- `tests/ibkr-preview-adapter-source-guard.test.mjs`
+
+Purpose:
+- real server-side provider order preview;
+- market-data snapshot + commission/margin impact;
+- no order submission.
+
+Server-only configuration:
+```text
+IBKR_WEB_API_BASE_URL
+IBKR_WEB_API_BEARER_TOKEN
+IBKR_ACCOUNT_ID
+```
+
+Client requests never contain the broker bearer token or account id.
+
+The adapter requires the configured brokerage session to already be authenticated.
+It checks `/iserver/auth/status` and fails closed if the session is not authenticated.
+It deliberately does not initialize or compete for a brokerage session.
+
+Market-data flow:
+1. call `/iserver/marketdata/snapshot` as pre-flight;
+2. wait a bounded local delay;
+3. call the snapshot endpoint again for fields:
+   - last;
+   - bid;
+   - ask;
+   - ask size;
+   - bid size;
+   - market-data availability;
+4. preserve the provider `_updated` timestamp.
+
+Order-preview flow:
+- v1 allows only:
+  - BUY or SELL;
+  - LMT order;
+  - DAY time-in-force;
+  - positive conid / quantity / limit price.
+- call only:
+  `/iserver/account/{accountId}/orders/whatif`
+- retain:
+  - provider amount;
+  - commission;
+  - total;
+  - equity impact;
+  - initial-margin impact;
+  - maintenance-margin impact;
+  - position impact;
+  - provider warning/error.
+
+The what-if response receives its own retrieval timestamp and SHA-256 fingerprint.
+The market snapshot receives a separate SHA-256 fingerprint.
+
+The adapter must always retain:
+```text
+order_endpoint_called = false
+order_submitted = false
+money_moved = false
+approval_token = null
+```
+
+The source guard test prevents an accidental place-order endpoint from being introduced.
+
+Provider capability status is exposed without secrets.
+The UI distinguishes:
+- adapter code exists;
+- server-side provider session configured;
+- provider-attested executable quote capability;
+- order submission capability.
+
+In v1:
+```text
+market_snapshot = configured provider session
+order_preview_whatif = configured provider session
+provider_attested_executable_quote = false
+order_submission = false
+money_movement = false
+```
+
+A provider what-if preview is useful evidence about costs/margin, but it is **not** itself an executable quote and does not authorize a trade.
+
 ## Legacy governance trade quarantine
 
 Historical endpoints:
