@@ -150,6 +150,8 @@ function normalizedOption(raw, fallback = {}) {
     option_value_estimate: optionValueEstimate,
     net_position_value_estimate: finite(derivedPositionValue) ? round(derivedPositionValue) : null,
     sequence_steps: list(raw.sequence_steps),
+    assumptions: list(raw.assumptions),
+    sensitivity_cases: list(raw.sensitivity_cases),
     reversibility_score: finite(raw.reversibility_score) ? clamp(raw.reversibility_score) : 50,
     execution_friction_score: finite(raw.execution_friction_score) ? clamp(raw.execution_friction_score) : 50,
     required_capabilities: list(raw.required_capabilities).map(String),
@@ -201,6 +203,8 @@ function transactionOption(candidate) {
     execution_friction_score: candidate.execution_ready ? 55 : 80,
     required_capabilities: candidate.required_capabilities || [],
     sequence_steps: candidate?.execution_dossier?.how?.next_actions || [],
+    assumptions: candidate.assumptions || [],
+    sensitivity_cases: candidate.sensitivity_cases || [],
     invalidation_rules: candidate.invalidation_rules || [],
     switching_rules: candidate.switching_rules || [],
     scenarios: candidate.scenarios || [],
@@ -269,6 +273,8 @@ function noActionOption(candidate) {
     execution_friction_score: 0,
     required_capabilities: [],
     sequence_steps: [],
+    assumptions: [],
+    sensitivity_cases: [],
     invalidation_rules: [],
     switching_rules: [],
     scenarios: candidate.no_action_scenarios || [],
@@ -341,6 +347,36 @@ function robustness(option) {
     best_case: round(best),
     average_case: round(avg),
     robustness_score: round(clamp(100 - downsideRatio * 100), 1),
+  };
+}
+
+function sensitivityAnalysis(option) {
+  const baseline = option.expected_value;
+  const cases = list(option.sensitivity_cases)
+    .filter((item) =>
+      item &&
+      item.id &&
+      finite(item.shocked_expected_value) &&
+      finite(baseline)
+    )
+    .map((item) => ({
+      id: String(item.id),
+      assumption: String(item.assumption || item.label || item.id),
+      baseline_value: item.baseline_value ?? null,
+      shocked_value: item.shocked_value ?? null,
+      shocked_expected_value: round(item.shocked_expected_value),
+      delta_expected_value: round(item.shocked_expected_value - baseline),
+      evidence_refs: list(item.evidence_refs),
+    }))
+    .sort((a, b) => Math.abs(b.delta_expected_value) - Math.abs(a.delta_expected_value));
+
+  return {
+    case_count: cases.length,
+    cases,
+    largest_absolute_delta: cases.length ? Math.abs(cases[0].delta_expected_value) : null,
+    worst_delta: cases.length ? Math.min(...cases.map((item) => item.delta_expected_value)) : null,
+    most_sensitive_assumption: cases.length ? cases[0].assumption : null,
+    semantics: "supplied_sensitivity_cases_not_probability_distribution",
   };
 }
 
@@ -503,6 +539,7 @@ export function evaluateStrategicOptions({
   const evaluated = unique.map((option) => {
     const result = feasibilityById.get(option.id);
     const robust = robustness(option);
+    const sensitivity = sensitivityAnalysis(option);
     const regret = regrets.get(option.id) || { comparable_scenarios: 0, max_regret: null, average_regret: null };
     const fit = strategicFit(option, preferences);
 
@@ -514,6 +551,7 @@ export function evaluateStrategicOptions({
       strategic_fit_score: fit,
       economy_of_force_ratio: economyOfForce(option),
       robustness: robust,
+      sensitivity,
       regret,
       pareto_frontier: frontierIds.has(option.id),
       doctrine_trace: doctrineTrace(option),
@@ -559,6 +597,8 @@ export function evaluateStrategicOptions({
       "information_value_realized",
     ],
     pre_commit_sequence_steps: primary.sequence_steps,
+    pre_commit_assumptions: primary.assumptions,
+    pre_commit_sensitivity_cases: primary.sensitivity_cases,
     pre_commit_invalidation_rules: primary.invalidation_rules,
     pre_commit_switching_rules: primary.switching_rules,
     epistemic_boundary: "outcome_association_not_causal_attribution",
