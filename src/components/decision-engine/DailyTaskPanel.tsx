@@ -46,8 +46,12 @@ export default function DailyTaskPanel() {
         return;
       }
       toast.success(`Generated ${data?.total_recommendations || 0} recommendations across ${7 - (data?.failed_domains || 0)} domains`);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to trigger daily inference");
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to trigger daily inference",
+      );
     } finally {
       setRunning(false);
     }
