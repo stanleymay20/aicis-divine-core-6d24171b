@@ -5,6 +5,7 @@ import {
   parseOfacSdnEntities,
   parseUnConsolidatedEntities,
   parseUkSanctionsCsv,
+  parseEuFsfEntities,
   screenEntityAgainstOfficialSnapshots,
 } from "../supabase/functions/_shared/official-sanctions-screen-v1.mjs";
 
@@ -111,4 +112,40 @@ test("UK official snapshot participates in exact-name sanctions review", () => {
   });
   assert.equal(result.status, "review_required_potential_match");
   assert.equal(result.matches[0].source, "uk_sanctions");
+});
+
+
+const EU_XML = `<?xml version="1.0"?>
+<export xmlns="http://eu.europa.ec/fpi/fsd/export">
+  <sanctionEntity euReferenceNumber="EU.123.45" unitedNationId="" logicalId="77">
+    <regulation programme="RUS" logicalId="1"></regulation>
+    <subjectType code="enterprise" classificationCode="E"/>
+    <nameAlias wholeName="ACME EUROPE LTD" nameLanguage="EN" strong="true" logicalId="1"/>
+    <nameAlias wholeName="ACME EU EXPORTS" nameLanguage="EN" strong="true" logicalId="2"/>
+  </sanctionEntity>
+  <sanctionEntity euReferenceNumber="EU.999.1" logicalId="88">
+    <subjectType code="person" classificationCode="P"/>
+    <nameAlias wholeName="JANE DOE" logicalId="3"/>
+  </sanctionEntity>
+</export>`;
+
+test("parses EU FSF entity records and excludes persons", () => {
+  const records = parseEuFsfEntities(EU_XML);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].record_id, "EU.123.45");
+  assert.equal(records[0].primary_name, "ACME EUROPE LTD");
+  assert.deepEqual(records[0].aliases, ["ACME EU EXPORTS"]);
+  assert.deepEqual(records[0].identifiers, ["EU.123.45"]);
+  assert.deepEqual(records[0].programs, ["RUS"]);
+});
+
+test("EU official snapshot participates in exact-name sanctions review", () => {
+  const eu = parseEuFsfEntities(EU_XML);
+  const result = screenEntityAgainstOfficialSnapshots({
+    legal_name: "ACME EU EXPORTS",
+    snapshots: [{ source: "eu_sanctions", records: eu }],
+    required_sources: ["eu_sanctions"],
+  });
+  assert.equal(result.status, "review_required_potential_match");
+  assert.equal(result.matches[0].source, "eu_sanctions");
 });
