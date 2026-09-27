@@ -106,6 +106,22 @@ function normalizedOption(raw, fallback = {}) {
   };
 }
 
+function transactionDirectness(transactionType) {
+  const type = lower(transactionType);
+  if ([
+    "brokerage",
+    "broker",
+    "agency",
+    "introduction",
+    "referral",
+    "financing",
+    "licensing",
+    "partnership",
+    "distribution_rights",
+  ].includes(type)) return "indirect";
+  return "direct";
+}
+
 function transactionOption(candidate) {
   const id = candidate.candidate_id || candidate.id;
   return normalizedOption({
@@ -113,7 +129,7 @@ function transactionOption(candidate) {
     title: "Direct execution — " + (candidate.title || "candidate"),
     strategy_type: "direct_transaction",
     source_candidate_id: id || null,
-    directness: "direct",
+    directness: transactionDirectness(candidate.transaction_type),
     transaction_type: candidate.transaction_type || null,
     research_only: false,
     executable_input: candidate.execution_ready === true,
