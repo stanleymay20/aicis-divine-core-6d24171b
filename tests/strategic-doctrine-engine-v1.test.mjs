@@ -502,3 +502,69 @@ test("learning packet freezes the selected strategy sequence before outcome", ()
     "lock logistics",
   ]);
 });
+
+
+test("sensitivity analysis identifies the most damaging supplied assumption", () => {
+  const candidate = directCandidate();
+  candidate.indirect_strategies[0].sensitivity_cases = [
+    {
+      id: "buyer-price-down",
+      assumption: "buyer price",
+      baseline_value: 3900,
+      shocked_value: 3600,
+      shocked_expected_value: 1200,
+      evidence_refs: [{
+        source_id: "buyer-sensitivity",
+        observed_at: "2026-09-27T10:00:00Z",
+        sha256: "b".repeat(64),
+      }],
+    },
+    {
+      id: "freight-up",
+      assumption: "freight cost",
+      baseline_value: 400,
+      shocked_value: 520,
+      shocked_expected_value: 2100,
+      evidence_refs: [{
+        source_id: "freight-sensitivity",
+        observed_at: "2026-09-27T10:00:00Z",
+        sha256: "c".repeat(64),
+      }],
+    },
+  ];
+
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  const broker = result.options.find((item) => item.id === "broker-cocoa");
+  assert.equal(broker.sensitivity.case_count, 2);
+  assert.equal(broker.sensitivity.most_sensitive_assumption, "buyer price");
+  assert.equal(broker.sensitivity.worst_delta, -1600);
+  assert.equal(broker.sensitivity.cases[0].id, "buyer-price-down");
+});
+
+test("learning packet freezes assumptions and sensitivity cases before outcome", () => {
+  const candidate = directCandidate();
+  candidate.indirect_strategies[0].assumptions = [
+    { id: "buyer-quote-holds", statement: "Buyer quote remains valid through negotiation." },
+  ];
+  candidate.indirect_strategies[0].sensitivity_cases = [
+    {
+      id: "buyer-price-down",
+      assumption: "buyer price",
+      shocked_expected_value: 1200,
+    },
+  ];
+
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  assert.equal(result.learning_packet.pre_commit_assumptions[0].id, "buyer-quote-holds");
+  assert.equal(result.learning_packet.pre_commit_sensitivity_cases[0].id, "buyer-price-down");
+});
