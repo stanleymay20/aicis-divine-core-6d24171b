@@ -45,9 +45,10 @@ test("ranks only fully comparable full-landed-cost responses", () => {
   });
 
   assert.equal(result.ordering_allowed, true);
-  assert.equal(result.quotes[0].quote_id, "A");
-  assert.equal(result.quotes[0].total_comparable_cost, 31000);
-  assert.equal(result.quotes[1].total_comparable_cost, 30700 + 0); // verify arithmetic below
+  assert.equal(result.quotes[0].quote_id, "B");
+  assert.equal(result.quotes[0].total_comparable_cost, 30700);
+  assert.equal(result.quotes[1].quote_id, "A");
+  assert.equal(result.quotes[1].total_comparable_cost, 31000);
   assert.equal(result.lowest_evaluated_landed_cost_response.quote_id, "B");
   assert.equal(result.transaction_eligible, false);
 });
