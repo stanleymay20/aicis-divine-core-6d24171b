@@ -135,7 +135,9 @@ export function PlanetaryPulseMap({ height = 380 }: { height?: number | string }
         layer.removeLayer(halo);
       }
     }, 80);
-    setTimeout(() => { try { layer.removeLayer(dot); } catch {} }, 60_000);
+    setTimeout(() => {
+      if (layer.hasLayer(dot)) layer.removeLayer(dot);
+    }, 60_000);
   };
 
   // Seed with initial pulses (staggered for visual effect)
@@ -152,9 +154,12 @@ export function PlanetaryPulseMap({ height = 380 }: { height?: number | string }
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "global_signals" },
         (payload) => {
-          const row: any = payload.new;
-          const countries: string[] = row?.affected_countries ?? [];
-          for (const c of countries) pulse(c, row?.ingestion_source ?? null);
+          const row = payload.new as {
+            affected_countries?: string[] | null;
+            ingestion_source?: string | null;
+          };
+          const countries = row.affected_countries ?? [];
+          for (const c of countries) pulse(c, row.ingestion_source ?? null);
         },
       )
       .subscribe();
