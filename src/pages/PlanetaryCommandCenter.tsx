@@ -56,7 +56,7 @@ type InsightRow = {
 
 type CommandRow = Record<string, unknown>;
 
-type StageStatus = "active" | "degraded" | "syncing" | "waiting";
+type StageStatus = "active" | "degraded" | "syncing" | "waiting" | "not deployed";
 
 const viewQuery = async <T,>(
   view: string,
