@@ -155,6 +155,18 @@ export function StrategicResearchTracker() {
       return;
     }
 
+    if (workflow.kind === "landed_cost_verification") {
+      document.getElementById("landed-cost-verification")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      toast({
+        title: workflow.label || "Verify landed-cost evidence",
+        description: "Use the current physical-trade candidate to complete attributable landed-cost coverage, then attach the evidence pack and rebuild.",
+      });
+      return;
+    }
+
     if (workflow.kind === "actor_profile") {
       document.getElementById("strategic-capability-profile")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
