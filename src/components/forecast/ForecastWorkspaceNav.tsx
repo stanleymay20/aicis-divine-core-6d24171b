@@ -52,11 +52,31 @@ const modes: ForecastMode[] = [
   },
 ];
 
+const persistedForecastSearch = (search: string) => {
+  const current = new URLSearchParams(search);
+  const next = new URLSearchParams();
+
+  for (const key of ["entity", "question"]) {
+    const value = current.get(key);
+    if (value) next.set(key, value);
+  }
+
+  return next.toString();
+};
+
 export const ForecastWorkspaceNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { tier, loading: tierLoading } = useUserTier();
   const { selectedEntity, openAsk } = useIntelligenceOS();
+
+  const navigateMode = (path: string) => {
+    const search = persistedForecastSearch(location.search);
+    navigate({
+      pathname: path,
+      search: search ? `?${search}` : "",
+    });
+  };
 
   return (
     <div className="rounded-xl border border-border/70 bg-card/35 p-2">
@@ -94,7 +114,7 @@ export const ForecastWorkspaceNav = () => {
                   type="button"
                   variant={active ? "secondary" : "ghost"}
                   size="sm"
-                  onClick={() => navigate(mode.path)}
+                  onClick={() => navigateMode(mode.path)}
                   className={cn(
                     "h-8 shrink-0 gap-1.5 px-2.5 text-[11px]",
                     active &&
