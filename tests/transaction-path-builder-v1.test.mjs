@@ -181,12 +181,63 @@ test("rejects expired or provenance-free quotes", () => {
   assert.ok(result.rejected_paths.some((item) => item.reasons.includes("source_offer_not_verified_or_expired")));
 });
 
-test("rejects cross-currency paths until verified FX is explicitly modeled", () => {
+test("rejects cross-currency paths until verified FX is supplied", () => {
   const input = baseInput();
   input.sale_offers[0].currency = "USD";
+  input.comparison_currency = "EUR";
   const result = buildTransactionPaths(input);
   assert.equal(result.candidates.length, 0);
-  assert.ok(result.rejected_paths.every((item) => item.reasons.includes("source_buyer_currency_mismatch")));
+  assert.ok(result.rejected_paths.every((item) => item.reasons.includes("buyer_fx_missing_or_unverified")));
+});
+
+test("accepts cross-currency paths with attributable current FX evidence", () => {
+  const input = baseInput();
+  input.sale_offers[0].currency = "USD";
+  input.sale_offers[0].unit_price = 4680;
+  input.comparison_currency = "EUR";
+  input.fx_rates = [{
+    id: "fx-eur-usd",
+    base_currency: "EUR",
+    quote_currency: "USD",
+    rate: 1.2,
+    observed_at: "2026-09-27T05:00:00Z",
+    valid_until: "2026-09-27T12:00:00Z",
+    evidence_status: "verified_market",
+    provider: "verified-provider",
+    evidence_refs: ref("fx-eur-usd"),
+  }];
+  const result = buildTransactionPaths(input);
+  assert.equal(result.candidates.length, 4);
+  const candidate = result.candidates[0];
+  assert.equal(candidate.currency, "EUR");
+  assert.equal(candidate.expected_revenue, 39000);
+  assert.ok(candidate.fx_conversions.some((fx) => fx.from_currency === "USD" && fx.to_currency === "EUR"));
+  assert.ok(candidate.evidence_manifest.fx.length > 0);
+});
+
+test("converts route costs into the requested comparison currency", () => {
+  const input = baseInput();
+  input.comparison_currency = "EUR";
+  input.routes[0].costs[0].currency = "USD";
+  input.routes[0].costs[0].amount = 480;
+  input.fx_rates = [{
+    id: "fx-eur-usd",
+    base_currency: "EUR",
+    quote_currency: "USD",
+    rate: 1.2,
+    observed_at: "2026-09-27T05:00:00Z",
+    valid_until: "2026-09-27T12:00:00Z",
+    evidence_status: "official_reference",
+    provider: "official-provider",
+    evidence_refs: ref("fx-eur-usd"),
+  }];
+  const result = buildTransactionPaths(input);
+  const candidate = result.candidates.find((item) => item.id.includes("route-cheap"));
+  assert.equal(candidate.expected_cost, 35300);
+  const freight = candidate.cost_breakdown.find((item) => item.type === "freight");
+  assert.equal(freight.original_currency, "USD");
+  assert.equal(freight.currency, "EUR");
+  assert.equal(freight.amount, 4000);
 });
 
 test("blocked compliance survives into the candidate for the ranking engine to reject", () => {
