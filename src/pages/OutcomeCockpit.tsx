@@ -15,6 +15,7 @@ import { ActionLifecycleControls } from "@/components/pilot-truth/ActionLifecycl
 import { ClipboardCheck, AlertTriangle, Clock, FlaskConical } from "lucide-react";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { formatDistanceToNow } from "date-fns";
+import { ForecastWorkspaceNav } from "@/components/forecast/ForecastWorkspaceNav";
 
 type Row = {
   action_id: string;
@@ -99,6 +100,7 @@ export default function OutcomeCockpit() {
 
   return (
     <div className="container max-w-7xl py-8 space-y-6">
+      <ForecastWorkspaceNav />
       <PanelBoundary>
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Outcome Capture Cockpit</h1>
