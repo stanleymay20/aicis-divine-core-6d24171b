@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ExecutionPreviewPanel } from "@/components/opportunities/ExecutionPreviewPanel";
+import { RfqDraftPanel } from "@/components/opportunities/RfqDraftPanel";
 import { ArrowRight, CheckCircle2, CircleDollarSign, Compass, Loader2, MapPin, RefreshCw, Search, ShieldAlert, Users } from "lucide-react";
 
 type RankItem = {
@@ -14,6 +15,14 @@ type RankItem = {
   transaction_type: string;
   score: number;
   execution_ready: boolean;
+  product?: {
+    id?: string;
+    name?: string;
+    unit?: string;
+    specification?: string | null;
+  } | null;
+  quantity?: number | null;
+  unit?: string | null;
   currency?: string | null;
   capital_required?: number | null;
   metrics: {
@@ -26,8 +35,48 @@ type RankItem = {
   execution_dossier: {
     missing_execution_fields: string[];
     where: {
-      source?: { name?: string; country?: string; unit_price?: number; currency?: string } | null;
-      destination?: { name?: string; country?: string; unit_price?: number; currency?: string } | null;
+      source?: {
+        id?: string;
+        role?: string;
+        name?: string;
+        country?: string;
+        registration_id?: string | null;
+        official_website?: string | null;
+        product_id?: string | null;
+        unit_price?: number;
+        currency?: string;
+        incoterm?: string | null;
+        payment_terms?: string | null;
+        compliance_status?: string | null;
+        contact?: {
+          company?: string;
+          channel?: string;
+          value?: string | null;
+          source?: string | null;
+        } | null;
+        evidence_refs?: Array<Record<string, unknown>>;
+      } | null;
+      destination?: {
+        id?: string;
+        role?: string;
+        name?: string;
+        country?: string;
+        registration_id?: string | null;
+        official_website?: string | null;
+        product_id?: string | null;
+        unit_price?: number;
+        currency?: string;
+        incoterm?: string | null;
+        payment_terms?: string | null;
+        compliance_status?: string | null;
+        contact?: {
+          company?: string;
+          channel?: string;
+          value?: string | null;
+          source?: string | null;
+        } | null;
+        evidence_refs?: Array<Record<string, unknown>>;
+      } | null;
       route?: string[];
     };
     who: {
@@ -820,18 +869,38 @@ export function TransactionPathLab() {
         {result?.strategic ? <StrategicRecommendation strategic={result.strategic} /> : null}
 
         {top && result?.strategic?.audit?.hash ? (
-          <ExecutionPreviewPanel
-            candidate={{
-              candidate_id: top.candidate_id,
-              title: top.title,
-              transaction_type: top.transaction_type,
-              execution_ready: top.execution_ready,
-              currency: top.currency ?? null,
-              capital_required: top.capital_required ?? null,
-            }}
-            strategicAuditHash={result.strategic.audit.hash}
-            onAddExecutableFx={addExecutableFx}
-          />
+          <>
+            <RfqDraftPanel
+              candidate={{
+                candidate_id: top.candidate_id,
+                title: top.title,
+                product: top.product ?? null,
+                quantity: top.quantity ?? null,
+                unit: top.unit ?? null,
+                currency: top.currency ?? null,
+                execution_dossier: {
+                  where: {
+                    source: top.execution_dossier.where.source ?? null,
+                    destination: top.execution_dossier.where.destination ?? null,
+                  },
+                },
+              }}
+              strategicAuditHash={result.strategic.audit.hash}
+            />
+
+            <ExecutionPreviewPanel
+              candidate={{
+                candidate_id: top.candidate_id,
+                title: top.title,
+                transaction_type: top.transaction_type,
+                execution_ready: top.execution_ready,
+                currency: top.currency ?? null,
+                capital_required: top.capital_required ?? null,
+              }}
+              strategicAuditHash={result.strategic.audit.hash}
+              onAddExecutableFx={addExecutableFx}
+            />
+          </>
         ) : null}
 
         {result?.research_plan ? (
