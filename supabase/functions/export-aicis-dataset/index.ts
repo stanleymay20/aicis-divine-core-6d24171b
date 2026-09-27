@@ -427,7 +427,9 @@ serve(async (req) => {
       const pageSize = Math.min(PAGE, limit - rawRows.length);
       let query = admin.from(spec.table).select(columns).range(from, from + pageSize - 1);
       query = applyFilters(query, spec, filters);
-      if (spec.dateCol) query = query.order(spec.dateCol, { ascending: false, nullsFirst: false });
+      if (spec.dateCol) // global_signals: match idx_global_signals_first_detected (DESC NULLS FIRST) so the
+      // 1.45M-row table is read by index instead of a full sort (statement timeout).
+      query = query.order(spec.dateCol, { ascending: false, nullsFirst: spec.table === "global_signals" });
       if (spec.idCol) query = query.order(spec.idCol, { ascending: false });
       const { data: page, error: pageError } = await query;
       if (pageError) throw new Error(`query: ${pageError.message}`);
