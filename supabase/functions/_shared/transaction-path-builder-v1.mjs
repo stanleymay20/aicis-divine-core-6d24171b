@@ -526,6 +526,7 @@ export function buildTransactionPaths(input = {}) {
               name: product.name,
               unit: product.unit,
               specification: product.specification ?? null,
+              hs_code: product.hs_code ?? null,
             },
             transaction_type: structure.transaction_type,
             domain: input.signal?.domain ?? product.domain ?? "trade",
@@ -696,6 +697,7 @@ export function buildTransactionPaths(input = {}) {
       id: product.id ?? null,
       name: product.name ?? null,
       unit: product.unit ?? null,
+      hs_code: product.hs_code ?? null,
     },
     requested_quantity: finite(quantity) ? quantity : null,
     supplied_counts: {
