@@ -141,42 +141,50 @@ export default function PlanetaryCommandCenter() {
   const kpis = useQuery({
     queryKey: ["planetary-command-kpis"],
     queryFn: () => viewQuery<KpiRow>("executive_planetary_dashboard_kpis_view", 1),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const readiness = useQuery({
     queryKey: ["planetary-command-readiness"],
     queryFn: () => viewQuery<ReadinessRow>("enterprise_readiness_command_view", 1, { column: "generated_at" }),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const insights = useQuery({
     queryKey: ["planetary-command-insights"],
     queryFn: () => viewQuery<InsightRow>("executive_planetary_insights_view", 5, { column: "generated_at" }),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const telemetry = useQuery({
     queryKey: ["planetary-command-telemetry"],
     queryFn: () => viewQuery<CommandRow>("telemetry_backbone_command_view", 8),
-    refetchInterval: 45_000,
+    refetchInterval: pollUnlessMissing(45_000),
+    retry: retryUnlessMissing,
   });
   const agents = useQuery({
     queryKey: ["planetary-command-agents"],
     queryFn: () => viewQuery<CommandRow>("agent_task_command_view", 8),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const causal = useQuery({
     queryKey: ["planetary-command-causal"],
     queryFn: () => viewQuery<CommandRow>("planetary_causal_command_view", 8),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const interventions = useQuery({
     queryKey: ["planetary-command-interventions"],
     queryFn: () => viewQuery<CommandRow>("intervention_governance_command_view", 8),
-    refetchInterval: 60_000,
+    refetchInterval: pollUnlessMissing(60_000),
+    retry: retryUnlessMissing,
   });
   const memory = useQuery({
     queryKey: ["planetary-command-memory"],
     queryFn: () => viewQuery<CommandRow>("memory_forecast_command_view", 8),
-    refetchInterval: 120_000,
+    refetchInterval: pollUnlessMissing(120_000),
+    retry: retryUnlessMissing,
   });
 
   const kpi = kpis.data?.[0];
