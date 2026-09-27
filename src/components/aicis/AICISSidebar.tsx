@@ -8,20 +8,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  BarChart3,
   ChevronsLeft,
   ChevronsRight,
-  DatabaseZap,
-  Globe2,
-  LayoutDashboard,
-  ShieldCheck,
   Sparkles,
-  Target,
-  TrendingUp,
-  Workflow,
   X,
 } from "lucide-react";
 import { useUserRoles } from "@/hooks/useUserRoles";
+import {
+  AICIS_WORKSPACES,
+  persistedWorkspaceSearch,
+  type AICISWorkspaceDefinition,
+} from "@/lib/aicis-workspaces";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -32,92 +29,8 @@ interface SidebarProps {
 
 type OperationalRole = "analyst" | "operator" | "admin";
 
-type NavItem = {
-  id: string;
-  label: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  path: string;
-  match?: string[];
-  minRole?: OperationalRole;
-};
-
-const primaryItems: NavItem[] = [
-  {
-    id: "world",
-    label: "World",
-    description: "Global map and live situation",
-    icon: Globe2,
-    path: "/world",
-    match: ["/world", "/command-center", "/risk-atlas", "/atlas", "/live", "/live-signals", "/live-stream", "/local-events", "/spatial-cockpit", "/cockpit"],
-  },
-  {
-    id: "brief",
-    label: "Brief",
-    description: "Executive intelligence synthesis",
-    icon: LayoutDashboard,
-    path: "/morning-brief",
-    match: ["/morning-brief", "/brief"],
-  },
-  {
-    id: "analysis",
-    label: "Analysis",
-    description: "Research, causality and deep dives",
-    icon: BarChart3,
-    path: "/analyst",
-    match: ["/analyst", "/analyst-dashboard", "/intelligence-engine", "/planetary-intelligence", "/planetary-graph", "/resolution", "/deepdive", "/risk-ranking"],
-  },
-  {
-    id: "forecasts",
-    label: "Forecasts",
-    description: "Predictions, scenarios and outcomes",
-    icon: Target,
-    path: "/forecast-validation",
-    match: ["/forecast-validation", "/predictions", "/simulation", "/learning", "/learning-loop", "/outcome-cockpit"],
-  },
-  {
-    id: "opportunities",
-    label: "Opportunities",
-    description: "Personalized transaction research and ranking",
-    icon: TrendingUp,
-    path: "/opportunities",
-    match: ["/opportunities", "/alpha-radar", "/morning-opportunities"],
-  },
-  {
-    id: "decisions",
-    label: "Decisions",
-    description: "Governed decisions and watchlists",
-    icon: Workflow,
-    path: "/decision-ops",
-    match: ["/decision-ops", "/decisions", "/watchlist"],
-  },
-  {
-    id: "data-trust",
-    label: "Data & Trust",
-    description: "Evidence, provenance and integrity",
-    icon: ShieldCheck,
-    path: "/governance",
-    match: ["/governance", "/evidence-command", "/daily-evidence-ops", "/signal-validation", "/operational-truth", "/coverage-equity", "/pilot-truth", "/data-integrity", "/training-dataset", "/accumulation"],
-  },
-  {
-    id: "system",
-    label: "System",
-    description: "Operations, health and administration",
-    icon: DatabaseZap,
-    path: "/system-pulse",
-    match: ["/system-pulse", "/system-status", "/system-catalog", "/infra-ops", "/data-pipeline", "/api-audit", "/advanced", "/more", "/developers", "/admin", "/export-center", "/data-export", "/export-layer", "/exports", "/quantivis-exports", "/federation-admin", "/register-node"],
-    minRole: "operator",
-  },
-];
-
 export const SIDEBAR_WIDTH_EXPANDED = 232;
 export const SIDEBAR_WIDTH_COLLAPSED = 56;
-
-const roleRank: Record<OperationalRole, number> = {
-  analyst: 1,
-  operator: 2,
-  admin: 3,
-};
 
 export const AICISSidebar = ({ collapsed, onToggle }: SidebarProps) => {
   const navigate = useNavigate();
@@ -132,25 +45,32 @@ export const AICISSidebar = ({ collapsed, onToggle }: SidebarProps) => {
         ? "analyst"
         : null;
 
-  const canSee = (item: NavItem) => {
-    if (!item.minRole) return true;
-    if (!currentRole) return false;
-    return roleRank[currentRole] >= roleRank[item.minRole];
-  };
+  const visibleItems = AICIS_WORKSPACES;
 
-  const visibleItems = primaryItems.filter(canSee);
-
-  const isActive = (item: NavItem) => {
+  const isActive = (item: AICISWorkspaceDefinition) => {
     const paths = item.match ?? [item.path];
     return paths.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`));
   };
 
-  const handleNavClick = (item: NavItem, closeMobile = false) => {
-    navigate(item.path);
+  const handleNavClick = (
+    item: AICISWorkspaceDefinition,
+    closeMobile = false,
+  ) => {
+    const search = persistedWorkspaceSearch(location.search);
+    navigate({
+      pathname: item.path,
+      search: search ? `?${search}` : "",
+    });
     if (closeMobile) onToggle();
   };
 
-  const NavButton = ({ item, compact }: { item: NavItem; compact: boolean }) => {
+  const NavButton = ({
+    item,
+    compact,
+  }: {
+    item: AICISWorkspaceDefinition;
+    compact: boolean;
+  }) => {
     const Icon = item.icon;
     const active = isActive(item);
 
