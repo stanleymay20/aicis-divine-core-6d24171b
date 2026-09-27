@@ -36,6 +36,32 @@ type TopThreatRow = {
   risk_probability: number | null;
   factors: unknown;
   generated_at: string;
+  evidence_count: number | null;
+  horizon_days: number;
+  generation_batch_id: string;
+  model_version: string;
+  confidence_lower: number | null;
+  confidence_upper: number | null;
+  proxy_share: number | null;
+  rank_position: number;
+};
+
+export type AnalystTopThreat = {
+  id: string;
+  country_iso3: string;
+  domain: string;
+  risk_probability: number | null;
+  risk_score: number;
+  confidence_score: number | null;
+  evidence_count: number | null;
+  generated_at: string;
+  horizon_days: number;
+  generation_batch_id: string;
+  model_version: string;
+  confidence_lower: number | null;
+  confidence_upper: number | null;
+  proxy_share: number | null;
+  rank_position: number;
 };
 
 const confidenceFromFactors = (factors: unknown): number | null => {
@@ -201,23 +227,54 @@ export const useThreatMatrix = () =>
   });
 
 export const useTopThreats = () =>
-  useQuery({
+  useQuery<AnalystTopThreat[]>({
     queryKey: ["analyst-top-threats"],
     refetchInterval: 60_000,
     queryFn: async () => {
+      const { data: latest, error: latestError } = await supabase
+        .from("risk_ranking_predictions")
+        .select("generation_batch_id,generated_at")
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestError) throw latestError;
+      if (!latest?.generation_batch_id) return [];
+
       const { data, error } = await supabase
         .from("risk_ranking_predictions")
-        .select("country_iso3,domain,risk_probability,factors,generated_at")
+        .select(
+          "country_iso3,domain,risk_probability,factors,generated_at,evidence_count,horizon_days,generation_batch_id,model_version,confidence_lower,confidence_upper,proxy_share,rank_position",
+        )
+        .eq("generation_batch_id", latest.generation_batch_id)
         .order("risk_probability", { ascending: false })
         .limit(5);
+
       if (error) throw error;
 
-      return ((data ?? []) as unknown as TopThreatRow[]).map((row) => ({
-        country_iso3: row.country_iso3,
-        domain: row.domain,
-        risk_score: Math.round((row.risk_probability ?? 0) * 100),
-        confidence_score: confidenceFromFactors(row.factors),
-        evidence_count: null as number | null,
-      }));
+      return ((data ?? []) as unknown as TopThreatRow[]).map(
+        (row): AnalystTopThreat => ({
+          id: [
+            row.country_iso3,
+            row.domain,
+            row.horizon_days,
+            row.generation_batch_id,
+          ].join(":"),
+          country_iso3: row.country_iso3,
+          domain: row.domain,
+          risk_probability: row.risk_probability,
+          risk_score: Math.round((row.risk_probability ?? 0) * 100),
+          confidence_score: confidenceFromFactors(row.factors),
+          evidence_count: row.evidence_count,
+          generated_at: row.generated_at,
+          horizon_days: row.horizon_days,
+          generation_batch_id: row.generation_batch_id,
+          model_version: row.model_version,
+          confidence_lower: row.confidence_lower,
+          confidence_upper: row.confidence_upper,
+          proxy_share: row.proxy_share,
+          rank_position: row.rank_position,
+        }),
+      );
     },
   });
