@@ -13640,6 +13640,47 @@ export type Database = {
         }
         Relationships: []
       }
+      signal_relevance_scores: {
+        Row: {
+          computed_at: string
+          id: string
+          relevance_reason: Json
+          relevance_score: number
+          relevance_tier: string
+          signal_id: string
+          user_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          computed_at?: string
+          id?: string
+          relevance_reason?: Json
+          relevance_score: number
+          relevance_tier: string
+          signal_id: string
+          user_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          computed_at?: string
+          id?: string
+          relevance_reason?: Json
+          relevance_score?: number
+          relevance_tier?: string
+          signal_id?: string
+          user_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_relevance_scores_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "global_signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       signal_routing_feedback: {
         Row: {
           category_correct: boolean | null
@@ -15622,6 +15663,57 @@ export type Database = {
         }
         Relationships: []
       }
+      user_relevance_profiles: {
+        Row: {
+          alert_threshold: number
+          created_at: string
+          discovery_threshold: number
+          excluded_topics: string[]
+          id: string
+          updated_at: string
+          user_id: string
+          watched_countries: string[]
+          watched_entities: string[]
+          watched_regions: string[]
+          watched_sectors: string[]
+          watched_topics: string[]
+          weights: Json
+          workspace_id: string | null
+        }
+        Insert: {
+          alert_threshold?: number
+          created_at?: string
+          discovery_threshold?: number
+          excluded_topics?: string[]
+          id?: string
+          updated_at?: string
+          user_id: string
+          watched_countries?: string[]
+          watched_entities?: string[]
+          watched_regions?: string[]
+          watched_sectors?: string[]
+          watched_topics?: string[]
+          weights?: Json
+          workspace_id?: string | null
+        }
+        Update: {
+          alert_threshold?: number
+          created_at?: string
+          discovery_threshold?: number
+          excluded_topics?: string[]
+          id?: string
+          updated_at?: string
+          user_id?: string
+          watched_countries?: string[]
+          watched_entities?: string[]
+          watched_regions?: string[]
+          watched_sectors?: string[]
+          watched_topics?: string[]
+          weights?: Json
+          workspace_id?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -15681,6 +15773,41 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_signal_feedback: {
+        Row: {
+          created_at: string
+          feedback_context: Json
+          feedback_type: string
+          id: string
+          signal_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feedback_context?: Json
+          feedback_type: string
+          id?: string
+          signal_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feedback_context?: Json
+          feedback_type?: string
+          id?: string
+          signal_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_signal_feedback_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "global_signals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       village_indicators: {
         Row: {
@@ -16714,6 +16841,28 @@ export type Database = {
           unmapped_metric_codes: number | null
         }
         Relationships: []
+      }
+      critical_signal_relevance_alerts: {
+        Row: {
+          alert_threshold: number | null
+          computed_at: string | null
+          id: string | null
+          relevance_reason: Json | null
+          relevance_score: number | null
+          relevance_tier: string | null
+          signal_id: string | null
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signal_relevance_scores_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "global_signals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       daily_accumulation: {
         Row: {
@@ -17947,6 +18096,16 @@ export type Database = {
           proxy_share: number | null
           rank_position: number | null
           risk_probability: number | null
+        }
+        Relationships: []
+      }
+      signal_relevance_tier_counts: {
+        Row: {
+          last_computed_at: string | null
+          relevance_tier: string | null
+          signal_count: number | null
+          user_id: string | null
+          workspace_id: string | null
         }
         Relationships: []
       }
