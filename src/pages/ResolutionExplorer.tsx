@@ -4,6 +4,7 @@ import { GlobalOverview } from "@/components/resolution/GlobalOverview";
 import { CountryDrilldown } from "@/components/resolution/CountryDrilldown";
 import { RegionDrilldown } from "@/components/resolution/RegionDrilldown";
 import { ResolutionBreadcrumb } from "@/components/resolution/ResolutionBreadcrumb";
+import { AnalysisWorkspaceNav } from "@/components/analysis/AnalysisWorkspaceNav";
 
 export type ResolutionLevel = "global" | "country" | "region" | "village";
 
@@ -27,6 +28,8 @@ export default function ResolutionExplorer() {
   return (
     <AICISLayout>
       <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto overflow-y-auto h-full">
+        <AnalysisWorkspaceNav />
+
         <div className="space-y-1">
           <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight">
             Country & Region Risk Map

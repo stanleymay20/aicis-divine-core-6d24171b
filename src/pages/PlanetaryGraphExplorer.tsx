@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { SEO } from "@/components/SEO";
+import { AnalysisWorkspaceNav } from "@/components/analysis/AnalysisWorkspaceNav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -457,6 +458,8 @@ export default function PlanetaryGraphExplorer() {
         description="Explore AICIS evidence-weighted planetary relationships, temporal decay, network influence, and directed downstream reachability."
         path="/planetary-graph"
       />
+
+      <AnalysisWorkspaceNav />
 
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="max-w-4xl">
