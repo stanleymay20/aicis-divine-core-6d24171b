@@ -49,6 +49,28 @@ type BuildResponse = {
     ranked: RankItem[];
     ranking_scope_notice: string;
   };
+  portfolio?: {
+    allocation_available: boolean;
+    reason?: string;
+    currency?: string | null;
+    capital_available?: number;
+    reserve_capital?: number;
+    capital_deployed?: number;
+    expected_value?: number;
+    base_case_profit?: number;
+    selected_count?: number;
+    selected?: Array<{
+      candidate_id: string;
+      title: string;
+      capital_required: number;
+      expected_value: number;
+      base_profit: number;
+      currency?: string | null;
+    }>;
+    optimality_proven?: boolean;
+    optimization_method?: string;
+    optimization_scope_notice?: string;
+  };
   error?: string;
 };
 
@@ -183,6 +205,8 @@ export function TransactionPathLab() {
         {result?.ranking?.ranking_scope_notice ? (
           <p className="text-[10px] text-muted-foreground">{result.ranking.ranking_scope_notice}</p>
         ) : null}
+
+        {result?.portfolio ? <PortfolioAllocation portfolio={result.portfolio} /> : null}
       </CardContent>
     </Card>
   );
@@ -286,6 +310,61 @@ function TopPath({ candidate, result }: { candidate: RankItem; result: BuildResp
       )}
 
       <BuildStats result={result} />
+    </div>
+  );
+}
+
+function PortfolioAllocation({ portfolio }: { portfolio: NonNullable<BuildResponse["portfolio"]> }) {
+  if (!portfolio.allocation_available) {
+    return (
+      <div className="rounded-md border border-border bg-muted/20 p-3">
+        <p className="text-xs font-medium">Portfolio allocation unavailable</p>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          {portfolio.reason === "capital_available_not_configured"
+            ? "Set available capital in Opportunity Preferences to enable allocation."
+            : portfolio.reason === "mixed_currency_portfolio_requires_verified_fx_layer"
+              ? "Mixed-currency allocation is blocked until a verified FX layer is available."
+              : portfolio.reason || "No allocation was produced."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold">Recommended capital allocation</p>
+          <p className="text-[10px] text-muted-foreground">
+            {portfolio.optimality_proven ? "Exact best subset within supplied candidates" : "Heuristic allocation across supplied candidates"}
+          </p>
+        </div>
+        <Badge variant="outline">{portfolio.selected_count || 0} positions</Badge>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <Metric label="Capital deployed" value={formatMoney(portfolio.capital_deployed, portfolio.currency)} />
+        <Metric label="Cash reserve" value={formatMoney(portfolio.reserve_capital, portfolio.currency)} />
+        <Metric label="Expected value" value={formatMoney(portfolio.expected_value, portfolio.currency)} />
+        <Metric label="Base-case profit" value={formatMoney(portfolio.base_case_profit, portfolio.currency)} />
+      </div>
+      {portfolio.selected?.length ? (
+        <div className="space-y-1.5">
+          {portfolio.selected.map((item) => (
+            <div key={item.candidate_id} className="flex items-center justify-between gap-3 rounded-md bg-muted/20 p-2 text-[11px]">
+              <div className="min-w-0">
+                <p className="truncate text-foreground">{item.title}</p>
+                <p className="text-muted-foreground">Expected value {formatMoney(item.expected_value, item.currency || portfolio.currency)}</p>
+              </div>
+              <div className="shrink-0 font-medium">{formatMoney(item.capital_required, item.currency || portfolio.currency)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">No candidate combination cleared the portfolio constraints.</p>
+      )}
+      {portfolio.optimization_scope_notice ? (
+        <p className="text-[10px] text-muted-foreground">{portfolio.optimization_scope_notice}</p>
+      ) : null}
     </div>
   );
 }
