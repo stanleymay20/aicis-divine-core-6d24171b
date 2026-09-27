@@ -20,6 +20,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AnalysisWorkspaceNav } from "@/components/analysis/AnalysisWorkspaceNav";
 
 type QueryError = { message?: string };
 type QueryResponse<T> = { data: T[] | null; error: QueryError | null };
@@ -199,6 +200,7 @@ export default function IntelligenceEngine() {
   return (
     <div className="min-h-full bg-background">
       <div className="mx-auto max-w-[1500px] space-y-5 p-4 md:p-6 lg:p-8">
+        <AnalysisWorkspaceNav />
         <header className="flex flex-col gap-4 border-b border-border/70 pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">

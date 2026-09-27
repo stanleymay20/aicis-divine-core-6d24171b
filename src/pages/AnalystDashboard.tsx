@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { PlanetaryOperationsMap } from "@/components/aicis/PlanetaryOperationsMap";
 import { RealtimeOperationsStream } from "@/components/aicis/RealtimeOperationsStream";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +17,7 @@ import { TopThreatsCard } from "@/components/analyst-dashboard/TopThreatsCard";
 import { CausalNetworkCard } from "@/components/analyst-dashboard/CausalNetworkCard";
 import { ScenarioProjectionsCard } from "@/components/analyst-dashboard/ScenarioProjectionsCard";
 import { DataSourceHealthCard } from "@/components/analyst-dashboard/DataSourceHealthCard";
+import { AnalysisWorkspaceNav } from "@/components/analysis/AnalysisWorkspaceNav";
 
 type TrendMetric = "global" | "cyber" | "economic" | "environmental" | "geopolitical";
 
@@ -53,15 +53,16 @@ export default function AnalystDashboard() {
   }, [k]);
 
   return (
-    <AICISLayout>
-      <SEO title="Analyst Dashboard — AICIS" description="Dense operational intelligence: live signals, threat matrix, causal propagation, scenario projections." path="/analyst" />
+    <>
+      <SEO title="Analysis Overview — AICIS" description="Operational intelligence, live signals, threat matrices, causal propagation and scenario context." path="/analyst" />
       <div className="p-4 md:p-5 max-w-[1500px] mx-auto h-full overflow-y-auto space-y-4 animate-fade-in">
+        <AnalysisWorkspaceNav />
 
         <div className="flex items-end justify-between gap-3 flex-wrap">
           <div>
             <div className="flex items-center gap-2">
               <Globe2 className="h-5 w-5 text-cyan-400" />
-              <h1 className="text-xl md:text-2xl font-semibold tracking-tight">Analyst Dashboard</h1>
+              <h1 className="text-xl md:text-2xl font-semibold tracking-tight">Analysis Overview</h1>
               <Badge variant="outline" className="uppercase tracking-wider text-[10px] border-rose-500/40 text-rose-300 bg-rose-500/10">
                 Threat Level · {!k ? "UNKNOWN" : k.criticalAlerts > 5 ? "HIGH" : k.criticalAlerts > 0 ? "ELEVATED" : "STABLE"}
               </Badge>
@@ -135,6 +136,6 @@ export default function AnalystDashboard() {
 
         <PanelBoundary><ParallelCoordinatesChart /></PanelBoundary>
       </div>
-    </AICISLayout>
+    </>
   );
 }
