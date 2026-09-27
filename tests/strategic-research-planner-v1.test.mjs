@@ -203,3 +203,61 @@ test("empty evidence stack produces no invented research tasks", () => {
   assert.deepEqual(result.actions, []);
   assert.match(result.scope_notice, /observed blockers/i);
 });
+
+
+test("incomplete landed-cost coverage creates a blocking verification task", () => {
+  const result = planStrategicResearch({
+    build: {
+      candidates: [{
+        id: "tx-1",
+        transaction_type: "physical_trade",
+        landed_cost_complete: false,
+        landed_cost_execution_ready: false,
+      }],
+    },
+  });
+
+  const action = result.actions.find((item) => item.kind === "verify_landed_cost_evidence");
+  assert.ok(action);
+  assert.equal(action.priority, "blocking");
+  assert.equal(action.source_candidate_id, "tx-1");
+  assert.ok(action.required_evidence.some((item) => /import duty/i.test(item)));
+  assert.equal(action.transaction_eligible, false);
+});
+
+test("research-complete but non-executable landed cost creates execution-evidence upgrade task", () => {
+  const result = planStrategicResearch({
+    build: {
+      candidates: [{
+        id: "tx-2",
+        transaction_type: "physical_trade",
+        landed_cost_complete: true,
+        landed_cost_execution_ready: false,
+      }],
+    },
+  });
+
+  const action = result.actions.find((item) => item.kind === "upgrade_landed_cost_execution_evidence");
+  assert.ok(action);
+  assert.equal(action.priority, "blocking");
+  assert.equal(action.source_candidate_id, "tx-2");
+  assert.match(action.trigger, /complete for research/i);
+});
+
+test("non-physical opportunities do not inherit landed-cost blocker tasks", () => {
+  const result = planStrategicResearch({
+    build: {
+      candidates: [{
+        id: "broker-1",
+        transaction_type: "brokerage",
+        landed_cost_complete: false,
+        landed_cost_execution_ready: false,
+      }],
+    },
+  });
+
+  assert.equal(result.actions.some((item) =>
+    item.kind === "verify_landed_cost_evidence" ||
+    item.kind === "upgrade_landed_cost_execution_evidence"
+  ), false);
+});
