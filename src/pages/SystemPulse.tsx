@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Activity, AlertTriangle, CheckCircle2, RefreshCw, Zap } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
+import { useUserRoles } from "@/hooks/useUserRoles";
 
 interface Heartbeat {
   pipeline_name: string;
@@ -51,6 +52,7 @@ const isStalled = (hb: Heartbeat) => {
 };
 
 export default function SystemPulse() {
+  const { isOperator } = useUserRoles();
   const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([]);
   const [layers, setLayers] = useState<LayerHealth[]>([]);
   const [canaries, setCanaries] = useState<CanaryProbe[]>([]);
@@ -73,6 +75,7 @@ export default function SystemPulse() {
   };
 
   const triggerWatchdog = async () => {
+    if (!isOperator) return;
     setRunning(true);
     await supabase.functions.invoke("pipeline-watchdog");
     await load();
@@ -105,10 +108,16 @@ export default function SystemPulse() {
               Real-time accumulation health · auto-refresh 30s
             </p>
           </div>
-          <Button onClick={triggerWatchdog} disabled={running} size="sm">
-            <Zap className={`h-4 w-4 mr-2 ${running ? "animate-pulse" : ""}`} />
-            {running ? "Running..." : "Run Watchdog Now"}
-          </Button>
+          {isOperator ? (
+            <Button onClick={triggerWatchdog} disabled={running} size="sm">
+              <Zap className={`h-4 w-4 mr-2 ${running ? "animate-pulse" : ""}`} />
+              {running ? "Running..." : "Run Watchdog Now"}
+            </Button>
+          ) : (
+            <Badge variant="outline" className="h-7 text-[10px] text-muted-foreground">
+              Read-only system health
+            </Badge>
+          )}
         </div>
 
         {/* Top KPIs */}
