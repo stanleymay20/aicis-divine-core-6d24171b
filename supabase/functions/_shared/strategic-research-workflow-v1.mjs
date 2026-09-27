@@ -33,6 +33,7 @@ export function researchWorkflowContextFromTransactionInput(input = {}) {
     origin_country: originCountries[0] || "",
     destination_country: destinationCountries[0] || "",
     comparison_currency: clean(input.comparison_currency).toUpperCase(),
+    hs_code: clean(product.hs_code || input.hs_code),
   };
 }
 
@@ -123,6 +124,29 @@ export function resolveStrategicResearchWorkflow(action = {}, context = {}) {
   }
   if (kind === "refresh_route_quote") {
     return discoveryWorkflow(action, context, "logistics");
+  }
+
+  if (kind === "verify_landed_cost_evidence" || kind === "upgrade_landed_cost_execution_evidence") {
+    return workflow(
+      "ready",
+      "landed_cost_verification",
+      kind === "verify_landed_cost_evidence"
+        ? "Verify full landed-cost evidence"
+        : "Upgrade landed-cost execution evidence",
+      {
+        source_candidate_id: action.source_candidate_id || null,
+        product_id: clean(context.product_id) || null,
+        product_name: clean(context.product_name) || null,
+        origin_country: clean(context.origin_country) || null,
+        destination_country: clean(context.destination_country) || null,
+        comparison_currency: clean(context.comparison_currency) || null,
+        hs_code: clean(context.hs_code) || null,
+      },
+      {
+        focus_fields: ["landed_cost_packs"],
+        execution_boundary: "cost_verification_only_no_customs_filing_insurance_binding_financing_acceptance_or_payment",
+      },
+    );
   }
 
   if (kind === "verified_fx_normalization") {
