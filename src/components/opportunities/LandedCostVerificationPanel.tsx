@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Calculator, CheckCircle2, Loader2, ShieldAlert } from "lucide-react";
+import { Calculator, CheckCircle2, ExternalLink, Loader2, Search, ShieldAlert } from "lucide-react";
 
 const REQUIRED_CATEGORIES = [
   "origin_inland_transport",
@@ -106,6 +106,40 @@ type VerificationResponse = {
   error?: string;
 };
 
+type OfficialSourcePlanResponse = {
+  ok: boolean;
+  classification_ready?: boolean;
+  sources?: Array<{
+    source_id: string;
+    authority: string;
+    jurisdiction: string;
+    source_type: string;
+    consultation_url?: string;
+    overview_url?: string;
+    help_url?: string;
+    requested_categories: string[];
+    reason: string;
+    status: string;
+    explicitly_not_covered?: string[];
+    rate_extracted: false;
+    legal_determination_made: false;
+  }>;
+  blockers?: Array<{
+    kind: string;
+    priority: string;
+    jurisdiction?: string;
+    categories?: string[];
+    reason: string;
+    provider_status?: string;
+  }>;
+  automated_rate_extraction_performed?: false;
+  customs_rate?: null;
+  tax_rate?: null;
+  scope_notice?: string;
+  error?: string;
+};
+
+
 export type LandedCostPack = {
   source_id: string;
   buyer_id: string;
@@ -198,6 +232,8 @@ export function LandedCostVerificationPanel({
   );
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResponse | null>(null);
+  const [sourcePlanLoading, setSourcePlanLoading] = useState(false);
+  const [sourcePlan, setSourcePlan] = useState<OfficialSourcePlanResponse | null>(null);
   const { toast } = useToast();
 
   const candidateLabel = useMemo(() => {
@@ -205,6 +241,55 @@ export function LandedCostVerificationPanel({
     const buyer = candidate.sale_offer?.name || "buyer";
     return source + " → " + buyer;
   }, [candidate.source_offer?.name, candidate.sale_offer?.name]);
+
+  const planOfficialSources = async () => {
+    let input: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(payload);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error("Landed-cost bundle must be a JSON object.");
+      }
+      input = parsed as Record<string, unknown>;
+    } catch (error) {
+      toast({
+        title: "Invalid landed-cost JSON",
+        description: error instanceof Error ? error.message : "Fix the evidence bundle first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSourcePlanLoading(true);
+    const { data, error } = await supabase.functions.invoke("plan-official-customs-evidence-sources", {
+      body: {
+        input: {
+          origin_country: input.origin_country,
+          destination_country: input.destination_country,
+          hs_code: input.hs_code,
+        },
+      },
+    });
+    setSourcePlanLoading(false);
+
+    if (error) {
+      toast({
+        title: "Official customs source plan unavailable",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const response = data as OfficialSourcePlanResponse;
+    setSourcePlan(response);
+    if (!response.ok) {
+      toast({
+        title: "Customs source plan needs more context",
+        description: response.error || "Provide valid origin and destination ISO3 codes.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const verify = async () => {
     let input: unknown;
@@ -301,6 +386,7 @@ export function LandedCostVerificationPanel({
         onChange={(event) => {
           setPayload(event.target.value);
           setResult(null);
+          setSourcePlan(null);
         }}
         className="min-h-[420px] font-mono text-xs"
       />
@@ -309,11 +395,96 @@ export function LandedCostVerificationPanel({
         <p className="text-[10px] text-muted-foreground">
           Existing freight, insurance or inspection costs are marked covered elsewhere only when this candidate already carries attributable evidence.
         </p>
-        <Button type="button" size="sm" onClick={verify} disabled={loading}>
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Verify landed cost
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={planOfficialSources}
+            disabled={sourcePlanLoading}
+            className="gap-2"
+          >
+            {sourcePlanLoading
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Search className="h-4 w-4" />}
+            Plan official customs sources
+          </Button>
+          <Button type="button" size="sm" onClick={verify} disabled={loading}>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Verify landed cost
+          </Button>
+        </div>
       </div>
+
+      {sourcePlan ? (
+        <div className="rounded-md border border-border/70 p-3 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold">Official customs evidence sources</p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                Source routing only. No tariff or tax rate has been extracted or written into this transaction.
+              </p>
+            </div>
+            <Badge variant={sourcePlan.classification_ready ? "outline" : "secondary"}>
+              {sourcePlan.classification_ready ? "classification supplied" : "classification unresolved"}
+            </Badge>
+          </div>
+
+          {sourcePlan.sources?.length ? (
+            <div className="space-y-2">
+              {sourcePlan.sources.map((source) => (
+                <div key={source.source_id + ":" + source.requested_categories.join(",")} className="rounded-md bg-muted/20 p-2.5">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] font-medium">{source.authority}</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        {source.requested_categories.join(", ")} · {source.reason}
+                      </p>
+                      {source.explicitly_not_covered?.length ? (
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          Does not supply: {source.explicitly_not_covered.join(", ")}
+                        </p>
+                      ) : null}
+                    </div>
+                    {source.consultation_url ? (
+                      <a
+                        href={source.consultation_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                      >
+                        Official source
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {sourcePlan.blockers?.length ? (
+            <div className="space-y-1.5">
+              {sourcePlan.blockers.map((blocker, index) => (
+                <div key={blocker.kind + ":" + index} className="rounded-md border border-dashed p-2.5 text-[10px] text-muted-foreground">
+                  <span className="font-medium text-foreground">{blocker.kind.replaceAll("_", " ")}:</span>{" "}
+                  {blocker.reason}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex items-start gap-2 text-[10px] text-muted-foreground">
+            <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              automated rate extraction=false · legal determination=false · customs rate=null · tax rate=null.
+            </span>
+          </div>
+          {sourcePlan.scope_notice ? (
+            <p className="text-[10px] text-muted-foreground">{sourcePlan.scope_notice}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {result ? (
         <div className="space-y-3">
