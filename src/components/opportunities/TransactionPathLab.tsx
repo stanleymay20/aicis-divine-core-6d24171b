@@ -82,6 +82,7 @@ type StrategicOption = {
       shocked_value: unknown;
       shocked_expected_value: number;
       delta_expected_value: number;
+      evidence_status: "attributable" | "user_defined_scenario";
     }>;
   };
   regret: {
@@ -649,6 +650,7 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
                       <p className="text-foreground">{item.assumption}</p>
                       <p className="text-[10px] text-muted-foreground">
                         baseline {String(item.baseline_value ?? "—")} → shocked {String(item.shocked_value ?? "—")}
+                        {" · "}{item.evidence_status === "attributable" ? "attributable" : "user-defined what-if"}
                       </p>
                     </div>
                     <span className={item.delta_expected_value < 0 ? "text-destructive" : ""}>
@@ -663,6 +665,38 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
               </p>
             </div>
           ) : null}
+
+          {primary.robustness.scenario_count ? (
+            <div className="rounded-md border border-border/70 p-2.5 space-y-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Scenario robustness</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Metric label="Worst case" value={formatMoney(primary.robustness.worst_case, primary.currency)} />
+                <Metric label="Average case" value={formatMoney(primary.robustness.average_case, primary.currency)} />
+                <Metric label="Best case" value={formatMoney(primary.robustness.best_case, primary.currency)} />
+                <Metric
+                  label="Robustness"
+                  value={primary.robustness.robustness_score == null ? "—" : primary.robustness.robustness_score.toFixed(1) + "/100"}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Robustness uses only the supplied scenario outcomes and does not imply those scenarios are exhaustive.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="rounded-md border border-border/70 p-2.5 text-[11px]">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Comparative regret</p>
+            {primary.regret.comparable_scenarios ? (
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <Metric label="Maximum regret" value={formatMoney(primary.regret.max_regret, primary.currency)} />
+                <Metric label="Average regret" value={formatMoney(primary.regret.average_regret, primary.currency)} />
+              </div>
+            ) : (
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Regret is unavailable until at least two strategies have outcomes for the same supplied scenarios.
+              </p>
+            )}
+          </div>
 
           {primary.doctrine_trace.length ? (
             <div className="flex flex-wrap gap-1.5">
