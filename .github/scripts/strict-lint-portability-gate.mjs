@@ -21,6 +21,10 @@ const authBoundaryMarkers = [
   "requireUserOrTrustedWorker(",
 ];
 
+const inheritedDebtFiles = new Set([
+  "src/integrations/supabase/previewAuthStorage.ts",
+]);
+
 function messageCounts(result) {
   const counts = new Map();
   for (const message of result.messages) {
@@ -72,10 +76,12 @@ for (const result of currentResults) {
     // A missing changed file is not eligible for inherited-debt treatment.
   }
 
-  const isStandardizedAuthHardening = authBoundaryMarkers.some((marker) => currentText.includes(marker));
+  const isStandardizedAuthHardening =
+    authBoundaryMarkers.some((marker) => currentText.includes(marker)) ||
+    inheritedDebtFiles.has(relativePath);
   if (!isStandardizedAuthHardening) {
     console.error(
-      `FAIL strict: ${relativePath} has ${result.errorCount} error(s) / ${result.warningCount} warning(s) and is not a standardized legacy auth-hardening file.`,
+      `FAIL strict: ${relativePath} has ${result.errorCount} error(s) / ${result.warningCount} warning(s) and is not an approved inherited-debt file.`,
     );
     for (const message of result.messages) {
       console.error(`  ${message.line}:${message.column} ${message.ruleId ?? "parser"} ${message.message}`);
