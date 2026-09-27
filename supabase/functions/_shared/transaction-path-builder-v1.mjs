@@ -502,8 +502,16 @@ export function buildTransactionPaths(input = {}) {
               ...(Array.isArray(input.switching_rules) ? input.switching_rules : []),
               ...(Array.isArray(structure.switching_rules) ? structure.switching_rules : []),
             ],
-            scenarios: Array.isArray(input.strategic_scenarios) ? input.strategic_scenarios : [],
-            no_action_scenarios: Array.isArray(input.no_action_scenarios) ? input.no_action_scenarios : [],
+            scenarios: scopedStrategicAlternatives(input, "strategic_scenarios", source, buyer, route, structure),
+            no_action_scenarios: scopedStrategicAlternatives(input, "no_action_scenarios", source, buyer, route, structure),
+            assumptions: [
+              ...(Array.isArray(input.assumptions) ? input.assumptions : []),
+              ...(Array.isArray(structure.assumptions) ? structure.assumptions : []),
+            ],
+            sensitivity_cases: [
+              ...scopedStrategicAlternatives(input, "sensitivity_cases", source, buyer, route, structure),
+              ...(Array.isArray(structure.sensitivity_cases) ? structure.sensitivity_cases : []),
+            ],
             indirect_strategies: scopedStrategicAlternatives(input, "indirect_strategies", source, buyer, route, structure),
             position_options: scopedStrategicAlternatives(input, "position_options", source, buyer, route, structure),
             information_actions: scopedStrategicAlternatives(input, "information_actions", source, buyer, route, structure),
