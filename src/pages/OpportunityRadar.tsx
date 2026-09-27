@@ -31,6 +31,10 @@ type OpportunityProfile = {
   min_relevance_score: number;
   minimum_rank_score: number;
   max_single_opportunity_capital_pct: number;
+  reserve_pct: number;
+  max_country_capital_pct: number;
+  max_sector_capital_pct: number;
+  max_positions: number;
   allowed_transaction_types: string[];
   excluded_countries: string[];
   excluded_sectors: string[];
@@ -47,6 +51,10 @@ const DEFAULT_PROFILE: OpportunityProfile = {
   min_relevance_score: 45,
   minimum_rank_score: 58,
   max_single_opportunity_capital_pct: 35,
+  reserve_pct: 10,
+  max_country_capital_pct: 60,
+  max_sector_capital_pct: 60,
+  max_positions: 8,
   allowed_transaction_types: [],
   excluded_countries: [],
   excluded_sectors: [],
@@ -256,6 +264,36 @@ export default function OpportunityRadar() {
             <Input
               value={profile.max_single_opportunity_capital_pct}
               onChange={(e) => updateProfile("max_single_opportunity_capital_pct", toNumber(e.target.value, 35))}
+            />
+          </Field>
+          <Field label="Minimum overall rank score">
+            <Input
+              value={profile.minimum_rank_score}
+              onChange={(e) => updateProfile("minimum_rank_score", toNumber(e.target.value, 58))}
+            />
+          </Field>
+          <Field label="Cash reserve %">
+            <Input
+              value={profile.reserve_pct}
+              onChange={(e) => updateProfile("reserve_pct", toNumber(e.target.value, 10))}
+            />
+          </Field>
+          <Field label="Max country capital %">
+            <Input
+              value={profile.max_country_capital_pct}
+              onChange={(e) => updateProfile("max_country_capital_pct", toNumber(e.target.value, 60))}
+            />
+          </Field>
+          <Field label="Max sector capital %">
+            <Input
+              value={profile.max_sector_capital_pct}
+              onChange={(e) => updateProfile("max_sector_capital_pct", toNumber(e.target.value, 60))}
+            />
+          </Field>
+          <Field label="Maximum simultaneous positions">
+            <Input
+              value={profile.max_positions}
+              onChange={(e) => updateProfile("max_positions", toNumber(e.target.value, 8))}
             />
           </Field>
           <div className="md:col-span-2 xl:col-span-4">
