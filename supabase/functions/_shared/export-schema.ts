@@ -458,6 +458,8 @@ export const GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS = new Set<string>([
   "occurred_at_semantics",
   "first_detected_at_semantics",
   "source_urls",
+  "trend_direction",
+  "why_it_matters",
 ]);
 
 export function liveSignalSelect(columns: string): string {
