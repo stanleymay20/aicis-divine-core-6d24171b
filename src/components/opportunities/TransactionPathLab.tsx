@@ -623,6 +623,7 @@ export function TransactionPathLab() {
         }
 
         if ((response.resolved_run_count || 0) > 0) {
+          window.dispatchEvent(new CustomEvent("aicis:research-tracker-refresh"));
           toast({
             title: "Research blocker resolved",
             description: `${response.resolved_run_count} audited research task${response.resolved_run_count === 1 ? "" : "s"} resolved with attributable evidence.`,
