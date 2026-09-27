@@ -128,6 +128,58 @@ function relevance(candidate, preferences = {}) {
   };
 }
 
+function buildExecutionDossier(candidate, metrics) {
+  const sourceOffer = candidate?.source_offer || null;
+  const saleOffer = candidate?.sale_offer || null;
+  const counterparties = Array.isArray(candidate?.counterparties) ? candidate.counterparties : [];
+  const route = Array.isArray(candidate?.route) ? candidate.route : [];
+  const costBreakdown = Array.isArray(candidate?.cost_breakdown) ? candidate.cost_breakdown : [];
+  const contacts = Array.isArray(candidate?.contacts) ? candidate.contacts : [];
+  const nextActions = Array.isArray(candidate?.next_actions) ? candidate.next_actions : [];
+  const missing = [];
+
+  if (!sourceOffer?.name) missing.push("source_offer");
+  if (!saleOffer?.name) missing.push("sale_offer");
+  if (counterparties.length < 2) missing.push("counterparties");
+  if (route.length === 0) missing.push("route");
+  if (costBreakdown.length === 0) missing.push("cost_breakdown");
+  if (contacts.length === 0) missing.push("contacts");
+  if (!candidate?.timing) missing.push("timing");
+
+  return {
+    execution_ready: missing.length === 0 &&
+      candidate?.compliance_status === "clear" &&
+      ["verified_quotes", "observed_market", "contractually_indicated"].includes(candidate?.economics_status),
+    missing_execution_fields: missing,
+    where: {
+      source: sourceOffer,
+      destination: saleOffer,
+      route,
+    },
+    who: {
+      counterparties,
+      contacts,
+    },
+    when: candidate?.timing || null,
+    how: {
+      transaction_type: candidate?.transaction_type || null,
+      next_actions: nextActions,
+      settlement: candidate?.settlement || null,
+      logistics: candidate?.logistics || null,
+    },
+    profitability: {
+      downside: finite(candidate?.downside_loss) ? -Math.abs(candidate.downside_loss) : null,
+      base: metrics?.base_profit ?? null,
+      upside: finite(candidate?.upside_profit) ? candidate.upside_profit : null,
+      expected_value: metrics?.expected_value ?? null,
+      base_margin_pct: metrics?.base_margin_pct ?? null,
+      return_on_capital_pct: metrics?.return_on_capital_pct ?? null,
+      profit_per_day: metrics?.profit_per_day ?? null,
+    },
+    cost_breakdown: costBreakdown,
+  };
+}
+
 function objectiveScore(metrics, candidate, profile) {
   const profitNorm = clamp(metrics.base_profit > 0 && candidate.capital_required > 0
     ? (metrics.base_profit / candidate.capital_required) * 500
@@ -167,7 +219,7 @@ export function evaluateOpportunity(candidate, preferences = {}) {
   if (missing.length) rejection_reasons.push(...missing.map((key) => `missing_numeric_input:${key}`));
   if (!candidate?.id) rejection_reasons.push("missing_id");
   if (!candidate?.title) rejection_reasons.push("missing_title");
-  if (!candidate?.transaction_type) rejection_reasons.push("missing_transaction_type");
+  if (!candidate?.transaction_type) rejection_reasons.push("missing_transaction_type");\n  if (!candidate?.compliance_status) rejection_reasons.push("missing_compliance_status");
   if (!candidate?.economics_status || ["insufficient", "synthetic", "unverified"].includes(candidate.economics_status)) {
     rejection_reasons.push("economics_not_verified");
   }
@@ -191,7 +243,7 @@ export function evaluateOpportunity(candidate, preferences = {}) {
     return { eligible: false, candidate_id: candidate?.id || null, rejection_reasons, score: 0 };
   }
 
-  const metrics = economics(candidate);
+  const metrics = economics(candidate);\n  const dossier = buildExecutionDossier(candidate, metrics);
   if (metrics.base_margin_pct < profile.min_base_margin_pct) rejection_reasons.push("base_margin_below_threshold");
 
   const rel = relevance(candidate, preferences);
@@ -248,7 +300,7 @@ export function evaluateOpportunity(candidate, preferences = {}) {
     },
     relevance: rel,
     rejection_reasons,
-    human_approval_required: true,
+    execution_ready: dossier.execution_ready,\n    execution_dossier: dossier,\n    human_approval_required: true,
     recommendation_semantics: "ranked_decision_support_not_profit_guarantee",
   };
 }
