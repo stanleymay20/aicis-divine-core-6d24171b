@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { getRecoveryEventToken, recoveryAuth } from "@/lib/recoveryAuth";
 import { Shield, Loader2 } from "lucide-react";
 
 const MIN_NEW_PASSWORD_LENGTH = 12;
@@ -19,7 +20,7 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
   const [verificationFailed, setVerificationFailed] = useState(false);
-  const recoveryEventToken = useRef<string | null>(null);
+  const recoveryEventToken = useRef<string | null>(getRecoveryEventToken());
   const navigate = useNavigate();
   const { toast } = useToast();
   const { recoveryToken } = useAuth();
@@ -50,7 +51,7 @@ const ResetPassword = () => {
         // Server-confirm the exact access token first, then inspect only claims from
         // that same validated token. A normal signed-in session cannot become a
         // recovery session merely because the URL resembles a reset link.
-        const { data, error } = await supabase.auth.getUser(candidate.access_token);
+        const { data, error } = await recoveryAuth.getUser(candidate.access_token);
         if (!mounted || error || !data.user) return;
 
         const claims = decodeAuthTokenClaims(candidate.access_token);
@@ -67,7 +68,7 @@ const ResetPassword = () => {
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = recoveryAuth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY" && session) {
         recoveryEventToken.current = session.access_token;
       }
@@ -80,7 +81,7 @@ const ResetPassword = () => {
     // This call only discovers a candidate session. It never grants reset access.
     // The candidate must pass getUser() server validation and carry recovery
     // AMR or match an actual PASSWORD_RECOVERY event from the auth service.
-    void supabase.auth.getSession()
+    void recoveryAuth.getSession()
       .then(({ data: { session } }) => {
         if (mounted && session) void validateRecoverySession(session);
       })
@@ -89,7 +90,7 @@ const ResetPassword = () => {
     // The provider may receive the one-time recovery event before this lazy
     // page mounts. Its token is bound to that actual event, not URL parameters.
     if (recoveryTokenRef.current) {
-      void supabase.auth.getSession()
+      void recoveryAuth.getSession()
         .then(({ data: { session } }) => {
           if (mounted && session?.access_token === recoveryTokenRef.current) void validateRecoverySession(session);
         })
@@ -129,10 +130,10 @@ const ResetPassword = () => {
     try {
       // Re-verify immediately before the credential mutation. Recovery access can
       // expire or be revoked while the reset form is open.
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await recoveryAuth.getSession();
       if (!session) throw new Error("Recovery session expired. Request a new reset link.");
 
-      const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
+      const { data: userData, error: userError } = await recoveryAuth.getUser(session.access_token);
       const claims = decodeAuthTokenClaims(session.access_token);
       const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery")
         || recoveryEventToken.current === session.access_token
@@ -148,11 +149,11 @@ const ResetPassword = () => {
         throw new Error("Recovery authorization is no longer valid. Request a new reset link.");
       }
 
-      const { error } = await supabase.auth.updateUser({ password });
+      const { error } = await recoveryAuth.updateUser({ password });
       if (error) throw error;
 
-      const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
-      if (signOutError) await supabase.auth.signOut({ scope: "local" });
+      const { error: signOutError } = await recoveryAuth.signOut({ scope: "global" });
+      if (signOutError) await recoveryAuth.signOut({ scope: "local" });
 
       toast({ title: "Password updated", description: "Sign in again with your new password." });
       navigate("/auth", { replace: true });
