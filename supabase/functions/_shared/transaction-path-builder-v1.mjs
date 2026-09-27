@@ -111,6 +111,8 @@ function sumCosts(costs, quantity, currency, fxRates, asOfIso) {
       fx_rate_id: converted.fx_rate_id,
       provider: converted.provider ?? null,
       observed_at: converted.observed_at ?? null,
+      evidence_status: converted.evidence_status ?? null,
+      execution_eligible_fx: converted.execution_eligible_fx === true,
       evidence_refs: converted.evidence_refs ?? [],
     };
     if (fxConversion) fxConversions.push(fxConversion);
@@ -354,6 +356,8 @@ export function buildTransactionPaths(input = {}) {
               fx_rate_id: conversion.fx_rate_id ?? null,
               provider: conversion.provider ?? null,
               observed_at: conversion.observed_at ?? null,
+              evidence_status: conversion.evidence_status ?? null,
+              execution_eligible_fx: conversion.execution_eligible_fx === true,
               evidence_refs: conversion.evidence_refs ?? [],
             }));
           const compliance = complianceStatus(source, buyer, route, structure);
@@ -456,6 +460,8 @@ export function buildTransactionPaths(input = {}) {
                   fx_rate_id: sourceConversion.fx_rate_id ?? null,
                   provider: sourceConversion.provider ?? null,
                   observed_at: sourceConversion.observed_at ?? null,
+                  evidence_status: sourceConversion.evidence_status ?? null,
+                  execution_eligible_fx: sourceConversion.execution_eligible_fx === true,
                   evidence_refs: sourceConversion.evidence_refs ?? [],
                 },
                 evidence_refs: source.evidence_refs,
@@ -472,6 +478,7 @@ export function buildTransactionPaths(input = {}) {
               fx: fxConversions.flatMap((conversion) => conversion.evidence_refs || []),
             },
             fx_conversions: fxConversions,
+            fx_execution_ready: fxConversions.every((conversion) => conversion.execution_eligible_fx === true),
             builder_version: TRANSACTION_PATH_BUILDER_VERSION,
             candidate_scope_notice: "Constructed only from the supplied source offers, sale offers, routes and transaction structures.",
           });
