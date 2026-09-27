@@ -186,6 +186,12 @@ export const MorningBriefDashboard = () => {
                 />
                 <ActionCard
                   icon={<TrendingUp className="h-4 w-4 text-primary" />}
+                  title="Opportunity Radar"
+                  desc="Review personalized opportunity research"
+                  onClick={() => navigate("/opportunities")}
+                />
+                <ActionCard
+                  icon={<TrendingUp className="h-4 w-4 text-primary" />}
                   title="Check Watchlist"
                   desc="Review countries, sectors, or routes you track"
                   onClick={() => navigate("/watchlist")}
