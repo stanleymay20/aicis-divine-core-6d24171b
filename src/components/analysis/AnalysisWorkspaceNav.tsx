@@ -66,9 +66,7 @@ export const AnalysisWorkspaceNav = () => {
             {modes.map((mode) => {
               const active =
                 location.pathname === mode.path ||
-                mode.aliases.includes(
-                  location.pathname as (typeof mode.aliases)[number],
-                );
+                (mode.aliases as readonly string[]).includes(location.pathname);
               const Icon = mode.icon;
 
               return (
