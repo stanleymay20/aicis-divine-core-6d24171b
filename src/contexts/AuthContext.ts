@@ -6,6 +6,7 @@ export interface AuthState {
   session: Session | null;
   loading: boolean;
   unavailable: boolean;
+  recoveryToken: string | null;
   signOut: () => Promise<void>;
 }
 

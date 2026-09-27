@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { Shield, Loader2 } from "lucide-react";
 
 const MIN_NEW_PASSWORD_LENGTH = 12;
@@ -18,13 +19,20 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
   const [verificationFailed, setVerificationFailed] = useState(false);
+  const recoveryEventToken = useRef<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { recoveryToken } = useAuth();
+  const recoveryTokenRef = useRef(recoveryToken);
+  recoveryTokenRef.current = recoveryToken;
 
   useEffect(() => {
     let mounted = true;
     let verified = false;
-    let validationInFlight = false;
+    // Auth's PASSWORD_RECOVERY event is the proof of the link type. The token's
+    // AMR can report "otp" rather than "recovery" after a legitimate reset.
+    // Bind the event to its exact server-validated token, not to URL text.
+    let validationInFlight: string | null = null;
 
     const acceptRecovery = () => {
       if (!mounted) return;
@@ -34,8 +42,8 @@ const ResetPassword = () => {
     };
 
     const validateRecoverySession = async (candidate: Session | null) => {
-      if (!candidate || validationInFlight || verified) return;
-      validationInFlight = true;
+      if (!candidate || verified || validationInFlight === candidate.access_token) return;
+      validationInFlight = candidate.access_token;
 
       try {
         // getSession() is storage-backed and is never sufficient authorization here.
@@ -46,18 +54,23 @@ const ResetPassword = () => {
         if (!mounted || error || !data.user) return;
 
         const claims = decodeAuthTokenClaims(candidate.access_token);
-        const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery");
+        const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery")
+          || recoveryEventToken.current === candidate.access_token
+          || recoveryTokenRef.current === candidate.access_token;
         const sameSubject = claims?.sub === data.user.id && candidate.user.id === data.user.id;
 
         if (recoveryBearing && sameSubject) acceptRecovery();
       } catch {
         // Fail closed. The timeout below surfaces a neutral invalid/expired state.
       } finally {
-        validationInFlight = false;
+        validationInFlight = null;
       }
     };
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" && session) {
+        recoveryEventToken.current = session.access_token;
+      }
       if ((event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") && session) {
         // Keep auth network calls outside the auth callback itself.
         window.setTimeout(() => void validateRecoverySession(session), 0);
@@ -65,12 +78,23 @@ const ResetPassword = () => {
     });
 
     // This call only discovers a candidate session. It never grants reset access.
-    // The candidate must pass getUser() server validation and carry recovery AMR.
+    // The candidate must pass getUser() server validation and carry recovery
+    // AMR or match an actual PASSWORD_RECOVERY event from the auth service.
     void supabase.auth.getSession()
       .then(({ data: { session } }) => {
         if (mounted && session) void validateRecoverySession(session);
       })
       .catch(() => undefined);
+
+    // The provider may receive the one-time recovery event before this lazy
+    // page mounts. Its token is bound to that actual event, not URL parameters.
+    if (recoveryTokenRef.current) {
+      void supabase.auth.getSession()
+        .then(({ data: { session } }) => {
+          if (mounted && session?.access_token === recoveryTokenRef.current) void validateRecoverySession(session);
+        })
+        .catch(() => undefined);
+    }
 
     const timeout = window.setTimeout(() => {
       if (mounted && !verified) setVerificationFailed(true);
@@ -81,7 +105,7 @@ const ResetPassword = () => {
       window.clearTimeout(timeout);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [recoveryToken]);
 
   const handleReset = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -110,7 +134,9 @@ const ResetPassword = () => {
 
       const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
       const claims = decodeAuthTokenClaims(session.access_token);
-      const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery");
+      const recoveryBearing = tokenClaimsContainAuthMethod(claims, "recovery")
+        || recoveryEventToken.current === session.access_token
+        || recoveryTokenRef.current === session.access_token;
       const sameSubject = Boolean(
         !userError
         && userData.user

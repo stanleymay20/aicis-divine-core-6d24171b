@@ -14,9 +14,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
+  const [recoveryToken, setRecoveryToken] = useState<string | null>(null);
   const initialValidationComplete = useRef(false);
   const lastValidatedAccessToken = useRef<string | null>(null);
   const validationInFlightAccessToken = useRef<string | null>(null);
+  const recoveryEventAccessToken = useRef<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,6 +29,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       initialValidationComplete.current = true;
       setSession(null);
       setUser(null);
+      setRecoveryToken(null);
       setUnavailable(true);
       setLoading(false);
       return;
@@ -39,8 +42,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (!mounted) return;
       lastValidatedAccessToken.current = null;
       validationInFlightAccessToken.current = null;
+      recoveryEventAccessToken.current = null;
       setSession(null);
       setUser(null);
+      setRecoveryToken(null);
       setUnavailable(false);
       setLoading(false);
     };
@@ -54,6 +59,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // user/session. Recovery possession is not general AICIS authorization.
       setSession(null);
       setUser(null);
+      setRecoveryToken(recoveryEventAccessToken.current);
       setUnavailable(false);
       setLoading(false);
     };
@@ -73,6 +79,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return { ...candidate, user: verifiedUser };
       });
       setUser((current) => current?.id === verifiedUser.id ? current : verifiedUser);
+      setRecoveryToken(null);
       setUnavailable(false);
       setLoading(false);
     };
@@ -115,7 +122,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
-        if (tokenClaimsContainAuthMethod(claims, "recovery")) {
+        if (tokenClaimsContainAuthMethod(claims, "recovery") || recoveryEventAccessToken.current === candidate.access_token) {
           isolateRecoverySession();
           return;
         }
@@ -189,6 +196,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (event === "PASSWORD_RECOVERY") {
         initialValidationComplete.current = true;
         validationGeneration += 1;
+        recoveryEventAccessToken.current = nextSession?.access_token ?? null;
         isolateRecoverySession();
         return;
       }
@@ -277,8 +285,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [navigate]);
 
   const value = useMemo(
-    () => ({ user, session, loading, unavailable, signOut }),
-    [user, session, loading, unavailable, signOut],
+    () => ({ user, session, loading, unavailable, recoveryToken, signOut }),
+    [user, session, loading, unavailable, recoveryToken, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
