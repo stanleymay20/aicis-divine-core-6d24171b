@@ -3,6 +3,7 @@ import { buildTransactionPaths } from "../_shared/transaction-path-builder-v1.mj
 import { rankOpportunities } from "../_shared/opportunity-engine-v1.mjs";
 import { optimizeOpportunityPortfolio } from "../_shared/opportunity-portfolio-optimizer-v1.mjs";
 import { evaluateStrategicOptions } from "../_shared/strategic-doctrine-engine-v1.mjs";
+import { hashStrategicSnapshot } from "../_shared/strategic-audit-v1.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -123,6 +124,11 @@ Deno.serve(async (req) => {
       timing,
       preferences,
     });
+    const strategicAudit = await hashStrategicSnapshot(strategic);
+    const strategicWithAudit = {
+      ...strategic,
+      audit: strategicAudit,
+    };
 
     await sb.from("system_logs").insert({
       user_id: user.id,
@@ -143,6 +149,8 @@ Deno.serve(async (req) => {
         strategic_engine_version: strategic.engine_version,
         strategic_option_count: strategic.option_count,
         primary_strategy_id: strategic.primary_strategy?.id ?? null,
+        strategic_audit_hash: strategicAudit.hash,
+        strategic_audit_version: strategicAudit.audit_version,
       },
     });
 
@@ -151,7 +159,7 @@ Deno.serve(async (req) => {
       build: built,
       ranking: ranked,
       portfolio,
-      strategic,
+      strategic: strategicWithAudit,
       execution_boundary: {
         human_approval_required: true,
         external_execution_performed: false,
