@@ -4,14 +4,19 @@ import { convertVerifiedAmount } from "./verified-fx-v1.mjs";
 export const LANDED_COST_EVIDENCE_VERSION = "aicis-landed-cost-evidence-v1";
 
 export const REQUIRED_LANDED_COST_CATEGORIES = Object.freeze([
+  "origin_inland_transport",
+  "origin_handling",
   "export_customs",
+  "export_duty_tax",
+  "international_freight",
+  "cargo_insurance",
   "import_duty",
   "import_tax",
   "customs_brokerage",
-  "inspection_certification",
-  "cargo_insurance",
-  "financing",
   "destination_handling",
+  "inspection_certification",
+  "financing",
+  "storage_distribution",
 ]);
 
 const SHA256 = /^[a-f0-9]{64}$/i;
@@ -130,7 +135,7 @@ function componentValue(component, quantity) {
 }
 
 function componentRequiresHs(category) {
-  return ["export_customs", "import_duty", "import_tax"].includes(category);
+  return ["export_customs", "export_duty_tax", "import_duty", "import_tax"].includes(category);
 }
 
 function normalizeCoverage(coverage) {
@@ -427,6 +432,15 @@ export function evaluateLandedCostEvidence(input = {}) {
     destination,
   });
 
+  const coverageEvidenceRefs = [...coverageByCategory.values()]
+    .flatMap((item) => list(item?.evidence_refs));
+  const componentEvidenceRefs = validComponents.flatMap((component) => component.evidence_refs || []);
+  const evidenceRefs = [
+    ...componentEvidenceRefs,
+    ...coverageEvidenceRefs,
+    ...fxEvidenceRefs,
+  ];
+
   return {
     verification_version: LANDED_COST_EVIDENCE_VERSION,
     candidate_id: clean(input.candidate_id) || null,
@@ -451,6 +465,7 @@ export function evaluateLandedCostEvidence(input = {}) {
     supplemental_cash_requirement: round(cashRequirementTotal),
     normalized_structure_costs: normalizedStructureCosts,
     fx_evidence_refs: fxEvidenceRefs,
+    evidence_refs: evidenceRefs,
     missing_execution_fields: missingExecutionFields,
     research_tasks: researchTasks,
     transaction_eligible: false,
