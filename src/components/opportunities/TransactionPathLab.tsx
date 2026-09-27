@@ -57,6 +57,8 @@ type StrategicOption = {
   option_value_estimate?: number | null;
   net_position_value_estimate?: number | null;
   sequence_steps: unknown[];
+  assumptions: unknown[];
+  sensitivity_cases: unknown[];
   feasibility_reasons: string[];
   missing_capabilities: string[];
   invalidation_rules: unknown[];
@@ -67,6 +69,20 @@ type StrategicOption = {
     best_case: number | null;
     average_case: number | null;
     robustness_score: number | null;
+  };
+  sensitivity: {
+    case_count: number;
+    largest_absolute_delta: number | null;
+    worst_delta: number | null;
+    most_sensitive_assumption: string | null;
+    cases: Array<{
+      id: string;
+      assumption: string;
+      baseline_value: unknown;
+      shocked_value: unknown;
+      shocked_expected_value: number;
+      delta_expected_value: number;
+    }>;
   };
   regret: {
     comparable_scenarios: number;
@@ -97,6 +113,8 @@ type StrategicResponse = {
     comparator_strategy_id: string | null;
     pre_registered_outcome_metrics: string[];
     pre_commit_sequence_steps: unknown[];
+    pre_commit_assumptions: unknown[];
+    pre_commit_sensitivity_cases: unknown[];
     pre_commit_invalidation_rules: unknown[];
     pre_commit_switching_rules: unknown[];
     epistemic_boundary: string;
@@ -169,6 +187,8 @@ const SCHEMA_HINT = [
   '  "indirect_strategies": [...evidence-backed alternatives...],',
   '  "position_options": [...optional strategic positions...],',
   '  "information_actions": [...decision-relevant information actions...]',
+  '  "assumptions": [...explicit strategic assumptions...],',
+  '  "sensitivity_cases": [...scoped shocked-value cases...]',
   "}"
 ].join("\n");
 
@@ -611,6 +631,36 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
                   <li key={"sequence-" + index}>{index + 1}. {String(step)}</li>
                 ))}
               </ol>
+            </div>
+          ) : null}
+
+          {primary.sensitivity.case_count ? (
+            <div className="rounded-md border border-border/70 p-2.5 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Strategy sensitivity</p>
+                <Badge variant="outline" className="text-[10px]">
+                  most sensitive: {primary.sensitivity.most_sensitive_assumption || "unknown"}
+                </Badge>
+              </div>
+              <div className="space-y-1">
+                {primary.sensitivity.cases.slice(0, 4).map((item) => (
+                  <div key={item.id} className="flex items-start justify-between gap-3 text-[11px]">
+                    <div className="min-w-0">
+                      <p className="text-foreground">{item.assumption}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        baseline {String(item.baseline_value ?? "—")} → shocked {String(item.shocked_value ?? "—")}
+                      </p>
+                    </div>
+                    <span className={item.delta_expected_value < 0 ? "text-destructive" : ""}>
+                      {item.delta_expected_value >= 0 ? "+" : ""}
+                      {formatMoney(item.delta_expected_value, primary.currency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                These are supplied sensitivity cases, not probabilities or automatically generated forecasts.
+              </p>
             </div>
           ) : null}
 
