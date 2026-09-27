@@ -11,10 +11,10 @@ import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspac
 
 export default function Accumulation() {
   const { data, isLoading } = useAccumulationData();
-  const domains = data?.domains ?? [];
+  const domains = useMemo(() => data?.domains ?? [], [data?.domains]);
   const daily = data?.daily ?? [];
   const providers = data?.providers ?? [];
-  const tables = data?.tables ?? [];
+  const tables = useMemo(() => data?.tables ?? [], [data?.tables]);
 
   const totalRows = useMemo(() => tables.reduce((s, t) => s + t.rows, 0), [tables]);
   const freshDomains = domains.filter(d => ageHours(d.last_write) < 26).length;
