@@ -364,3 +364,46 @@ test("information-value claim without provenance remains research-only", () => {
   assert.equal(info.information_value_estimate, null);
   assert.equal(info.feasible, false);
 });
+
+
+test("pre-registered learning packet preserves doctrine and comparator before outcome", () => {
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [directCandidate()],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  assert.equal(result.learning_packet.strategy_id, "broker-cocoa");
+  assert.ok(result.learning_packet.doctrine_ids.includes("indirect_approach"));
+  assert.ok(result.learning_packet.comparator_strategy_id);
+  assert.ok(result.learning_packet.pre_registered_outcome_metrics.includes("realized_net_value"));
+  assert.equal(result.learning_packet.epistemic_boundary, "outcome_association_not_causal_attribution");
+});
+
+test("doctrine registry marks Sunzi-derived principles experimental and falsifiable", () => {
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [directCandidate()],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  const indirect = result.doctrine_registry.find((item) => item.id === "indirect_approach");
+  assert.equal(indirect.status, "experimental");
+  assert.match(indirect.falsifiable_claim, /indirect strategies/i);
+  assert.ok(indirect.measurement_hint);
+});
+
+test("learning packet carries switching and invalidation policy before execution", () => {
+  const candidate = directCandidate();
+  candidate.indirect_strategies[0].invalidation_rules = ["buyer_indication_withdrawn"];
+  candidate.indirect_strategies[0].switching_rules = ["switch_to_no_action_if_quote_expires"];
+
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"] },
+    preferences: prefs,
+  });
+
+  assert.deepEqual(result.learning_packet.pre_commit_invalidation_rules, ["buyer_indication_withdrawn"]);
+  assert.deepEqual(result.learning_packet.pre_commit_switching_rules, ["switch_to_no_action_if_quote_expires"]);
+});
