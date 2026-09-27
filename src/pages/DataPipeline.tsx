@@ -14,6 +14,7 @@ import { OrphanRegionsCard } from "@/components/data-pipeline/OrphanRegionsCard"
 import { SeedRetryCard } from "@/components/data-pipeline/SeedRetryCard";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { useFreshness, useOrphans, useRunHealth, useSeedStatus, useChain } from "@/components/data-pipeline/queries";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 
 export default function DataPipeline() {
   const { user } = useAuth();
@@ -83,6 +84,7 @@ export default function DataPipeline() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6 max-w-7xl">
+      <SystemWorkspaceNav />
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Database className="h-6 w-6 text-primary" />
