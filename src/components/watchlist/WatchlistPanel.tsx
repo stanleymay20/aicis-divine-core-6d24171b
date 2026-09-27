@@ -1,24 +1,26 @@
-import { useWatchlist, WatchlistItem, WatchlistEvent, WatchType } from "@/hooks/useWatchlist";
+import { useWatchlist, WatchlistItem, WatchType } from "@/hooks/useWatchlist";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Eye, Globe, Map, Zap, Trash2, ArrowRight, Star, StarOff,
+  BrainCircuit, Eye, Globe, Map, Zap, Trash2, Star, StarOff,
   Bell, BellOff, TrendingUp, TrendingDown, AlertTriangle,
   CheckCircle2, Clock, Package, Layers, Target
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 
-const TYPE_META: Record<WatchType, { icon: any; color: string; bg: string; label: string }> = {
+const TYPE_META: Record<WatchType, { icon: LucideIcon; color: string; bg: string; label: string }> = {
   country: { icon: Globe, color: "text-blue-500", bg: "bg-blue-500/10", label: "Market" },
   region: { icon: Map, color: "text-amber-500", bg: "bg-amber-500/10", label: "Region" },
   hotspot: { icon: Zap, color: "text-red-500", bg: "bg-red-500/10", label: "Hotspot" },
 };
 
-const STATUS_META: Record<string, { label: string; icon: any; color: string; bg: string }> = {
+const STATUS_META: Record<string, { label: string; icon: LucideIcon; color: string; bg: string }> = {
   critical: { label: "Critical", icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/10 border-destructive/30" },
   rising: { label: "Rising Risk", icon: TrendingUp, color: "text-amber-500", bg: "bg-amber-500/10 border-amber-500/30" },
   improving: { label: "Improving", icon: TrendingDown, color: "text-emerald-500", bg: "bg-emerald-500/10 border-emerald-500/30" },
@@ -45,8 +47,47 @@ const BUSINESS_CONTEXT: Record<string, string> = {
 export const WatchlistPanel = () => {
   const { sortedItems, events, isLoading, removeItem, updatePriority, toggleAlert } = useWatchlist();
   const navigate = useNavigate();
+  const { selectEntity } = useIntelligenceOS();
 
-  const getEventsForItem = (id: string) => events.filter((e) => e.watchlist_item_id === id).slice(0, 3);
+  const getEventsForItem = (id: string) =>
+    events.filter((event) => event.watchlist_item_id === id).slice(0, 3);
+
+  const inspectItem = (item: WatchlistItem) => {
+    const type =
+      item.watch_type === "country"
+        ? "country"
+        : item.watch_type === "region"
+          ? "region"
+          : "risk";
+    const entityId =
+      item.country_iso3 ||
+      item.region_id ||
+      item.hotspot_key ||
+      item.id;
+
+    selectEntity({
+      id: entityId,
+      type,
+      name: item.label,
+      description: `Tracked ${item.watch_type} · current status ${item.current_status}.`,
+      observedAt: item.created_at,
+      updatedAt: item.last_checked_at ?? item.updated_at,
+      geography:
+        item.watch_type === "country" && item.country_iso3
+          ? { country: item.country_iso3 }
+          : undefined,
+      metadata: {
+        watchlistItemId: item.id,
+        watchType: item.watch_type,
+        currentStatus: item.current_status,
+        lastRiskValue: item.last_risk_value,
+        priorityLevel: item.priority_level,
+        alertEnabled: item.alert_enabled,
+        alertThreshold: item.alert_threshold,
+        lastAlertedAt: item.last_alerted_at,
+      },
+    });
+  };
 
   const handleNavigate = (item: WatchlistItem) => {
     if (item.watch_type === "country" && item.country_iso3) {
@@ -237,6 +278,16 @@ export const WatchlistPanel = () => {
                     Escalate to action
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => inspectItem(item)}
+                  aria-label={`Inspect watchlist item ${item.label}`}
+                >
+                  <BrainCircuit className="h-3 w-3 text-primary" />
+                  Inspect
+                </Button>
                 <Button
                   variant="ghost" size="sm" className="h-7 text-xs gap-1 ml-auto text-primary"
                   onClick={() => handleNavigate(item)}
