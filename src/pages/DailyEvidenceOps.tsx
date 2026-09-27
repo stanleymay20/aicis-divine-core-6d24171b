@@ -11,12 +11,13 @@ import OperatorClosureScoreboard from "@/components/daily-evidence-ops/OperatorC
 import ReviewerClosureScoreboard from "@/components/daily-evidence-ops/ReviewerClosureScoreboard";
 import EvidenceMomentumPanel from "@/components/daily-evidence-ops/EvidenceMomentumPanel";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 export default function DailyEvidenceOps() {
   return (
     <AICISLayout>
       <div className="h-full overflow-y-auto scrollbar-thin">
-        <div className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 max-w-[1400px] mx-auto animate-fade-in">
+        <div className="p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 max-w-[1400px] mx-auto animate-fade-in">\n          <DataTrustWorkspaceNav />
           <div>
             <h1 className="text-lg sm:text-xl font-semibold">Daily Evidence Ops</h1>
             <p className="text-xs sm:text-sm text-muted-foreground">Operator console for daily measured evidence production</p>
