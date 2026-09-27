@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Activity, Clock3, Layers3, Radio, Search, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Activity, Check, Clock3, Layers3, Network, Radio, Search, ShieldCheck } from "lucide-react";
 import {
   GlobalMap,
   type CountryData,
+  type GlobalMapRef,
   type IncidentData,
 } from "@/components/command-center/GlobalMap";
 import {
@@ -12,35 +13,73 @@ import {
 } from "@/components/aicis/RealtimeOperationsStream";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
+import { ALL_COUNTRIES } from "@/lib/geo/all-countries";
+
+type WorldLayer = "vulnerability" | "networks";
 
 const countryEntityId = (country: CountryData) =>
   country.iso3 || [country.latitude.toFixed(4), country.longitude.toFixed(4)].join(",");
 
+const readLayer = (value: string | null): WorldLayer =>
+  value === "networks" ? "networks" : "vulnerability";
+
 export default function WorldWorkspace() {
   const navigate = useNavigate();
-  const { selectEntity, setCommandPaletteOpen } = useIntelligenceOS();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    selectedEntity,
+    selectEntity,
+    setCommandPaletteOpen,
+  } = useIntelligenceOS();
+  const mapRef = useRef<GlobalMapRef>(null);
+  const lastMapEntityRef = useRef<string | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const [trayOpen, setTrayOpen] = useState(true);
+  const activeLayer = readLayer(searchParams.get("layer"));
 
-  const selectCountry = (country: CountryData) => {
-    selectEntity({
-      id: countryEntityId(country),
-      type: "country",
-      name: country.country,
-      description: country.iso3
-        ? `${country.iso3} · mapped country context`
-        : "Mapped country context",
-      geography: {
-        country: country.country,
-      },
-      metadata: {
-        iso3: country.iso3 || null,
-        latitude: country.latitude,
-        longitude: country.longitude,
-        vulnerabilityScore: country.overall_score ?? null,
-      },
-    });
-  };
+  const setLayer = useCallback(
+    (layer: WorldLayer) => {
+      const next = new URLSearchParams(searchParams);
+      next.set("layer", layer);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const selectCountry = useCallback(
+    (country: CountryData) => {
+      const id = countryEntityId(country);
+      lastMapEntityRef.current = id.toUpperCase();
+
+      selectEntity({
+        id,
+        type: "country",
+        name: country.country,
+        description: country.iso3
+          ? `${country.iso3} · mapped country context`
+          : "Mapped country context",
+        geography: {
+          country: country.country,
+        },
+        metadata: {
+          iso3: country.iso3 || null,
+          latitude: country.latitude,
+          longitude: country.longitude,
+          vulnerabilityScore: country.overall_score ?? null,
+        },
+      });
+    },
+    [selectEntity],
+  );
 
   const selectIncident = (incident: IncidentData) => {
     selectEntity({
@@ -92,6 +131,19 @@ export default function WorldWorkspace() {
     });
   };
 
+  useEffect(() => {
+    if (!mapReady || selectedEntity?.type !== "country") return;
+
+    const entityKey = selectedEntity.id.toUpperCase();
+    if (lastMapEntityRef.current === entityKey) return;
+
+    const country = ALL_COUNTRIES.find((candidate) => candidate.iso3 === entityKey);
+    if (!country) return;
+
+    lastMapEntityRef.current = entityKey;
+    mapRef.current?.flyToCountry(country);
+  }, [mapReady, selectedEntity?.id, selectedEntity?.type]);
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background/95 px-2.5 backdrop-blur-xl sm:px-3">
@@ -123,15 +175,40 @@ export default function WorldWorkspace() {
           >
             <Clock3 className="h-3.5 w-3.5" /> 24h
           </Button>
-          <Button
-            disabled
-            variant="ghost"
-            size="sm"
-            className="hidden h-7 gap-1.5 text-[10px] text-muted-foreground lg:flex"
-            title="Layer orchestration is not yet connected to the workspace shell"
-          >
-            <Layers3 className="h-3.5 w-3.5" /> Layers
-          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden h-7 gap-1.5 text-[10px] text-muted-foreground sm:flex"
+                aria-label="Choose World map layer"
+              >
+                <Layers3 className="h-3.5 w-3.5" />
+                {activeLayer === "networks" ? "Networks" : "Vulnerability"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Governed layers
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setLayer("vulnerability")}>
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Vulnerability
+                {activeLayer === "vulnerability" && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLayer("networks")}>
+                <Network className="mr-2 h-4 w-4" />
+                Measured networks
+                {activeLayer === "networks" && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                Only layers with a connected data contract are enabled here.
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="ghost"
             size="sm"
@@ -147,12 +224,18 @@ export default function WorldWorkspace() {
 
       <section className="relative min-h-[48vh] flex-1 overflow-hidden">
         <GlobalMap
+          ref={mapRef}
           className="h-full min-h-[48vh]"
           showSelectionOverlay={false}
           showQuickActions={false}
           showLegend={false}
           showStatusBadge={false}
           compactControls
+          activeLayer={activeLayer}
+          onActiveLayerChange={(layer) => {
+            if (layer === "vulnerability" || layer === "networks") setLayer(layer);
+          }}
+          onReady={() => setMapReady(true)}
           onCountrySelect={selectCountry}
           onIncidentSelect={selectIncident}
         />
@@ -169,6 +252,13 @@ export default function WorldWorkspace() {
             className="hidden h-6 border border-border/70 bg-background/85 text-[9px] font-mono shadow-sm backdrop-blur-md sm:inline-flex"
           >
             <ShieldCheck className="mr-1 h-3 w-3 text-muted-foreground" /> EVIDENCE-AWARE
+          </Badge>
+          <Badge
+            variant="secondary"
+            className="hidden h-6 border border-border/70 bg-background/85 text-[9px] font-mono shadow-sm backdrop-blur-md md:inline-flex"
+          >
+            <Layers3 className="mr-1 h-3 w-3 text-muted-foreground" />
+            {activeLayer.toUpperCase()}
           </Badge>
         </div>
 

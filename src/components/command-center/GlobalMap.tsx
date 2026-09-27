@@ -50,6 +50,9 @@ export interface GlobalMapRef {
 interface GlobalMapProps {
   onCountrySelect?: (country: CountryData) => void;
   onIncidentSelect?: (incident: IncidentData) => void;
+  onReady?: () => void;
+  activeLayer?: string;
+  onActiveLayerChange?: (layer: string) => void;
   className?: string;
   isMobile?: boolean;
   showSelectionOverlay?: boolean;
@@ -64,6 +67,9 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
     {
       onCountrySelect,
       onIncidentSelect,
+      onReady,
+      activeLayer: controlledActiveLayer,
+      onActiveLayerChange,
       className,
       isMobile,
       showSelectionOverlay = true,
@@ -80,9 +86,22 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
     const [countryData, setCountryData] = useState<CountryData[]>([]);
     const [isSpinning, setIsSpinning] = useState(false);
     const [selectedCountry, setSelectedCountry] = useState<CountryData | null>(null);
-    const [activeLayer, setActiveLayer] = useState("vulnerability");
+    const [internalActiveLayer, setInternalActiveLayer] = useState("vulnerability");
+    const activeLayer = controlledActiveLayer ?? internalActiveLayer;
     const [showSatellite, setShowSatellite] = useState(true);
     const spinIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const onReadyRef = useRef(onReady);
+    onReadyRef.current = onReady;
+
+    const setActiveLayer = useCallback(
+      (layer: string) => {
+        if (controlledActiveLayer === undefined) {
+          setInternalActiveLayer(layer);
+        }
+        onActiveLayerChange?.(layer);
+      },
+      [controlledActiveLayer, onActiveLayerChange],
+    );
 
     const { incidentCount } = useIncidentMarkers({
       map: map.current,
@@ -179,6 +198,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
 
       map.current.on("load", () => {
         setMapLoaded(true);
+        onReadyRef.current?.();
       });
 
       return () => {
@@ -387,7 +407,7 @@ export const GlobalMap = forwardRef<GlobalMapRef, GlobalMapProps>(
             size="icon"
             className={cn("border border-primary/20 bg-card/90 backdrop-blur-sm", compactControls ? "h-8 w-8" : "h-9 w-9")}
             onClick={() =>
-              setActiveLayer((layer) => (layer === "networks" ? "vulnerability" : "networks"))
+              setActiveLayer(activeLayer === "networks" ? "vulnerability" : "networks")
             }
             aria-label="Toggle measured network layer"
           >

@@ -42,3 +42,23 @@ test("Realtime stream supports compact selectable events without requiring selec
   assert.match(source, /onClick=\{\(\) => onEventSelect\?\.\(event\)\}/);
   assert.match(source, /disabled=\{!onEventSelect\}/);
 });
+
+
+test("World layer state is shareable and deep-linked countries rehydrate the map", async () => {
+  const source = await readFile(worldPath, "utf8");
+
+  assert.match(source, /useSearchParams/);
+  assert.match(source, /next\.set\("layer", layer\)/);
+  assert.match(source, /selectedEntity\?\.type !== "country"/);
+  assert.match(source, /ALL_COUNTRIES\.find/);
+  assert.match(source, /mapRef\.current\?\.flyToCountry\(country\)/);
+});
+
+test("GlobalMap supports controlled layer state and a map-ready callback", async () => {
+  const source = await readFile(mapPath, "utf8");
+
+  assert.match(source, /activeLayer\?: string/);
+  assert.match(source, /onActiveLayerChange\?:/);
+  assert.match(source, /controlledActiveLayer \?\? internalActiveLayer/);
+  assert.match(source, /onReadyRef\.current\?\.\(\)/);
+});
