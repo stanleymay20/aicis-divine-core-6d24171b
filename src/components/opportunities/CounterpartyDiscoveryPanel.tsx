@@ -190,7 +190,7 @@ export function CounterpartyDiscoveryPanel() {
                     size="sm"
                     className="h-7 text-xs"
                     onClick={() => window.dispatchEvent(new CustomEvent("aicis:screen-counterparty", {
-                      detail: { legal_name: candidate.title || candidate.domain },
+                      detail: { legal_name: candidate.title || candidate.domain, role: candidate.role === "buyer" ? "buyer" : "supplier" },
                     }))}
                   >
                     Screen official lists
