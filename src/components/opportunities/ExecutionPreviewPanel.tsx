@@ -21,7 +21,7 @@ type PreviewResponse = {
   error?: string;
   reasons?: string[];
   preview?: {
-    preview_status: "rejected" | "indicative_only" | "previewed_order";
+    preview_status: "rejected" | "indicative_only" | "unattested_quote" | "previewed_order";
     candidate: {
       candidate_id: string | null;
       candidate_execution_ready: boolean;
@@ -50,6 +50,11 @@ type PreviewResponse = {
     };
     normalized_fx_rate?: Record<string, unknown> | null;
     fx_handoff_blocked_reason?: string | null;
+    provider_attestation?: {
+      required_for_execution_evidence: boolean;
+      attested: boolean;
+      quote_claims_executable: boolean;
+    };
     approval: {
       human_approval_required: true;
       human_approval_package_ready: boolean;
@@ -202,7 +207,8 @@ export function ExecutionPreviewPanel({
   const statusLabel = useMemo(() => {
     if (!response) return "not previewed";
     if (!response.ok || !preview) return "rejected";
-    if (preview.preview_status === "previewed_order") return "previewed only";
+    if (preview.preview_status === "previewed_order") return "provider-attested preview";
+    if (preview.preview_status === "unattested_quote") return "unattested quote";
     return "indicative only";
   }, [response, preview]);
 
@@ -339,7 +345,7 @@ export function ExecutionPreviewPanel({
           </div>
 
           <p className="text-[10px] text-muted-foreground">
-            Idempotency: <code>{idempotencyKey}</code>. Quote payloads may contain masked account references but never provider credentials or secrets.
+            Idempotency: <code>{idempotencyKey}</code>. Pasted JSON is never treated as provider-attested. Quote payloads may contain masked account references but never provider credentials or secrets.
           </p>
 
           {response && !response.ok ? (
@@ -397,10 +403,12 @@ export function ExecutionPreviewPanel({
                 </div>
                 <p className="mt-1 text-[10px] text-muted-foreground">
                   {preview.approval.human_approval_package_ready
-                    ? "The candidate and executable quote are complete enough for human review. Nothing has been approved or submitted."
-                    : preview.approval.rebuild_required_before_approval
-                      ? "The quote is executable, but the candidate must be rebuilt with the new evidence before human review can become ready."
-                      : "This quote is not execution-ready and cannot create an approval-ready package."}
+                    ? "The candidate and provider-attested executable quote are complete enough for human review. Nothing has been approved or submitted."
+                    : preview.preview_status === "unattested_quote"
+                      ? "The supplied quote claims to be executable, but no server-side provider adapter has authenticated it. It remains research-only."
+                      : preview.approval.rebuild_required_before_approval
+                        ? "The provider-attested quote is executable, but the candidate must be rebuilt with the new evidence before human review can become ready."
+                        : "This quote is not execution-ready and cannot create an approval-ready package."}
                 </p>
                 {response.approval_request ? (
                   <p className="mt-2 text-[10px] text-muted-foreground">
