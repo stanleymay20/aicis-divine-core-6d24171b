@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Activity, AlertTriangle, BrainCircuit, RadioTower, ShieldCheck, Zap } from "lucide-react";
+import { isSchemaUnavailableError } from "@/lib/supabase-errors";
 
 type StreamEvent = {
   id: string;
@@ -126,6 +127,8 @@ export function RealtimeOperationsStream() {
   }, [telemetry.data, causal.data, interventions.data]);
 
   const loading = telemetry.isLoading || causal.isLoading || interventions.isLoading;
+  const unavailable = [telemetry.error, causal.error, interventions.error].some(isSchemaUnavailableError);
+  const failed = telemetry.isError || causal.isError || interventions.isError;
 
   return (
     <Card className="border-border bg-card/70 overflow-hidden">
@@ -154,6 +157,14 @@ export function RealtimeOperationsStream() {
             <Skeleton className="h-16 w-full" />
             <Skeleton className="h-16 w-full" />
             <Skeleton className="h-16 w-full" />
+          </div>
+        ) : unavailable ? (
+          <div className="rounded-lg border border-dashed border-border bg-background/40 p-6 text-sm text-muted-foreground">
+            Live operations are not available yet because one or more required command views are not present in the live database. AICIS is not substituting synthetic events.
+          </div>
+        ) : failed ? (
+          <div className="rounded-lg border border-dashed border-destructive/30 bg-destructive/5 p-6 text-sm text-muted-foreground">
+            Live operations could not be loaded. The underlying error has been left visible to diagnostics; no fallback activity is being invented.
           </div>
         ) : stream.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-background/40 p-6 text-sm text-muted-foreground">
