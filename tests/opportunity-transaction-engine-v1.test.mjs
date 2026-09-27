@@ -1,0 +1,109 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { evaluateOpportunity, rankOpportunities } from "../supabase/functions/_shared/opportunity-engine-v1.mjs";
+
+const prefs = {
+  countries: ["ghana", "germany"],
+  industries: ["agriculture", "logistics"],
+  domains: ["supply_chain"],
+  watched_entities: ["tema"],
+  keywords: ["cocoa"],
+  risk_priorities: ["price shock"],
+  alert_preferences: {
+    opportunity_profile: {
+      objective: "balanced",
+      risk_tolerance: "balanced",
+      capital_available: 100000,
+      max_cycle_days: 60,
+      min_base_margin_pct: 3,
+      min_evidence_score: 60,
+      min_relevance_score: 45,
+      minimum_rank_score: 55,
+      max_single_opportunity_capital_pct: 60,
+      allowed_transaction_types: ["physical_trade", "brokerage"],
+    },
+  },
+};
+
+const good = {
+  id: "opp-1",
+  title: "Cocoa physical trade via Tema",
+  summary: "Verified cocoa sourcing and buyer quote",
+  transaction_type: "physical_trade",
+  domain: "supply_chain",
+  sectors: ["agriculture", "logistics"],
+  countries: ["ghana", "germany"],
+  entities: ["Tema"],
+  capital_required: 50000,
+  expected_revenue: 62000,
+  expected_cost: 56000,
+  downside_loss: 3500,
+  cycle_days: 35,
+  probability_of_completion: 82,
+  evidence_score: 86,
+  counterparty_quality_score: 80,
+  liquidity_score: 70,
+  compliance_status: "clear",
+  economics_status: "verified_quotes",
+  market_freshness_minutes: 120,
+};
+
+test("eligible opportunity gets economics and relevance scoring", () => {
+  const result = evaluateOpportunity(good, prefs);
+  assert.equal(result.eligible, true);
+  assert.equal(result.metrics.base_profit, 6000);
+  assert.ok(result.components.relevance_score >= 70);
+  assert.equal(result.human_approval_required, true);
+});
+
+test("unverified economics fail closed", () => {
+  const result = evaluateOpportunity({ ...good, id: "opp-2", economics_status: "synthetic" }, prefs);
+  assert.equal(result.eligible, false);
+  assert.ok(result.rejection_reasons.includes("economics_not_verified"));
+});
+
+test("capital concentration limit is enforced", () => {
+  const result = evaluateOpportunity({ ...good, id: "opp-3", capital_required: 90000 }, prefs);
+  assert.equal(result.eligible, false);
+  assert.ok(result.rejection_reasons.includes("single_opportunity_capital_limit_exceeded"));
+});
+
+test("relevance can reject otherwise profitable opportunities", () => {
+  const result = evaluateOpportunity({
+    ...good,
+    id: "opp-4",
+    title: "Semiconductor trade in Japan",
+    summary: "Chip equipment opportunity",
+    domain: "technology",
+    sectors: ["semiconductors"],
+    countries: ["japan"],
+    entities: ["Tokyo"],
+  }, prefs);
+  assert.equal(result.eligible, false);
+  assert.ok(result.rejection_reasons.includes("relevance_below_threshold"));
+});
+
+test("ranking may correctly recommend no transaction", () => {
+  const result = rankOpportunities([{ ...good, id: "opp-5", evidence_score: 40 }], prefs);
+  assert.equal(result.no_transaction_recommended, true);
+  assert.equal(result.top_ranked, null);
+});
+
+test("ranking chooses the strongest supplied eligible candidate, not a claimed global best", () => {
+  const stronger = {
+    ...good,
+    id: "opp-6",
+    title: "Cocoa brokerage via Tema",
+    transaction_type: "brokerage",
+    capital_required: 10000,
+    expected_revenue: 15000,
+    expected_cost: 11000,
+    downside_loss: 800,
+    cycle_days: 14,
+    probability_of_completion: 88,
+  };
+  const result = rankOpportunities([good, stronger], prefs);
+  assert.equal(result.no_transaction_recommended, false);
+  assert.equal(result.top_ranked.candidate_id, "opp-6");
+  assert.match(result.ranking_scope_notice, /only among candidates supplied/i);
+});
