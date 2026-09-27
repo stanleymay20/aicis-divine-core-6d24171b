@@ -108,6 +108,13 @@ type StrategicResponse = {
   options: StrategicOption[];
   comparison_currency?: string | null;
   comparison_blocked_reason?: string | null;
+  audit?: {
+    audit_version: string;
+    algorithm: string;
+    hash: string;
+    canonical_length: number;
+    semantics: string;
+  };
   learning_packet?: {
     strategy_id: string;
     doctrine_ids: string[];
@@ -778,6 +785,18 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
               </div>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {strategic.audit ? (
+        <div className="rounded-md border border-border/70 bg-muted/20 p-2.5 text-[10px] text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>Pre-outcome strategy fingerprint</span>
+            <code className="text-foreground">{strategic.audit.hash.slice(0, 16)}…</code>
+          </div>
+          <p className="mt-1">
+            {strategic.audit.algorithm} · {strategic.audit.audit_version} · full hash retained in the response and audit log.
+          </p>
         </div>
       ) : null}
 
