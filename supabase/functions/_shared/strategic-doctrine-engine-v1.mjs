@@ -97,11 +97,19 @@ function normalizedOption(raw, fallback = {}) {
   const decisionLossReduction = finite(raw.expected_decision_loss_reduction)
     ? Math.max(0, raw.expected_decision_loss_reduction)
     : null;
+  const commitmentCost = finite(raw.commitment_cost) ? Math.max(0, raw.commitment_cost) : null;
+  const optionValueEstimate = finite(raw.option_value_estimate) ? Math.max(0, raw.option_value_estimate) : null;
   const informationEvidenceBacked = list(raw.evidence_refs).length > 0;
   const derivedInformationValue = informationCost != null &&
     decisionLossReduction != null &&
     informationEvidenceBacked
     ? decisionLossReduction - informationCost
+    : null;
+  const positionEvidenceBacked = list(raw.evidence_refs).length > 0;
+  const derivedPositionValue = commitmentCost != null &&
+    optionValueEstimate != null &&
+    positionEvidenceBacked
+    ? optionValueEstimate - commitmentCost
     : null;
   return {
     id: raw.id || fallback.id,
@@ -123,17 +131,25 @@ function normalizedOption(raw, fallback = {}) {
         ? metrics.expected_value
         : finite(derivedInformationValue)
           ? derivedInformationValue
-          : null,
+          : finite(derivedPositionValue)
+            ? derivedPositionValue
+            : null,
     base_profit: finite(raw.base_profit)
       ? raw.base_profit
       : finite(metrics.base_profit)
         ? metrics.base_profit
         : finite(derivedInformationValue)
           ? derivedInformationValue
-          : null,
+          : finite(derivedPositionValue)
+            ? derivedPositionValue
+            : null,
     information_cost: informationCost,
     expected_decision_loss_reduction: decisionLossReduction,
     information_value_estimate: finite(derivedInformationValue) ? round(derivedInformationValue) : null,
+    commitment_cost: commitmentCost,
+    option_value_estimate: optionValueEstimate,
+    net_position_value_estimate: finite(derivedPositionValue) ? round(derivedPositionValue) : null,
+    sequence_steps: list(raw.sequence_steps),
     reversibility_score: finite(raw.reversibility_score) ? clamp(raw.reversibility_score) : 50,
     execution_friction_score: finite(raw.execution_friction_score) ? clamp(raw.execution_friction_score) : 50,
     required_capabilities: list(raw.required_capabilities).map(String),
@@ -184,6 +200,7 @@ function transactionOption(candidate) {
     reversibility_score: candidate.execution_ready ? 30 : 20,
     execution_friction_score: candidate.execution_ready ? 55 : 80,
     required_capabilities: candidate.required_capabilities || [],
+    sequence_steps: candidate?.execution_dossier?.how?.next_actions || [],
     invalidation_rules: candidate.invalidation_rules || [],
     switching_rules: candidate.switching_rules || [],
     scenarios: candidate.scenarios || [],
@@ -213,10 +230,16 @@ function suppliedAlternatives(candidate) {
         currency: raw.currency || candidate.currency || null,
         research_only: raw.research_only === true || (
           !finite(raw.expected_value) &&
-          !(type === "information_gathering" &&
-            finite(raw.information_cost) &&
-            finite(raw.expected_decision_loss_reduction) &&
-            list(raw.evidence_refs).length > 0)
+          !(
+            (type === "information_gathering" &&
+              finite(raw.information_cost) &&
+              finite(raw.expected_decision_loss_reduction) &&
+              list(raw.evidence_refs).length > 0) ||
+            (type === "position_building" &&
+              finite(raw.commitment_cost) &&
+              finite(raw.option_value_estimate) &&
+              list(raw.evidence_refs).length > 0)
+          )
         ),
         executable_input: raw.executable_input === true,
       }));
@@ -245,6 +268,7 @@ function noActionOption(candidate) {
     reversibility_score: 100,
     execution_friction_score: 0,
     required_capabilities: [],
+    sequence_steps: [],
     invalidation_rules: [],
     switching_rules: [],
     scenarios: candidate.no_action_scenarios || [],
@@ -531,7 +555,10 @@ export function evaluateStrategicOptions({
       "maximum_realized_downside",
       "strategy_switched",
       "invalidation_triggered",
+      "option_value_realized",
+      "information_value_realized",
     ],
+    pre_commit_sequence_steps: primary.sequence_steps,
     pre_commit_invalidation_rules: primary.invalidation_rules,
     pre_commit_switching_rules: primary.switching_rules,
     epistemic_boundary: "outcome_association_not_causal_attribution",
