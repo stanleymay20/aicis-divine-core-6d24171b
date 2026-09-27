@@ -468,3 +468,7 @@ verify_jwt = true
 
 [functions.compare-rfq-responses]
 verify_jwt = true
+
+
+[functions.verify-landed-cost-evidence]
+verify_jwt = true
