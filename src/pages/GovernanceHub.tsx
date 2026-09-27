@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -22,6 +23,15 @@ import { ScenarioEngine } from "@/components/governance/ScenarioEngine";
 import { SourceIQScorecardPanel } from "@/components/governance/SourceIQScorecardPanel";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
 import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
+
+type DaoSpace = Database["public"]["Tables"]["dao_spaces"]["Row"];
+type DaoProposal = Database["public"]["Tables"]["dao_proposals"]["Row"];
+type DaoVote = Database["public"]["Tables"]["dao_votes"]["Row"];
+type GovernanceGlobalRow =
+  Database["public"]["Tables"]["governance_global"]["Row"];
+
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 const GovernanceHub = () => {
   const { user, loading: authLoading } = useAuth();
@@ -44,23 +54,23 @@ const GovernanceHub = () => {
   const createProposal = useMutation({
     mutationFn: async () => { const { data, error } = await supabase.functions.invoke("dao-propose", { body: { space_id: selectedSpace, title: newProposalTitle, description: newProposalDescription } }); if (error) throw error; return data; },
     onSuccess: () => { toast({ title: "Proposal Created" }); setNewProposalTitle(""); setNewProposalDescription(""); queryClient.invalidateQueries({ queryKey: ["dao-proposals"] }); },
-    onError: (e: any) => { toast({ title: "Failed", description: e.message, variant: "destructive" }); },
+    onError: (error: unknown) => { toast({ title: "Failed", description: errorMessage(error), variant: "destructive" }); },
   });
 
   const castVote = useMutation({
     mutationFn: async ({ proposalId, voteType }: { proposalId: string; voteType: string }) => { const { data, error } = await supabase.functions.invoke("dao-vote", { body: { proposal_id: proposalId, vote_type: voteType } }); if (error) throw error; return data; },
     onSuccess: () => { toast({ title: "Vote Cast" }); queryClient.invalidateQueries({ queryKey: ["dao-proposals"] }); queryClient.invalidateQueries({ queryKey: ["user-votes"] }); },
-    onError: (e: any) => { toast({ title: "Failed", description: e.message, variant: "destructive" }); },
+    onError: (error: unknown) => { toast({ title: "Failed", description: errorMessage(error), variant: "destructive" }); },
   });
 
-  const getVotePercentage = (p: any) => { const t = (p.votes_for || 0) + (p.votes_against || 0) + (p.votes_abstain || 0); if (t === 0) return { for: 0, against: 0, abstain: 0 }; return { for: ((p.votes_for || 0) / t) * 100, against: ((p.votes_against || 0) / t) * 100, abstain: ((p.votes_abstain || 0) / t) * 100 }; };
-  const hasVoted = (id: string) => userVotes?.some((v: any) => v.proposal_id === id);
+  const getVotePercentage = (p: DaoProposal) => { const t = (p.votes_for || 0) + (p.votes_against || 0) + (p.votes_abstain || 0); if (t === 0) return { for: 0, against: 0, abstain: 0 }; return { for: ((p.votes_for || 0) / t) * 100, against: ((p.votes_against || 0) / t) * 100, abstain: ((p.votes_abstain || 0) / t) * 100 }; };
+  const hasVoted = (id: string) => userVotes?.some((vote: DaoVote) => vote.proposal_id === id);
 
   // Governance Performance Metrics
   const govPerformance = useMemo(() => {
-    const active = proposals?.filter((p: any) => p.status === 'active').length || 0;
+    const active = proposals?.filter((proposal: DaoProposal) => proposal.status === 'active').length || 0;
     const total = proposals?.length || 0;
-    const passed = proposals?.filter((p: any) => p.status === 'passed' || p.status === 'executed').length || 0;
+    const passed = proposals?.filter((proposal: DaoProposal) => proposal.status === 'passed' || proposal.status === 'executed').length || 0;
     const participationRate = total > 0 ? Math.round((passed / total) * 100) : 0;
     
     // Governance Performance Score
@@ -70,7 +80,7 @@ const GovernanceHub = () => {
     
     // Institutional Stability
     const stabilityIndex = Math.min(100, Math.round(
-      50 + (governanceData?.filter((g: any) => g.value > 0).length || 0) * 3
+      50 + (governanceData?.filter((row: GovernanceGlobalRow) => (row.value ?? 0) > 0).length || 0) * 3
     ));
 
     return { performanceScore, stabilityIndex, active, total, participationRate };
@@ -146,7 +156,7 @@ const GovernanceHub = () => {
             <ScrollArea className={isExecutiveMode ? "h-[400px]" : "h-[600px]"}>
               <div className="space-y-4">
                 {proposals?.length === 0 && <Card className="p-8 text-center"><Vote className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">No proposals yet</p></Card>}
-                {proposals?.map((proposal: any) => {
+                {proposals?.map((proposal: DaoProposal) => {
                   const pct = getVotePercentage(proposal);
                   const voted = hasVoted(proposal.id);
                   const isActive = proposal.status === "active";
@@ -181,7 +191,7 @@ const GovernanceHub = () => {
           <TabsContent value="create" className="space-y-4">
             <Card><CardHeader><CardTitle>Create New Proposal</CardTitle><CardDescription>Submit a proposal for community voting</CardDescription></CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2"><Label>Select Space</Label><div className="grid grid-cols-2 gap-2">{spaces?.map((s: any) => (<Button key={s.id} variant={selectedSpace === s.id ? "default" : "outline"} className="justify-start" onClick={() => setSelectedSpace(s.id)}><Building2 className="w-4 h-4 mr-2" />{s.name}</Button>))}</div></div>
+              <div className="space-y-2"><Label>Select Space</Label><div className="grid grid-cols-2 gap-2">{spaces?.map((space: DaoSpace) => (<Button key={space.id} variant={selectedSpace === space.id ? "default" : "outline"} className="justify-start" onClick={() => setSelectedSpace(space.id)}><Building2 className="w-4 h-4 mr-2" />{space.name}</Button>))}</div></div>
               <div className="space-y-2"><Label htmlFor="title">Proposal Title</Label><Input id="title" placeholder="Enter title..." value={newProposalTitle} onChange={(e) => setNewProposalTitle(e.target.value)} /></div>
               <div className="space-y-2"><Label htmlFor="desc">Description</Label><Textarea id="desc" placeholder="Describe your proposal..." value={newProposalDescription} onChange={(e) => setNewProposalDescription(e.target.value)} rows={6} /></div>
               <Button className="w-full" onClick={() => createProposal.mutate()} disabled={!selectedSpace || !newProposalTitle || createProposal.isPending}><Vote className="w-4 h-4 mr-2" /> Submit Proposal</Button>
@@ -195,9 +205,9 @@ const GovernanceHub = () => {
             <Card><CardHeader><CardTitle>Global Governance Indicators</CardTitle><CardDescription>World Bank Governance Indicators (WGI)</CardDescription></CardHeader>
             <CardContent><ScrollArea className="h-[500px]"><div className="space-y-3">
               {governanceData?.length === 0 && <p className="text-center py-8 text-muted-foreground">No governance data available</p>}
-              {governanceData?.map((item: any) => (
+              {governanceData?.map((item: GovernanceGlobalRow) => (
                 <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg"><div><p className="font-medium">{item.country}</p><p className="text-sm text-muted-foreground">{item.indicator_name}</p></div>
-                <div className="text-right"><p className={`text-lg font-bold ${item.value > 1 ? 'text-success' : item.value > 0 ? 'text-warning' : 'text-destructive'}`}>{item.value?.toFixed(2)}</p><p className="text-xs text-muted-foreground">{item.year}</p></div></div>
+                <div className="text-right"><p className={`text-lg font-bold ${(item.value ?? 0) > 1 ? 'text-success' : (item.value ?? 0) > 0 ? 'text-warning' : 'text-destructive'}`}>{item.value?.toFixed(2)}</p><p className="text-xs text-muted-foreground">{item.year}</p></div></div>
               ))}
             </div></ScrollArea></CardContent></Card>
           </TabsContent>
@@ -205,12 +215,12 @@ const GovernanceHub = () => {
           <TabsContent value="spaces" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {spaces?.length === 0 && <Card className="p-8 text-center md:col-span-2"><Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">No spaces configured</p></Card>}
-              {spaces?.map((s: any) => (
-                <Card key={s.id}><CardHeader><CardTitle className="flex items-center gap-2"><Building2 className="w-5 h-5 text-primary" />{s.name}</CardTitle><CardDescription>{s.description}</CardDescription></CardHeader>
+              {spaces?.map((space: DaoSpace) => (
+                <Card key={space.id}><CardHeader><CardTitle className="flex items-center gap-2"><Building2 className="w-5 h-5 text-primary" />{space.name}</CardTitle><CardDescription>{space.description}</CardDescription></CardHeader>
                 <CardContent><div className="grid grid-cols-3 gap-2 text-sm">
-                  <div className="text-center p-2 bg-muted/30 rounded"><p className="text-muted-foreground">Delay</p><p className="font-bold">{s.voting_delay_hours}h</p></div>
-                  <div className="text-center p-2 bg-muted/30 rounded"><p className="text-muted-foreground">Period</p><p className="font-bold">{s.voting_period_hours}h</p></div>
-                  <div className="text-center p-2 bg-muted/30 rounded"><p className="text-muted-foreground">Quorum</p><p className="font-bold">{s.quorum_percentage}%</p></div>
+                  <div className="text-center p-2 bg-muted/30 rounded"><p className="text-muted-foreground">Delay</p><p className="font-bold">{space.voting_delay_hours}h</p></div>
+                  <div className="text-center p-2 bg-muted/30 rounded"><p className="text-muted-foreground">Period</p><p className="font-bold">{space.voting_period_hours}h</p></div>
+                  <div className="text-center p-2 bg-muted/30 rounded"><p className="text-muted-foreground">Quorum</p><p className="font-bold">{space.quorum_percentage}%</p></div>
                 </div></CardContent></Card>
               ))}
             </div>
