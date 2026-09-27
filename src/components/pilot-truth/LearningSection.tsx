@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Brain, RefreshCw, Loader2, TrendingUp, TrendingDown, Info } from "lucide-react";
+import { isSchemaUnavailableError } from "@/lib/supabase-errors";
 import { toast } from "sonner";
 
 type QualityRow = {
@@ -136,6 +137,16 @@ export function LearningSection({ isPrivileged }: { isPrivileged: boolean }) {
       </CardHeader>
       <CardContent className="space-y-5">
         {(quality.isLoading || leaderboard.isLoading) && <Skeleton className="h-32 w-full" />}
+
+        {!quality.isLoading && !leaderboard.isLoading &&
+          [quality.error, leaderboard.error].some(isSchemaUnavailableError) && (
+          <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground flex items-start gap-2">
+            <Info className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              Learning scores are not available yet because one or more required learning views are absent from the live database. No leaderboard values are being substituted.
+            </div>
+          </div>
+        )}
 
         {!quality.isLoading && noOutcomesYet && (
           <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground flex items-start gap-2">
