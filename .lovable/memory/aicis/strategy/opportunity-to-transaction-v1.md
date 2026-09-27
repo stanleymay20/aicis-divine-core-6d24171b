@@ -619,6 +619,164 @@ Regression guard:
 
 The legacy endpoints must never become a parallel execution path beside the audited execution architecture.
 
+# Physical-trade RFQ workflow v1
+
+## Implementation
+
+Core contracts:
+- `supabase/functions/_shared/rfq-contract-v1.mjs`
+- `supabase/functions/_shared/rfq-quote-comparison-v1.mjs`
+
+Authenticated Edge Functions:
+- `generate-rfq-draft`
+- `normalize-rfq-response`
+- `compare-rfq-responses`
+
+UI:
+- `src/components/opportunities/RfqDraftPanel.tsx`
+- integrated into `TransactionPathLab`
+
+Tests:
+- `tests/rfq-contract-v1.test.mjs`
+- `tests/rfq-quote-comparison-v1.test.mjs`
+- RFQ metadata lineage is guarded in `tests/transaction-path-builder-v1.test.mjs`.
+
+## Candidate lineage
+
+Verified transaction paths preserve procurement metadata needed to draft an RFQ:
+- product id/name/unit/specification;
+- transaction quantity/unit;
+- supplier/buyer role;
+- registration id;
+- official website;
+- compliance status;
+- payment terms;
+- Incoterm;
+- public/licensed business contact;
+- evidence refs.
+
+RFQ drafting must use this preserved candidate lineage instead of reconstructing identity from display text.
+
+## RFQ draft truth boundary
+
+A valid RFQ draft requires:
+- strategic audit hash;
+- transaction candidate id;
+- counterparty id, legal name, jurisdiction and clear compliance;
+- attributable counterparty evidence;
+- public/licensed business contact;
+- product identity;
+- positive quantity/unit;
+- destination;
+- requested Incoterm(s);
+- requested payment terms;
+- valid currency preferences when supplied;
+- a future response deadline.
+
+Generic business email channels are allowed.
+Personal-looking email addresses are not treated as verified business channels.
+
+RFQ text is deterministic and must explicitly state that it is:
+- a request for quotation / due-diligence inquiry;
+- not a purchase order;
+- not a contract;
+- not a commitment;
+- not authorization to supply.
+
+The generated object always retains:
+```text
+human_approval_required_before_send = true
+approved_to_send = false
+approval_token = null
+sent = false
+outbound_message_sent = false
+purchase_order_created = false
+contract_signed = false
+money_moved = false
+```
+
+v1 supports **draft + copy for human review only**.
+No outbound email/message provider is wired.
+
+## RFQ response truth boundary
+
+A returned supplier/buyer quote may be normalized only when attributable evidence is supplied.
+
+Normalization still forces:
+```text
+evidence_status = rfq_response_unverified
+transaction_eligible = false
+```
+
+The response must pass the existing counterparty/commercial verification stack before it may become a source/sale offer.
+
+The RFQ UI may seed Counterparty Verification, but deliberately leaves:
+- legal-identity evidence incomplete;
+- official-site evidence incomplete;
+- compliance = review;
+- capacity evidence incomplete;
+- payment-term evidence incomplete.
+
+This prevents the RFQ response itself from silently verifying the company or quote.
+
+## Cost-completeness evidence
+
+Allowed response cost-completeness states:
+- `quoted_price_only`;
+- `explicit_additional_costs`;
+- `full_landed_cost`.
+
+Any claim beyond `quoted_price_only` requires attributable
+`cost_completeness_evidence_refs`.
+
+Every explicit additional cost must contain:
+- cost type;
+- non-negative amount;
+- basis = fixed | per_unit;
+- ISO currency;
+- evidence refs.
+
+A `full_landed_cost` label without evidence must never unlock quote ordering.
+
+## RFQ quote comparison
+
+Quote comparison is research-only.
+
+A lowest evaluated landed-cost response is allowed only when at least two normalized responses have:
+- the same RFQ id;
+- same product;
+- same quantity;
+- same quantity unit;
+- same Incoterm;
+- same named place/port;
+- same payment terms;
+- evidenced `full_landed_cost` completeness;
+- current quote validity;
+- comparable total costs;
+- one comparison currency.
+
+Cross-currency comparison reuses the canonical AICIS verified-FX layer.
+No procurement-specific FX subsystem is allowed.
+
+If any of those conditions fail:
+```text
+ordering_allowed = false
+lowest_evaluated_landed_cost_response = null
+```
+
+When ordering is allowed, the semantics are explicitly:
+```text
+lowest_landed_cost_among_supplied_unverified_rfq_responses_not_supplier_recommendation
+```
+
+Even the lowest landed-cost response retains:
+```text
+transaction_eligible = false
+human_verification_required = true
+```
+
+A lower quoted unit price is never assumed to mean lower landed cost.
+
 # Governing rules
 
 - Unknown stays unknown.
