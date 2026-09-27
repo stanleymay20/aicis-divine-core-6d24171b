@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
       }, 400);
     }
 
-    let query = sb
+    const { data: candidates, error: selectError } = await sb
       .from("strategic_research_runs_v1")
       .select("id,action_id,action_kind,lifecycle_status,evidence_refs,resolution,source_candidate_id")
       .eq("user_id", user.id)
@@ -71,15 +71,16 @@ Deno.serve(async (req) => {
       .eq("action_kind", completion.action_kind)
       .in("lifecycle_status", ["pending", "in_progress", "blocked"]);
 
-    if (sourceCandidateId) {
-      query = query.or("source_candidate_id.eq." + sourceCandidateId + ",source_candidate_id.is.null");
-    }
-
-    const { data: candidates, error: selectError } = await query;
     if (selectError) throw selectError;
 
+    const matchingCandidates = (candidates ?? []).filter((run) =>
+      !sourceCandidateId ||
+      !run.source_candidate_id ||
+      run.source_candidate_id === sourceCandidateId
+    );
+
     const updatedRuns = [];
-    for (const run of candidates ?? []) {
+    for (const run of matchingCandidates) {
       const currentRefs = Array.isArray(run.evidence_refs) ? run.evidence_refs : [];
       const byKey = new Map<string, unknown>();
 
