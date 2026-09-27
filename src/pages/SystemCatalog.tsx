@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, AlertTriangle, CheckCircle2, PauseCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
+import { SystemWorkspaceNav } from "@/components/system/SystemWorkspaceNav";
 
 type SloRow = {
   pipeline_name: string;
@@ -49,7 +50,7 @@ export default function SystemCatalog() {
     queryKey: ["system_slo_recent_v"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("system_slo_recent_v" as any)
+        .from("system_slo_recent_v" as never)
         .select("*")
         .order("fail_24h", { ascending: false });
       if (error) throw error;
@@ -62,7 +63,7 @@ export default function SystemCatalog() {
     queryKey: ["system_service_catalog"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("system_service_catalog" as any)
+        .from("system_service_catalog" as never)
         .select("*")
         .order("criticality", { ascending: true })
         .order("name", { ascending: true });
@@ -81,6 +82,7 @@ export default function SystemCatalog() {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <SystemWorkspaceNav />
         <header>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">System Catalog</h1>
           <p className="text-sm text-muted-foreground mt-1">
