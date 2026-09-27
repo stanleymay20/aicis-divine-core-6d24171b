@@ -232,7 +232,7 @@ export function StrategicResearchTracker() {
                         {run.priority}
                       </Badge>
                       <Badge variant="outline" className="text-[10px]">
-                        {run.lifecycle_status.replaceAll("_", " ")}
+                        {run.lifecycle_status.replace(/_/g, " ")}
                       </Badge>
                     </div>
                   </div>
@@ -245,7 +245,7 @@ export function StrategicResearchTracker() {
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                       {workflow?.status === "ready" ? null : <ShieldAlert className="h-3 w-3" />}
                       {workflow?.status
-                        ? workflow.status.replaceAll("_", " ")
+                        ? workflow.status.replace(/_/g, " ")
                         : "workflow metadata unavailable"}
                     </div>
                     <Button
