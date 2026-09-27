@@ -89,7 +89,7 @@ const SCHEMA_HINT = [
   '  "product": {"id":"...","name":"...","unit":"tonne","sectors":["..."]},',
   '  "quantity": 10,',
   '  "comparison_currency": "EUR",',
-  '  "fx_rates": [...verified or reference FX observations...],'
+  '  "fx_rates": [...verified or reference FX observations...],',
   '  "source_offers": [...verified supplier quotes...],',
   '  "sale_offers": [...verified buyer quotes...],',
   '  "routes": [...verified logistics quotes and costs...],',
