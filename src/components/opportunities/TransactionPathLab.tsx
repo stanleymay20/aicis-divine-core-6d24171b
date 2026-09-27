@@ -53,6 +53,10 @@ type StrategicOption = {
   information_cost?: number | null;
   expected_decision_loss_reduction?: number | null;
   information_value_estimate?: number | null;
+  commitment_cost?: number | null;
+  option_value_estimate?: number | null;
+  net_position_value_estimate?: number | null;
+  sequence_steps: unknown[];
   feasibility_reasons: string[];
   missing_capabilities: string[];
   invalidation_rules: unknown[];
@@ -92,6 +96,7 @@ type StrategicResponse = {
     doctrine_ids: string[];
     comparator_strategy_id: string | null;
     pre_registered_outcome_metrics: string[];
+    pre_commit_sequence_steps: unknown[];
     pre_commit_invalidation_rules: unknown[];
     pre_commit_switching_rules: unknown[];
     epistemic_boundary: string;
@@ -569,6 +574,13 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
                 <Metric label="Loss reduction" value={formatMoney(primary.expected_decision_loss_reduction, primary.currency)} />
                 <Metric label="Reversibility" value={primary.reversibility_score.toFixed(0) + "/100"} />
               </>
+            ) : primary.strategy_type === "position_building" ? (
+              <>
+                <Metric label="Net position value" value={formatMoney(primary.net_position_value_estimate, primary.currency)} />
+                <Metric label="Option value" value={formatMoney(primary.option_value_estimate, primary.currency)} />
+                <Metric label="Commitment cost" value={formatMoney(primary.commitment_cost, primary.currency)} />
+                <Metric label="Reversibility" value={primary.reversibility_score.toFixed(0) + "/100"} />
+              </>
             ) : (
               <>
                 <Metric label="Expected value" value={formatMoney(primary.expected_value, primary.currency)} />
@@ -582,6 +594,23 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
           {primary.strategy_type === "information_gathering" ? (
             <div className="rounded-md border border-border/70 bg-background/60 p-2.5 text-[11px] text-muted-foreground">
               AICIS is recommending information acquisition before commitment because the supplied, evidenced reduction in expected decision loss exceeds the information cost. This is not a guarantee that the inspection or research will produce that saving.
+            </div>
+          ) : null}
+
+          {primary.strategy_type === "position_building" ? (
+            <div className="rounded-md border border-border/70 bg-background/60 p-2.5 text-[11px] text-muted-foreground">
+              AICIS is valuing an evidence-backed strategic position before full execution. The option value is supplied decision support, not a guaranteed future payoff.
+            </div>
+          ) : null}
+
+          {primary.sequence_steps.length ? (
+            <div className="rounded-md border border-border/70 p-2.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Sequence of moves</p>
+              <ol className="mt-1 space-y-1 text-[11px]">
+                {primary.sequence_steps.map((step, index) => (
+                  <li key={"sequence-" + index}>{index + 1}. {String(step)}</li>
+                ))}
+              </ol>
             </div>
           ) : null}
 
