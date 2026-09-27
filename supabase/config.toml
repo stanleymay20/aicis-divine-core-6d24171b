@@ -476,3 +476,7 @@ verify_jwt = true
 
 [functions.plan-official-customs-evidence-sources]
 verify_jwt = true
+
+
+[functions.normalize-taric-duty-row]
+verify_jwt = true
