@@ -50,6 +50,9 @@ type StrategicOption = {
   downside_loss: number | null;
   reversibility_score: number;
   execution_friction_score: number;
+  information_cost?: number | null;
+  expected_decision_loss_reduction?: number | null;
+  information_value_estimate?: number | null;
   feasibility_reasons: string[];
   missing_capabilities: string[];
   robustness: {
@@ -77,6 +80,7 @@ type StrategicResponse = {
   feasible_count: number;
   pareto_frontier_count: number;
   primary_strategy: StrategicOption | null;
+  primary_information_action?: StrategicOption | null;
   no_action_option: StrategicOption | null;
   options: StrategicOption[];
   comparison_currency?: string | null;
@@ -547,11 +551,28 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Metric label="Expected value" value={formatMoney(primary.expected_value, primary.currency)} />
-            <Metric label="Capital required" value={formatMoney(primary.capital_required, primary.currency)} />
-            <Metric label="Downside" value={formatMoney(primary.downside_loss, primary.currency)} />
-            <Metric label="Reversibility" value={primary.reversibility_score.toFixed(0) + "/100"} />
+            {primary.strategy_type === "information_gathering" ? (
+              <>
+                <Metric label="Information value" value={formatMoney(primary.information_value_estimate, primary.currency)} />
+                <Metric label="Information cost" value={formatMoney(primary.information_cost, primary.currency)} />
+                <Metric label="Loss reduction" value={formatMoney(primary.expected_decision_loss_reduction, primary.currency)} />
+                <Metric label="Reversibility" value={primary.reversibility_score.toFixed(0) + "/100"} />
+              </>
+            ) : (
+              <>
+                <Metric label="Expected value" value={formatMoney(primary.expected_value, primary.currency)} />
+                <Metric label="Capital required" value={formatMoney(primary.capital_required, primary.currency)} />
+                <Metric label="Downside" value={formatMoney(primary.downside_loss, primary.currency)} />
+                <Metric label="Reversibility" value={primary.reversibility_score.toFixed(0) + "/100"} />
+              </>
+            )}
           </div>
+
+          {primary.strategy_type === "information_gathering" ? (
+            <div className="rounded-md border border-border/70 bg-background/60 p-2.5 text-[11px] text-muted-foreground">
+              AICIS is recommending information acquisition before commitment because the supplied, evidenced reduction in expected decision loss exceeds the information cost. This is not a guarantee that the inspection or research will produce that saving.
+            </div>
+          ) : null}
 
           {primary.doctrine_trace.length ? (
             <div className="flex flex-wrap gap-1.5">
