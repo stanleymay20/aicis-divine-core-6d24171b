@@ -22,6 +22,7 @@ function quote(id, unitPrice, extraCost) {
     payment_terms: "LC at sight",
     lead_time_days: 18,
     cost_completeness: "full_landed_cost",
+    cost_completeness_evidence_refs: ref("completeness-" + id),
     quote_valid_until: "2026-10-02T12:00:00Z",
     evidence_refs: ref("quote-" + id),
     additional_costs: [{
@@ -155,4 +156,51 @@ test("different quantities block comparison rather than normalizing silently", (
 
   assert.equal(result.ordering_allowed, false);
   assert.ok(result.blocking_reasons.includes("quantity_mismatch"));
+});
+
+
+test("different payment terms block landed-cost winner", () => {
+  const a = quote("A", 3000, 1000);
+  const b = quote("B", 3050, 200);
+  b.payment_terms = "100% prepayment";
+
+  const result = compareRfqResponses({
+    responses: [a, b],
+    comparison_currency: "EUR",
+    as_of: "2026-09-27T16:00:00Z",
+  });
+
+  assert.equal(result.ordering_allowed, false);
+  assert.ok(result.blocking_reasons.includes("payment_terms_mismatch"));
+  assert.equal(result.lowest_evaluated_landed_cost_response, null);
+});
+
+test("different RFQ ids cannot be compared as one quote set", () => {
+  const a = quote("A", 3000, 1000);
+  const b = quote("B", 3050, 200);
+  b.rfq_id = "rfq:other";
+
+  const result = compareRfqResponses({
+    responses: [a, b],
+    comparison_currency: "EUR",
+    as_of: "2026-09-27T16:00:00Z",
+  });
+
+  assert.equal(result.ordering_allowed, false);
+  assert.ok(result.blocking_reasons.includes("rfq_id_mismatch"));
+});
+
+test("full landed cost label without evidence cannot unlock ordering", () => {
+  const a = quote("A", 3000, 1000);
+  const b = quote("B", 3050, 200);
+  b.cost_completeness_evidence_refs = [];
+
+  const result = compareRfqResponses({
+    responses: [a, b],
+    comparison_currency: "EUR",
+    as_of: "2026-09-27T16:00:00Z",
+  });
+
+  assert.equal(result.ordering_allowed, false);
+  assert.ok(result.quotes.some((item) => item.reasons.includes("cost_completeness_evidence_invalid")));
 });
