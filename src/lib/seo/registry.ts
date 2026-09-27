@@ -69,7 +69,7 @@ export const SEO_REGISTRY: Record<string, RouteSEOEntry> = {
 
   // ---------- Operational app surfaces (noindex) ----------
   "/command-center": { title: "Planetary Command Center | AICIS", description: "Operational planetary command center for live signals and decision orchestration.", noindex: true },
-  "/morning-brief": { title: "Morning Brief | AICIS", description: "Prioritized daily intelligence brief with recommended actions.", noindex: true },
+  "/morning-brief": { title: "Morning Brief | AICIS", description: "Prioritized daily intelligence brief with recommended actions.", noindex: true },\n  "/opportunities": { title: "Opportunity Radar | AICIS", description: "Personalized opportunity research and evidence-gated transaction ranking.", noindex: true },
   "/live": { title: "Live Command Feed | AICIS", description: "Real-time signal stream across all ingestion sources.", noindex: true },
   "/live-signals": { title: "Live Signals | AICIS", description: "Real-time intelligence signal stream.", noindex: true },
   "/live-stream": { title: "Live Signal Stream | AICIS", description: "High-throughput live signal monitoring with routing precision.", noindex: true },
