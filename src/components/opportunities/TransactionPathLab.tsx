@@ -7,6 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ExecutionPreviewPanel } from "@/components/opportunities/ExecutionPreviewPanel";
 import { RfqDraftPanel } from "@/components/opportunities/RfqDraftPanel";
+import {
+  LandedCostVerificationPanel,
+  type LandedCostCandidate,
+  type LandedCostPack,
+} from "@/components/opportunities/LandedCostVerificationPanel";
 import { ArrowRight, CheckCircle2, CircleDollarSign, Compass, Loader2, MapPin, RefreshCw, Search, ShieldAlert, Users } from "lucide-react";
 
 type RankItem = {
@@ -254,7 +259,7 @@ type ResearchSyncResponse = {
 type BuildResponse = {
   ok: boolean;
   build?: {
-    candidates: unknown[];
+    candidates: LandedCostCandidate[];
     rejected_paths: unknown[];
     build_warnings: string[];
   };
@@ -304,11 +309,12 @@ const SCHEMA_HINT = [
   '  "sale_offers": [...verified buyer quotes...],',
   '  "routes": [...verified logistics quotes and costs...],',
   '  "structures": [...transaction structures...],',
+  '  "landed_cost_packs": [...verified landed-cost evidence scoped to a path...],',
   '  "scenario": {...validated downside/completion/cycle inputs...},',
   '  "strategic_context": {"actor_state": {...}, "terrain": {...}, "timing": {...}},',
   '  "indirect_strategies": [...evidence-backed alternatives...],',
   '  "position_options": [...optional strategic positions...],',
-  '  "information_actions": [...decision-relevant information actions...]',
+  '  "information_actions": [...decision-relevant information actions...],',
   '  "assumptions": [...explicit strategic assumptions...],',
   '  "sensitivity_cases": [...scoped shocked-value cases...]',
   "}"
@@ -557,6 +563,94 @@ export function TransactionPathLab() {
     });
   };
 
+  const addLandedCostPack = (
+    pack: LandedCostPack,
+    candidate: LandedCostCandidate,
+  ) => {
+    let current: Record<string, unknown>;
+    try {
+      const parsed: unknown = payload.trim() ? JSON.parse(payload) : {};
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error("Transaction bundle must be a JSON object");
+      }
+      current = parsed as Record<string, unknown>;
+    } catch (error) {
+      toast({
+        title: "Landed-cost evidence could not be attached",
+        description: error instanceof Error ? error.message : "The transaction bundle is not valid JSON.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const existing = Array.isArray(current.landed_cost_packs) ? current.landed_cost_packs : [];
+    const scopeKey = [
+      pack.source_id,
+      pack.buyer_id,
+      pack.route_id,
+      pack.transaction_type,
+    ].join("|");
+
+    const withoutDuplicate = existing.filter((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) return true;
+      const record = item as Record<string, unknown>;
+      const itemKey = [
+        record.source_id,
+        record.buyer_id,
+        record.route_id,
+        record.transaction_type,
+      ].map((value) => String(value || "")).join("|");
+      return itemKey !== scopeKey;
+    });
+
+    setPayload(JSON.stringify({
+      ...current,
+      landed_cost_packs: [...withoutDuplicate, pack],
+    }, null, 2));
+
+    const evidenceRefs = Array.isArray(pack.evidence.evidence_refs)
+      ? pack.evidence.evidence_refs
+      : [];
+    if (evidenceRefs.length) {
+      const completionKind = candidate.landed_cost_complete === true &&
+        candidate.landed_cost_execution_ready === false &&
+        pack.evidence.execution_ready_cost_stack === true
+        ? "landed_cost_execution_evidence_verified"
+        : "landed_cost_verified";
+
+      window.dispatchEvent(new CustomEvent("aicis:research-evidence-satisfied", {
+        detail: {
+          completion_kind: completionKind,
+          source_candidate_id: candidate.id,
+          evidence_refs: evidenceRefs,
+          metadata: {
+            candidate_id: candidate.id,
+            source_id: pack.source_id,
+            buyer_id: pack.buyer_id,
+            route_id: pack.route_id,
+            transaction_type: pack.transaction_type,
+            landed_cost_audit_hash: pack.audit?.hash ?? null,
+            coverage_complete: pack.evidence.coverage_complete === true,
+            execution_ready_cost_stack: pack.evidence.execution_ready_cost_stack === true,
+          },
+        },
+      }));
+    }
+
+    setResult(null);
+    setResearchRuns({});
+    toast({
+      title: "Landed-cost evidence attached",
+      description: "The previous economics and ranking are now stale. Rebuild transaction paths to recalculate cost, cash requirement, strategy, and portfolio allocation.",
+    });
+    window.requestAnimationFrame(() => {
+      document.getElementById("transaction-input-editor")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  };
+
   const syncResearchRuns = async () => {
     const auditHash = result?.strategic?.audit?.hash;
     const plan = result?.research_plan;
@@ -668,6 +762,18 @@ export function TransactionPathLab() {
 
     if (workflow.kind === "reference_fx") {
       await addReferenceFx();
+      return;
+    }
+
+    if (workflow.kind === "landed_cost_verification") {
+      document.getElementById("landed-cost-verification")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      toast({
+        title: workflow.label,
+        description: "Add attributable border, logistics, tax, insurance and financing evidence. Verification does not file customs, bind insurance, accept financing, or move money.",
+      });
       return;
     }
 
@@ -798,6 +904,15 @@ export function TransactionPathLab() {
   };
 
   const top = result?.ranking?.top_ranked ?? null;
+  const builtCandidates = result?.build?.candidates ?? [];
+  const costingCandidate = (
+    top
+      ? builtCandidates.find((candidate) => candidate.id === top.candidate_id)
+      : null
+  ) ?? builtCandidates.find((candidate) =>
+    candidate.transaction_type === "physical_trade" &&
+    candidate.landed_cost_complete === false
+  ) ?? builtCandidates.find((candidate) => candidate.transaction_type === "physical_trade") ?? null;
 
   return (
     <Card id="transaction-path-lab">
@@ -882,6 +997,19 @@ export function TransactionPathLab() {
         ) : null}
 
         {result?.strategic ? <StrategicRecommendation strategic={result.strategic} /> : null}
+
+        {costingCandidate ? (
+          <LandedCostVerificationPanel
+            key={[
+              costingCandidate.id,
+              String(costingCandidate.landed_cost_complete),
+              String(costingCandidate.landed_cost_execution_ready),
+            ].join(":")}
+            candidate={costingCandidate}
+            fxRates={extractFxRates(payload)}
+            onAttach={(pack) => addLandedCostPack(pack, costingCandidate)}
+          />
+        ) : null}
 
         {top && result?.strategic?.audit?.hash ? (
           <>
