@@ -8,6 +8,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, CheckCircle2, ClipboardCheck, Radar, ShieldAlert, Sparkles } from "lucide-react";
 import { isSchemaUnavailableError } from "@/lib/supabase-errors";
 
+type InsightRow = {
+  insight_title: string | null;
+  severity_band: string | null;
+  confidence_score: number | null;
+  recommended_action: string | null;
+};
+
+type InterventionRow = {
+  simulation_name: string | null;
+  approval_status: string | null;
+  safety_rating: string | null;
+};
+
 type WorkflowEvent = {
   title: string;
   severity: string;
@@ -29,11 +42,11 @@ export function OperationalDecisionWorkflow() {
     refetchInterval: 30000,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("executive_planetary_insights_view" as any)
+        .from("executive_planetary_insights_view" as never)
         .select("*")
         .limit(1);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as InsightRow[];
     },
   });
 
@@ -42,17 +55,17 @@ export function OperationalDecisionWorkflow() {
     refetchInterval: 30000,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("intervention_governance_command_view" as any)
+        .from("intervention_governance_command_view" as never)
         .select("*")
         .limit(1);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as InterventionRow[];
     },
   });
 
   const flow = useMemo(() => {
-    const insight: any = insights.data?.[0];
-    const intervention: any = interventions.data?.[0];
+    const insight = insights.data?.[0];
+    const intervention = interventions.data?.[0];
     const stages: WorkflowEvent[] = [];
 
     if (insight) {
