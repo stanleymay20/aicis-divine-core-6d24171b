@@ -139,6 +139,14 @@
     50% { opacity: 0.5; }
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in,
+    .animate-pulse,
+    .status-pulse {
+      animation: none;
+    }
+  }
+
   /* Safe area for mobile bottom */
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 0px);
