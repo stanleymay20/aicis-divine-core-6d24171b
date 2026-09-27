@@ -41,6 +41,11 @@ type OpportunityProfile = {
   max_country_capital_pct: number;
   max_sector_capital_pct: number;
   max_positions: number;
+  strategic_capabilities: string[];
+  strategic_licenses: string[];
+  strategic_relationships: string[];
+  strategic_infrastructure: string[];
+  strategic_constraints: string[];
   allowed_transaction_types: string[];
   excluded_countries: string[];
   excluded_sectors: string[];
@@ -62,6 +67,11 @@ const DEFAULT_PROFILE: OpportunityProfile = {
   max_country_capital_pct: 60,
   max_sector_capital_pct: 60,
   max_positions: 8,
+  strategic_capabilities: [],
+  strategic_licenses: [],
+  strategic_relationships: [],
+  strategic_infrastructure: [],
+  strategic_constraints: [],
   allowed_transaction_types: [],
   excluded_countries: [],
   excluded_sectors: [],
@@ -104,6 +114,13 @@ export default function OpportunityRadar() {
   const [saving, setSaving] = useState(false);
   const [rescoring, setRescoring] = useState(false);
   const [typesText, setTypesText] = useState("");
+  const [strategicText, setStrategicText] = useState({
+    capabilities: "",
+    licenses: "",
+    relationships: "",
+    infrastructure: "",
+    constraints: "",
+  });
 
   useEffect(() => {
     if (!loaded) return;
@@ -111,6 +128,13 @@ export default function OpportunityRadar() {
     const next = { ...DEFAULT_PROFILE, ...raw, manual_approval_required: true };
     setProfile(next);
     setTypesText((next.allowed_transaction_types || []).join(", "));
+    setStrategicText({
+      capabilities: (next.strategic_capabilities || []).join(", "),
+      licenses: (next.strategic_licenses || []).join(", "),
+      relationships: (next.strategic_relationships || []).join(", "),
+      infrastructure: (next.strategic_infrastructure || []).join(", "),
+      constraints: (next.strategic_constraints || []).join(", "),
+    });
   }, [loaded, prefs.alert_preferences]);
 
   const {
@@ -164,11 +188,21 @@ export default function OpportunityRadar() {
 
   const saveProfile = async () => {
     setSaving(true);
-    const allowed = typesText
+    const parseList = (value: string) => value
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
-    const nextProfile = { ...profile, allowed_transaction_types: allowed, manual_approval_required: true } as OpportunityProfile;
+    const allowed = parseList(typesText);
+    const nextProfile = {
+      ...profile,
+      allowed_transaction_types: allowed,
+      strategic_capabilities: parseList(strategicText.capabilities),
+      strategic_licenses: parseList(strategicText.licenses),
+      strategic_relationships: parseList(strategicText.relationships),
+      strategic_infrastructure: parseList(strategicText.infrastructure),
+      strategic_constraints: parseList(strategicText.constraints),
+      manual_approval_required: true,
+    } as OpportunityProfile;
     const result = await save({
       ...prefs,
       alert_preferences: {
@@ -330,6 +364,58 @@ export default function OpportunityRadar() {
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save opportunity preferences
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Know Yourself — Strategic Capability Profile
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            AICIS uses these declared capabilities and constraints to decide what is feasible for you. Missing capability data remains unknown rather than assumed.
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <Field label="Capabilities">
+            <Input
+              value={strategicText.capabilities}
+              onChange={(e) => setStrategicText((current) => ({ ...current, capabilities: e.target.value }))}
+              placeholder="brokerage, data analysis, procurement"
+            />
+          </Field>
+          <Field label="Licences / permissions">
+            <Input
+              value={strategicText.licenses}
+              onChange={(e) => setStrategicText((current) => ({ ...current, licenses: e.target.value }))}
+              placeholder="import licence, regulated permissions"
+            />
+          </Field>
+          <Field label="Relationships">
+            <Input
+              value={strategicText.relationships}
+              onChange={(e) => setStrategicText((current) => ({ ...current, relationships: e.target.value }))}
+              placeholder="verified buyers, distributors, banks"
+            />
+          </Field>
+          <Field label="Infrastructure">
+            <Input
+              value={strategicText.infrastructure}
+              onChange={(e) => setStrategicText((current) => ({ ...current, infrastructure: e.target.value }))}
+              placeholder="warehouse, vehicle fleet, API access"
+            />
+          </Field>
+          <Field label="Constraints">
+            <Input
+              value={strategicText.constraints}
+              onChange={(e) => setStrategicText((current) => ({ ...current, constraints: e.target.value }))}
+              placeholder="no warehouse, no leverage, max 20h/week"
+            />
+          </Field>
+          <div className="md:col-span-2 xl:col-span-5 text-[10px] text-muted-foreground">
+            These are user-declared strategic facts. Future versions should attach verification status and evidence to capabilities that materially affect execution.
           </div>
         </CardContent>
       </Card>
