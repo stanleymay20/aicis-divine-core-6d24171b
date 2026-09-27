@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { ForecastWorkspaceNav } from "@/components/forecast/ForecastWorkspaceNav";
 import {
   Brain, RefreshCw, Loader2, ShieldCheck, Target, Activity, AlertTriangle,
 } from "lucide-react";
@@ -131,6 +132,7 @@ export default function LearningLoop() {
   return (
     <AICISLayout>
       <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto overflow-y-auto h-full space-y-5 animate-fade-in">
+        <ForecastWorkspaceNav />
         <PanelBoundary>
         {/* Header */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
