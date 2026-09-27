@@ -89,7 +89,8 @@ function useLeafletMap(
       zoomControl: true,
     });
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
-      attribution: 'Tiles &copy; Esri',
+      attribution:
+        'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
       maxZoom: 18,
     }).addTo(map);
     mapRef.current = map;

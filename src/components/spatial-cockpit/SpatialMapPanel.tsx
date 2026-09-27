@@ -423,7 +423,8 @@ export function SpatialMapPanel({
               "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
             ],
             tileSize: 256,
-            attribution: 'Tiles © Esri',
+            attribution:
+              'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
           },
           labels: {
             type: "raster",
