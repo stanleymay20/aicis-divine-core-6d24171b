@@ -17,11 +17,12 @@ import EvidenceBacklogQueue from "@/components/decision-engine/EvidenceBacklogQu
 import BillingHealthPanel from "@/components/decision-engine/BillingHealthPanel";
 import AuditActivityPanel from "@/components/decision-engine/AuditActivityPanel";
 import { PanelBoundary } from "@/components/ui/panel-boundary";
+import { DataTrustWorkspaceNav } from "@/components/data-trust/DataTrustWorkspaceNav";
 
 export default function OperationalTruth() {
   return (
     <AICISLayout>
-      <div className="p-4 md:p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto animate-fade-in">
+      <div className="p-4 md:p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto animate-fade-in">\n        <DataTrustWorkspaceNav />
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
             <Cpu className="h-5 w-5 text-primary" />
