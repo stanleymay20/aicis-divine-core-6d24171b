@@ -106,12 +106,15 @@ const severityTone = (severity?: string | null) => {
 const stageStatus = ({
   loading,
   error,
+  undeployed,
   rows,
 }: {
   loading: boolean;
   error: boolean;
+  undeployed?: boolean;
   rows: number;
 }): StageStatus => {
+  if (undeployed) return "not deployed";
   if (loading) return "syncing";
   if (error) return "degraded";
   if (rows > 0) return "active";
@@ -123,7 +126,14 @@ const stageTone: Record<StageStatus, string> = {
   degraded: "border-destructive/30 bg-destructive/5 text-destructive",
   syncing: "border-primary/30 bg-primary/5 text-primary",
   waiting: "border-border bg-muted/20 text-muted-foreground",
+  "not deployed": "border-border bg-muted/20 text-muted-foreground",
 };
+
+const notDeployed = (...queries: { error: unknown }[]) =>
+  queries.length > 0 && queries.every((query) => isSchemaUnavailableError(query.error));
+
+const retryUnlessMissing = (failureCount: number, error: unknown) =>
+  !isSchemaUnavailableError(error) && failureCount < 2;
 
 export default function PlanetaryCommandCenter() {
   const navigate = useNavigate();
