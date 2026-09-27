@@ -18,14 +18,13 @@ export interface ForecastValidationBundle {
 
 async function loadHealth(): Promise<{ ok: boolean; alerts: HealthAlert[] } | null> {
   try {
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const resp = await fetch(`https://${projectId}.supabase.co/functions/v1/prospective-lifecycle-test`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-      body: JSON.stringify({ action: "health_check" }),
+    const { data, error } = await supabase.functions.invoke("prospective-lifecycle-test", {
+      body: { action: "health_check" },
     });
-    if (resp.ok) { const data = await resp.json(); if (data.health) return data.health; }
-  } catch { /* optional */ }
+    if (!error && data?.health) return data.health;
+  } catch {
+    // Optional health overlay; the core validation bundle remains available.
+  }
   return null;
 }
 
@@ -64,13 +63,11 @@ export const useForecastValidation = () =>
   });
 
 export async function runLifecycleTest() {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const resp = await fetch(`https://${projectId}.supabase.co/functions/v1/prospective-lifecycle-test`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-    body: JSON.stringify({ action: "lifecycle_test" }),
+  const { data, error } = await supabase.functions.invoke("prospective-lifecycle-test", {
+    body: { action: "lifecycle_test" },
   });
-  return resp.json();
+  if (error) throw error;
+  return data;
 }
 
 export async function takeSnapshot() {
