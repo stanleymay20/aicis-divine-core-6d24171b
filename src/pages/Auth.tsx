@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import aicisLogo from "@/assets/aicis-logo.png";
 import { useAuth } from "@/hooks/useAuth";
+import { recoveryAuth } from "@/lib/recoveryAuth";
 
 const NEXT_PATH_KEY = "aicis.auth.next";
 const GOOGLE_OAUTH_ENABLED = import.meta.env.VITE_ENABLE_GOOGLE_OAUTH === "true";
@@ -74,7 +75,7 @@ const Auth = () => {
       const normalizedEmail = email.trim().toLowerCase();
 
       if (isReset) {
-        const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        const { error } = await recoveryAuth.resetPasswordForEmail(normalizedEmail, {
           redirectTo: `${window.location.origin}/reset-password`,
         });
         if (error) throw error;
