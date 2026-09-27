@@ -50,3 +50,11 @@ test("Ask AICIS describes the handoff as evidence research", async () => {
   assert.match(source, /evidence-research workspace/);
   assert.doesNotMatch(source, /Open in full research/);
 });
+
+
+test("Zero evidence cannot be rendered as low severity", async () => {
+  const source = await readFile(panelPath, "utf8");
+
+  assert.match(source, /const evidenceCount = finiteNumber\(metadata\.evidence_count\)/);
+  assert.match(source, /evidenceCount === 0 \? "unknown" : severityOf\(response\.severity\)/);
+});
