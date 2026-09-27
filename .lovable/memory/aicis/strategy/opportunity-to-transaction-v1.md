@@ -1000,6 +1000,162 @@ human_review_required = true
 
 The verified cost stack is evidence for decision support. It is not authorization to transact.
 
+# Official customs evidence routing and TARIC normalization v1
+
+## Official source routing
+
+Implementation:
+- `supabase/functions/_shared/official-customs-source-plan-v1.mjs`
+- `supabase/functions/plan-official-customs-evidence-sources/index.ts`
+- official-source guidance in `LandedCostVerificationPanel`
+- `tests/official-customs-source-plan-v1.test.mjs`
+
+The source planner identifies authoritative research sources. It does **not** extract or apply a duty/tax rate.
+
+Current configured source registry:
+
+### EU TARIC
+Authority:
+European Commission — DG TAXUD.
+
+Research scope:
+- EU common customs tariff;
+- third-country duties;
+- preferences;
+- suspensions;
+- quotas;
+- trade-defence measures;
+- EU import/export controls;
+- goods nomenclature.
+
+Important exclusion:
+TARIC does not contain national VAT or national excise rates.
+
+Therefore TARIC must never be used as the source for a German/French/etc. national import-tax rate.
+
+### Germany EZT
+Authority:
+German Customs Administration / Generalzolldirektion.
+
+Research scope:
+- TARIC-derived tariff/customs measures;
+- German national customs information;
+- German import-VAT display;
+- German excise information.
+
+For a Germany-bound import, AICIS may route:
+- common EU tariff evidence → TARIC;
+- German national import-tax/excise evidence → EZT.
+
+For another EU Member State, TARIC may supply common EU measures, but a destination-country official source is still required for national VAT/excise until a dedicated adapter is configured.
+
+For a non-EU destination without a configured official national source, the planner must return a provider/source blocker rather than infer a rate.
+
+Source-plan outputs always retain:
+```text
+automated_rate_extraction_performed = false
+customs_rate = null
+tax_rate = null
+legal_determination_made = false
+transaction_eligible = false
+```
+
+## TARIC raw extraction semantics
+
+Current Commission extraction documentation describes TARIC duty rows using columns A–L:
+
+A. goods code (10 digits);
+B. additional code;
+C. tariff quota order number;
+D. measure validity start;
+E. measure validity end;
+F. reduction indicator;
+G. origin/destination description;
+H. measure-type description;
+I. legal reference;
+J. duty expression;
+K. origin/destination code;
+L. measure-type code.
+
+The Commission documentation also requires broader TARIC logic when determining actual applicability, including:
+- goods-nomenclature parent cascade;
+- geographical-area membership;
+- measure exclusions;
+- measure conditions;
+- additional codes when present;
+- tariff quota status when present;
+- agricultural reduction indicators when present;
+- compound duty-expression rules when present.
+
+## TARIC row normalizer
+
+Implementation:
+- `supabase/functions/_shared/taric-duty-row-normalizer-v1.mjs`
+- `supabase/functions/normalize-taric-duty-row/index.ts`
+- `tests/taric-duty-row-normalizer-v1.test.mjs`
+
+The normalizer accepts an attributable official extraction row and preserves the documented A–L semantics.
+
+It may parse a syntactically simple expression such as:
+```text
+74.900 %
+```
+
+into:
+```text
+kind = simple_ad_valorem_percentage
+candidate_rate_pct = 74.9
+```
+
+That parse is only syntax.
+
+It must retain:
+```text
+applicability_status = unresolved
+landed_cost_component = null
+tariff_rate_claimed_applicable = false
+legal_determination_made = false
+transaction_eligible = false
+```
+
+A compound expression such as a percentage combined with minimum/maximum unit duties must remain complex/conditional rather than being reduced to the first visible percentage.
+
+The normalizer requires:
+- official extraction reference date;
+- observation time;
+- SHA-256 provenance for the source artifact.
+
+## Raw-data freshness boundary
+
+TARIC online consultation is the authoritative current consultation surface.
+
+The Commission's extraction documentation describes monthly extraction snapshots plus daily-update files.
+Raw extraction ingestion must preserve:
+- extraction reference date;
+- observation/download time;
+- source digest;
+- whether daily updates have been reconciled.
+
+A monthly extraction alone must not be represented as guaranteed current when subsequent daily updates may exist.
+
+## Next TARIC build boundary
+
+Before a TARIC measure can become a landed-cost component, AICIS still needs a deterministic applicability layer over attributable:
+- nomenclature hierarchy;
+- geographical-area composition;
+- exclusions;
+- conditions;
+- additional codes;
+- quota state where applicable;
+- business-code semantics;
+- origin evidence.
+
+Until those dependencies exist and are resolved:
+```text
+official row ≠ applicable tariff
+parsed percentage ≠ payable duty
+```
+
 # Governing rules
 
 - Unknown stays unknown.
