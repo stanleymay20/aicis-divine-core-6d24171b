@@ -777,6 +777,229 @@ human_verification_required = true
 
 A lower quoted unit price is never assumed to mean lower landed cost.
 
+# Landed-cost evidence truth floor v1
+
+## Implementation
+
+Core:
+- `supabase/functions/_shared/landed-cost-evidence-v1.mjs`
+- `supabase/functions/verify-landed-cost-evidence/index.ts`
+- `src/components/opportunities/LandedCostVerificationPanel.tsx`
+
+Integration:
+- `supabase/functions/_shared/transaction-path-builder-v1.mjs`
+- `supabase/functions/_shared/opportunity-engine-v1.mjs`
+- `supabase/functions/_shared/strategic-research-planner-v1.mjs`
+- `supabase/functions/_shared/strategic-research-workflow-v1.mjs`
+- `supabase/functions/_shared/strategic-research-completion-v1.mjs`
+- `src/components/opportunities/TransactionPathLab.tsx`
+- `src/components/opportunities/StrategicResearchTracker.tsx`
+
+Tests:
+- `tests/landed-cost-evidence-v1.test.mjs`
+- landed-cost transaction accounting in `tests/transaction-path-builder-v1.test.mjs`
+- ranking/execution boundaries in `tests/opportunity-transaction-engine-v1.test.mjs`
+- research planner/workflow/completion tests.
+
+## Required physical-trade coverage
+
+A physical-trade landed-cost stack must account for every category below as:
+- `included_here`;
+- `covered_elsewhere`;
+- `not_applicable`;
+- or `unknown`.
+
+Required categories:
+1. origin inland transport;
+2. origin handling;
+3. export customs;
+4. export duty/tax;
+5. international freight;
+6. cargo insurance;
+7. import duty;
+8. import tax;
+9. customs brokerage;
+10. destination handling;
+11. inspection/certification;
+12. financing;
+13. storage/distribution.
+
+`unknown` is a blocker.
+
+`covered_elsewhere` requires an existing cost identity and attributable evidence.
+
+`not_applicable` requires an explicit reason and attributable evidence.
+
+The system must not silently omit a category merely because another quote or Incoterm might appear to cover it.
+
+## Customs and tax truth boundary
+
+AICIS must not infer:
+- HS classification;
+- tariff rate;
+- customs value;
+- tax basis;
+- tax recoverability;
+- preferential-origin eligibility;
+- legal applicability of a customs/tax rule.
+
+When a customs/tax component depends on classification, an attributable HS classification must be supplied.
+
+Official rules must carry attributable provenance and an effective period.
+Commercial quotes must remain current at evaluation time.
+
+## Calculation models
+
+Evidence-backed components may use:
+- fixed amount;
+- per-unit amount;
+- percentage of an attributable basis.
+
+A percentage rule is invalid unless the calculation basis itself has attributable evidence.
+
+## Economic cost vs cash requirement
+
+The engine keeps economic cost separate from recoverable-tax cash flow.
+
+```text
+expected_cost
+= purchase
++ route/logistics economic cost
++ structure economic cost
++ verified landed-cost economic components
+```
+
+Recoverable tax is not automatically counted as profit-reducing economic cost.
+
+For full-landed-cost capital models:
+
+```text
+cash_required
+= expected_cost
++ recoverable_tax_cash_flow
+```
+
+This prevents both:
+- overstating profit cost by treating recoverable tax as permanent expense; and
+- understating required working capital by ignoring the temporary tax cash outflow.
+
+## FX boundary
+
+Landed-cost normalization reuses the canonical verified-FX layer.
+
+- same currency: no FX evidence required;
+- official/reference/verified-market FX may support research comparison;
+- execution readiness requires execution-eligible FX where conversion is required.
+
+No procurement-specific or customs-specific FX subsystem should be created.
+
+## Builder and ranking behavior
+
+The path builder may retain a physical-trade candidate for research when landed-cost evidence is incomplete.
+
+It must then emit:
+
+```text
+landed_cost_complete = false
+landed_cost_execution_ready = false
+```
+
+This preserves the candidate id and scope needed to collect evidence.
+
+The opportunity engine must hard-reject that candidate from eligible profit ranking with:
+
+```text
+landed_cost_incomplete
+```
+
+A research-complete stack may become rankable while still remaining non-executable when:
+
+```text
+landed_cost_complete = true
+landed_cost_execution_ready = false
+```
+
+The execution dossier must then retain:
+
+```text
+execution_grade_landed_cost_evidence
+```
+
+as a missing execution field.
+
+## Scoped evidence packs
+
+Verified landed-cost evidence is attached through `landed_cost_packs`.
+
+A pack is scoped by:
+- source id;
+- buyer id;
+- route id;
+- transaction type.
+
+The pack may also bind to the deterministic candidate id.
+
+Evidence for one path must never contaminate another supplier, buyer, route or structure.
+
+Attaching a new pack makes the previous:
+- economics;
+- rank;
+- strategy;
+- portfolio allocation
+
+stale and requires a complete rebuild.
+
+## Landed Cost Verification UI
+
+The verification panel is available even when no physical-trade candidate is ranked because incomplete landed-cost evidence correctly caused `NO TRANSACTION`.
+
+The panel may conservatively mark a cost as `covered_elsewhere` only when the existing candidate already carries attributable evidence for that exact known cost.
+
+It must not auto-infer customs, duties, tax, brokerage, financing, storage or legal applicability.
+
+A completed evidence pack can be attached to the transaction bundle and rebuilt.
+
+## Research loop
+
+Incomplete coverage creates a blocking action:
+
+```text
+verify_landed_cost_evidence
+```
+
+A research-complete but non-execution-grade stack creates:
+
+```text
+upgrade_landed_cost_execution_evidence
+```
+
+Both route to the existing `landed_cost_verification` workflow.
+
+Completion kinds:
+- `landed_cost_verified` resolves only the incomplete-coverage blocker;
+- `landed_cost_execution_evidence_verified` resolves only the execution-evidence upgrade blocker.
+
+Evidence completion records satisfaction of a research blocker, not profit success or transaction authorization.
+
+## External-action boundary
+
+Landed-cost verification never:
+- files a customs declaration;
+- claims legal tariff treatment;
+- binds insurance;
+- accepts financing;
+- creates a purchase order;
+- signs a contract;
+- submits a payment;
+- moves money.
+
+```text
+transaction_eligible = false
+human_review_required = true
+```
+
+The verified cost stack is evidence for decision support. It is not authorization to transact.
+
 # Governing rules
 
 - Unknown stays unknown.
