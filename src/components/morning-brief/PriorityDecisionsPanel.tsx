@@ -18,9 +18,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
-import type { Database as DB } from "@/integrations/supabase/types";
+import type { Database } from "@/integrations/supabase/types";
 
-type SignalRow = DB["public"]["Tables"]["global_signals"]["Row"];
+type SignalRow = Database["public"]["Tables"]["global_signals"]["Row"];
 type PriorityBase = Pick<
   SignalRow,
   | "id"

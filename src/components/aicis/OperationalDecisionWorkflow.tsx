@@ -39,8 +39,7 @@ const severityTone = (severity?: string | null) => {
 export function OperationalDecisionWorkflow() {
   const insights = useQuery({
     queryKey: ["operational-workflow-insights"],
-    refetchInterval: (q) => (isSchemaUnavailableError(q.state.error) ? false : 30000),
-    retry: (n, e) => !isSchemaUnavailableError(e) && n < 2,
+    refetchInterval: 30000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("executive_planetary_insights_view" as never)
@@ -53,8 +52,7 @@ export function OperationalDecisionWorkflow() {
 
   const interventions = useQuery({
     queryKey: ["operational-workflow-interventions"],
-    refetchInterval: (q) => (isSchemaUnavailableError(q.state.error) ? false : 30000),
-    retry: (n, e) => !isSchemaUnavailableError(e) && n < 2,
+    refetchInterval: 30000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("intervention_governance_command_view" as never)

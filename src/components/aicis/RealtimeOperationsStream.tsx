@@ -76,8 +76,7 @@ export function RealtimeOperationsStream({
 
   const telemetry = useQuery({
     queryKey: ["realtime-telemetry-stream"],
-    refetchInterval: (q) => (isSchemaUnavailableError(q.state.error) ? false : 15000),
-    retry: (n, e) => !isSchemaUnavailableError(e) && n < 2,
+    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("telemetry_backbone_command_view" as never)
@@ -90,8 +89,7 @@ export function RealtimeOperationsStream({
 
   const causal = useQuery({
     queryKey: ["realtime-causal-stream"],
-    refetchInterval: (q) => (isSchemaUnavailableError(q.state.error) ? false : 15000),
-    retry: (n, e) => !isSchemaUnavailableError(e) && n < 2,
+    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("planetary_causal_command_view" as never)
@@ -104,8 +102,7 @@ export function RealtimeOperationsStream({
 
   const interventions = useQuery({
     queryKey: ["realtime-intervention-stream"],
-    refetchInterval: (q) => (isSchemaUnavailableError(q.state.error) ? false : 15000),
-    retry: (n, e) => !isSchemaUnavailableError(e) && n < 2,
+    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("intervention_governance_command_view" as never)
