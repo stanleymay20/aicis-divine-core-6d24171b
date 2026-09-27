@@ -33,9 +33,15 @@ import {
 } from "@/lib/aicis-workspaces";
 
 const backTargetFor = (pathname: string): string | null => {
-  if (pathname === "/world") return null;
-  if (pathname.startsWith("/deepdive/") || pathname.startsWith("/local-events/") || pathname.startsWith("/atlas/")) return "/world";
-  return "/world";
+  if (
+    pathname.startsWith("/deepdive/") ||
+    pathname.startsWith("/local-events/") ||
+    pathname.startsWith("/atlas/")
+  ) {
+    return "/world";
+  }
+
+  return null;
 };
 
 export const AICISTopBar = () => {
@@ -197,7 +203,7 @@ export const AICISTopBar = () => {
               <p className="truncate text-xs text-muted-foreground">{user?.email || ""}</p>
             </div>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => navigate("/world")}>
+            <DropdownMenuItem onClick={() => navigateWithContext("/world")}>
               <Activity className="mr-2 h-4 w-4" /> World workspace
             </DropdownMenuItem>
             <DropdownMenuItem onClick={openAsk}>
