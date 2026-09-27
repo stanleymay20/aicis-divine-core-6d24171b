@@ -948,7 +948,7 @@ function ResearchPlanPanel({
               </Badge>
               {runs[item.id] ? (
                 <Badge variant="outline" className="text-[10px]">
-                  {runs[item.id].lifecycle_status.replaceAll("_", " ")}
+                  {runs[item.id].lifecycle_status.replace(/_/g, " ")}
                 </Badge>
               ) : null}
             </div>
@@ -982,7 +982,7 @@ function ResearchPlanPanel({
                     variant={item.workflow.status === "ready" ? "outline" : "secondary"}
                     className="text-[10px]"
                   >
-                    {item.workflow.status.replaceAll("_", " ")}
+                    {item.workflow.status.replace(/_/g, " ")}
                   </Badge>
                   {item.workflow.status !== "ready" ? (
                     <p className="mt-1 text-[10px] text-muted-foreground">
@@ -1048,7 +1048,7 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Primary strategy</p>
               <p className="text-sm font-semibold">{primary.title}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                {primary.strategy_type.replaceAll("_", " ")} · {primary.directness}
+                {primary.strategy_type.replace(/_/g, " ")} · {primary.directness}
               </p>
             </div>
             <Badge>{primary.strategic_fit_score.toFixed(1)} fit</Badge>
@@ -1169,7 +1169,7 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
             <div className="flex flex-wrap gap-1.5">
               {primary.doctrine_trace.map((item) => (
                 <Badge key={item.id} variant="outline" className="text-[10px]">
-                  {item.id.replaceAll("_", " ")}
+                  {item.id.replace(/_/g, " ")}
                 </Badge>
               ))}
             </div>
@@ -1234,7 +1234,7 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
               <div className="min-w-0">
                 <p className="text-xs font-medium truncate">{option.title}</p>
                 <p className="text-[10px] text-muted-foreground">
-                  {option.strategy_type.replaceAll("_", " ")}
+                  {option.strategy_type.replace(/_/g, " ")}
                   {option.research_only ? " · research only" : ""}
                   {!option.feasible ? " · infeasible" : ""}
                 </p>
