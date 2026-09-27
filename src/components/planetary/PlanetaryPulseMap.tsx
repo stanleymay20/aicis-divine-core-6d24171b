@@ -89,13 +89,15 @@ export function PlanetaryPulseMap({ height = 380 }: { height?: number }) {
       minZoom: 2,
       maxZoom: 5,
       worldCopyJump: true,
-      attributionControl: false,
+      attributionControl: true,
       zoomControl: false,
       scrollWheelZoom: false,
       dragging: true,
     });
+    map.attributionControl.setPrefix(false);
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
-      subdomains: "abcd",
+      attribution:
+        'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
       maxZoom: 19,
     }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
