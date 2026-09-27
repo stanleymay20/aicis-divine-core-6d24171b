@@ -115,7 +115,7 @@ test("capital-heavy direct transaction loses feasibility while supplied brokerag
   const broker = result.options.find((item) => item.id === "broker-cocoa");
 
   assert.equal(direct.feasible, false);
-  assert.ok(direct.feasibility_reasons.includes("capital_required_exceeds_available"));
+  assert.ok(direct.feasibility_reasons.includes("capital_required_exceeds_deployable_after_reserve"));
   assert.equal(broker.feasible, true);
   assert.equal(result.primary_strategy.id, "broker-cocoa");
   assert.equal(result.primary_strategy.strategy_type, "indirect");
@@ -271,4 +271,31 @@ test("economic option with unknown currency remains infeasible", () => {
   const option = result.options.find((item) => item.id === "unknown-currency");
   assert.equal(option.feasible, false);
   assert.ok(option.feasibility_reasons.includes("currency_unknown"));
+});
+
+
+test("actor-state capital override is enforced before selecting strategy", () => {
+  const candidate = directCandidate();
+  candidate.indirect_strategies[0].capital_required = 800;
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"], capital_available: 500 },
+    preferences: prefs,
+  });
+  const broker = result.options.find((item) => item.id === "broker-cocoa");
+  assert.equal(broker.feasible, false);
+  assert.ok(broker.feasibility_reasons.includes("capital_required_exceeds_deployable_after_reserve"));
+});
+
+test("cash reserve reduces deployable strategic capital", () => {
+  const candidate = directCandidate();
+  candidate.indirect_strategies[0].capital_required = 19000;
+  const result = evaluateStrategicOptions({
+    ranked_candidates: [candidate],
+    actor_state: { capabilities: ["brokerage"], capital_available: 20000 },
+    preferences: prefs,
+  });
+  const broker = result.options.find((item) => item.id === "broker-cocoa");
+  assert.equal(broker.feasible, false);
+  assert.ok(broker.feasibility_reasons.includes("capital_required_exceeds_deployable_after_reserve"));
 });
