@@ -71,14 +71,16 @@ export function SanctionsScreenPanel() {
   const [legalName, setLegalName] = useState("");
   const [registrationId, setRegistrationId] = useState("");
   const [aliasesText, setAliasesText] = useState("");
+  const [verificationRole, setVerificationRole] = useState<"supplier" | "buyer">("supplier");
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<ScreenResponse | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ legal_name?: string }>).detail || {};
+      const detail = (event as CustomEvent<{ legal_name?: string; role?: "supplier" | "buyer" }>).detail || {};
       if (detail.legal_name) setLegalName(detail.legal_name);
+      if (detail.role === "supplier" || detail.role === "buyer") setVerificationRole(detail.role);
       window.requestAnimationFrame(() => {
         document.getElementById("sanctions-screen")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -229,7 +231,7 @@ export function SanctionsScreenPanel() {
                     detail: {
                       dossier: {
                         as_of: new Date().toISOString(),
-                        role: "supplier",
+                        role: verificationRole,
                         legal_identity: {
                           legal_name: legalName.trim(),
                           jurisdiction: "",
