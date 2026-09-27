@@ -15,6 +15,7 @@ import { OpportunityHypothesesPanel } from "@/components/opportunities/Opportuni
 import { SanctionsScreenPanel } from "@/components/opportunities/SanctionsScreenPanel";
 import { CounterpartyVerificationLab } from "@/components/opportunities/CounterpartyVerificationLab";
 import { LogisticsRouteVerificationLab } from "@/components/opportunities/LogisticsRouteVerificationLab";
+import { StrategicResearchTracker } from "@/components/opportunities/StrategicResearchTracker";
 import {
   ArrowRight,
   CircleDollarSign,
@@ -454,6 +455,8 @@ export default function OpportunityRadar() {
       </div>
 
       <OpportunityHypothesesPanel />
+
+      <StrategicResearchTracker />
 
       <CounterpartyDiscoveryPanel />
 
