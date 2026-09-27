@@ -40,6 +40,7 @@ type StrategicOption = {
   title: string;
   strategy_type: string;
   directness: string;
+  currency: string | null;
   feasible: boolean;
   research_only: boolean;
   pareto_frontier: boolean;
@@ -78,6 +79,8 @@ type StrategicResponse = {
   primary_strategy: StrategicOption | null;
   no_action_option: StrategicOption | null;
   options: StrategicOption[];
+  comparison_currency?: string | null;
+  comparison_blocked_reason?: string | null;
   scope_notice: string;
 };
 
@@ -544,9 +547,9 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Metric label="Expected value" value={formatMoney(primary.expected_value)} />
-            <Metric label="Capital required" value={formatMoney(primary.capital_required)} />
-            <Metric label="Downside" value={formatMoney(primary.downside_loss)} />
+            <Metric label="Expected value" value={formatMoney(primary.expected_value, primary.currency)} />
+            <Metric label="Capital required" value={formatMoney(primary.capital_required, primary.currency)} />
+            <Metric label="Downside" value={formatMoney(primary.downside_loss, primary.currency)} />
             <Metric label="Reversibility" value={primary.reversibility_score.toFixed(0) + "/100"} />
           </div>
 
@@ -568,7 +571,9 @@ function StrategicRecommendation({ strategic }: { strategic: StrategicResponse }
         </div>
       ) : (
         <div className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
-          No economically comparable strategic option cleared the feasibility and evidence boundaries.
+          {strategic.comparison_blocked_reason === "mixed_currency_strategy_options_require_verified_fx_normalization"
+            ? "Strategic comparison is blocked because economically comparable options use different currencies without verified FX normalization."
+            : "No economically comparable strategic option cleared the feasibility and evidence boundaries."}
         </div>
       )}
 
