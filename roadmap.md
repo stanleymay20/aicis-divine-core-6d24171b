@@ -1,5 +1,6 @@
 # Roadmap
 
+- [x] Diagnose published sign-in failure: published browser bundle lacks the Cloud connection while the local preview and backend are healthy; fail closed with a clear message instead of attempting a nonexistent service. Published site requires a fresh publish with its connection included.
 - [x] Fix all current preview/typecheck errors reported in `/tmp/observability/build-errors.log`.
 - [x] Verify the preview build is clean.
 - [x] Restore password-reset link acceptance without weakening recovery authorization.

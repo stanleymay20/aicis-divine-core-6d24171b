@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -69,7 +69,7 @@ const Auth = () => {
 
   const handleAuth = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (loading) return;
+    if (loading || !isSupabaseConfigured) return;
     setLoading(true);
 
     try {
@@ -120,7 +120,7 @@ const Auth = () => {
   };
 
   const handleGoogleSignIn = async () => {
-    if (loading) return;
+    if (loading || !isSupabaseConfigured) return;
     setLoading(true);
 
     try {
@@ -159,6 +159,11 @@ const Auth = () => {
         </div>
 
         <form onSubmit={handleAuth} className="space-y-6">
+          {!isSupabaseConfigured && (
+            <p role="alert" className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-foreground">
+              Sign-in is unavailable because this site is missing its secure connection. Please contact the site owner.
+            </p>
+          )}
           {!isLogin && !isReset && (
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name</Label>
@@ -179,7 +184,7 @@ const Auth = () => {
             </div>
           )}
 
-          <Button type="submit" className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber" disabled={loading || authLoading}>
+          <Button type="submit" className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber" disabled={loading || authLoading || !isSupabaseConfigured}>
             {loading ? "Processing..." : isReset ? "Send Reset Link" : isLogin ? "Sign In" : "Create Account"}
           </Button>
 
@@ -189,13 +194,13 @@ const Auth = () => {
                 <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border" /></div>
                 <div className="relative flex justify-center text-xs uppercase"><span className="bg-card/50 px-2 text-muted-foreground">Or continue with</span></div>
               </div>
-              <Button type="button" variant="outline" className="w-full border-border hover:bg-accent" disabled={loading || authLoading} onClick={handleGoogleSignIn}>
+              <Button type="button" variant="outline" className="w-full border-border hover:bg-accent" disabled={loading || authLoading || !isSupabaseConfigured} onClick={handleGoogleSignIn}>
                 Sign in with Google
               </Button>
             </>
           )}
 
-          {!GOOGLE_OAUTH_ENABLED && !isReset && (
+          {isSupabaseConfigured && !GOOGLE_OAUTH_ENABLED && !isReset && (
             <p className="text-center text-xs text-muted-foreground">Google sign-in is unavailable until the configured Supabase project has the provider enabled.</p>
           )}
 
