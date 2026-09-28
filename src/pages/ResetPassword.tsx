@@ -203,13 +203,13 @@ const ResetPassword = () => {
         <form onSubmit={handleReset} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="password">New Password</Label>
-            <Input id="password" type="password" autoComplete="new-password" placeholder="••••••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
+            <PasswordInput id="password" autoComplete="new-password" placeholder="••••••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
             <p className="text-xs text-muted-foreground">Use at least {MIN_NEW_PASSWORD_LENGTH} characters.</p>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm Password</Label>
-            <Input id="confirmPassword" type="password" autoComplete="new-password" placeholder="••••••••••••" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
+            <PasswordInput id="confirmPassword" autoComplete="new-password" placeholder="••••••••••••" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
           </div>
 
           <Button type="submit" className="w-full gradient-cyber text-primary-foreground font-orbitron glow-cyber" disabled={loading || !isRecovery}>
