@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -173,7 +174,7 @@ const Auth = () => {
           {!isReset && (
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" autoComplete={isLogin ? "current-password" : "new-password"} placeholder="••••••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={isLogin ? 6 : MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
+              <PasswordInput id="password" autoComplete={isLogin ? "current-password" : "new-password"} placeholder="••••••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={isLogin ? 6 : MIN_NEW_PASSWORD_LENGTH} className="bg-input border-border" />
               {!isLogin && <p className="text-xs text-muted-foreground">Use at least {MIN_NEW_PASSWORD_LENGTH} characters for new accounts.</p>}
             </div>
           )}
