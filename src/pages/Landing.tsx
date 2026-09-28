@@ -141,7 +141,7 @@ const Landing = () => {
             </span>
             <span className="flex items-center gap-1.5">
               <Shield className="h-3.5 w-3.5 text-success" />
-              GDPR · ISO 27001
+              Privacy-first · ISO 27001 principles
             </span>
           </div>
         </div>
