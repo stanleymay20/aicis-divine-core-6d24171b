@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
+import type { Database as SupabaseDatabase } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { AICISLayout } from "@/components/aicis/AICISLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,8 +22,19 @@ interface PipelineStatus {
   successRate: number;
 }
 
+interface TruthAuditLayer {
+  score?: number;
+  precision?: number;
+  passed?: boolean;
+  turning_point_accuracy?: number;
+  avg_mae?: number;
+  intelligence_grade?: string;
+}
+
+type TruthAudits = Record<string, TruthAuditLayer>;
+
 type DataQualityAuditRow =
-  Database["public"]["Tables"]["data_quality_audits"]["Row"];
+  SupabaseDatabase["public"]["Tables"]["data_quality_audits"]["Row"];
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -104,7 +115,7 @@ const SystemStatus = () => {
           score: row.overall_truth_score,
           grade:
             typeof evidence.grade === "string" ? evidence.grade : undefined,
-          audits: evidence.audits,
+          audits: asRecord(evidence.audits) as TruthAudits,
           allPassed:
             typeof evidence.all_passed === "boolean"
               ? evidence.all_passed
