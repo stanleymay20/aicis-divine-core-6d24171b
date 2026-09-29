@@ -134,7 +134,11 @@ export async function aiChat(request: AiChatRequest): Promise<AiChatResult> {
 
   if (request.responseFormat) body.response_format = request.responseFormat;
   if (request.temperature !== undefined) body.temperature = request.temperature;
-  if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens;
+  // Current OpenAI models reject `max_tokens`; other OpenAI-compatible servers still expect it.
+  if (request.maxTokens !== undefined) {
+    const isOpenAi = /(^|\.)openai\.com$/i.test(new URL(endpoint).hostname) || String(provider).toLowerCase() === "openai";
+    body[isOpenAi ? "max_completion_tokens" : "max_tokens"] = request.maxTokens;
+  }
 
   const timeoutMs = Math.max(1000, request.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const headers: Record<string, string> = {
