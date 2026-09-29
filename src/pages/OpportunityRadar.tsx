@@ -82,6 +82,22 @@ const DEFAULT_PROFILE: OpportunityProfile = {
   manual_approval_required: true,
 };
 
+type TransactionOpportunitySummary = {
+  status: "REVIEW" | "RESEARCHING" | "NO_ACTION";
+  candidate_id: string | null;
+  title: string | null;
+  transaction_type: string | null;
+  score: number | null;
+  capital_required: number | null;
+  currency: string | null;
+  base_profit: number | null;
+  expected_value: number | null;
+  base_margin_pct: number | null;
+  return_on_capital_pct: number | null;
+  missing_execution_fields: string[];
+  no_transaction_reason: string | null;
+};
+
 type ResearchSignal = {
   signal_id: string;
   relevance_score: number;
@@ -131,6 +147,18 @@ export default function OpportunityRadar() {
     infrastructure: "",
     constraints: "",
   });
+  const [transactionOpportunity, setTransactionOpportunity] = useState<TransactionOpportunitySummary | null>(null);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<TransactionOpportunitySummary>).detail;
+      if (!detail || !["REVIEW", "RESEARCHING", "NO_ACTION"].includes(detail.status)) return;
+      setTransactionOpportunity(detail);
+    };
+
+    window.addEventListener("aicis:transaction-opportunity-updated", handler as EventListener);
+    return () => window.removeEventListener("aicis:transaction-opportunity-updated", handler as EventListener);
+  }, []);
 
   useEffect(() => {
     if (!loaded) return;
@@ -312,6 +340,86 @@ export default function OpportunityRadar() {
       <section id="opportunity-hypotheses" className="scroll-mt-16">
         <OpportunityHypothesesPanel />
       </section>
+
+      <Card>
+        <CardContent className="p-4">
+          {transactionOpportunity?.candidate_id ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold">Transaction opportunity</p>
+                    <Badge variant={transactionOpportunity.status === "REVIEW" ? "outline" : "secondary"}>
+                      {transactionOpportunity.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-base font-medium">{transactionOpportunity.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Ranked only from supplied verified evidence. Human approval is still required.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const advanced = document.getElementById("opportunity-advanced-workspace") as HTMLDetailsElement | null;
+                    if (advanced) advanced.open = true;
+                    window.setTimeout(() => {
+                      document.getElementById("transaction-path-lab")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 50);
+                  }}
+                >
+                  Review details
+                </Button>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                <OpportunityMetric
+                  label="Capital"
+                  value={formatOpportunityMoney(transactionOpportunity.capital_required, transactionOpportunity.currency)}
+                />
+                <OpportunityMetric
+                  label="Base profit"
+                  value={formatOpportunityMoney(transactionOpportunity.base_profit, transactionOpportunity.currency)}
+                />
+                <OpportunityMetric
+                  label="Expected value"
+                  value={formatOpportunityMoney(transactionOpportunity.expected_value, transactionOpportunity.currency)}
+                />
+                <OpportunityMetric
+                  label="Margin"
+                  value={formatOpportunityPercent(transactionOpportunity.base_margin_pct)}
+                />
+                <OpportunityMetric
+                  label="Rank score"
+                  value={transactionOpportunity.score == null ? "—" : Math.round(transactionOpportunity.score).toString()}
+                />
+              </div>
+
+              {transactionOpportunity.missing_execution_fields.length ? (
+                <p className="text-xs text-muted-foreground">
+                  Still to verify: {transactionOpportunity.missing_execution_fields.slice(0, 5).join(" · ")}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">
+                  {transactionOpportunity?.status === "NO_ACTION" ? "No transaction currently clears the gates" : "No verified transaction path yet"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {transactionOpportunity?.no_transaction_reason
+                    || "Choose a discovered opportunity and investigate it. AICIS will only surface transaction economics after supplier, buyer, route, compliance and cost evidence are supplied."}
+                </p>
+              </div>
+              <Badge variant="secondary">
+                {transactionOpportunity?.status ?? "DISCOVERY"}
+              </Badge>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border-dashed">
         <CardContent className="p-4">
@@ -644,6 +752,35 @@ export default function OpportunityRadar() {
       </Card>
         </div>
       </details>
+    </div>
+  );
+}
+
+function formatOpportunityMoney(value: number | null, currency: string | null) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (currency && /^[A-Z]{3}$/.test(currency)) {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 0,
+      }).format(value);
+    } catch {
+      return `${value.toLocaleString()} ${currency}`;
+    }
+  }
+  return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function formatOpportunityPercent(value: number | null) {
+  return value == null || !Number.isFinite(value) ? "—" : `${value.toFixed(1)}%`;
+}
+
+function OpportunityMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border/70 p-3">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold tabular-nums">{value}</p>
     </div>
   );
 }
