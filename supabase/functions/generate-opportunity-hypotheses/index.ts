@@ -122,7 +122,13 @@ Deno.serve(async (req) => {
       rawSignalsScanned = globalSignals?.length ?? 0;
       signals = deduplicateSignals((globalSignals ?? []) as OpportunitySignal[]);
 
-      if (signals.length) {
+      // No scores for this user means there is nothing to annotate. This probe prevents
+      // eleven expensive, empty ID lookups on installations with no personalized scores.
+      const { data: scoreProbe, error: scoreProbeError } = signals.length
+        ? await sb.from("signal_relevance_scores").select("signal_id").eq("user_id", user.id).limit(1)
+        : { data: [], error: null };
+      if (scoreProbeError) throw scoreProbeError;
+      if (signals.length && scoreProbe?.length) {
         const ids = signals.map((signal) => signal.id).filter((id): id is string => Boolean(id));
         // Bound concurrency: serial lookups multiplied database latency by every 80-signal chunk.
         // These rows are optional user-specific annotations; a failed lookup must not invent a score.
