@@ -1,9 +1,10 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   BrainCircuit,
-  Database,
+  ExternalLink,
   Loader2,
+  MapPin,
   Search,
   ShieldCheck,
 } from "lucide-react";
@@ -12,28 +13,63 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ConfidenceBadge } from "@/components/aicis/trust/ConfidenceBadge";
 import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
-type ResearchSeverity = "low" | "medium" | "high" | "critical" | "unknown";
+type Citation = {
+  ref: string;
+  domain: string | null;
+  title: string;
+  publisher: string | null;
+  url: string | null;
+  observedAt: string | null;
+};
+
+type Dispute = {
+  topic: string;
+  specialistA: string;
+  positionA: string;
+  specialistB: string;
+  positionB: string;
+};
 
 type GovernedResearchResult = {
+  taskId: string | null;
   question: string;
-  briefing: string | null;
-  severity: ResearchSeverity;
+  executiveSummary: string | null;
+  agreedPoints: string[];
+  disputedPoints: Dispute[];
+  preservedDissent: string[];
+  strongestEvidence: string | null;
+  weakestAssumption: string | null;
+  missingEvidence: string[];
+  nextVerificationStep: string | null;
   confidence: number | null;
-  dataCompleteness: number | null;
-  evidenceCount: number | null;
-  sources: string[];
-  divisions: string[];
-  truthFloor: boolean | null;
-  modelMemoryFallback: boolean | null;
+  confidenceLower: number | null;
+  confidenceUpper: number | null;
+  degraded: boolean;
+  degradationReason: string | null;
   provider: string | null;
   model: string | null;
+  scopeLabel: string | null;
+  domains: string[];
+  citations: Citation[];
   generatedAt: string;
 };
+
+/** Prior turn kept for a future follow-up contract; sent only if the backend says it supports it. */
+type PriorTurn = {
+  taskId: string | null;
+  question: string;
+  summary: string | null;
+  followUpSupported: boolean;
+};
+
+type PanelNotice =
+  | { kind: "clarification"; message: string }
+  | { kind: "not_ready"; message: string; missing: string[] }
+  | { kind: "error"; message: string };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -45,32 +81,100 @@ const finiteNumber = (value: unknown): number | null =>
 
 const stringArray = (value: unknown): string[] =>
   Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : [];
 
-const severityOf = (value: unknown): ResearchSeverity =>
-  value === "low" ||
-  value === "medium" ||
-  value === "high" ||
-  value === "critical"
-    ? value
-    : "unknown";
+const str = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value : null;
 
-const severityClass = (severity: ResearchSeverity) => {
-  if (severity === "critical") {
-    return "border-destructive/30 bg-destructive/10 text-destructive";
+const safeUrl = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
   }
-  if (severity === "high") {
-    return "border-orange-500/30 bg-orange-500/10 text-orange-500";
-  }
-  if (severity === "medium") {
-    return "border-amber-500/30 bg-amber-500/10 text-amber-500";
-  }
-  if (severity === "low") {
-    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-500";
-  }
-  return "border-border text-muted-foreground";
 };
+
+const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
+
+const scopeLabelOf = (geography: Record<string, unknown>): string | null => {
+  if (geography.scope === "global") return "Global";
+  const regions = Array.isArray(geography.regions)
+    ? geography.regions.map((r) => str(asRecord(r).label)).filter(Boolean)
+    : [];
+  const countries = Array.isArray(geography.countries)
+    ? geography.countries.map((c) => str(asRecord(c).name) ?? str(asRecord(c).iso3)).filter(Boolean)
+    : [];
+  const label = [...regions, ...countries].join(", ");
+  return label || null;
+};
+
+const parseResult = (question: string, response: Record<string, unknown>): GovernedResearchResult => ({
+  taskId: str(response.task_id),
+  question,
+  executiveSummary: str(response.executive_summary),
+  agreedPoints: stringArray(response.agreed_points),
+  disputedPoints: Array.isArray(response.disputed_points)
+    ? response.disputed_points.map((d) => {
+        const r = asRecord(d);
+        return {
+          topic: str(r.topic) ?? "Unspecified",
+          specialistA: str(r.specialist_a) ?? "?",
+          positionA: str(r.position_a) ?? "",
+          specialistB: str(r.specialist_b) ?? "?",
+          positionB: str(r.position_b) ?? "",
+        };
+      })
+    : [],
+  preservedDissent: stringArray(response.preserved_dissent),
+  strongestEvidence: str(response.strongest_evidence),
+  weakestAssumption: str(response.weakest_assumption),
+  missingEvidence: stringArray(response.missing_evidence),
+  nextVerificationStep: str(response.next_verification_step),
+  confidence: finiteNumber(response.overall_confidence),
+  confidenceLower: finiteNumber(response.confidence_lower),
+  confidenceUpper: finiteNumber(response.confidence_upper),
+  degraded: response.degraded === true,
+  degradationReason: str(response.degradation_reason),
+  provider: str(response.provider),
+  model: str(response.model),
+  scopeLabel: scopeLabelOf(asRecord(response.geography)),
+  domains: stringArray(response.domains),
+  citations: Array.isArray(response.citations)
+    ? response.citations.map((c) => {
+        const r = asRecord(c);
+        return {
+          ref: str(r.ref) ?? "",
+          domain: str(r.domain),
+          title: str(r.title) ?? "(untitled)",
+          publisher: str(r.publisher),
+          url: safeUrl(r.url),
+          observedAt: str(r.observed_at),
+        };
+      })
+    : [],
+  generatedAt: new Date().toISOString(),
+});
+
+const Section = ({ title, children, tone }: { title: string; children: React.ReactNode; tone?: "warn" }) => (
+  <div className={cn("rounded-lg border p-3", tone === "warn" ? "border-amber-500/30 bg-amber-500/5" : "border-border/70")}>
+    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{title}</div>
+    {children}
+  </div>
+);
+
+const List = ({ items, empty }: { items: string[]; empty: string }) =>
+  items.length ? (
+    <ul className="list-disc space-y-1 pl-4 text-sm">
+      {items.map((item, i) => (
+        <li key={i}>{item}</li>
+      ))}
+    </ul>
+  ) : (
+    <p className="text-xs text-muted-foreground">{empty}</p>
+  );
 
 export const GovernedResearchPanel = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -79,103 +183,114 @@ export const GovernedResearchPanel = () => {
 
   const [question, setQuestion] = useState(activeQuestion);
   const [result, setResult] = useState<GovernedResearchResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<PanelNotice | null>(null);
   const [running, setRunning] = useState(false);
-
-  useEffect(() => {
-    setQuestion(activeQuestion);
-  }, [activeQuestion]);
+  const [priorTurn, setPriorTurn] = useState<PriorTurn | null>(null);
+  const autoRanFor = useRef<string | null>(null);
 
   const runResearch = async (rawQuestion: string) => {
     const trimmed = rawQuestion.trim();
     if (!trimmed || running) return;
-
-    const contextLine = selectedEntity
-      ? `Selected intelligence context: ${selectedEntity.type} | ${selectedEntity.name} | ${selectedEntity.id}. Use this context only where supported by stored evidence.`
-      : "";
-
-    const researchQuery = contextLine
-      ? `${trimmed}\n\n${contextLine}`
-      : trimmed;
-
-    if (researchQuery.length > 4000) {
-      setError("Question plus selected context exceeds the 4,000-character research limit.");
+    if (trimmed.length > 3600) {
+      setNotice({ kind: "error", message: "Question exceeds the 3,600-character limit." });
       return;
     }
 
     const next = new URLSearchParams(searchParams);
     next.set("question", trimmed);
-    if (selectedEntity) {
-      next.set("entity", `${selectedEntity.type}:${selectedEntity.id}`);
-    }
+    if (selectedEntity) next.set("entity", `${selectedEntity.type}:${selectedEntity.id}`);
+    autoRanFor.current = trimmed;
     setSearchParams(next, { replace: true });
 
     setRunning(true);
-    setError(null);
+    setNotice(null);
     setResult(null);
 
+    const context = selectedEntity
+      ? {
+          type: selectedEntity.type,
+          id: selectedEntity.id,
+          name: selectedEntity.name,
+          iso3:
+            selectedEntity.type === "country" && /^[A-Z]{3}$/.test(String(selectedEntity.id))
+              ? selectedEntity.id
+              : null,
+        }
+      : undefined;
+
+    const body: Record<string, unknown> = { question: trimmed };
+    if (context) body.context = context;
+    // Follow-up context is only sent when the backend has declared support.
+    if (priorTurn?.followUpSupported) {
+      body.follow_up = {
+        previous_task_id: priorTurn.taskId,
+        previous_question: priorTurn.question,
+        previous_summary: priorTurn.summary,
+      };
+    }
+
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke(
-        "aicis-intelligence",
-        {
-          body: {
-            query: researchQuery,
-          },
-        },
-      );
+      const { data, error: invokeError } = await supabase.functions.invoke("orchestrate-multi-agent", { body });
 
-      if (invokeError) throw invokeError;
-
-      const response = asRecord(data);
-      if (typeof response.error === "string") {
-        throw new Error(response.error);
+      let response = asRecord(data);
+      if (invokeError) {
+        const ctx = (invokeError as { context?: Response }).context;
+        if (ctx && typeof ctx.clone === "function") {
+          response = asRecord(await ctx.clone().json().catch(() => ({})));
+        }
+        if (!Object.keys(response).length) throw invokeError;
       }
 
-      const metadata = asRecord(response.metadata);
-      const briefing =
-        typeof response.briefing === "string"
-          ? response.briefing
-          : typeof response.response === "string"
-            ? response.response
-            : typeof response.summary === "string"
-              ? response.summary
-              : null;
+      if (response.status === "clarification_needed") {
+        setNotice({
+          kind: "clarification",
+          message: str(response.clarification) ?? "Please name the geography to analyse.",
+        });
+        return;
+      }
+      if (response.code === "model_not_configured" || response.status === "not_ready") {
+        setNotice({
+          kind: "not_ready",
+          message: str(response.error) ?? "The AICIS model is not configured.",
+          missing: stringArray(asRecord(response.readiness).missing),
+        });
+        return;
+      }
+      if (response.status !== "completed") {
+        const reason =
+          response.reason === "mfa_required"
+            ? "This research run needs an administrator account with two-step sign-in (MFA)."
+            : str(response.degradation_reason) ?? str(response.error) ?? str(response.message) ?? "Research did not complete.";
+        throw new Error(reason);
+      }
 
-      const evidenceCount = finiteNumber(metadata.evidence_count);
-
-      setResult({
+      const parsed = parseResult(trimmed, response);
+      setResult(parsed);
+      setPriorTurn({
+        taskId: parsed.taskId,
         question: trimmed,
-        briefing,
-        severity:
-          evidenceCount === 0 ? "unknown" : severityOf(response.severity),
-        confidence: finiteNumber(response.confidence),
-        dataCompleteness: finiteNumber(response.dataCompleteness),
-        evidenceCount,
-        sources: stringArray(response.sources),
-        divisions: stringArray(response.divisions),
-        truthFloor:
-          typeof metadata.truth_floor === "boolean"
-            ? metadata.truth_floor
-            : null,
-        modelMemoryFallback:
-          typeof metadata.model_memory_fallback === "boolean"
-            ? metadata.model_memory_fallback
-            : null,
-        provider:
-          typeof metadata.provider === "string" ? metadata.provider : null,
-        model: typeof metadata.model === "string" ? metadata.model : null,
-        generatedAt: new Date().toISOString(),
+        summary: parsed.executiveSummary,
+        followUpSupported: asRecord(response.follow_up).supported === true,
       });
     } catch (researchError) {
-      setError(
-        researchError instanceof Error
-          ? researchError.message
-          : "Evidence research could not be completed.",
-      );
+      setNotice({
+        kind: "error",
+        message: researchError instanceof Error ? researchError.message : "Evidence research could not be completed.",
+      });
     } finally {
       setRunning(false);
     }
   };
+
+  // Auto-run a question carried from Ask AICIS exactly once.
+  useEffect(() => {
+    setQuestion(activeQuestion);
+    if (activeQuestion && autoRanFor.current !== activeQuestion) {
+      autoRanFor.current = activeQuestion;
+      void runResearch(activeQuestion);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeQuestion]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -195,23 +310,16 @@ export const GovernedResearchPanel = () => {
             Stored evidence only
           </Badge>
         </div>
-
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Runs the sovereign AICIS research function against stored evidence.
-          Model-memory fallback is prohibited by the backend truth floor.
+          Independent specialist analysts reason only from stored evidence; disagreement is preserved, not averaged away.
         </p>
-
         {selectedEntity && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 bg-background/50 px-2.5 py-2 text-[10px]">
-            <span className="font-semibold uppercase tracking-wider text-muted-foreground">
-              Context
-            </span>
+            <span className="font-semibold uppercase tracking-wider text-muted-foreground">Context</span>
             <Badge variant="secondary" className="max-w-full truncate text-[10px]">
               {selectedEntity.type} · {selectedEntity.name}
             </Badge>
-            <span className="text-muted-foreground">
-              Sent with the question; used only where stored evidence supports it.
-            </span>
+            <span className="text-muted-foreground">Used only when the question names no place.</span>
           </div>
         )}
       </CardHeader>
@@ -221,167 +329,147 @@ export const GovernedResearchPanel = () => {
           <Input
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Ask an evidence-grounded intelligence question…"
+            placeholder={priorTurn ? "Ask another question…" : "Ask an evidence-grounded intelligence question…"}
             maxLength={3600}
             disabled={running}
             aria-label="Evidence research question"
             className="flex-1"
           />
           <Button type="submit" disabled={running || !question.trim()} className="gap-2">
-            {running ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Search className="h-4 w-4" />
-            )}
-            {running ? "Researching…" : "Run evidence research"}
+            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            {running ? "Researching…" : "Ask"}
           </Button>
         </form>
 
-        {activeQuestion && !result && !running && !error && (
-          <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-            Question carried from Ask AICIS. Review or edit it, then run the evidence research.
+        {notice?.kind === "clarification" && (
+          <div role="status" className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+            <div className="flex items-center gap-1.5 font-medium"><MapPin className="h-3.5 w-3.5" />Which place?</div>
+            <p className="mt-1 text-muted-foreground">{notice.message}</p>
           </div>
         )}
 
-        {error && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"
-          >
+        {(notice?.kind === "error" || notice?.kind === "not_ready") && (
+          <div role="alert" className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
-              <div className="font-medium">Research unavailable</div>
-              <div className="mt-1 text-destructive/90">{error}</div>
-              <div className="mt-1 text-[10px] text-muted-foreground">
-                No fallback answer was generated in the interface.
-              </div>
+              <div className="font-medium">{notice.kind === "not_ready" ? "Research engine not ready" : "Research unavailable"}</div>
+              <div className="mt-1 text-destructive/90">{notice.message}</div>
+              {notice.kind === "not_ready" && notice.missing.length > 0 && (
+                <div className="mt-1 font-mono text-[10px]">Missing: {notice.missing.join(", ")}</div>
+              )}
+              <div className="mt-1 text-[10px] text-muted-foreground">No fallback answer was generated in the interface.</div>
             </div>
           </div>
         )}
 
         {result && (
-          <div className="space-y-4 border-t border-border/60 pt-4">
+          <div className="space-y-3 border-t border-border/60 pt-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant="outline"
-                className={cn("font-mono text-[10px] uppercase", severityClass(result.severity))}
-              >
-                Severity · {result.severity}
-              </Badge>
-              <ConfidenceBadge value={result.confidence ?? undefined} />
-              <Badge variant="outline" className="font-mono text-[10px]">
-                <Database className="mr-1 h-3 w-3" />
-                {result.evidenceCount == null
-                  ? "Evidence rows unavailable"
-                  : `${result.evidenceCount} evidence rows`}
-              </Badge>
-              <Badge variant="outline" className="font-mono text-[10px]">
-                Category coverage ·{" "}
-                {result.dataCompleteness == null
-                  ? "UNKNOWN"
-                  : `${Math.round(result.dataCompleteness * 100)}%`}
-              </Badge>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "font-mono text-[10px]",
-                  result.truthFloor === true
-                    ? "border-emerald-500/30 text-emerald-500"
-                    : "text-muted-foreground",
-                )}
-              >
-                {result.truthFloor === true
-                  ? "TRUTH FLOOR CONFIRMED"
-                  : "TRUTH-FLOOR METADATA UNAVAILABLE"}
-              </Badge>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "font-mono text-[10px]",
-                  result.modelMemoryFallback === false
-                    ? "border-emerald-500/30 text-emerald-500"
-                    : result.modelMemoryFallback === true
-                      ? "border-destructive/30 text-destructive"
-                      : "text-muted-foreground",
-                )}
-              >
-                {result.modelMemoryFallback === false
-                  ? "MODEL MEMORY OFF"
-                  : result.modelMemoryFallback === true
-                    ? "MODEL MEMORY FALLBACK REPORTED"
-                    : "MODEL-MEMORY STATUS UNKNOWN"}
-              </Badge>
-            </div>
-
-            <div>
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Research question
-              </div>
-              <p className="text-sm font-medium">{result.question}</p>
-            </div>
-
-            <div className="rounded-lg border border-border/70 bg-background/60 p-4">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Evidence-grounded briefing
-              </div>
-              {result.briefing ? (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {result.briefing}
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  The research endpoint returned no briefing text.
-                </p>
+              {result.scopeLabel && (
+                <Badge variant="outline" className="gap-1 text-[10px]"><MapPin className="h-3 w-3" />{result.scopeLabel}</Badge>
               )}
+              {result.domains.map((d) => (
+                <Badge key={d} variant="secondary" className="text-[10px]">{d.replace("_", " ")}</Badge>
+              ))}
+              <Badge variant="outline" className="font-mono text-[10px]" title="Model and evidence-bounded confidence. Not a calibrated probability.">
+                Evidence-bounded confidence {pct(result.confidence)} ({pct(result.confidenceLower)}–{pct(result.confidenceUpper)})
+              </Badge>
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              Confidence reflects the models' judgement bounded by cited evidence. It is not a calibrated probability.
+            </p>
+
+            {result.degraded && (
+              <div role="alert" className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <span>Degraded answer: {result.degradationReason ?? "reason not reported"}</span>
+              </div>
+            )}
+
+            <Section title="Executive summary">
+              {result.executiveSummary ? (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">{result.executiveSummary}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">No summary was returned.</p>
+              )}
+            </Section>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border border-border/70 p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Source tables
-                </div>
-                {result.sources.length ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {result.sources.map((source) => (
-                      <Badge key={source} variant="outline" className="font-mono text-[10px]">
-                        {source}
-                      </Badge>
+              <Section title="Where specialists agree">
+                <List items={result.agreedPoints} empty="No agreed points reported." />
+              </Section>
+              <Section title="Genuine disagreement">
+                {result.disputedPoints.length ? (
+                  <ul className="space-y-2 text-sm">
+                    {result.disputedPoints.map((d, i) => (
+                      <li key={i}>
+                        <div className="font-medium">{d.topic}</div>
+                        <div className="text-xs text-muted-foreground"><b>{d.specialistA}:</b> {d.positionA}</div>
+                        <div className="text-xs text-muted-foreground"><b>{d.specialistB}:</b> {d.positionB}</div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 ) : (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    No source tables were returned.
-                  </p>
+                  <p className="text-xs text-muted-foreground">No disputes reported.</p>
                 )}
-              </div>
+                {result.preservedDissent.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-[10px] font-semibold uppercase text-muted-foreground">Preserved dissent</div>
+                    <List items={result.preservedDissent} empty="" />
+                  </div>
+                )}
+              </Section>
+            </div>
 
-              <div className="rounded-lg border border-border/70 p-3 text-xs">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Research runtime
-                </div>
-                <div className="mt-2 space-y-1 text-muted-foreground">
-                  <div>
-                    Response generated ·{" "}
-                    <span className="font-mono text-foreground">{result.generatedAt}</span>
-                  </div>
-                  <div>
-                    Divisions ·{" "}
-                    <span className="text-foreground">
-                      {result.divisions.length
-                        ? result.divisions.join(", ")
-                        : "Unavailable"}
-                    </span>
-                  </div>
-                  {(result.provider || result.model) && (
-                    <div>
-                      Synthesis ·{" "}
-                      <span className="text-foreground">
-                        {[result.provider, result.model].filter(Boolean).join(" · ")}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+            <Section title="What AICIS cannot conclude" tone="warn">
+              <List items={result.missingEvidence} empty="No missing evidence was reported." />
+            </Section>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <Section title="Strongest evidence">
+                <p className="text-sm">{result.strongestEvidence ?? "Not reported."}</p>
+              </Section>
+              <Section title="Weakest assumption">
+                <p className="text-sm">{result.weakestAssumption ?? "Not reported."}</p>
+              </Section>
+              <Section title="Next verification step">
+                <p className="text-sm">{result.nextVerificationStep ?? "Not reported."}</p>
+              </Section>
+            </div>
+
+            <Section title={`Citations (${result.citations.length})`}>
+              {result.citations.length ? (
+                <ul className="space-y-2">
+                  {result.citations.map((c, i) => (
+                    <li key={`${c.ref}-${i}`} className="text-xs">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline" className="font-mono text-[9px]">{c.ref}</Badge>
+                        {c.url ? (
+                          <a href={c.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
+                            {c.title}
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : (
+                          <span className="font-medium">{c.title}</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-muted-foreground">
+                        {[c.publisher, c.observedAt ? new Date(c.observedAt).toLocaleDateString() : null, c.url ? null : "no document link stored"]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground">No citations were used.</p>
+              )}
+            </Section>
+
+            <div className="text-[10px] text-muted-foreground">
+              Response generated · <span className="font-mono">{result.generatedAt}</span>
+              {(result.provider || result.model) && <> · Model · {[result.provider, result.model].filter(Boolean).join(" · ")}</>}
+              {result.taskId && <> · Task <span className="font-mono">{result.taskId}</span></>}
             </div>
           </div>
         )}
