@@ -273,9 +273,13 @@ Deno.serve(async (req) => {
         `Return strict JSON with keys: claim (one sentence), assessment (<=180 words), key_findings (array of short strings), ` +
         `evidence_refs (array of the evidence ref codes you actually used), assumptions (array), counterevidence (array of strings ` +
         `describing what in the evidence argues against your claim), uncertainty_notes (string), confidence (number 0-1).`;
+      const eq = evidenceQualityByDomain[domain];
       const user =
         `Question: ${question}\nScope: ${geography.scope} — ${scopeLabel}${iso3List.length ? ` (ISO3: ${iso3List.join(", ")})` : ""}\n` +
-        `Evidence window: last ${windowDays} days\n\nEVIDENCE:\n` +
+        `Evidence window: last ${windowDays} days\n` +
+        `Evidence sufficiency: ${eq.evidence_sufficiency} — ${eq.external_evidence_count} relevant external document(s), ` +
+        `${eq.internal_measurement_count} internal AICIS measurement(s). Internal measurements are AICIS-derived indices, ` +
+        `not independent documents; if external evidence is thin, say so explicitly.\n\nEVIDENCE:\n` +
         (evidence.length
           ? evidence.map((e) => `[${e.ref}] (${e.source_kind}, ${e.observed_at ?? "undated"}${e.geo ? `, ${e.geo}` : ""}) ${e.source_title}${e.excerpt ? ` — ${e.excerpt}` : ""}`).join("\n")
           : "(no evidence rows exist for this domain in the window)");
@@ -378,6 +382,7 @@ Deno.serve(async (req) => {
         specialists_succeeded: succeeded,
         specialists_failed: failed,
         specialist_errors: specialistErrors,
+        evidence_quality: evidenceQuality,
         geography,
         domains,
         domain_routing: routed.routing,
@@ -497,6 +502,7 @@ Deno.serve(async (req) => {
       degradation_reason: thinEvidence
         ? "at least one specialist had no usable evidence rows in the window"
         : failed > 0 ? `${failed} specialist run(s) failed` : null,
+      evidence_quality: evidenceQuality,
       specialists_succeeded: succeeded,
       specialists_failed: failed,
       specialist_errors: specialistErrors,
