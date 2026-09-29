@@ -13,6 +13,11 @@ import {
   routeDomains,
   signalCitationSource,
 } from "../_shared/ask-scope-v1.mjs";
+import {
+  aggregateEvidenceQuality,
+  questionTerms,
+  selectDomainEvidence,
+} from "../_shared/evidence-quality-v1.mjs";
 
 type EvidenceRow = {
   ref: string;
@@ -170,62 +175,85 @@ Deno.serve(async (req) => {
 
     const since = new Date(Date.now() - windowDays * 86400_000).toISOString();
 
-    const evidenceByDomain: Record<string, EvidenceRow[]> = {};
-    await Promise.all(domains.map(async (domain) => {
-      const rows: EvidenceRow[] = [];
-      let sig = supabase
-        .from("global_signals")
-        .select("id,title,summary,primary_source,source_references,ingested_at,occurred_at,category,geo_admin0_iso3")
-        .gte("ingested_at", since)
-        .in("category", DOMAIN_CATEGORIES[domain])
-        .order("ingested_at", { ascending: false })
-        .limit(iso3List.length > 1 ? 16 : 12);
-      if (iso3List.length) sig = sig.in("geo_admin0_iso3", iso3List);
-      const { data: signals, error: sigErr } = await sig;
-      if (sigErr) throw sigErr;
-      (signals ?? []).forEach((s: any, i: number) => {
-        const cite = signalCitationSource(s);
-        rows.push({
-          ref: `${domain}-S${i + 1}`,
-          source_kind: "signal",
-          source_table: "global_signals",
-          source_row_id: s.id,
-          source_url: cite.url,
-          publisher: cite.publisher,
-          domain,
-          source_title: s.title ?? "(untitled signal)",
-          excerpt: (s.summary ?? "").slice(0, 400) || null,
-          observed_at: s.occurred_at ?? s.ingested_at,
-          geo: s.geo_admin0_iso3 ?? null,
-        } as EvidenceRow);
-      });
+    // One shared candidate pool across ALL categories for the resolved geography.
+    // Stored categories are sometimes wrong, so admission is decided per domain
+    // by deterministic text relevance (evidence-quality-v1), not by category.
+    let sig = supabase
+      .from("global_signals")
+      .select("id,title,summary,primary_source,source_references,ingested_at,occurred_at,category,geo_admin0_iso3,canonical_event_id,dedup_key")
+      .gte("ingested_at", since)
+      .order("ingested_at", { ascending: false })
+      .limit(iso3List.length ? 300 : 400);
+    if (iso3List.length) sig = sig.in("geo_admin0_iso3", iso3List);
+    const { data: candidateSignals, error: sigErr } = await sig;
+    if (sigErr) throw sigErr;
 
+    const qTerms = questionTerms(question, [
+      ...geography.countries.map((c: any) => c.name),
+      ...geography.regions.map((r: any) => r.label),
+    ]);
+
+    const evidenceByDomain: Record<string, EvidenceRow[]> = {};
+    const evidenceQualityByDomain: Record<string, any> = {};
+    await Promise.all(domains.map(async (domain) => {
+      let snaps: any[] = [];
       if (iso3List.length) {
-        const { data: snaps, error: snapErr } = await supabase
+        const { data, error: snapErr } = await supabase
           .from("country_performance_snapshots")
           .select("id,iso3,domain,performance_index,momentum_score,volatility_index,snapshot_date")
           .in("iso3", iso3List)
           .eq("domain", domain)
           .order("snapshot_date", { ascending: false })
-          .limit(iso3List.length > 1 ? 8 : 4);
+          .limit(iso3List.length > 1 ? 12 : 6);
         if (snapErr) throw snapErr;
-        (snaps ?? []).forEach((s: any, i: number) =>
-          rows.push({
-            ref: `${domain}-M${i + 1}`,
-            source_kind: "measurement",
-            source_table: "country_performance_snapshots",
-            source_row_id: s.id,
-            source_url: null,
-            publisher: "AICIS country_performance_snapshots",
-            domain,
-            source_title: `${s.iso3} ${domain} performance index ${s.snapshot_date}`,
-            excerpt: `index=${s.performance_index}, momentum=${s.momentum_score}, volatility=${s.volatility_index}`,
-            observed_at: s.snapshot_date,
-          } as EvidenceRow),
-        );
+        snaps = data ?? [];
       }
+
+      const sel = selectDomainEvidence({
+        domain,
+        signals: candidateSignals ?? [],
+        snapshots: snaps,
+        qTerms,
+        iso3List,
+        citationSource: signalCitationSource,
+      });
+      evidenceQualityByDomain[domain] = sel.meta;
+
+      const rows: EvidenceRow[] = sel.external.map(({ signal: s, cite }: any, i: number) => ({
+        ref: `${domain}-S${i + 1}`,
+        source_kind: "signal",
+        source_table: "global_signals",
+        source_row_id: s.id,
+        source_url: cite.url,
+        publisher: cite.publisher,
+        domain,
+        source_title: s.title ?? "(untitled signal)",
+        excerpt: (s.summary ?? "").slice(0, 400) || null,
+        observed_at: s.occurred_at ?? s.ingested_at,
+        geo: s.geo_admin0_iso3 ?? null,
+      }));
+      sel.internal.forEach((s: any, i: number) =>
+        rows.push({
+          ref: `${domain}-M${i + 1}`,
+          source_kind: "internal_measurement",
+          source_table: "country_performance_snapshots",
+          source_row_id: s.id,
+          source_url: null,
+          publisher: "AICIS internal measurement (country_performance_snapshots)",
+          domain,
+          source_title: `${s.iso3} ${domain} performance index ${s.snapshot_date}` +
+            (s._unchanged_since ? ` (unchanged since ${s._unchanged_since})` : ""),
+          excerpt: `index=${s.performance_index}, momentum=${s.momentum_score}, volatility=${s.volatility_index}`,
+          observed_at: s.snapshot_date,
+          geo: s.iso3,
+        }),
+      );
       evidenceByDomain[domain] = rows;
     }));
+    const evidenceQuality = {
+      ...aggregateEvidenceQuality(evidenceQualityByDomain),
+      by_domain: evidenceQualityByDomain,
+    };
 
     const perspectives: any[] = [];
     let succeeded = 0;
