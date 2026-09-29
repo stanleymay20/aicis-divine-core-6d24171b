@@ -80,6 +80,13 @@ type VerifiedInputProgress = {
   route_verified: boolean;
 };
 
+type EconomicsProgress = {
+  status: "REVIEW" | "RESEARCHING" | "NO_ACTION";
+  candidate_id: string | null;
+  missing_execution_fields?: string[];
+  no_transaction_reason?: string | null;
+};
+
 function uniqueCountries(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 6);
 }
@@ -180,6 +187,7 @@ export function OpportunityInvestigationPanel({
   const [economicsBuilding, setEconomicsBuilding] = useState(false);
   const [screeningId, setScreeningId] = useState<string | null>(null);
   const [screenResults, setScreenResults] = useState<Record<string, SanctionsScreenResponse>>({});
+  const [economicsProgress, setEconomicsProgress] = useState<EconomicsProgress | null>(null);
   const { toast } = useToast();
 
   const runDiscovery = useCallback(async (
@@ -274,6 +282,7 @@ export function OpportunityInvestigationPanel({
       setAssumptionsConfirmed(false);
       setScreeningId(null);
       setScreenResults({});
+      setEconomicsProgress(null);
       window.dispatchEvent(new CustomEvent("aicis:seed-transaction-bundle", {
         detail: {
           signal: {
@@ -291,6 +300,18 @@ export function OpportunityInvestigationPanel({
     window.addEventListener("aicis:start-opportunity-investigation", handler as EventListener);
     return () => window.removeEventListener("aicis:start-opportunity-investigation", handler as EventListener);
   }, [comparisonCurrency, runDiscovery]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<EconomicsProgress>).detail;
+      if (!detail || !["REVIEW", "RESEARCHING", "NO_ACTION"].includes(detail.status)) return;
+      setEconomicsProgress(detail);
+      setEconomicsBuilding(false);
+    };
+
+    window.addEventListener("aicis:transaction-opportunity-updated", handler as EventListener);
+    return () => window.removeEventListener("aicis:transaction-opportunity-updated", handler as EventListener);
+  }, []);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -606,7 +627,7 @@ export function OpportunityInvestigationPanel({
       },
     }));
 
-    window.setTimeout(() => setEconomicsBuilding(false), 800);
+    window.setTimeout(() => setEconomicsBuilding(false), 12_000);
   };
 
   if (!state && !loading) return null;
@@ -755,8 +776,8 @@ export function OpportunityInvestigationPanel({
               />
               <ProgressStep
                 label="Build economics"
-                complete={false}
-                detail="FX + landed cost + strategy"
+                complete={Boolean(economicsProgress?.candidate_id)}
+                detail={economicsProgress?.candidate_id ? "research path constructed" : "FX + landed cost + strategy"}
               />
             </div>
 
@@ -820,6 +841,49 @@ export function OpportunityInvestigationPanel({
                     Calculate research economics
                   </Button>
                 </div>
+              </div>
+            ) : null}
+
+            {economicsProgress?.candidate_id ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-medium">
+                      {economicsProgress.status === "REVIEW"
+                        ? "Transaction path reached review"
+                        : "Research transaction path built"}
+                    </p>
+                    <Badge variant={economicsProgress.status === "REVIEW" ? "outline" : "secondary"}>
+                      {economicsProgress.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {economicsProgress.status === "REVIEW"
+                      ? "The current candidate cleared the ranking gates, but execution still requires explicit human approval."
+                      : "Provisional economics exist. Complete the remaining evidence gates before treating profit, expected value or feasibility as decision-grade."}
+                  </p>
+                  {economicsProgress.missing_execution_fields?.length ? (
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Remaining: {economicsProgress.missing_execution_fields.slice(0, 6).join(" · ")}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  size="sm"
+                  variant={economicsProgress.status === "REVIEW" ? "outline" : "default"}
+                  onClick={() => {
+                    const advanced = document.getElementById("opportunity-advanced-workspace") as HTMLDetailsElement | null;
+                    if (advanced) advanced.open = true;
+                    window.setTimeout(() => {
+                      const target = economicsProgress.status === "REVIEW"
+                        ? document.getElementById("transaction-path-lab")
+                        : document.getElementById("landed-cost-verification") || document.getElementById("transaction-path-lab");
+                      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 80);
+                  }}
+                >
+                  {economicsProgress.status === "REVIEW" ? "Review transaction" : "Complete cost evidence"}
+                </Button>
               </div>
             ) : null}
 
