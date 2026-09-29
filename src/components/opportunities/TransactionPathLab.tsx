@@ -377,7 +377,7 @@ export function TransactionPathLab() {
               : response.ranking?.no_transaction_recommended
                 ? "NO_ACTION"
                 : "RESEARCHING",
-            candidate_id: null,
+            candidate_id: response.build?.candidates?.[0]?.id ?? null,
             title: response.build?.candidates?.[0]?.title ?? null,
             transaction_type: response.build?.candidates?.[0]?.transaction_type ?? null,
             score: null,
