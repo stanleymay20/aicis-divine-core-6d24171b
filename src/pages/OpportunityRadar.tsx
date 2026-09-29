@@ -297,10 +297,10 @@ export default function OpportunityRadar() {
         <div>
           <div className="flex items-center gap-2">
             <CircleDollarSign className="h-5 w-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">Opportunity Radar</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Opportunities</h1>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Personalized opportunity research and transaction ranking. AICIS ranks only verified candidate economics and keeps execution behind explicit human approval.
+            AICIS scans world signals for situations worth investigating, then helps turn supported discoveries into verified transaction paths that fit your constraints.
           </p>
         </div>
         <Badge variant="outline" className="w-fit gap-1.5">
@@ -308,6 +308,38 @@ export default function OpportunityRadar() {
           Human approval required
         </Badge>
       </div>
+
+      <section id="opportunity-hypotheses" className="scroll-mt-16">
+        <OpportunityHypothesesPanel />
+      </section>
+
+      <Card className="border-dashed">
+        <CardContent className="p-4">
+          <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
+            <div>
+              <p className="font-medium text-foreground">1. Discover</p>
+              <p className="mt-1">AICIS watches relevant world changes for possible opportunities.</p>
+            </div>
+            <div>
+              <p className="font-medium text-foreground">2. Verify</p>
+              <p className="mt-1">Suppliers, buyers, routes, compliance and full economics must be evidenced.</p>
+            </div>
+            <div>
+              <p className="font-medium text-foreground">3. Decide</p>
+              <p className="mt-1">AICIS compares feasible structures and can still conclude research, monitor or no action.</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <details id="opportunity-advanced-workspace" className="rounded-lg border border-border bg-card">
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
+          Advanced opportunity workspace
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            Profile, verification, transaction builder and research queue
+          </span>
+        </summary>
+        <div className="space-y-5 border-t border-border px-4 py-4">
 
       <OpportunityWorkspaceNav />
 
@@ -513,10 +545,6 @@ export default function OpportunityRadar() {
         </Card>
       </div>
 
-      <section id="opportunity-hypotheses" className="scroll-mt-16">
-        <OpportunityHypothesesPanel />
-      </section>
-
       <StrategicResearchTracker />
 
       <section id="opportunity-verification" className="space-y-5 scroll-mt-16">
@@ -614,6 +642,8 @@ export default function OpportunityRadar() {
           )}
         </CardContent>
       </Card>
+        </div>
+      </details>
     </div>
   );
 }
