@@ -342,7 +342,10 @@ export default function OpportunityRadar() {
         <OpportunityHypothesesPanel />
       </section>
 
-      <OpportunityInvestigationPanel targetCountries={prefs.countries} />
+      <OpportunityInvestigationPanel
+        targetCountries={prefs.countries}
+        comparisonCurrency={profile.base_currency}
+      />
 
       <Card>
         <CardContent className="p-4">
