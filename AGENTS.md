@@ -3,3 +3,4 @@
 - Recovery authorization binds the auth service's PASSWORD_RECOVERY event to its exact server-validated access token and keeps it out of normal route authorization — because legitimate OTP/recovery links may not carry a "recovery" AMR claim and the reset page loads lazily.
 - Password-reset emails use a separate implicit-flow auth client initialized before the normal PKCE app client — because emailed PKCE codes fail across browsers without the originating browser's verifier; recovery sessions never unlock app routes.
 - Shared edge auth rejections (401/403) always include CORS headers — why: otherwise browsers mask the real reason as a CORS failure.
+- Ask AICIS geography/domain scope is resolved deterministically server-side by `_shared/ask-scope-v1.mjs` (country_profiles names first, uppercase-standalone ISO3 only, clarification instead of global fallback) — why: case-insensitive ISO3 matching produced AND/ARE/CAN false countries.

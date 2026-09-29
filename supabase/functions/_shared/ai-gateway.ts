@@ -206,3 +206,13 @@ function sanitizeProviderErrorDetail(value: string): string {
     .replace(/(api[_-]?key["'\s:=]+)[^\s,"'}]+/gi, "$1[REDACTED]")
     .slice(0, 500);
 }
+
+/**
+ * Readiness probe for the shared gateway. Reports which required settings are
+ * absent without revealing values, so callers can fail closed before work.
+ */
+export function aiGatewayReadiness(): { ready: boolean; missing: string[] } {
+  const missing = ["AICIS_AI_MODE", "AICIS_MODEL_ENDPOINT", "AICIS_MODEL_NAME"]
+    .filter((key) => !Deno.env.get(key)?.trim());
+  return { ready: missing.length === 0, missing };
+}

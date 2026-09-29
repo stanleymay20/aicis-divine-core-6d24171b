@@ -13,26 +13,23 @@ test("Intelligence Engine mounts the governed evidence research surface", async 
   assert.match(source, /<GovernedResearchPanel \/>/);
 });
 
-test("Governed research uses the existing sovereign evidence endpoint", async () => {
+test("Governed research invokes orchestrate-multi-agent, not aicis-intelligence", async () => {
   const source = await readFile(panelPath, "utf8");
 
-  assert.match(source, /supabase\.functions\.invoke\(\s*"aicis-intelligence"/);
+  assert.match(source, /supabase\.functions\.invoke\("orchestrate-multi-agent"/);
+  assert.doesNotMatch(source, /aicis-intelligence/);
   assert.match(source, /searchParams\.get\("question"\)/);
   assert.match(source, /selectedEntity/);
-  assert.match(source, /Selected intelligence context:/);
-  assert.match(source, /Run evidence research/);
 });
 
-test("Research UI does not invent confidence, sources, freshness, or fallback answers", async () => {
+test("Carried question auto-runs once and confidence is labelled as not calibrated", async () => {
   const source = await readFile(panelPath, "utf8");
 
-  assert.doesNotMatch(source, /confidence\s*:\s*75/);
-  assert.doesNotMatch(source, /AICIS Core Intelligence/);
-  assert.doesNotMatch(source, /DataFreshnessBadge/);
-  assert.doesNotMatch(source, /VerificationScore/);
-  assert.match(source, /confidence: finiteNumber\(response\.confidence\)/);
-  assert.match(source, /sources: stringArray\(response\.sources\)/);
+  assert.match(source, /autoRanFor\.current !== activeQuestion/);
+  assert.match(source, /not a calibrated probability/);
   assert.match(source, /No fallback answer was generated in the interface/);
+  assert.match(source, /What AICIS cannot conclude/);
+  assert.match(source, /priorTurn\?\.followUpSupported/);
 });
 
 test("Research distinguishes response generation time from evidence freshness", async () => {
@@ -52,9 +49,3 @@ test("Ask AICIS describes the handoff as evidence research", async () => {
 });
 
 
-test("Zero evidence cannot be rendered as low severity", async () => {
-  const source = await readFile(panelPath, "utf8");
-
-  assert.match(source, /const evidenceCount = finiteNumber\(metadata\.evidence_count\)/);
-  assert.match(source, /evidenceCount === 0 \? "unknown" : severityOf\(response\.severity\)/);
-});

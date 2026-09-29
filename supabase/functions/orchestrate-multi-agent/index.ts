@@ -5,7 +5,14 @@ import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // synthesises the perspectives WITHOUT collapsing disagreement.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { aiChat } from "../_shared/ai-gateway.ts";
+import { aiChat, aiGatewayReadiness } from "../_shared/ai-gateway.ts";
+import {
+  ASK_SCOPE_VERSION,
+  ORCHESTRATOR_DOMAINS,
+  resolveGeography,
+  routeDomains,
+  signalCitationSource,
+} from "../_shared/ask-scope-v1.mjs";
 
 type EvidenceRow = {
   ref: string;
@@ -13,9 +20,12 @@ type EvidenceRow = {
   source_table: string;
   source_row_id: string | null;
   source_url: string | null;
+  publisher: string | null;
+  domain: string;
   source_title: string;
   excerpt: string | null;
   observed_at: string | null;
+  geo?: string | null;
 };
 
 const DOMAIN_CATEGORIES: Record<string, string[]> = {
@@ -77,16 +87,62 @@ Deno.serve(async (req) => {
   let taskId: string | null = null;
   try {
     const body = await req.json().catch(() => ({}));
-    const question: string = (body.question ?? "").trim();
-    const subject_kind: string = body.subject_kind ?? "country";
-    const subject_key: string | null = body.subject_key ?? null;
+    const question: string = String(body.question ?? "").trim().slice(0, 3600);
     const windowDays: number = Math.min(Math.max(Number(body.evidence_window_days ?? 30), 3), 180);
-    const domains: string[] = Array.isArray(body.domains) && body.domains.length
-      ? body.domains.filter((d: string) => d in DOMAIN_CATEGORIES)
-      : ["security", "governance", "finance"];
+    if (!question) return json({ error: "question is required", code: "question_required" }, 400);
 
-    if (!question) return json({ error: "question is required" }, 400);
-    if (domains.length < 2) return json({ error: "at least two domains are required" }, 400);
+    const context = body.context && typeof body.context === "object" ? body.context : {};
+    const contextIso3 = typeof context.iso3 === "string"
+      ? context.iso3
+      : body.subject_kind === "country" && typeof body.subject_key === "string" ? body.subject_key : null;
+
+    // 1) Deterministic geography resolution against live country_profiles.
+    const { data: countryRows, error: countryErr } = await supabase
+      .from("country_profiles")
+      .select("iso3,country_name")
+      .not("country_name", "is", null)
+      .limit(400);
+    if (countryErr) throw countryErr;
+    const geography = resolveGeography(question, countryRows ?? [], { iso3: contextIso3 });
+    if (geography.status !== "resolved") {
+      return json({
+        status: "clarification_needed",
+        question,
+        geography,
+        clarification: geography.clarification,
+        task_id: null,
+      });
+    }
+
+    // 2) Deterministic domain routing (explicit caller domains honoured if valid).
+    const callerDomains = Array.isArray(body.domains)
+      ? body.domains.filter((d: string) => ORCHESTRATOR_DOMAINS.includes(d))
+      : [];
+    const routed = callerDomains.length >= 2
+      ? { domains: callerDomains.slice(0, 4), routing: "caller_supplied", matched_keywords: {} }
+      : routeDomains(question);
+    const domains: string[] = routed.domains;
+
+    // 3) Fail closed on missing model configuration — never manufacture an answer.
+    const readiness = aiGatewayReadiness();
+    if (!readiness.ready) {
+      return json({
+        status: "not_ready",
+        error: "AICIS model is not configured; no answer was generated.",
+        code: "model_not_configured",
+        readiness,
+        geography,
+        domains,
+        task_id: null,
+      }, 503);
+    }
+
+    const iso3List: string[] = geography.iso3;
+    const subject_kind = geography.scope === "global" ? "global" : geography.scope;
+    const subject_key: string | null = iso3List.length ? iso3List.join(",").slice(0, 500) : null;
+    const scopeLabel = geography.scope === "global"
+      ? "global"
+      : [...geography.regions.map((r: any) => r.label), ...geography.countries.map((c: any) => c.name)].join(", ") || iso3List.join(", ");
 
     const task_key = `${subject_kind}:${subject_key ?? "global"}:${(await sha256(question)).slice(0, 16)}:${new Date().toISOString()}`;
     const configuredProvider = Deno.env.get("AICIS_MODEL_PROVIDER")?.trim() || "provider-neutral";
@@ -118,35 +174,39 @@ Deno.serve(async (req) => {
       const rows: EvidenceRow[] = [];
       let sig = supabase
         .from("global_signals")
-        .select("id,title,summary,primary_source,ingested_at,occurred_at,category,geo_admin0_iso3")
+        .select("id,title,summary,primary_source,source_references,ingested_at,occurred_at,category,geo_admin0_iso3")
         .gte("ingested_at", since)
         .in("category", DOMAIN_CATEGORIES[domain])
         .order("ingested_at", { ascending: false })
-        .limit(12);
-      if (subject_kind === "country" && subject_key) sig = sig.eq("geo_admin0_iso3", subject_key);
+        .limit(iso3List.length > 1 ? 16 : 12);
+      if (iso3List.length) sig = sig.in("geo_admin0_iso3", iso3List);
       const { data: signals, error: sigErr } = await sig;
       if (sigErr) throw sigErr;
-      (signals ?? []).forEach((s: any, i: number) =>
+      (signals ?? []).forEach((s: any, i: number) => {
+        const cite = signalCitationSource(s);
         rows.push({
           ref: `${domain}-S${i + 1}`,
           source_kind: "signal",
           source_table: "global_signals",
           source_row_id: s.id,
-          source_url: s.primary_source ?? null,
+          source_url: cite.url,
+          publisher: cite.publisher,
+          domain,
           source_title: s.title ?? "(untitled signal)",
           excerpt: (s.summary ?? "").slice(0, 400) || null,
           observed_at: s.occurred_at ?? s.ingested_at,
-        }),
-      );
+          geo: s.geo_admin0_iso3 ?? null,
+        } as EvidenceRow);
+      });
 
-      if (subject_kind === "country" && subject_key) {
+      if (iso3List.length) {
         const { data: snaps, error: snapErr } = await supabase
           .from("country_performance_snapshots")
-          .select("id,domain,performance_index,momentum_score,volatility_index,snapshot_date")
-          .eq("iso3", subject_key)
+          .select("id,iso3,domain,performance_index,momentum_score,volatility_index,snapshot_date")
+          .in("iso3", iso3List)
           .eq("domain", domain)
           .order("snapshot_date", { ascending: false })
-          .limit(4);
+          .limit(iso3List.length > 1 ? 8 : 4);
         if (snapErr) throw snapErr;
         (snaps ?? []).forEach((s: any, i: number) =>
           rows.push({
@@ -155,10 +215,12 @@ Deno.serve(async (req) => {
             source_table: "country_performance_snapshots",
             source_row_id: s.id,
             source_url: null,
-            source_title: `${domain} performance index ${s.snapshot_date}`,
+            publisher: "AICIS country_performance_snapshots",
+            domain,
+            source_title: `${s.iso3} ${domain} performance index ${s.snapshot_date}`,
             excerpt: `index=${s.performance_index}, momentum=${s.momentum_score}, volatility=${s.volatility_index}`,
             observed_at: s.snapshot_date,
-          }),
+          } as EvidenceRow),
         );
       }
       evidenceByDomain[domain] = rows;
@@ -167,6 +229,7 @@ Deno.serve(async (req) => {
     const perspectives: any[] = [];
     let succeeded = 0;
     let failed = 0;
+    const specialistErrors: { domain: string; code: string; message: string }[] = [];
 
     for (const domain of domains) {
       const evidence = evidenceByDomain[domain];
@@ -180,10 +243,10 @@ Deno.serve(async (req) => {
         `evidence_refs (array of the evidence ref codes you actually used), assumptions (array), counterevidence (array of strings ` +
         `describing what in the evidence argues against your claim), uncertainty_notes (string), confidence (number 0-1).`;
       const user =
-        `Question: ${question}\nSubject: ${subject_kind} ${subject_key ?? "global"}\n` +
+        `Question: ${question}\nScope: ${geography.scope} — ${scopeLabel}${iso3List.length ? ` (ISO3: ${iso3List.join(", ")})` : ""}\n` +
         `Evidence window: last ${windowDays} days\n\nEVIDENCE:\n` +
         (evidence.length
-          ? evidence.map((e) => `[${e.ref}] (${e.source_kind}, ${e.observed_at ?? "undated"}) ${e.source_title}${e.excerpt ? ` — ${e.excerpt}` : ""}`).join("\n")
+          ? evidence.map((e) => `[${e.ref}] (${e.source_kind}, ${e.observed_at ?? "undated"}${e.geo ? `, ${e.geo}` : ""}) ${e.source_title}${e.excerpt ? ` — ${e.excerpt}` : ""}`).join("\n")
           : "(no evidence rows exist for this domain in the window)");
 
       const promptHash = await sha256(system + user);
@@ -240,6 +303,11 @@ Deno.serve(async (req) => {
         succeeded++;
       } catch (e) {
         failed++;
+        specialistErrors.push({
+          domain,
+          code: String((e as any)?.code ?? "specialist_failed"),
+          message: String((e as Error)?.message ?? "unknown").slice(0, 300),
+        });
         await supabase.from("agent_specialist_analyses").insert({
           task_id: taskId,
           specialist: domain,
@@ -267,7 +335,19 @@ Deno.serve(async (req) => {
         error: `only ${succeeded} specialist perspective(s) succeeded; synthesis requires at least 2`,
         completed_at: new Date().toISOString(),
       }).eq("id", taskId);
-      return json({ task_id: taskId, status: "error", specialists_succeeded: succeeded }, 200);
+      return json({
+        task_id: taskId,
+        status: "error",
+        code: "insufficient_specialists",
+        degraded: true,
+        degradation_reason: `only ${succeeded} specialist perspective(s) succeeded; synthesis requires at least 2`,
+        specialists_succeeded: succeeded,
+        specialists_failed: failed,
+        specialist_errors: specialistErrors,
+        geography,
+        domains,
+        domain_routing: routed.routing,
+      }, 200);
     }
 
     const synthSystem =
@@ -279,7 +359,7 @@ Deno.serve(async (req) => {
       "weakest_assumption (string), missing_evidence (array of strings), next_verification_step (string), " +
       "overall_confidence (0-1), confidence_lower (0-1), confidence_upper (0-1).";
     const synthUser =
-      `Question: ${question}\nSubject: ${subject_kind} ${subject_key ?? "global"}\n\nPERSPECTIVES:\n` +
+      `Question: ${question}\nScope: ${geography.scope} — ${scopeLabel}\n\nPERSPECTIVES:\n` +
       perspectives.map((p) =>
         `### ${p.domain} (confidence ${p.confidence})\nCLAIM: ${p.claim}\nASSESSMENT: ${p.assessment}\n` +
         `ASSUMPTIONS: ${JSON.stringify(p.assumptions ?? [])}\nCOUNTEREVIDENCE: ${JSON.stringify(p.counterevidence ?? [])}\n` +
@@ -346,15 +426,64 @@ Deno.serve(async (req) => {
       completed_at: new Date().toISOString(),
     }).eq("id", taskId);
 
+    const usedEvidence = perspectives.flatMap((p) =>
+      evidenceByDomain[p.domain].filter((e) => p.evidence_refs.includes(e.ref)),
+    );
+    const citations = usedEvidence.map((e) => ({
+      ref: e.ref,
+      domain: e.domain,
+      source_kind: e.source_kind,
+      source_table: e.source_table,
+      source_row_id: e.source_row_id,
+      title: e.source_title,
+      publisher: e.publisher,
+      url: e.source_url,
+      observed_at: e.observed_at,
+    }));
+    const arr = (v: unknown) => (Array.isArray(v) ? v : []);
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
+
     return json({
       task_id: taskId,
       status: "completed",
+      question,
+      executive_summary: str(syn.executive_summary),
+      agreed_points: arr(syn.agreed_points),
+      disputed_points: disputes,
+      preserved_dissent: arr(syn.preserved_dissent),
+      strongest_evidence: str(syn.strongest_evidence),
+      weakest_assumption: str(syn.weakest_assumption),
+      missing_evidence: arr(syn.missing_evidence),
+      next_verification_step: str(syn.next_verification_step),
+      overall_confidence: overall,
+      confidence_lower: lower,
+      confidence_upper: upper,
+      confidence_semantics: "model_evidence_bounded_not_calibrated_probability",
+      degraded: thinEvidence || failed > 0,
+      degradation_reason: thinEvidence
+        ? "at least one specialist had no usable evidence rows in the window"
+        : failed > 0 ? `${failed} specialist run(s) failed` : null,
       specialists_succeeded: succeeded,
       specialists_failed: failed,
-      citations: citationCount,
+      specialist_errors: specialistErrors,
+      perspectives: perspectives.map((p) => ({
+        domain: p.domain,
+        claim: p.claim ?? null,
+        confidence: p.confidence,
+        evidence_refs: p.evidence_refs,
+      })),
+      citation_count: citationCount,
+      citations,
       disagreements: disputes.length,
       provider: synthRun.provider,
       model: synthRun.model,
+      geography,
+      scope_resolver: ASK_SCOPE_VERSION,
+      domains,
+      domain_routing: routed.routing,
+      evidence_window_days: windowDays,
+      human_authorization_required: true,
+      follow_up: { supported: false, reason: "backend does not yet persist conversational memory" },
     });
   } catch (e) {
     const message = (e as Error).message ?? "unknown error";
