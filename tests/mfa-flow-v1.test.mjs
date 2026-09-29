@@ -38,7 +38,7 @@ test("MFA UI never persists TOTP secrets or codes and keeps role checks separate
   const auth = readFileSync("src/pages/Auth.tsx", "utf8");
   assert.match(auth, /needsMfaChallenge\(aal\)/);
   const app = readFileSync("src/App.tsx", "utf8");
-  assert.match(app, /path="\/account\/security" element=\{<Protected><AccountSecurity/);
+  assert.match(app, /path="\/account\/security" element=\{<Shell><AccountSecurity/);
 });
 test("Ask panel shows a verify CTA for mfa_required instead of a generic error", () => {
   const panel = readFileSync("src/components/analysis/GovernedResearchPanel.tsx", "utf8");
