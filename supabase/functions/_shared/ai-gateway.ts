@@ -133,10 +133,11 @@ export async function aiChat(request: AiChatRequest): Promise<AiChatResult> {
   };
 
   if (request.responseFormat) body.response_format = request.responseFormat;
-  if (request.temperature !== undefined) body.temperature = request.temperature;
-  // Current OpenAI models reject `max_tokens`; other OpenAI-compatible servers still expect it.
+  // Current OpenAI models accept only the default temperature and reject `max_tokens`;
+  // other OpenAI-compatible servers still expect the classic parameters.
+  const isOpenAi = String(provider).toLowerCase() === "openai" || /(^|\.)openai\.com$/i.test(String(route.endpoint_host || ""));
+  if (request.temperature !== undefined && !isOpenAi) body.temperature = request.temperature;
   if (request.maxTokens !== undefined) {
-    const isOpenAi = /(^|\.)openai\.com$/i.test(new URL(endpoint).hostname) || String(provider).toLowerCase() === "openai";
     body[isOpenAi ? "max_completion_tokens" : "max_tokens"] = request.maxTokens;
   }
 
