@@ -335,11 +335,7 @@ export const MorningBriefDashboard = () => {
             </div>
           </button>
         ))}
-        <Card className="border-border">
-          <CardContent className="p-0">
-            <ActionsAwaitingStrip />
-          </CardContent>
-        </Card>
+        <ActionsAwaitingStrip />
       </div>
 
       <ForecastMovementPanel />
