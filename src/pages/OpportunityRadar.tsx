@@ -361,7 +361,9 @@ export default function OpportunityRadar() {
                   </div>
                   <p className="mt-1 text-base font-medium">{transactionOpportunity.title}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Ranked only from supplied verified evidence. Human approval is still required.
+                    {transactionOpportunity.status === "REVIEW"
+                      ? "Cleared the current ranking gates from supplied verified evidence. Human approval is still required."
+                      : "Research economics only. Missing landed-cost, scenario or execution evidence can materially change feasibility and profit."}
                   </p>
                 </div>
                 <Button
@@ -385,12 +387,14 @@ export default function OpportunityRadar() {
                   value={formatOpportunityMoney(transactionOpportunity.capital_required, transactionOpportunity.currency)}
                 />
                 <OpportunityMetric
-                  label="Base profit"
+                  label={transactionOpportunity.status === "REVIEW" ? "Base profit" : "Provisional spread"}
                   value={formatOpportunityMoney(transactionOpportunity.base_profit, transactionOpportunity.currency)}
                 />
                 <OpportunityMetric
                   label="Expected value"
-                  value={formatOpportunityMoney(transactionOpportunity.expected_value, transactionOpportunity.currency)}
+                  value={transactionOpportunity.status === "REVIEW"
+                    ? formatOpportunityMoney(transactionOpportunity.expected_value, transactionOpportunity.currency)
+                    : "withheld"}
                 />
                 <OpportunityMetric
                   label="Margin"
