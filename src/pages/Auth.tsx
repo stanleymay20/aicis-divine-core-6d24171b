@@ -11,7 +11,6 @@ import { needsMfaChallenge } from "@/lib/mfa-state.mjs";
 import aicisLogo from "@/assets/aicis-logo.png";
 import { useAuth } from "@/hooks/useAuth";
 import { recoveryAuth } from "@/lib/recoveryAuth";
-import { needsMfaChallenge } from "@/lib/mfa-state.mjs";
 
 const NEXT_PATH_KEY = "aicis.auth.next";
 const GOOGLE_OAUTH_ENABLED = import.meta.env.VITE_ENABLE_GOOGLE_OAUTH === "true";
