@@ -99,35 +99,68 @@ export function PriorityDecisionsPanel() {
   const navigate = useNavigate();
   const { selectEntity } = useIntelligenceOS();
 
-  const { data: priorities = [], isLoading } = useQuery<PrioritySignal[]>({
+  const { data, isLoading } = useQuery<PriorityResult>({
     queryKey: ["priority-decisions"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const columns =
+        "id, title, summary, category, impact_score, urgency_score, confidence_score, affected_sectors, affected_regions, affected_countries, strategic_implications, recommended_actions, first_detected_at, latest_update_at, source_trust_tier, source_count, primary_source, impact_reasoning, uncertainty_notes, likely_consequences, official_source, multi_source_confirmed";
+
+      const decorate = (rows: PriorityBase[]): PrioritySignal[] =>
+        rows.map((signal) => {
+          const urgency = urgencyFromScore(signal.impact_score, signal.urgency_score);
+          return {
+            ...signal,
+            urgency,
+            proposedAction: extractProposedAction(signal.recommended_actions),
+            reviewWindow: deriveReviewWindow(urgency),
+          };
+        });
+
+      const windowStart = new Date(
+        Date.now() - RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString();
+
+      const recent = await supabase
         .from("global_signals")
-        .select(
-          "id, title, summary, category, impact_score, urgency_score, confidence_score, affected_sectors, affected_regions, affected_countries, strategic_implications, recommended_actions, first_detected_at, latest_update_at, source_trust_tier, source_count, primary_source, impact_reasoning, uncertainty_notes, likely_consequences, official_source, multi_source_confirmed",
-        )
+        .select(columns)
         .eq("enrichment_status", "enriched")
         .gte("impact_score", 60)
+        .gte("first_detected_at", windowStart)
         .order("impact_score", { ascending: false })
         .order("urgency_score", { ascending: false })
         .limit(5);
 
-      if (error) throw error;
+      if (recent.error) throw recent.error;
 
-      return ((data ?? []) as PriorityBase[]).map((signal) => {
-        const urgency = urgencyFromScore(signal.impact_score, signal.urgency_score);
-        return {
-          ...signal,
-          urgency,
-          proposedAction: extractProposedAction(signal.recommended_actions),
-          reviewWindow: deriveReviewWindow(urgency),
-        };
-      });
+      if ((recent.data ?? []).length > 0) {
+        return { signals: decorate(recent.data as PriorityBase[]), stale: false };
+      }
+
+      const fallback = await supabase
+        .from("global_signals")
+        .select(columns)
+        .eq("enrichment_status", "enriched")
+        .gte("impact_score", 60)
+        .order("first_detected_at", { ascending: false })
+        .order("impact_score", { ascending: false })
+        .limit(5);
+
+      if (fallback.error) throw fallback.error;
+
+      return { signals: decorate((fallback.data ?? []) as PriorityBase[]), stale: true };
     },
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
+
+  const priorities = data?.signals ?? [];
+  const isStale = data?.stale ?? false;
+  const newestAgeDays = priorities.length
+    ? Math.floor(
+        (Date.now() - new Date(priorities[0].first_detected_at).getTime()) /
+          (24 * 60 * 60 * 1000),
+      )
+    : 0;
 
   const inspectSignal = (signal: PrioritySignal) => {
     selectEntity({
