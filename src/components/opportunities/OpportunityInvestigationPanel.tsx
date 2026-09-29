@@ -26,6 +26,9 @@ type DiscoveryCandidate = {
   description: string;
   discovery_url: string;
   domain: string;
+  country_context?: string[];
+  contact_channels?: Array<Record<string, unknown>>;
+  evidence_refs?: Array<Record<string, unknown>>;
   discovery_fit_score: number;
   verification_status: string;
   transaction_eligible: boolean;
@@ -38,6 +41,28 @@ type DiscoveryResponse = {
   discovery_notice?: string;
   code?: string;
   message?: string;
+  error?: string;
+};
+
+type SanctionsScreenResponse = {
+  ok: boolean;
+  legal_name?: string;
+  screen?: {
+    status?: string;
+    compliance_status?: string;
+    matches?: Array<Record<string, unknown>>;
+    missing_sources?: string[];
+  };
+  coverage?: {
+    complete?: boolean;
+    checked_sources?: string[];
+    missing_sources?: string[];
+  };
+  sources?: Array<{
+    source?: string;
+    ok?: boolean;
+    evidence_ref?: Record<string, unknown>;
+  }>;
   error?: string;
 };
 
@@ -91,6 +116,8 @@ export function OpportunityInvestigationPanel({
   const [upsideProfitText, setUpsideProfitText] = useState("");
   const [assumptionsConfirmed, setAssumptionsConfirmed] = useState(false);
   const [economicsBuilding, setEconomicsBuilding] = useState(false);
+  const [screeningId, setScreeningId] = useState<string | null>(null);
+  const [screenResults, setScreenResults] = useState<Record<string, SanctionsScreenResponse>>({});
   const { toast } = useToast();
 
   const runDiscovery = useCallback(async (
@@ -183,6 +210,8 @@ export function OpportunityInvestigationPanel({
       setCycleDaysText("");
       setUpsideProfitText("");
       setAssumptionsConfirmed(false);
+      setScreeningId(null);
+      setScreenResults({});
       window.dispatchEvent(new CustomEvent("aicis:seed-transaction-bundle", {
         detail: {
           signal: {
@@ -303,13 +332,136 @@ export function OpportunityInvestigationPanel({
     verifiedInputs.supplier_country,
   ]);
 
-  const screen = (candidate: DiscoveryCandidate) => {
+  const screen = async (candidate: DiscoveryCandidate) => {
+    setScreeningId(candidate.discovery_id);
+    const { data, error } = await supabase.functions.invoke("screen-transaction-counterparty", {
+      body: {
+        legal_name: candidate.title || candidate.domain,
+      },
+    });
+    setScreeningId(null);
+
+    if (error) {
+      toast({
+        title: "Official-list screening unavailable",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const response = data as SanctionsScreenResponse;
+    setScreenResults((current) => ({
+      ...current,
+      [candidate.discovery_id]: response,
+    }));
+  };
+
+  const prepareVerification = (candidate: DiscoveryCandidate) => {
+    const screenResult = screenResults[candidate.discovery_id];
+    const complianceEvidence = (screenResult?.sources || [])
+      .filter((source) => source.ok && source.evidence_ref)
+      .map((source) => source.evidence_ref as Record<string, unknown>);
+    const screenedAt = new Date().toISOString();
+    const jurisdiction = candidate.country_context?.length === 1
+      ? candidate.country_context[0]
+      : "";
+
     const advanced = document.getElementById("opportunity-advanced-workspace") as HTMLDetailsElement | null;
     if (advanced) advanced.open = true;
-    window.dispatchEvent(new CustomEvent("aicis:screen-counterparty", {
+
+    if (candidate.role === "logistics") {
+      window.dispatchEvent(new CustomEvent("aicis:prepare-logistics-route", {
+        detail: {
+          dossier: {
+            as_of: screenedAt,
+            provider: {
+              legal_name: candidate.title || candidate.domain,
+              jurisdiction,
+              registration_id: "",
+              evidence_refs: [],
+            },
+            compliance: {
+              status: "review",
+              screened_at: screenedAt,
+              evidence_refs: complianceEvidence,
+            },
+            route_quote: {
+              quote_id: "",
+              route_name: "",
+              origin_country: verifiedInputs.supplier_country || "",
+              destination_country: verifiedInputs.buyer_country || "",
+              transit_days: 0,
+              valid_until: "",
+              evidence_status: "verified_quote",
+              evidence_refs: [],
+              stops: [],
+              costs: [{
+                type: "freight",
+                amount: 0,
+                basis: "per_unit",
+                currency: "",
+                evidence_refs: [],
+              }],
+            },
+            capacity: {
+              status: "verified",
+              evidence_refs: [],
+            },
+            contact_channels: candidate.contact_channels || [],
+            evidence_score: 0,
+            capacity_score: 50,
+          },
+        },
+      }));
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent("aicis:verify-counterparty", {
       detail: {
-        legal_name: candidate.title || candidate.domain,
-        role: candidate.role,
+        dossier: {
+          as_of: screenedAt,
+          role: candidate.role,
+          legal_identity: {
+            legal_name: candidate.title || candidate.domain,
+            jurisdiction,
+            registration_id: "",
+            evidence_refs: [],
+          },
+          official_site: {
+            domain: candidate.domain,
+            url: candidate.discovery_url,
+            evidence_refs: [],
+          },
+          compliance: {
+            status: "review",
+            screened_at: screenedAt,
+            evidence_refs: complianceEvidence,
+          },
+          commercial_quote: {
+            quote_id: "",
+            product_id: state?.request.product.id || "",
+            unit_price: 0,
+            currency: "",
+            min_quantity: null,
+            max_quantity: null,
+            incoterm: "",
+            valid_until: "",
+            evidence_status: "verified_quote",
+            evidence_refs: [],
+          },
+          capacity: {
+            status: "verified",
+            evidence_refs: [],
+          },
+          payment_terms: {
+            terms: "",
+            evidence_refs: [],
+          },
+          contact_channels: candidate.contact_channels || [],
+          evidence_score: 0,
+          counterparty_quality_score: 50,
+        },
       },
     }));
   };
@@ -427,14 +579,20 @@ export function OpportunityInvestigationPanel({
                 countries={state.source_countries}
                 candidates={supplierCandidates}
                 message={state.supplier?.message || state.supplier?.error}
+                screeningId={screeningId}
+                screenResults={screenResults}
                 onScreen={screen}
+                onPrepareVerification={prepareVerification}
               />
               <CandidateColumn
                 title="Buyer side"
                 countries={state.buyer_countries}
                 candidates={buyerCandidates}
                 message={state.buyer?.message || state.buyer?.error}
+                screeningId={screeningId}
+                screenResults={screenResults}
                 onScreen={screen}
+                onPrepareVerification={prepareVerification}
               />
             </div>
 
@@ -478,7 +636,10 @@ export function OpportunityInvestigationPanel({
                     countries={[verifiedInputs.supplier_country, verifiedInputs.buyer_country]}
                     candidates={logisticsCandidates}
                     message={logistics?.message || logistics?.error}
+                    screeningId={screeningId}
+                    screenResults={screenResults}
                     onScreen={screen}
+                    onPrepareVerification={prepareVerification}
                   />
                 )}
               </div>
@@ -628,13 +789,19 @@ function CandidateColumn({
   countries,
   candidates,
   message,
+  screeningId,
+  screenResults,
   onScreen,
+  onPrepareVerification,
 }: {
   title: string;
   countries: string[];
   candidates: DiscoveryCandidate[];
   message?: string;
-  onScreen: (candidate: DiscoveryCandidate) => void;
+  screeningId: string | null;
+  screenResults: Record<string, SanctionsScreenResponse>;
+  onScreen: (candidate: DiscoveryCandidate) => void | Promise<void>;
+  onPrepareVerification: (candidate: DiscoveryCandidate) => void;
 }) {
   return (
     <div className="rounded-lg border border-border p-3">
@@ -661,12 +828,54 @@ function CandidateColumn({
                   fit {Math.round(candidate.discovery_fit_score)}
                 </Badge>
               </div>
-              <div className="mt-2 flex justify-end">
-                <Button variant="ghost" size="sm" className="h-7 gap-1 text-[11px]" onClick={() => onScreen(candidate)}>
-                  <Building2 className="h-3 w-3" />
-                  Screen
-                  <ArrowRight className="h-3 w-3" />
+              {screenResults[candidate.discovery_id] ? (
+                <div className="mt-2 rounded-md border border-border/60 p-2 text-[10px] text-muted-foreground">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      Official lists: {screenResults[candidate.discovery_id].screen?.status?.replaceAll("_", " ") || "screened"}
+                    </span>
+                    <Badge
+                      variant={screenResults[candidate.discovery_id].screen?.status === "review_required_potential_match"
+                        ? "destructive"
+                        : "outline"}
+                      className="text-[9px]"
+                    >
+                      {screenResults[candidate.discovery_id].coverage?.complete ? "4-source coverage" : "partial coverage"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1">
+                    {screenResults[candidate.discovery_id].screen?.status === "complete_screen_no_match"
+                      ? "No exact match was found across the checked official lists. Human compliance review is still required."
+                      : screenResults[candidate.discovery_id].screen?.status === "review_required_potential_match"
+                        ? "A potential exact-name or identifier match requires human compliance review before proceeding."
+                        : "Coverage or matching remains unresolved; this is not compliance clearance."}
+                  </p>
+                </div>
+              ) : null}
+              <div className="mt-2 flex flex-wrap justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-[11px]"
+                  disabled={screeningId === candidate.discovery_id}
+                  onClick={() => void onScreen(candidate)}
+                >
+                  {screeningId === candidate.discovery_id
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <Building2 className="h-3 w-3" />}
+                  Official-list check
                 </Button>
+                {screenResults[candidate.discovery_id] ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 text-[11px]"
+                    onClick={() => onPrepareVerification(candidate)}
+                  >
+                    Prepare verification
+                    <ArrowRight className="h-3 w-3" />
+                  </Button>
+                ) : null}
               </div>
             </div>
           ))}
