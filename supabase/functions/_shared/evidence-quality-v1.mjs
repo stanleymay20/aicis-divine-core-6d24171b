@@ -261,7 +261,7 @@ export function selectDomainEvidence({ domain, signals, snapshots, qTerms, iso3L
   const external = [];
   for (const item of scored) {
     const cite = citationSource ? citationSource(item.signal) : { url: null, publisher: null };
-    const keys = dedupeKeys({ id: item.signal.canonical_signal_id ?? null, url: cite.url, title: item.signal.title });
+    const keys = dedupeKeys({ id: item.signal.canonical_event_id ?? item.signal.dedup_key ?? null, url: cite.url, title: item.signal.title });
     if (keys.some((k) => seen.has(k))) {
       deduplicated++;
       continue;
