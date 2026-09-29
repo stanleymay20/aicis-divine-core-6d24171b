@@ -82,7 +82,7 @@ export function OpportunityHypothesesPanel() {
       });
       if (error || !response?.ok) {
         let detail = response?.error as string | undefined;
-        if (error && "context" in error && error.context instanceof Response) {
+        if (error && "context" in error && error.context instanceof globalThis.Response) {
           const body = await error.context.clone().json().catch(() => null) as { error?: string } | null;
           detail = body?.error ?? detail;
         }
