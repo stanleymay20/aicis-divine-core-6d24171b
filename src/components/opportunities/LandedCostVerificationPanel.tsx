@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -161,6 +161,39 @@ function iso3OrBlank(value?: string | null) {
   return /^[A-Z]{3}$/.test(normalized) ? normalized : "";
 }
 
+type CountryResolution = {
+  input: string;
+  iso3: string;
+  status: "provided_iso3" | "resolved_name" | "unresolved";
+};
+
+async function resolveCountryIso3(value?: string | null): Promise<CountryResolution> {
+  const input = String(value || "").trim();
+  const provided = iso3OrBlank(input);
+  if (provided) return { input, iso3: provided, status: "provided_iso3" };
+  if (!input) return { input, iso3: "", status: "unresolved" };
+
+  const { data, error } = await supabase
+    .from("country_profiles")
+    .select("iso3,country_name")
+    .ilike("country_name", input)
+    .limit(2);
+
+  if (error) return { input, iso3: "", status: "unresolved" };
+
+  const exact = (data || []).filter((row) =>
+    String(row.country_name || "").trim().toLocaleLowerCase() === input.toLocaleLowerCase() &&
+    /^[A-Z]{3}$/.test(String(row.iso3 || "").trim().toUpperCase())
+  );
+
+  if (exact.length !== 1) return { input, iso3: "", status: "unresolved" };
+  return {
+    input,
+    iso3: String(exact[0].iso3).trim().toUpperCase(),
+    status: "resolved_name",
+  };
+}
+
 function exactCoveredCost(
   candidate: LandedCostCandidate,
   category: typeof REQUIRED_CATEGORIES[number],
@@ -241,6 +274,15 @@ export function LandedCostVerificationPanel({
   const [result, setResult] = useState<VerificationResponse | null>(null);
   const [sourcePlanLoading, setSourcePlanLoading] = useState(false);
   const [sourcePlan, setSourcePlan] = useState<OfficialSourcePlanResponse | null>(null);
+  const [countryResolution, setCountryResolution] = useState<{
+    origin: CountryResolution | null;
+    destination: CountryResolution | null;
+    resolving: boolean;
+  }>({
+    origin: null,
+    destination: null,
+    resolving: true,
+  });
   const { toast } = useToast();
 
   const candidateLabel = useMemo(() => {
@@ -248,6 +290,69 @@ export function LandedCostVerificationPanel({
     const buyer = candidate.sale_offer?.name || "buyer";
     return source + " → " + buyer;
   }, [candidate.source_offer?.name, candidate.sale_offer?.name]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setCountryResolution({
+      origin: null,
+      destination: null,
+      resolving: true,
+    });
+
+    void (async () => {
+      const [origin, destination] = await Promise.all([
+        resolveCountryIso3(candidate.source_offer?.country),
+        resolveCountryIso3(candidate.sale_offer?.country),
+      ]);
+      if (cancelled) return;
+
+      setCountryResolution({ origin, destination, resolving: false });
+
+      setPayload((current) => {
+        try {
+          const parsed: unknown = JSON.parse(current);
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return current;
+          const record = parsed as Record<string, unknown>;
+          const currentOrigin = iso3OrBlank(String(record.origin_country || ""));
+          const currentDestination = iso3OrBlank(String(record.destination_country || ""));
+
+          return JSON.stringify({
+            ...record,
+            origin_country: currentOrigin || origin.iso3,
+            destination_country: currentDestination || destination.iso3,
+          }, null, 2);
+        } catch {
+          return current;
+        }
+      });
+
+      if (!origin.iso3 || !destination.iso3) return;
+
+      setSourcePlanLoading(true);
+      const { data, error } = await supabase.functions.invoke("plan-official-customs-evidence-sources", {
+        body: {
+          input: {
+            origin_country: origin.iso3,
+            destination_country: destination.iso3,
+            hs_code: candidate.product?.hs_code || "",
+          },
+        },
+      });
+      if (cancelled) return;
+      setSourcePlanLoading(false);
+      if (!error) setSourcePlan(data as OfficialSourcePlanResponse);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    candidate.id,
+    candidate.product?.hs_code,
+    candidate.sale_offer?.country,
+    candidate.source_offer?.country,
+  ]);
 
   const planOfficialSources = async () => {
     let input: Record<string, unknown>;
@@ -406,6 +511,33 @@ export function LandedCostVerificationPanel({
       <div className="rounded-md border border-dashed p-3 text-[10px] text-muted-foreground">
         AICIS does not infer HS classification, tariff rate, tax recoverability, customs value, insurance coverage or financing terms.
         Use official rules or current attributable commercial evidence. Unknown remains unknown.
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+        <span className="font-medium text-foreground">Customs geography:</span>
+        {countryResolution.resolving ? (
+          <span className="inline-flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            resolving exact country names
+          </span>
+        ) : (
+          <>
+            <Badge variant={countryResolution.origin?.iso3 ? "outline" : "destructive"} className="text-[9px]">
+              origin {countryResolution.origin?.iso3 || "unresolved"}
+            </Badge>
+            <span>→</span>
+            <Badge variant={countryResolution.destination?.iso3 ? "outline" : "destructive"} className="text-[9px]">
+              destination {countryResolution.destination?.iso3 || "unresolved"}
+            </Badge>
+            {(!countryResolution.origin?.iso3 || !countryResolution.destination?.iso3) ? (
+              <span>
+                Exact country-name resolution failed; AICIS will not guess an ISO3 code.
+              </span>
+            ) : (
+              <span>resolved from the verified transaction geography</span>
+            )}
+          </>
+        )}
       </div>
 
       <Textarea
