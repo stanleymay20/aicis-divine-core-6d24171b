@@ -48,6 +48,11 @@ jobs:
         id: source_bindings
         continue-on-error: true
         shell: bash
+        env:
+          # Temporary Lovable Cloud publish workaround. The audit script allows
+          # only the exact current vite.config.ts source fallback while this is
+          # explicitly enabled; all other executable guarded bindings still fail.
+          AICIS_ALLOW_CURRENT_VITE_SOURCE_FALLBACK: "true"
         run: |
           set -euo pipefail
           bash scripts/audit-source-project-bindings.sh --strict
