@@ -86,6 +86,7 @@ export const SEO_REGISTRY: Record<string, RouteSEOEntry> = {
   "/watchlist": { title: "Tracked Markets | AICIS", description: "Watchlist of tracked countries and domains with delta alerts.", noindex: true },
   "/learning": { title: "Learning Intelligence | AICIS", description: "Continuous learning loop, calibration trends, and signal reliability.", noindex: true },
   "/relevance-preferences": { title: "Relevance Preferences | AICIS", description: "Personalize signal relevance and routing preferences.", noindex: true },
+  "/account/security": { title: "Account Security | AICIS", description: "Two-step sign-in setup and verification.", noindex: true },
   "/advanced": { title: "Advanced | AICIS", description: "Advanced analyst tooling and configuration.", noindex: true },
   "/more": { title: "More | AICIS", description: "Additional AICIS modules and tools.", noindex: true },
   "/daily-evidence-ops": { title: "Daily Evidence Ops | AICIS", description: "Daily evidence operations queue, throughput, and closure scoreboards.", noindex: true },
