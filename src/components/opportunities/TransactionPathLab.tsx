@@ -911,6 +911,45 @@ export function TransactionPathLab() {
     const response = data as BuildResponse;
     setResult(response);
     setResearchRuns({});
+
+    const rankedTop = response.ranking?.top_ranked ?? null;
+    window.dispatchEvent(new CustomEvent("aicis:transaction-opportunity-updated", {
+      detail: rankedTop
+        ? {
+            status: rankedTop.execution_ready ? "REVIEW" : "RESEARCHING",
+            candidate_id: rankedTop.candidate_id,
+            title: rankedTop.title,
+            transaction_type: rankedTop.transaction_type,
+            score: rankedTop.score,
+            capital_required: rankedTop.capital_required ?? null,
+            currency: rankedTop.currency ?? null,
+            base_profit: rankedTop.metrics?.base_profit ?? null,
+            expected_value: rankedTop.metrics?.expected_value ?? null,
+            base_margin_pct: rankedTop.metrics?.base_margin_pct ?? null,
+            return_on_capital_pct: rankedTop.metrics?.return_on_capital_pct ?? null,
+            missing_execution_fields: rankedTop.execution_dossier?.missing_execution_fields ?? [],
+            no_transaction_reason: null,
+          }
+        : {
+            status: response.ranking?.no_transaction_recommended ? "NO_ACTION" : "RESEARCHING",
+            candidate_id: null,
+            title: null,
+            transaction_type: null,
+            score: null,
+            capital_required: null,
+            currency: null,
+            base_profit: null,
+            expected_value: null,
+            base_margin_pct: null,
+            return_on_capital_pct: null,
+            missing_execution_fields: [],
+            no_transaction_reason: response.ranking?.no_transaction_reason
+              || (response.build?.candidates?.length
+                ? "Candidate paths exist, but none has cleared the verified ranking gates yet."
+                : "No verified transaction candidate is available yet."),
+          },
+    }));
+
     if (!response.ok) {
       toast({
         title: "Transaction build failed",
