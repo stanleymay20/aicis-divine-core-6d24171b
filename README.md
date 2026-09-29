@@ -6,6 +6,14 @@ AICIS is an applied AI and data-engineering project exploring how institutions c
 
 The project is intentionally framed as a **decision-support system**, not an autonomous authority. Human review, provenance, access control and auditable intervention workflows are central design concerns.
 
+## Recruiter quick scan
+
+**Problem:** important operational risks arrive through fragmented, heterogeneous signals rather than one clean dataset.
+
+**What this repository demonstrates:** React/TypeScript product engineering, Supabase/PostgreSQL data architecture, realtime pipelines, canonicalization and deduplication, evidence provenance, analytical/forecasting workflows, RLS, privileged server-side operations and human-review paths.
+
+**Engineering signal:** AICIS keeps observed evidence, model inference and consequential action as distinct layers instead of collapsing them into one AI response.
+
 ## Development and public-interest relevance
 
 AICIS investigates a practical development problem: important risks rarely arrive in one clean dataset. Climate pressure, economic continuity, infrastructure disruption, governance stability and humanitarian needs can interact, while decision-makers must still distinguish observed evidence from model inference.
