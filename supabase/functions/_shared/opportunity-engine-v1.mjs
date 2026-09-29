@@ -146,6 +146,7 @@ function buildExecutionDossier(candidate, metrics) {
   if (contacts.length === 0) missing.push("contacts");
   if (!candidate?.timing) missing.push("timing");
   if (candidate?.fx_execution_ready === false) missing.push("executable_fx_quote");
+  if (candidate?.scenario_research_only === true) missing.push("independently_validated_scenario");
   if (candidate?.landed_cost_complete === false) missing.push("complete_landed_cost_evidence");
   else if (candidate?.landed_cost_execution_ready === false) missing.push("execution_grade_landed_cost_evidence");
 
@@ -234,6 +235,9 @@ export function evaluateOpportunity(candidate, preferences = {}) {
   if (candidate?.transaction_type === "physical_trade" && candidate?.landed_cost_complete === false) {
     rejection_reasons.push("landed_cost_incomplete");
   }
+  if (candidate?.scenario_research_only === true) {
+    rejection_reasons.push("scenario_research_only_user_assumption");
+  }
   if (candidate?.compliance_status === "blocked") rejection_reasons.push("compliance_blocked");
   if (candidate?.compliance_status === "unknown") rejection_reasons.push("compliance_unknown");
   if (candidate?.evidence_score != null && candidate.evidence_score < profile.min_evidence_score) rejection_reasons.push("evidence_below_threshold");
@@ -283,6 +287,7 @@ export function evaluateOpportunity(candidate, preferences = {}) {
   const hardReject = rejection_reasons.some((reason) => [
     "economics_not_verified",
     "landed_cost_incomplete",
+    "scenario_research_only_user_assumption",
     "compliance_blocked",
     "compliance_unknown",
     "capital_required_exceeds_available",
