@@ -176,7 +176,7 @@ const App = () => (
                 <Route path="/command-center" element={<Shell><PlanetaryCommandCenter /></Shell>} />
                 <Route path="/spatial-cockpit" element={<Protected><SpatialCockpit /></Protected>} />
                 <Route path="/cockpit" element={<Protected><SpatialCockpit /></Protected>} />
-                <Route path="/account/security" element={<Protected><AccountSecurity /></Protected>} />
+                <Route path="/account/security" element={<Shell><AccountSecurity /></Shell>} />
                 <Route path="/morning-brief" element={<Protected><MorningBrief /></Protected>} />
                 <Route path="/opportunities" element={<Shell><OpportunityRadar /></Shell>} />
                 <Route path="/live" element={<Protected><LiveCommandFeed /></Protected>} />

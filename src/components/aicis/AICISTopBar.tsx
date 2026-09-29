@@ -5,7 +5,9 @@ import {
   Activity,
   ArrowLeft,
   BrainCircuit,
+  KeyRound,
   LogOut,
+  SlidersHorizontal,
   Menu,
   Search,
   Server,
@@ -227,6 +229,14 @@ export const AICISTopBar = () => {
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">Settings</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => navigate("/account/security")}>
+              <KeyRound className="mr-2 h-4 w-4" /> Account security
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate("/relevance-preferences")}>
+              <SlidersHorizontal className="mr-2 h-4 w-4" /> Relevance preferences
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut} className="text-destructive">
               <LogOut className="mr-2 h-4 w-4" /> Sign out
