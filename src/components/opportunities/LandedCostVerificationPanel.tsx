@@ -71,6 +71,8 @@ type VerificationResponse = {
   hs_code?: string | null;
   origin_country?: string | null;
   destination_country?: string | null;
+  quantity?: number | null;
+  quantity_unit?: string | null;
   comparison_currency?: string | null;
   coverage_complete?: boolean;
   research_complete?: boolean;
