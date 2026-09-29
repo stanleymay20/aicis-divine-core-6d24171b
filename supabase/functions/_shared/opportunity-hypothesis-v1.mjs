@@ -57,7 +57,28 @@ function evidenceManifest(signal) {
     source_references: refs,
     source_identifier_count: signal?.source_identifier_count ?? refs.length,
     source_independence_status: signal?.source_independence_status ?? "not_assessed",
+    independent_origin_count: Number.isFinite(signal?.independent_origin_count)
+      ? signal.independent_origin_count
+      : null,
   };
+}
+
+function hypothesisEvidencePriority(signal, catalyst) {
+  const sourceIdentifiers = Number.isFinite(signal?.source_identifier_count)
+    ? Math.max(0, signal.source_identifier_count)
+    : Array.isArray(signal?.source_references)
+      ? signal.source_references.length
+      : 0;
+  const independentOrigins = signal?.source_independence_status === "established" &&
+    Number.isFinite(signal?.independent_origin_count)
+    ? Math.max(0, signal.independent_origin_count)
+    : 0;
+
+  const catalystPoints = catalyst.type === "disruption_or_constraint" ? 25 : 5;
+  const sourcePoints = Math.min(25, sourceIdentifiers * 3);
+  const independencePoints = Math.min(35, independentOrigins * 10);
+
+  return Math.min(100, catalystPoints + sourcePoints + independencePoints);
 }
 
 export function hypothesesForSignal(signal, relevance = null) {
@@ -84,6 +105,7 @@ export function hypothesesForSignal(signal, relevance = null) {
     affected_sectors: signal.affected_sectors ?? [],
     catalyst_type: catalyst.type,
     matched_catalyst_terms: catalyst.terms,
+    evidence_priority_score: hypothesisEvidencePriority(signal, catalyst),
     relevance_score: typeof relevance?.relevance_score === "number" ? relevance.relevance_score : null,
     relevance_tier: relevance?.relevance_tier ?? null,
     opportunity_type: "transaction_path_research",
@@ -110,8 +132,13 @@ export function generateOpportunityHypotheses(signals = [], relevanceBySignal = 
   }
 
   return hypotheses.sort((a, b) => {
-    const ar = typeof a.relevance_score === "number" ? a.relevance_score : -1;
-    const br = typeof b.relevance_score === "number" ? b.relevance_score : -1;
-    return br - ar;
+    const ar = typeof a.relevance_score === "number" ? a.relevance_score : 0;
+    const br = typeof b.relevance_score === "number" ? b.relevance_score : 0;
+    const ap = typeof a.evidence_priority_score === "number" ? a.evidence_priority_score : 0;
+    const bp = typeof b.evidence_priority_score === "number" ? b.evidence_priority_score : 0;
+
+    const combinedA = ap + ar * 0.25;
+    const combinedB = bp + br * 0.25;
+    return combinedB - combinedA;
   });
 }
