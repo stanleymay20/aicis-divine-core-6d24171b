@@ -544,3 +544,45 @@ test("mismatched landed-cost candidate binding fails closed without contaminatin
   assert.ok(updated.landed_cost_missing_fields.includes("landed_cost_candidate_binding_mismatch"));
   assert.equal(updated.expected_cost, 35300);
 });
+
+test("selects the exact candidate-bound landed-cost pack when base transaction scope is shared", () => {
+  const input = baseInput();
+  const firstPass = buildTransactionPaths(input);
+  const target = firstPass.candidates.find((item) =>
+    item.id.includes("src-cheap") && item.id.includes("route-cheap")
+  );
+  assert.ok(target);
+
+  input.landed_cost_packs = [
+    verifiedLandedCostPack("stale-candidate-with-same-base-scope"),
+    verifiedLandedCostPack(target.id),
+  ];
+
+  const updated = buildTransactionPaths(input).candidates.find((item) => item.id === target.id);
+  assert.ok(updated);
+  assert.equal(updated.landed_cost_complete, true);
+  assert.equal(updated.landed_cost_execution_ready, true);
+  assert.equal(updated.expected_cost, 36800);
+  assert.equal(updated.recoverable_tax_cash_flow, 5985);
+});
+
+test("does not guess among multiple landed-cost packs when none matches the exact candidate", () => {
+  const input = baseInput();
+  const firstPass = buildTransactionPaths(input);
+  const target = firstPass.candidates.find((item) =>
+    item.id.includes("src-cheap") && item.id.includes("route-cheap")
+  );
+  assert.ok(target);
+
+  input.landed_cost_packs = [
+    verifiedLandedCostPack("stale-candidate-a"),
+    verifiedLandedCostPack("stale-candidate-b"),
+  ];
+
+  const updated = buildTransactionPaths(input).candidates.find((item) => item.id === target.id);
+  assert.ok(updated);
+  assert.equal(updated.landed_cost_complete, false);
+  assert.ok(updated.landed_cost_missing_fields.includes("landed_cost_evidence_missing"));
+  assert.equal(updated.expected_cost, 35300);
+});
+
