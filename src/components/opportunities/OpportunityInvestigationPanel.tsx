@@ -48,6 +48,12 @@ type InvestigationState = {
   buyer_countries: string[];
 };
 
+type VerifiedInputProgress = {
+  supplier_country: string | null;
+  buyer_country: string | null;
+  route_verified: boolean;
+};
+
 function uniqueCountries(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 6);
 }
@@ -56,6 +62,13 @@ export function OpportunityInvestigationPanel({ targetCountries }: { targetCount
   const [state, setState] = useState<InvestigationState | null>(null);
   const [loading, setLoading] = useState(false);
   const [buyerMarketText, setBuyerMarketText] = useState("");
+  const [logistics, setLogistics] = useState<DiscoveryResponse | null>(null);
+  const [logisticsLoading, setLogisticsLoading] = useState(false);
+  const [verifiedInputs, setVerifiedInputs] = useState<VerifiedInputProgress>({
+    supplier_country: null,
+    buyer_country: null,
+    route_verified: false,
+  });
   const { toast } = useToast();
 
   const runDiscovery = useCallback(async (
@@ -136,15 +149,90 @@ export function OpportunityInvestigationPanel({ targetCountries }: { targetCount
       const detail = (event as CustomEvent<InvestigationRequest>).detail;
       if (!detail?.hypothesis_id || !detail.product?.name) return;
       setBuyerMarketText("");
+      setLogistics(null);
+      setVerifiedInputs({
+        supplier_country: null,
+        buyer_country: null,
+        route_verified: false,
+      });
       void runDiscovery(detail);
     };
     window.addEventListener("aicis:start-opportunity-investigation", handler as EventListener);
     return () => window.removeEventListener("aicis:start-opportunity-investigation", handler as EventListener);
   }, [runDiscovery]);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        kind?: "offer" | "route";
+        role?: "supplier" | "buyer";
+        country?: string | null;
+      }>).detail || {};
+
+      if (detail.kind === "offer" && detail.role === "supplier") {
+        setVerifiedInputs((current) => ({
+          ...current,
+          supplier_country: detail.country || current.supplier_country,
+        }));
+      }
+      if (detail.kind === "offer" && detail.role === "buyer") {
+        setVerifiedInputs((current) => ({
+          ...current,
+          buyer_country: detail.country || current.buyer_country,
+        }));
+      }
+      if (detail.kind === "route") {
+        setVerifiedInputs((current) => ({ ...current, route_verified: true }));
+      }
+    };
+
+    window.addEventListener("aicis:transaction-input-verified", handler as EventListener);
+    return () => window.removeEventListener("aicis:transaction-input-verified", handler as EventListener);
+  }, []);
+
   const supplierCandidates = state?.supplier?.candidates || [];
   const buyerCandidates = state?.buyer?.candidates || [];
   const buyerMarketMissing = state?.buyer?.code === "buyer_market_missing";
+  const logisticsCandidates = logistics?.candidates || [];
+
+  const runLogisticsDiscovery = useCallback(async () => {
+    if (!state || !verifiedInputs.supplier_country || !verifiedInputs.buyer_country) return;
+
+    setLogisticsLoading(true);
+    const { data, error } = await supabase.functions.invoke("discover-transaction-counterparties", {
+      body: {
+        product_name: state.request.product.name,
+        role: "logistics",
+        origin_country: verifiedInputs.supplier_country,
+        destination_country: verifiedInputs.buyer_country,
+        max_candidates: 8,
+      },
+    });
+    setLogisticsLoading(false);
+
+    const response: DiscoveryResponse = error
+      ? { ok: false, error: error.message, candidates: [] }
+      : data as DiscoveryResponse;
+    setLogistics(response);
+  }, [state, verifiedInputs.buyer_country, verifiedInputs.supplier_country]);
+
+  useEffect(() => {
+    if (
+      verifiedInputs.supplier_country &&
+      verifiedInputs.buyer_country &&
+      !logistics &&
+      !logisticsLoading
+    ) {
+      void runLogisticsDiscovery();
+    }
+  }, [
+    logistics,
+    logisticsLoading,
+    runLogisticsDiscovery,
+    verifiedInputs.buyer_country,
+    verifiedInputs.supplier_country,
+  ]);
+
   const researchBlocked = Boolean(
     state && (
       !supplierCandidates.length ||
@@ -160,8 +248,20 @@ export function OpportunityInvestigationPanel({ targetCountries }: { targetCount
     if (!supplierCandidates.length && state.supplier?.code !== "firecrawl_not_configured") next.push("supplier candidate");
     if (!state.buyer_countries.length) next.push("buyer market");
     else if (!buyerCandidates.length) next.push("buyer candidate");
+    if (supplierCandidates.length && !verifiedInputs.supplier_country) next.push("verified supplier");
+    if (buyerCandidates.length && !verifiedInputs.buyer_country) next.push("verified buyer");
+    if (verifiedInputs.supplier_country && verifiedInputs.buyer_country && !logisticsCandidates.length) next.push("logistics candidate");
+    if (logisticsCandidates.length && !verifiedInputs.route_verified) next.push("verified route");
     return next;
-  }, [buyerCandidates.length, state, supplierCandidates.length]);
+  }, [
+    buyerCandidates.length,
+    logisticsCandidates.length,
+    state,
+    supplierCandidates.length,
+    verifiedInputs.buyer_country,
+    verifiedInputs.route_verified,
+    verifiedInputs.supplier_country,
+  ]);
 
   const screen = (candidate: DiscoveryCandidate) => {
     const advanced = document.getElementById("opportunity-advanced-workspace") as HTMLDetailsElement | null;
@@ -243,6 +343,49 @@ export function OpportunityInvestigationPanel({ targetCountries }: { targetCount
               </div>
             ) : null}
 
+            {verifiedInputs.supplier_country && verifiedInputs.buyer_country ? (
+              <div className="space-y-2">
+                <p className="text-xs font-medium">Route research</p>
+                {logisticsLoading ? (
+                  <div className="flex items-center gap-2 rounded-md border border-dashed p-4 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    AICIS is looking for logistics candidates between {verifiedInputs.supplier_country} and {verifiedInputs.buyer_country}…
+                  </div>
+                ) : (
+                  <CandidateColumn
+                    title="Logistics side"
+                    countries={[verifiedInputs.supplier_country, verifiedInputs.buyer_country]}
+                    candidates={logisticsCandidates}
+                    message={logistics?.message || logistics?.error}
+                    onScreen={screen}
+                  />
+                )}
+              </div>
+            ) : null}
+
+            <div className="grid gap-2 sm:grid-cols-4">
+              <ProgressStep
+                label="Discover"
+                complete={supplierCandidates.length > 0 && buyerCandidates.length > 0}
+                detail="supplier + buyer candidates"
+              />
+              <ProgressStep
+                label="Verify parties"
+                complete={Boolean(verifiedInputs.supplier_country && verifiedInputs.buyer_country)}
+                detail="identity + quote + compliance"
+              />
+              <ProgressStep
+                label="Verify route"
+                complete={verifiedInputs.route_verified}
+                detail="provider + route quote"
+              />
+              <ProgressStep
+                label="Build economics"
+                complete={false}
+                detail="FX + landed cost + strategy"
+              />
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/20 p-3">
               <div>
                 <p className="text-xs font-medium">
@@ -265,6 +408,28 @@ export function OpportunityInvestigationPanel({ targetCountries }: { targetCount
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function ProgressStep({
+  label,
+  complete,
+  detail,
+}: {
+  label: string;
+  complete: boolean;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-md border border-border/70 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-medium">{label}</p>
+        <Badge variant={complete ? "outline" : "secondary"} className="text-[9px]">
+          {complete ? "done" : "next"}
+        </Badge>
+      </div>
+      <p className="mt-1 text-[10px] text-muted-foreground">{detail}</p>
+    </div>
   );
 }
 
