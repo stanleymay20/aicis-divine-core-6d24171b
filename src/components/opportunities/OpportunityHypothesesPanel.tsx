@@ -9,6 +9,7 @@ import { BrainCircuit, Lightbulb, Loader2, RefreshCw } from "lucide-react";
 
 type Hypothesis = {
   hypothesis_id: string;
+  source_signal_id: string;
   source_signal_title: string;
   product: {
     id: string;
@@ -150,6 +151,7 @@ export function OpportunityHypothesesPanel() {
                       window.dispatchEvent(new CustomEvent("aicis:start-opportunity-investigation", {
                         detail: {
                           hypothesis_id: item.hypothesis_id,
+                          source_signal_id: item.source_signal_id,
                           source_signal_title: item.source_signal_title,
                           product: item.product,
                           countries: item.countries,
