@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
       ? "global"
       : "personalized";
     const limit = scanScope === "global"
-      ? Math.min(requestedLimit, 900)
+      ? Math.min(requestedLimit, 500)
       : Math.min(requestedLimit, 300);
     const windowDays = Number.isFinite(Number(body.window_days))
       ? Math.min(Math.max(Math.floor(Number(body.window_days)), 1), 30)
@@ -111,15 +111,29 @@ Deno.serve(async (req) => {
 
     if (scanScope === "global") {
       const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
-      const { data: globalSignals, error: globalSignalError } = await sb
+      // Two-step fetch: a narrow indexed id lookup, then wide rows in parallel
+      // id chunks. One wide ordered query over the window exceeded 150s under load.
+      const { data: idRows, error: idError } = await sb
         .from("global_signals")
-        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count:source_count,first_detected_at,ingested_at,occurred_at,canonical_event_id,dedup_key")
+        .select("id")
         .gte("first_detected_at", since)
         .order("first_detected_at", { ascending: false })
         .limit(limit);
-      if (globalSignalError) throw globalSignalError;
+      if (idError) throw idError;
+      const signalIds = (idRows ?? []).map((row: { id: string }) => row.id);
+      const idChunks = Array.from({ length: Math.ceil(signalIds.length / 100) }, (_, i) => signalIds.slice(i * 100, i * 100 + 100));
+      const wideResults = await Promise.all(idChunks.map((chunk) => sb
+        .from("global_signals")
+        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count:source_count,first_detected_at,ingested_at,occurred_at,canonical_event_id,dedup_key")
+        .in("id", chunk)));
+      const globalSignals: OpportunitySignal[] = [];
+      for (const { data, error } of wideResults) {
+        if (error) throw error;
+        globalSignals.push(...((data ?? []) as OpportunitySignal[]));
+      }
+      globalSignals.sort((a, b) => String((b as { first_detected_at?: string }).first_detected_at ?? "").localeCompare(String((a as { first_detected_at?: string }).first_detected_at ?? "")));
 
-      rawSignalsScanned = globalSignals?.length ?? 0;
+      rawSignalsScanned = globalSignals.length;
       signals = deduplicateSignals((globalSignals ?? []) as OpportunitySignal[]);
 
       // No scores for this user means there is nothing to annotate. This probe prevents
