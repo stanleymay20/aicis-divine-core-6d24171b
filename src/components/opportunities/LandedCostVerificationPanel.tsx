@@ -145,6 +145,11 @@ export type LandedCostPack = {
   buyer_id: string;
   route_id: string;
   transaction_type: string;
+  candidate_id: string;
+  product_id: string;
+  quantity: number;
+  quantity_unit: string;
+  comparison_currency: string;
   evidence: VerificationResponse;
   audit?: VerificationResponse["audit"];
 };
@@ -345,11 +350,31 @@ export function LandedCostVerificationPanel({
       return;
     }
 
+    const candidateId = String(result.candidate_id || candidate.id || "");
+    const productId = String(result.product_id || candidate.product?.id || "");
+    const quantity = Number(result.quantity ?? candidate.quantity);
+    const quantityUnit = String(result.quantity_unit || candidate.unit || candidate.product?.unit || "");
+    const comparisonCurrency = String(result.comparison_currency || candidate.currency || "").toUpperCase();
+
+    if (!candidateId || !productId || !Number.isFinite(quantity) || quantity <= 0 || !quantityUnit || !/^[A-Z]{3}$/.test(comparisonCurrency)) {
+      toast({
+        title: "Verified scope incomplete",
+        description: "Candidate, product, quantity, unit and comparison currency must all be bound before this evidence pack can be attached.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     onAttach({
       source_id: sourceId,
       buyer_id: buyerId,
       route_id: routeId,
       transaction_type: candidate.transaction_type,
+      candidate_id: candidateId,
+      product_id: productId,
+      quantity,
+      quantity_unit: quantityUnit,
+      comparison_currency: comparisonCurrency,
       evidence: result,
       audit: result.audit,
     });
