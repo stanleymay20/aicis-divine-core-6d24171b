@@ -22,6 +22,7 @@ type Hypothesis = {
   matched_catalyst_terms: string[];
   relevance_score: number | null;
   relevance_tier: string | null;
+  evidence_priority_score: number;
   epistemic_status: string;
   profitability_status: string;
   guardrail: string;
@@ -74,7 +75,7 @@ export function OpportunityHypothesesPanel() {
   const refresh = useCallback(async () => {
     setLoading(true);
     const { data: response, error } = await supabase.functions.invoke("generate-opportunity-hypotheses", {
-      body: { limit: 300, scope: "global", window_days: 7 },
+      body: { limit: 900, scope: "global", window_days: 7 },
     });
     setLoading(false);
 
@@ -146,6 +147,7 @@ export function OpportunityHypothesesPanel() {
                     {typeof item.relevance_score === "number" ? (
                       <Badge variant="outline">relevance {Math.round(item.relevance_score)}</Badge>
                     ) : null}
+                    <Badge variant="outline">evidence priority {Math.round(item.evidence_priority_score || 0)}</Badge>
                     <Badge variant="secondary">DISCOVERED</Badge>
                   </div>
                 </div>
