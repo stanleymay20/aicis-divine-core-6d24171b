@@ -119,7 +119,7 @@ test("orchestrate-multi-agent resolves scope itself, fails closed, and returns c
   const src = await readFile(new URL("../supabase/functions/orchestrate-multi-agent/index.ts", import.meta.url), "utf8");
   assert.match(src, /resolveGeography\(/);
   assert.match(src, /routeDomains\(/);
-  assert.match(src, /signalCitationSource\(s\)/);
+  assert.match(src, /citationSource: signalCitationSource/);
   assert.doesNotMatch(src, /source_url: s\.primary_source/);
   assert.match(src, /\.in\("geo_admin0_iso3", iso3List\)/);
   assert.match(src, /code: "model_not_configured"/);
