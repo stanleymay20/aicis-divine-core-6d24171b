@@ -179,6 +179,7 @@ const List = ({ items, empty }: { items: string[]; empty: string }) =>
 
 export const GovernedResearchPanel = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const { selectedEntity } = useIntelligenceOS();
   const activeQuestion = searchParams.get("question")?.trim() ?? "";
 
@@ -345,6 +346,17 @@ export const GovernedResearchPanel = () => {
             {running ? "Researching…" : "Ask"}
           </Button>
         </form>
+
+        {notice?.kind === "mfa_required" && (
+          <div role="status" data-testid="mfa-required-notice" className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+            <span>{notice.message}</span>
+            <Button asChild size="sm" variant="outline">
+              <Link to={`/account/security?next=${encodeURIComponent(location.pathname + location.search)}`}>
+                Verify two-step sign-in
+              </Link>
+            </Button>
+          </div>
+        )}
 
         {notice?.kind === "clarification" && (
           <div role="status" className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">

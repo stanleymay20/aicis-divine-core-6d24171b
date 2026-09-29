@@ -7,6 +7,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { needsMfaChallenge } from "@/lib/mfa-state.mjs";
 import aicisLogo from "@/assets/aicis-logo.png";
 import { useAuth } from "@/hooks/useAuth";
 import { recoveryAuth } from "@/lib/recoveryAuth";
