@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import aicisLogo from "@/assets/aicis-logo.png";
 import { useAuth } from "@/hooks/useAuth";
 import { recoveryAuth } from "@/lib/recoveryAuth";
+import { needsMfaChallenge } from "@/lib/mfa-state.mjs";
 
 const NEXT_PATH_KEY = "aicis.auth.next";
 const GOOGLE_OAUTH_ENABLED = import.meta.env.VITE_ENABLE_GOOGLE_OAUTH === "true";
@@ -61,11 +62,11 @@ const Auth = () => {
   const nextPath = safeNextPath(stateFrom ?? queryNext ?? sessionStorage.getItem(NEXT_PATH_KEY));
 
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && !loading) {
       sessionStorage.removeItem(NEXT_PATH_KEY);
       navigate(nextPath, { replace: true });
     }
-  }, [authLoading, navigate, nextPath, user]);
+  }, [authLoading, loading, navigate, nextPath, user]);
 
   const handleAuth = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -89,6 +90,12 @@ const Auth = () => {
       } else if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
         if (error) throw error;
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (needsMfaChallenge(aal)) {
+          sessionStorage.removeItem(NEXT_PATH_KEY);
+          navigate(`/account/security?next=${encodeURIComponent(nextPath)}`, { replace: true });
+          return;
+        }
         toast({ title: "Access granted", description: "Welcome to AICIS" });
       } else {
         if (password.length < MIN_NEW_PASSWORD_LENGTH) {
