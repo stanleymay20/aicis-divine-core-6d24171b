@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
       const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
       const { data: globalSignals, error: globalSignalError } = await sb
         .from("global_signals")
-        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status,independent_origin_count,ingested_at,occurred_at,canonical_event_id,dedup_key")
+        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count:source_count,ingested_at,occurred_at,canonical_event_id,dedup_key")
         .gte("ingested_at", since)
         .order("ingested_at", { ascending: false })
         .limit(limit);
@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
 
       const { data: personalizedSignals, error: signalError } = await sb
         .from("global_signals")
-        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status,independent_origin_count,canonical_event_id,dedup_key")
+        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count:source_count,canonical_event_id,dedup_key")
         .in("id", ids);
       if (signalError) throw signalError;
 
