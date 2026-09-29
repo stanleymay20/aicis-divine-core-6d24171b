@@ -147,13 +147,16 @@ export function OpportunityHypothesesPanel() {
                     size="sm"
                     className="h-8 text-xs"
                     onClick={() => {
-                      const advanced = document.getElementById("opportunity-advanced-workspace") as HTMLDetailsElement | null;
-                      if (advanced) advanced.open = true;
-                      window.dispatchEvent(new CustomEvent("aicis:investigate-product", {
-                        detail: { product: item.product.name, countries: item.countries, role: "supplier" },
+                      window.dispatchEvent(new CustomEvent("aicis:start-opportunity-investigation", {
+                        detail: {
+                          hypothesis_id: item.hypothesis_id,
+                          source_signal_title: item.source_signal_title,
+                          product: item.product,
+                          countries: item.countries,
+                        },
                       }));
                       window.setTimeout(() => {
-                        document.getElementById("opportunity-verification")?.scrollIntoView({
+                        document.getElementById("opportunity-investigation")?.scrollIntoView({
                           behavior: "smooth",
                           block: "start",
                         });
