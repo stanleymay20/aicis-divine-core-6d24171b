@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const limit = Math.min(Math.max(Number(body.limit ?? 100), 1), 300);
+    const requestedLimit = Math.max(Number(body.limit ?? 100), 1);
 
     const { data: prefs } = await sb
       .from("aicis_relevance_preferences")
@@ -101,6 +101,9 @@ Deno.serve(async (req) => {
     const scanScope = String(body.scope || "personalized").trim().toLowerCase() === "global"
       ? "global"
       : "personalized";
+    const limit = scanScope === "global"
+      ? Math.min(requestedLimit, 900)
+      : Math.min(requestedLimit, 300);
     const windowDays = Math.min(Math.max(Number(body.window_days ?? 7), 1), 30);
 
     const relevanceBySignal: Record<string, RelevanceRow> = {};
@@ -111,7 +114,7 @@ Deno.serve(async (req) => {
       const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
       const { data: globalSignals, error: globalSignalError } = await sb
         .from("global_signals")
-        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status,ingested_at,occurred_at,canonical_event_id,dedup_key")
+        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status,independent_origin_count,ingested_at,occurred_at,canonical_event_id,dedup_key")
         .gte("ingested_at", since)
         .order("ingested_at", { ascending: false })
         .limit(limit);
@@ -122,13 +125,16 @@ Deno.serve(async (req) => {
 
       if (signals.length) {
         const ids = signals.map((signal) => signal.id).filter((id): id is string => Boolean(id));
-        const { data: relevanceRows } = await sb
-          .from("signal_relevance_scores")
-          .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
-          .eq("user_id", user.id)
-          .in("signal_id", ids);
-        for (const row of (relevanceRows ?? []) as RelevanceRow[]) {
-          relevanceBySignal[row.signal_id] = row;
+        for (let index = 0; index < ids.length; index += 80) {
+          const chunk = ids.slice(index, index + 80);
+          const { data: relevanceRows } = await sb
+            .from("signal_relevance_scores")
+            .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
+            .eq("user_id", user.id)
+            .in("signal_id", chunk);
+          for (const row of (relevanceRows ?? []) as RelevanceRow[]) {
+            relevanceBySignal[row.signal_id] = row;
+          }
         }
       }
     } else {
@@ -159,7 +165,7 @@ Deno.serve(async (req) => {
 
       const { data: personalizedSignals, error: signalError } = await sb
         .from("global_signals")
-        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status,canonical_event_id,dedup_key")
+        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status,independent_origin_count,canonical_event_id,dedup_key")
         .in("id", ids);
       if (signalError) throw signalError;
 
