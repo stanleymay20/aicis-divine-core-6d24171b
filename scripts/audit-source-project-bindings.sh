@@ -70,8 +70,8 @@ ALLOW_CURRENT_VITE_SOURCE_FALLBACK="${AICIS_ALLOW_CURRENT_VITE_SOURCE_FALLBACK:-
 
 if [[ "$ALLOW_CURRENT_VITE_SOURCE_FALLBACK" == "true" ]]; then
   while IFS= read -r line; do
-    if [[ "$line" =~ ^vite\.config\.ts:[0-9]+:const[[:space:]]+PUBLIC_SUPABASE_URL[[:space:]]*=[[:space:]]*"https://psonnnuhjjskrdazrakk\.supabase\.co"\;?$ ]] \
-      || [[ "$line" =~ ^vite\.config\.ts:[0-9]+:[[:space:]]*process\.env\.VITE_SUPABASE_PROJECT_ID[[:space:]]*\|\|[[:space:]]*"psonnnuhjjskrdazrakk",?$ ]]; then
+    if [[ "$line" =~ ^(vite\.config\.ts:)?[0-9]+:const[[:space:]]+PUBLIC_SUPABASE_URL[[:space:]]*=[[:space:]]*"https://psonnnuhjjskrdazrakk\.supabase\.co"\;?$ ]] \
+      || [[ "$line" =~ ^(vite\.config\.ts:)?[0-9]+:[[:space:]]*process\.env\.VITE_SUPABASE_PROJECT_ID[[:space:]]*\|\|[[:space:]]*"psonnnuhjjskrdazrakk",?$ ]]; then
       echo "$line" >> "$RUNTIME_ALLOWED_TMP"
     else
       echo "$line" >> "$RUNTIME_EFFECTIVE_TMP"
