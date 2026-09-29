@@ -269,7 +269,7 @@ function nextActions(source, buyer, route, compliance) {
 
 const LANDED_COST_VERSION = "aicis-landed-cost-evidence-v1";
 
-function landedCostScopeMatches(entry, source, buyer, route, structure) {
+function landedCostBaseScopeMatches(entry, source, buyer, route, structure) {
   if (!entry || typeof entry !== "object") return false;
   if (entry.source_id && String(entry.source_id) !== String(source?.id)) return false;
   if (entry.buyer_id && String(entry.buyer_id) !== String(buyer?.id)) return false;
@@ -278,8 +278,55 @@ function landedCostScopeMatches(entry, source, buyer, route, structure) {
   return true;
 }
 
-function findLandedCostPack(packs, source, buyer, route, structure) {
-  return packs.find((entry) => landedCostScopeMatches(entry, source, buyer, route, structure)) || null;
+function landedCostCandidateScopeMatches(entry, candidateId, product, quantity, comparisonCurrency = "") {
+  if (!entry || typeof entry !== "object") return false;
+  const evidence = entry.evidence && typeof entry.evidence === "object" ? entry.evidence : entry;
+
+  const scopedCandidateId = entry.candidate_id ?? evidence.candidate_id;
+  const scopedProductId = entry.product_id ?? evidence.product_id;
+  const scopedQuantity = entry.quantity ?? evidence.quantity;
+  const scopedQuantityUnit = entry.quantity_unit ?? evidence.quantity_unit;
+  const scopedCurrency = entry.comparison_currency ?? evidence.comparison_currency;
+
+  if (scopedCandidateId && String(scopedCandidateId) !== String(candidateId)) return false;
+  if (scopedProductId && String(scopedProductId) !== String(product?.id)) return false;
+  if (finite(scopedQuantity) && Number(scopedQuantity) !== Number(quantity)) return false;
+  if (scopedQuantityUnit && normalize(scopedQuantityUnit) !== normalize(product?.unit)) return false;
+  if (
+    comparisonCurrency &&
+    scopedCurrency &&
+    String(scopedCurrency).trim().toUpperCase() !== String(comparisonCurrency).trim().toUpperCase()
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function findLandedCostPack(
+  packs,
+  source,
+  buyer,
+  route,
+  structure,
+  candidateId,
+  product,
+  quantity,
+  comparisonCurrency = "",
+) {
+  const baseMatches = packs.filter((entry) =>
+    landedCostBaseScopeMatches(entry, source, buyer, route, structure)
+  );
+  if (!baseMatches.length) return null;
+
+  const exact = baseMatches.find((entry) =>
+    landedCostCandidateScopeMatches(entry, candidateId, product, quantity, comparisonCurrency)
+  );
+
+  // Prefer the exact candidate/product/quantity scope when multiple packs share
+  // supplier/buyer/route/structure. Preserve legacy fail-closed diagnostics by
+  // returning the sole base-scope pack when no exact candidate-bound pack exists.
+  return exact || (baseMatches.length === 1 ? baseMatches[0] : null);
 }
 
 function validateLandedCostPack(entry, candidateId, product, quantity, currency) {
@@ -409,7 +456,17 @@ export function buildTransactionPaths(input = {}) {
           if (!quantityFeasible(buyer, quantity)) reasons.push("buyer_quantity_infeasible");
           if (!routeCompatible(source, buyer, route)) reasons.push("route_geography_mismatch");
 
-          const landedCostEntry = findLandedCostPack(landedCostPacks, source, buyer, route, structure);
+          const landedCostEntry = findLandedCostPack(
+            landedCostPacks,
+            source,
+            buyer,
+            route,
+            structure,
+            candidateId,
+            product,
+            quantity,
+            requestedComparisonCurrency,
+          );
           const landedCostRaw = landedCostEntry?.evidence && typeof landedCostEntry.evidence === "object"
             ? landedCostEntry.evidence
             : landedCostEntry;
