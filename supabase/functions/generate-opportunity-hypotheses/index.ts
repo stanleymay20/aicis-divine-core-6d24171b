@@ -114,9 +114,9 @@ Deno.serve(async (req) => {
       const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
       const { data: globalSignals, error: globalSignalError } = await sb
         .from("global_signals")
-        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count:source_count,ingested_at,occurred_at,canonical_event_id,dedup_key")
-        .gte("ingested_at", since)
-        .order("ingested_at", { ascending: false })
+        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count:source_count,first_detected_at,ingested_at,occurred_at,canonical_event_id,dedup_key")
+        .gte("first_detected_at", since)
+        .order("first_detected_at", { ascending: false })
         .limit(limit);
       if (globalSignalError) throw globalSignalError;
 
