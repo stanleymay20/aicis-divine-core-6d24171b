@@ -586,3 +586,17 @@ test("does not guess among multiple landed-cost packs when none matches the exac
   assert.equal(updated.expected_cost, 35300);
 });
 
+test("preserves user-declared scenario semantics on constructed research candidates", () => {
+  const input = baseInput();
+  input.scenario.evidence_semantics = "user_declared_research_assumption_not_empirically_calibrated";
+  input.scenario.evidence_score = 25;
+
+  const result = buildTransactionPaths(input);
+  const candidate = result.candidates[0];
+
+  assert.ok(candidate);
+  assert.equal(candidate.scenario_research_only, true);
+  assert.equal(candidate.scenario_evidence_semantics, "user_declared_research_assumption_not_empirically_calibrated");
+  assert.equal(candidate.scenario_calibration_status, "validated_input");
+});
+
