@@ -267,7 +267,11 @@ export const MorningBriefDashboard = () => {
                   <span className="font-medium text-foreground">
                     Proposed action:{" "}
                   </span>
-                  {featured.proposedAction}
+                  {featured.proposedAction}{" "}
+                  <span className="text-muted-foreground/70">
+                    (review {featured.reviewWindow}; not recorded as executed
+                    from the brief)
+                  </span>
                 </p>
               )}
             </div>
