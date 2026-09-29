@@ -38,6 +38,9 @@ export type LandedCostCandidate = {
   quantity?: number | null;
   unit?: string | null;
   currency?: string | null;
+  capital_required?: number | null;
+  expected_revenue?: number | null;
+  expected_cost?: number | null;
   source_offer?: {
     id?: string | null;
     name?: string | null;
