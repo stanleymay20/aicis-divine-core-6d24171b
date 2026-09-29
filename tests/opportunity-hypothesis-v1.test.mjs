@@ -67,3 +67,51 @@ test("multi-signal generator sorts by existing personalized relevance rather tha
   });
   assert.equal(result[0].source_signal_id, "b");
 });
+
+test("corroborated disruption hypotheses receive higher evidence priority than single-source market changes", () => {
+  const strong = {
+    id: "strong",
+    title: "Copper export disruption after mine outage",
+    summary: "Copper supply disruption is affecting exports.",
+    source_identifier_count: 4,
+    source_independence_status: "established",
+    independent_origin_count: 3,
+  };
+  const weak = {
+    id: "weak",
+    title: "Copper market update",
+    summary: "Copper trading conditions changed.",
+    source_identifier_count: 1,
+    source_independence_status: "not_assessed",
+    independent_origin_count: null,
+  };
+
+  const strongHypothesis = hypothesesForSignal(strong)[0];
+  const weakHypothesis = hypothesesForSignal(weak)[0];
+
+  assert.ok(strongHypothesis.evidence_priority_score > weakHypothesis.evidence_priority_score);
+  assert.equal(strongHypothesis.evidence_manifest.independent_origin_count, 3);
+});
+
+test("global-style generation can prioritize evidence strength without inventing relevance", () => {
+  const signals = [
+    {
+      id: "single",
+      title: "Cocoa market change",
+      source_identifier_count: 1,
+      source_independence_status: "not_assessed",
+    },
+    {
+      id: "corroborated",
+      title: "Cocoa export disruption",
+      source_identifier_count: 3,
+      source_independence_status: "established",
+      independent_origin_count: 2,
+    },
+  ];
+
+  const result = generateOpportunityHypotheses(signals, {});
+  assert.equal(result[0].source_signal_id, "corroborated");
+  assert.equal(result[0].relevance_score, null);
+});
+
