@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Activity,
+  AlertTriangle,
   ArrowRight,
+  BrainCircuit,
   ChevronDown,
   ChevronUp,
   Layers,
@@ -14,7 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
-import { PriorityDecisionsPanel } from "./PriorityDecisionsPanel";
+import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import { ForecastMovementPanel } from "./ForecastMovementPanel";
 import { SystemHealthBadge } from "./SystemHealthBadge";
 import { useNavigate } from "react-router-dom";
@@ -34,16 +38,26 @@ import { LayerTrustTiersPanel } from "./LayerTrustTiersPanel";
 import { PersistentAskBar } from "./PersistentAskBar";
 import { TopEmergingRisksPanel } from "@/components/risk-ranking/TopEmergingRisksPanel";
 import { PlanetaryDetectionBadge } from "./PlanetaryDetectionBadge";
+import {
+  formatSignalAge,
+  usePrioritySignals,
+  type PrioritySignal,
+} from "./usePrioritySignals";
+import { cn } from "@/lib/utils";
 
 const formatUtcStamp = (date: Date) => {
   const iso = date.toISOString();
   return `${iso.slice(0, 10)} · ${iso.slice(11, 16)} UTC`;
 };
 
+const scoreText = (value: number | null | undefined) =>
+  value == null ? "Unknown" : `${Math.round(value)}/100`;
+
 export const MorningBriefDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isAdmin, isOperator } = useUserRoles();
+  const { selectEntity } = useIntelligenceOS();
   const [showMore, setShowMore] = useState(false);
 
   const { data: profile } = useQuery({
@@ -60,6 +74,12 @@ export const MorningBriefDashboard = () => {
     enabled: !!user?.id,
     staleTime: 300_000,
   });
+
+  const { data: priorityData, isLoading: prioritiesLoading } =
+    usePrioritySignals(5);
+  const priorities = priorityData?.signals ?? [];
+  const prioritiesStale = priorityData?.stale ?? false;
+  const [featured, ...secondarySignals] = priorities;
 
   const cleanName = (raw: string | null | undefined): string | null => {
     if (!raw) return null;
@@ -83,8 +103,49 @@ export const MorningBriefDashboard = () => {
       ? "View operator details"
       : "View more context";
 
+  const inspectSignal = (signal: PrioritySignal) => {
+    selectEntity({
+      id: signal.id,
+      type: "signal",
+      name: signal.title,
+      description: signal.summary || signal.strategic_implications || undefined,
+      confidence: signal.confidence_score,
+      sourceCount: signal.source_count,
+      observedAt: signal.first_detected_at,
+      updatedAt: signal.latest_update_at,
+      geography:
+        signal.affected_countries?.length === 1
+          ? { country: signal.affected_countries[0] }
+          : undefined,
+      provenance: signal.primary_source
+        ? [
+            {
+              id: `signal-source:${signal.id}`,
+              label: signal.primary_source,
+              sourceType: signal.source_trust_tier || "signal source",
+              observedAt: signal.first_detected_at,
+            },
+          ]
+        : undefined,
+      metadata: {
+        category: signal.category,
+        impactScore: signal.impact_score,
+        urgencyScore: signal.urgency_score,
+        sourceTrustTier: signal.source_trust_tier,
+        officialSource: signal.official_source,
+        multiSourceConfirmed: signal.multi_source_confirmed,
+        affectedCountries: signal.affected_countries?.join(", ") || null,
+      },
+    });
+  };
+
+  const openInDecisions = (signal: PrioritySignal) => {
+    const params = new URLSearchParams({ entity: `signal:${signal.id}` });
+    navigate(`/decision-ops?${params.toString()}`);
+  };
+
   return (
-    <div className="animate-fade-in space-y-4 sm:space-y-5">
+    <div className="animate-fade-in space-y-6">
       <PersistentAskBar />
 
       <div className="flex items-start justify-between gap-3">
@@ -96,9 +157,6 @@ export const MorningBriefDashboard = () => {
             {greeting},{" "}
             <span className="font-semibold text-primary">{firstName}</span>.
           </h1>
-          <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
-            Your intelligence brief: what changed, why it matters, and what needs attention.
-          </p>
           <p className="font-mono text-[10px] tabular-nums text-muted-foreground sm:text-xs">
             {formatUtcStamp(new Date())}
           </p>
@@ -106,53 +164,185 @@ export const MorningBriefDashboard = () => {
         <SystemHealthBadge />
       </div>
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            What changed
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Measured signal, decision, and vulnerability counts from the current data.
-          </p>
+      {prioritiesStale && priorities.length > 0 && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          No high-impact signals in the last 14 days. Showing the most recent
+          ones on record — newer incoming signals have not been scored yet, so
+          they cannot appear here.
         </div>
-        <BusinessExposureStrip />
-      </section>
+      )}
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Why it matters
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Highest-impact signals with stored evidence, uncertainty, and proposed actions.
-          </p>
-        </div>
-        <PriorityDecisionsPanel />
-      </section>
+      {/* Featured story */}
+      {prioritiesLoading ? (
+        <Skeleton className="h-64 w-full" />
+      ) : featured ? (
+        <section className="relative">
+          <div className="absolute -inset-0.5 rounded-lg bg-gradient-to-r from-primary/20 to-transparent opacity-75 blur" />
+          <div className="relative flex flex-col gap-8 rounded-lg border border-border bg-card p-6 md:flex-row md:p-8">
+            <div className="flex-1 space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-primary">
+                  Top Priority
+                </span>
+                <Badge
+                  variant={
+                    featured.urgency === "critical" ? "destructive" : "secondary"
+                  }
+                  className="text-[10px]"
+                >
+                  {featured.urgency === "critical"
+                    ? "Critical"
+                    : featured.urgency === "high"
+                      ? "High"
+                      : "Moderate"}
+                </Badge>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {formatSignalAge(featured.first_detected_at)}
+                </span>
+              </div>
+              <h2 className="text-2xl font-bold leading-tight text-foreground sm:text-3xl">
+                {featured.title}
+              </h2>
+              <p className="max-w-2xl leading-relaxed text-muted-foreground">
+                {featured.strategic_implications || featured.summary}
+              </p>
+              <div className="flex flex-wrap gap-6 pt-2">
+                <div>
+                  <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Impact
+                  </p>
+                  <p className="font-semibold text-primary">
+                    {scoreText(featured.impact_score)}
+                  </p>
+                </div>
+                <div>
+                  <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Confidence
+                  </p>
+                  <p className="font-semibold text-foreground">
+                    {scoreText(featured.confidence_score)}
+                  </p>
+                </div>
+                <div>
+                  <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Sources
+                  </p>
+                  <p className="font-semibold text-foreground">
+                    {featured.source_count}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <Button
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => inspectSignal(featured)}
+                >
+                  <BrainCircuit className="h-3.5 w-3.5" />
+                  Inspect signal
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => openInDecisions(featured)}
+                >
+                  Open in Decisions
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-3 rounded border border-border bg-muted/30 p-5 md:w-64">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-foreground">
+                Why it matters
+              </h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {featured.impact_reasoning ||
+                  featured.likely_consequences ||
+                  featured.summary ||
+                  "No stored reasoning for this signal yet."}
+              </p>
+              {featured.proposedAction && (
+                <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    Proposed action:{" "}
+                  </span>
+                  {featured.proposedAction}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <Card className="border-primary/20">
+          <CardContent className="flex items-center gap-3 p-4">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <div className="flex-1">
+              <p className="text-sm font-medium">No high-impact enriched signals</p>
+              <p className="text-xs text-muted-foreground">
+                AICIS is not inventing a priority item when the governed signal
+                query returns none.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate("/live")}
+              className="shrink-0 gap-1"
+            >
+              View Signals <ArrowRight className="h-3 w-3" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            What became more or less likely
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Movement between the two latest comparable stored risk-ranking batches.
-          </p>
-        </div>
-        <ForecastMovementPanel />
-      </section>
+      {/* Secondary grid */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {secondarySignals.slice(0, 2).map((signal) => (
+          <button
+            key={signal.id}
+            onClick={() => inspectSignal(signal)}
+            className="space-y-3 rounded-lg border border-border bg-card p-5 text-left transition-colors hover:border-primary/30"
+          >
+            <div className="flex items-start justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                {signal.category}
+              </span>
+              <div
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  signal.urgency === "critical"
+                    ? "bg-destructive"
+                    : signal.urgency === "high"
+                      ? "bg-amber-500"
+                      : "bg-primary",
+                )}
+              />
+            </div>
+            <h3 className="line-clamp-2 text-base font-semibold leading-snug text-foreground">
+              {signal.title}
+            </h3>
+            <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+              {signal.summary}
+            </p>
+            <div className="flex items-center justify-between pt-1">
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {formatSignalAge(signal.first_detected_at)}
+              </span>
+              <span className="font-mono text-xs text-primary">
+                {scoreText(signal.impact_score)}
+              </span>
+            </div>
+          </button>
+        ))}
+        <Card className="border-border">
+          <CardContent className="p-0">
+            <ActionsAwaitingStrip />
+          </CardContent>
+        </Card>
+      </div>
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            What needs attention
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Existing decision and follow-up items requiring review.
-          </p>
-        </div>
-        <ActionsAwaitingStrip />
-      </section>
+      <ForecastMovementPanel />
 
       <Collapsible open={showMore} onOpenChange={setShowMore}>
         <CollapsibleTrigger asChild>
@@ -176,11 +366,16 @@ export const MorningBriefDashboard = () => {
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-5 pt-3">
           <section className="space-y-3">
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Watchlist & lower-priority context
-              </h2>
-            </div>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              What changed
+            </h2>
+            <BusinessExposureStrip />
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Watchlist & lower-priority context
+            </h2>
             <TopEmergingRisksPanel />
             <WatchlistBriefWidget />
             <RecentDecisionsWidget />
