@@ -25,6 +25,7 @@ type EvidenceRow = {
   source_title: string;
   excerpt: string | null;
   observed_at: string | null;
+  geo?: string | null;
 };
 
 const DOMAIN_CATEGORIES: Record<string, string[]> = {
@@ -246,7 +247,7 @@ Deno.serve(async (req) => {
         `Question: ${question}\nScope: ${geography.scope} — ${scopeLabel}${iso3List.length ? ` (ISO3: ${iso3List.join(", ")})` : ""}\n` +
         `Evidence window: last ${windowDays} days\n\nEVIDENCE:\n` +
         (evidence.length
-          ? evidence.map((e) => `[${e.ref}] (${e.source_kind}, ${e.observed_at ?? "undated"}${(e as any).geo ? `, ${(e as any).geo}` : ""}) ${e.source_title}${e.excerpt ? ` — ${e.excerpt}` : ""}`).join("\n")
+          ? evidence.map((e) => `[${e.ref}] (${e.source_kind}, ${e.observed_at ?? "undated"}${e.geo ? `, ${e.geo}` : ""}) ${e.source_title}${e.excerpt ? ` — ${e.excerpt}` : ""}`).join("\n")
           : "(no evidence rows exist for this domain in the window)");
 
       const promptHash = await sha256(system + user);
