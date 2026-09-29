@@ -617,6 +617,10 @@ export function buildTransactionPaths(input = {}) {
             upside_profit: scenario.upside_profit ?? null,
             cycle_days: scenario.cycle_days,
             probability_of_completion: scenario.probability_of_completion,
+            scenario_calibration_status: scenario.calibration_status ?? null,
+            scenario_evidence_semantics: scenario.evidence_semantics ?? null,
+            scenario_research_only:
+              String(scenario.evidence_semantics || "").toLowerCase().includes("user_declared"),
             evidence_score: round(evidenceScore, 1),
             counterparty_quality_score: round(minFinite([
               source.counterparty_quality_score,
