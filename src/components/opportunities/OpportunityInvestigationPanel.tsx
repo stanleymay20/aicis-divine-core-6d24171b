@@ -699,6 +699,13 @@ export function OpportunityInvestigationPanel({
                 screenResults={screenResults}
                 onScreen={screen}
                 onPrepareVerification={prepareVerification}
+                requestContext={{
+                  productName: state.request.product.name,
+                  unit: state.request.product.unit,
+                  quantityText,
+                  originCountry: verifiedInputs.supplier_country,
+                  destinationCountry: verifiedInputs.buyer_country,
+                }}
               />
             </div>
 
