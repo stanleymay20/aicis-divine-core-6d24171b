@@ -95,6 +95,20 @@ const URGENCY_BG: Record<Urgency, string> = {
 const scoreText = (value: number | null | undefined) =>
   value == null ? "Unknown" : `${Math.round(value)}/100`;
 
+const RECENT_WINDOW_DAYS = 14;
+
+type PriorityResult = { signals: PrioritySignal[]; stale: boolean };
+
+const formatObserved = (value: string | null | undefined) => {
+  if (!value) return "Date unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date unknown";
+  const days = Math.floor((Date.now() - date.getTime()) / (24 * 60 * 60 * 1000));
+  const stamp = date.toISOString().slice(0, 10);
+  if (days <= 0) return `${stamp} · today`;
+  return `${stamp} · ${days}d old`;
+};
+
 export function PriorityDecisionsPanel() {
   const navigate = useNavigate();
   const { selectEntity } = useIntelligenceOS();
