@@ -372,22 +372,31 @@ export function TransactionPathLab() {
             no_transaction_reason: null,
           }
         : {
-            status: response.ranking?.no_transaction_recommended ? "NO_ACTION" : "RESEARCHING",
+            status: response.build?.candidates?.length
+              ? "RESEARCHING"
+              : response.ranking?.no_transaction_recommended
+                ? "NO_ACTION"
+                : "RESEARCHING",
             candidate_id: null,
-            title: null,
-            transaction_type: null,
+            title: response.build?.candidates?.[0]?.title ?? null,
+            transaction_type: response.build?.candidates?.[0]?.transaction_type ?? null,
             score: null,
-            capital_required: null,
-            currency: null,
-            base_profit: null,
+            capital_required: response.build?.candidates?.[0]?.capital_required ?? null,
+            currency: response.build?.candidates?.[0]?.currency ?? null,
+            base_profit: response.build?.candidates?.[0]
+              ? Number(response.build.candidates[0].expected_revenue ?? 0) - Number(response.build.candidates[0].expected_cost ?? 0)
+              : null,
             expected_value: null,
-            base_margin_pct: null,
+            base_margin_pct: response.build?.candidates?.[0] && Number(response.build.candidates[0].expected_revenue) > 0
+              ? ((Number(response.build.candidates[0].expected_revenue) - Number(response.build.candidates[0].expected_cost))
+                / Number(response.build.candidates[0].expected_revenue)) * 100
+              : null,
             return_on_capital_pct: null,
-            missing_execution_fields: [],
-            no_transaction_reason: response.ranking?.no_transaction_reason
-              || (response.build?.candidates?.length
-                ? "Candidate paths exist, but none has cleared the verified ranking gates yet."
-                : "No verified transaction candidate is available yet."),
+            missing_execution_fields: response.build?.candidates?.[0]?.landed_cost_missing_fields ?? [],
+            no_transaction_reason: response.build?.candidates?.length
+              ? "A research transaction path exists, but it has not cleared the ranking and verification gates yet."
+              : response.ranking?.no_transaction_reason
+                || "No verified transaction candidate is available yet.",
           },
     }));
   }, []);
