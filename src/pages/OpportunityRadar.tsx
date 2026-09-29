@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TransactionPathLab } from "@/components/opportunities/TransactionPathLab";
 import { CounterpartyDiscoveryPanel } from "@/components/opportunities/CounterpartyDiscoveryPanel";
 import { OpportunityHypothesesPanel } from "@/components/opportunities/OpportunityHypothesesPanel";
+import { OpportunityInvestigationPanel } from "@/components/opportunities/OpportunityInvestigationPanel";
 import { SanctionsScreenPanel } from "@/components/opportunities/SanctionsScreenPanel";
 import { CounterpartyVerificationLab } from "@/components/opportunities/CounterpartyVerificationLab";
 import { LogisticsRouteVerificationLab } from "@/components/opportunities/LogisticsRouteVerificationLab";
@@ -340,6 +341,8 @@ export default function OpportunityRadar() {
       <section id="opportunity-hypotheses" className="scroll-mt-16">
         <OpportunityHypothesesPanel />
       </section>
+
+      <OpportunityInvestigationPanel targetCountries={prefs.countries} />
 
       <Card>
         <CardContent className="p-4">
