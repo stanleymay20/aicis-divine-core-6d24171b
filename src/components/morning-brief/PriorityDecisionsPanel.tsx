@@ -276,6 +276,24 @@ export function PriorityDecisionsPanel() {
         </Button>
       </div>
 
+      {isStale && (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardContent className="flex items-start gap-2 p-3">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">
+                No high-impact signals in the last {RECENT_WINDOW_DAYS} days.
+              </span>{" "}
+              Showing the most recent ones on record — the newest is {newestAgeDays} days
+              old. Newer incoming signals have not been scored yet, so they cannot appear
+              here.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+
+
       {priorities.map((signal) => (
         <Card
           key={signal.id}
