@@ -589,16 +589,29 @@ export function TransactionPathLab() {
       pack.buyer_id,
       pack.route_id,
       pack.transaction_type,
-    ].join("|");
+      pack.candidate_id,
+      pack.product_id,
+      pack.quantity,
+      pack.quantity_unit,
+      pack.comparison_currency,
+    ].map((value) => String(value || "")).join("|");
 
     const withoutDuplicate = existing.filter((item) => {
       if (typeof item !== "object" || item === null || Array.isArray(item)) return true;
       const record = item as Record<string, unknown>;
+      const evidence = typeof record.evidence === "object" && record.evidence !== null && !Array.isArray(record.evidence)
+        ? record.evidence as Record<string, unknown>
+        : record;
       const itemKey = [
         record.source_id,
         record.buyer_id,
         record.route_id,
         record.transaction_type,
+        record.candidate_id ?? evidence.candidate_id,
+        record.product_id ?? evidence.product_id,
+        record.quantity ?? evidence.quantity,
+        record.quantity_unit ?? evidence.quantity_unit,
+        record.comparison_currency ?? evidence.comparison_currency,
       ].map((value) => String(value || "")).join("|");
       return itemKey !== scopeKey;
     });
@@ -624,7 +637,11 @@ export function TransactionPathLab() {
           source_candidate_id: candidate.id,
           evidence_refs: evidenceRefs,
           metadata: {
-            candidate_id: candidate.id,
+            candidate_id: pack.candidate_id,
+            product_id: pack.product_id,
+            quantity: pack.quantity,
+            quantity_unit: pack.quantity_unit,
+            comparison_currency: pack.comparison_currency,
             source_id: pack.source_id,
             buyer_id: pack.buyer_id,
             route_id: pack.route_id,
