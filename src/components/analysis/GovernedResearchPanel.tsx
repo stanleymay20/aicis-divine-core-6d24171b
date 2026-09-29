@@ -55,7 +55,17 @@ type GovernedResearchResult = {
   scopeLabel: string | null;
   domains: string[];
   citations: Citation[];
+  evidenceQuality: EvidenceQuality | null;
   generatedAt: string;
+};
+
+type EvidenceQuality = {
+  external: number;
+  internal: number;
+  rejected: number;
+  deduplicated: number;
+  mostlyInternal: boolean;
+  overall: "strong" | "moderate" | "thin";
 };
 
 /** Prior turn kept for a future follow-up contract; sent only if the backend says it supports it. */
@@ -156,8 +166,25 @@ const parseResult = (question: string, response: Record<string, unknown>): Gover
         };
       })
     : [],
+  evidenceQuality: parseEvidenceQuality(response.evidence_quality),
   generatedAt: new Date().toISOString(),
 });
+
+function parseEvidenceQuality(value: unknown): EvidenceQuality | null {
+  const r = asRecord(value);
+  const external = finiteNumber(r.external_evidence_count);
+  const internal = finiteNumber(r.internal_measurement_count);
+  if (external == null || internal == null) return null;
+  const overall = r.overall_sufficiency;
+  return {
+    external,
+    internal,
+    rejected: finiteNumber(r.rejected_irrelevant_count) ?? 0,
+    deduplicated: finiteNumber(r.deduplicated_count) ?? 0,
+    mostlyInternal: r.mostly_internal === true,
+    overall: overall === "strong" || overall === "moderate" ? overall : "thin",
+  };
+}
 
 const Section = ({ title, children, tone }: { title: string; children: React.ReactNode; tone?: "warn" }) => (
   <div className={cn("rounded-lg border p-3", tone === "warn" ? "border-amber-500/30 bg-amber-500/5" : "border-border/70")}>
@@ -400,6 +427,26 @@ export const GovernedResearchPanel = () => {
               <div role="alert" className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-xs">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
                 <span>Degraded answer: {result.degradationReason ?? "reason not reported"}</span>
+              </div>
+            )}
+
+            {result.evidenceQuality && (
+              <div
+                data-testid="evidence-quality"
+                className={`flex items-start gap-2 rounded-md border p-2.5 text-xs ${
+                  result.evidenceQuality.mostlyInternal || result.evidenceQuality.overall === "thin"
+                    ? "border-amber-500/30 bg-amber-500/5"
+                    : "border-border bg-muted/30"
+                }`}
+              >
+                <span>
+                  Evidence: {result.evidenceQuality.external} external document(s),{" "}
+                  {result.evidenceQuality.internal} internal AICIS measurement(s)
+                  {result.evidenceQuality.rejected ? `, ${result.evidenceQuality.rejected} off-topic item(s) excluded` : ""}
+                  {result.evidenceQuality.deduplicated ? `, ${result.evidenceQuality.deduplicated} duplicate(s) removed` : ""}.
+                  {" "}Sufficiency: {result.evidenceQuality.overall}.
+                  {result.evidenceQuality.mostlyInternal && " This answer relies mostly on internal AICIS measurements, not independent documents."}
+                </span>
               </div>
             )}
 
