@@ -59,6 +59,14 @@ function uniqueCountries(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 6);
 }
 
+async function sha256Json(value: unknown) {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export function OpportunityInvestigationPanel({
   targetCountries,
   comparisonCurrency,
@@ -76,6 +84,13 @@ export function OpportunityInvestigationPanel({
     buyer_country: null,
     route_verified: false,
   });
+  const [quantityText, setQuantityText] = useState("");
+  const [completionProbabilityText, setCompletionProbabilityText] = useState("");
+  const [downsideLossText, setDownsideLossText] = useState("");
+  const [cycleDaysText, setCycleDaysText] = useState("");
+  const [upsideProfitText, setUpsideProfitText] = useState("");
+  const [assumptionsConfirmed, setAssumptionsConfirmed] = useState(false);
+  const [economicsBuilding, setEconomicsBuilding] = useState(false);
   const { toast } = useToast();
 
   const runDiscovery = useCallback(async (
@@ -162,6 +177,12 @@ export function OpportunityInvestigationPanel({
         buyer_country: null,
         route_verified: false,
       });
+      setQuantityText("");
+      setCompletionProbabilityText("");
+      setDownsideLossText("");
+      setCycleDaysText("");
+      setUpsideProfitText("");
+      setAssumptionsConfirmed(false);
       window.dispatchEvent(new CustomEvent("aicis:seed-transaction-bundle", {
         detail: {
           signal: {
@@ -293,6 +314,87 @@ export function OpportunityInvestigationPanel({
     }));
   };
 
+  const buildResearchEconomics = async () => {
+    const quantity = Number(quantityText);
+    const probability = Number(completionProbabilityText);
+    const downsideLoss = Number(downsideLossText);
+    const cycleDays = Number(cycleDaysText);
+    const upsideProfit = upsideProfitText.trim() === "" ? null : Number(upsideProfitText);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast({ title: "Quantity required", description: "Enter a positive quantity to evaluate.", variant: "destructive" });
+      return;
+    }
+    if (!Number.isFinite(probability) || probability < 0 || probability > 100) {
+      toast({ title: "Completion probability required", description: "Enter a research assumption from 0 to 100.", variant: "destructive" });
+      return;
+    }
+    if (!Number.isFinite(downsideLoss) || downsideLoss < 0) {
+      toast({ title: "Downside assumption required", description: "Enter a non-negative downside amount.", variant: "destructive" });
+      return;
+    }
+    if (!Number.isFinite(cycleDays) || cycleDays <= 0) {
+      toast({ title: "Cycle assumption required", description: "Enter a positive expected cycle in days.", variant: "destructive" });
+      return;
+    }
+    if (upsideProfit != null && (!Number.isFinite(upsideProfit) || upsideProfit < 0)) {
+      toast({ title: "Upside assumption invalid", description: "Leave upside blank or enter a non-negative amount.", variant: "destructive" });
+      return;
+    }
+    if (!assumptionsConfirmed) {
+      toast({
+        title: "Confirm assumption semantics",
+        description: "Confirm these are your current research assumptions, not observed facts or guaranteed outcomes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setEconomicsBuilding(true);
+    const observedAt = new Date().toISOString();
+    const declaredScenario = {
+      probability_of_completion: probability,
+      downside_loss: downsideLoss,
+      upside_profit: upsideProfit,
+      cycle_days: cycleDays,
+      semantics: "user_declared_research_assumption_not_empirically_calibrated",
+    };
+    const digest = await sha256Json(declaredScenario);
+
+    window.dispatchEvent(new CustomEvent("aicis:configure-research-economics", {
+      detail: {
+        quantity,
+        scenario: {
+          calibration_status: "validated_input",
+          probability_of_completion: probability,
+          downside_loss: downsideLoss,
+          upside_profit: upsideProfit,
+          cycle_days: cycleDays,
+          evidence_score: 25,
+          evidence_semantics: "user_declared_research_assumption_not_empirically_calibrated",
+          evidence_refs: [{
+            source_id: "user_declared_scenario_assumption",
+            source_type: "user_declared_assumption",
+            observed_at: observedAt,
+            sha256: digest,
+          }],
+        },
+        structure: {
+          transaction_type: "physical_trade",
+          capital_model: "full_landed_cost",
+          compliance_status: "clear",
+          costs: [],
+          assumptions: [{
+            kind: "research_baseline_structure",
+            statement: "Direct physical trade is being evaluated as a research baseline; it is not asserted to be the optimal transaction structure.",
+          }],
+        },
+      },
+    }));
+
+    window.setTimeout(() => setEconomicsBuilding(false), 800);
+  };
+
   if (!state && !loading) return null;
 
   return (
@@ -406,28 +508,71 @@ export function OpportunityInvestigationPanel({
             </div>
 
             {verifiedInputs.route_verified ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
-                <div>
-                  <p className="text-xs font-medium">Counterparties and route are verified inputs</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Continue to economics. AICIS has already seeded the product and verified inputs; quantity, structure, FX, scenario and landed-cost evidence must still be supplied rather than invented.
-                  </p>
+              <div className="rounded-md border border-border p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-medium">Research economics</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Set the quantity and your current scenario assumptions. AICIS will calculate research economics from verified supplier, buyer and route inputs, but will keep this below review-grade until landed costs and stronger scenario evidence clear the gates.
+                    </p>
+                  </div>
+                  <Badge variant="secondary">assumptions ≠ facts</Badge>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    const advanced = document.getElementById("opportunity-advanced-workspace") as HTMLDetailsElement | null;
-                    if (advanced) advanced.open = true;
-                    window.setTimeout(() => {
-                      document.getElementById("transaction-path-lab")?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    }, 50);
-                  }}
-                >
-                  Continue to economics
-                </Button>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <Input
+                    inputMode="decimal"
+                    value={quantityText}
+                    onChange={(event) => setQuantityText(event.target.value)}
+                    placeholder={state.request.product.unit ? `Quantity (${state.request.product.unit})` : "Quantity"}
+                  />
+                  <Input
+                    inputMode="decimal"
+                    value={completionProbabilityText}
+                    onChange={(event) => setCompletionProbabilityText(event.target.value)}
+                    placeholder="Completion %"
+                  />
+                  <Input
+                    inputMode="decimal"
+                    value={downsideLossText}
+                    onChange={(event) => setDownsideLossText(event.target.value)}
+                    placeholder="Downside amount"
+                  />
+                  <Input
+                    inputMode="numeric"
+                    value={cycleDaysText}
+                    onChange={(event) => setCycleDaysText(event.target.value)}
+                    placeholder="Cycle days"
+                  />
+                  <Input
+                    inputMode="decimal"
+                    value={upsideProfitText}
+                    onChange={(event) => setUpsideProfitText(event.target.value)}
+                    placeholder="Upside (optional)"
+                  />
+                </div>
+
+                <label className="mt-3 flex items-start gap-2 text-[11px] text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-3.5 w-3.5"
+                    checked={assumptionsConfirmed}
+                    onChange={(event) => setAssumptionsConfirmed(event.target.checked)}
+                  />
+                  <span>
+                    I confirm these are current research assumptions supplied for analysis. They are not observed facts, independently calibrated probabilities, promises of profit or execution instructions.
+                  </span>
+                </label>
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[10px] text-muted-foreground">
+                    First path tested: direct physical trade. Alternative structures remain a later strategic comparison, not an assumption that direct ownership is best.
+                  </p>
+                  <Button size="sm" onClick={buildResearchEconomics} disabled={economicsBuilding}>
+                    {economicsBuilding ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+                    Calculate research economics
+                  </Button>
+                </div>
               </div>
             ) : null}
 
