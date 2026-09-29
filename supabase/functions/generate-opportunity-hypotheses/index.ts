@@ -1,14 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
+import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import {
   generateOpportunityHypotheses,
   OPPORTUNITY_HYPOTHESIS_VERSION,
 } from "../_shared/opportunity-hypothesis-v1.mjs";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -82,7 +77,9 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const requestedLimit = Math.max(Number(body.limit ?? 100), 1);
+    const requestedLimit = Number.isFinite(Number(body.limit))
+      ? Math.max(Math.floor(Number(body.limit)), 1)
+      : 100;
 
     const { data: prefs } = await sb
       .from("aicis_relevance_preferences")
@@ -104,7 +101,9 @@ Deno.serve(async (req) => {
     const limit = scanScope === "global"
       ? Math.min(requestedLimit, 900)
       : Math.min(requestedLimit, 300);
-    const windowDays = Math.min(Math.max(Number(body.window_days ?? 7), 1), 30);
+    const windowDays = Number.isFinite(Number(body.window_days))
+      ? Math.min(Math.max(Math.floor(Number(body.window_days)), 1), 30)
+      : 7;
 
     const relevanceBySignal: Record<string, RelevanceRow> = {};
     let signals: OpportunitySignal[] = [];
@@ -125,15 +124,21 @@ Deno.serve(async (req) => {
 
       if (signals.length) {
         const ids = signals.map((signal) => signal.id).filter((id): id is string => Boolean(id));
-        for (let index = 0; index < ids.length; index += 80) {
-          const chunk = ids.slice(index, index + 80);
-          const { data: relevanceRows } = await sb
+        // Bound concurrency: serial lookups multiplied database latency by every 80-signal chunk.
+        // These rows are optional user-specific annotations; a failed lookup must not invent a score.
+        for (let index = 0; index < ids.length; index += 320) {
+          const batch = ids.slice(index, index + 320);
+          const chunks = Array.from({ length: Math.ceil(batch.length / 80) }, (_, i) => batch.slice(i * 80, i * 80 + 80));
+          const results = await Promise.all(chunks.map((chunk) => sb
             .from("signal_relevance_scores")
             .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
             .eq("user_id", user.id)
-            .in("signal_id", chunk);
-          for (const row of (relevanceRows ?? []) as RelevanceRow[]) {
-            relevanceBySignal[row.signal_id] = row;
+            .in("signal_id", chunk)));
+          for (const { data: relevanceRows, error: relevanceError } of results) {
+            if (relevanceError) throw relevanceError;
+            for (const row of (relevanceRows ?? []) as RelevanceRow[]) {
+              relevanceBySignal[row.signal_id] = row;
+            }
           }
         }
       }
@@ -214,9 +219,13 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("generate-opportunity-hypotheses failed", error);
+    const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : null;
+    const message = error instanceof Error ? error.message :
+      typeof error === "object" && error !== null && "message" in error ? String(error.message) : "Opportunity hypothesis generation failed";
     return json({
       ok: false,
-      error: error instanceof Error ? error.message : "Opportunity hypothesis generation failed",
-    }, 500);
+      error: code === "57014" ? "The signal search took too long. Please try again shortly." : message,
+      ...(code ? { code } : {}),
+    }, code === "57014" ? 503 : 500);
   }
 });

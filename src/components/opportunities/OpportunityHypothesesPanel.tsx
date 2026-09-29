@@ -44,6 +44,7 @@ type Response = {
 export function OpportunityHypothesesPanel() {
   const [data, setData] = useState<Response | null>(null);
   const [loading, setLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const { toast } = useToast();
   const { selectEntity } = useIntelligenceOS();
 
@@ -74,17 +75,28 @@ export function OpportunityHypothesesPanel() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data: response, error } = await supabase.functions.invoke("generate-opportunity-hypotheses", {
-      body: { limit: 900, scope: "global", window_days: 7 },
-    });
-    setLoading(false);
-
-    if (error) {
-      toast({ title: "Hypothesis refresh failed", description: error.message, variant: "destructive" });
-      return;
+    setScanError(null);
+    try {
+      const { data: response, error } = await supabase.functions.invoke("generate-opportunity-hypotheses", {
+        body: { limit: 900, scope: "global", window_days: 7 },
+      });
+      if (error || !response?.ok) {
+        let detail = response?.error as string | undefined;
+        if (error && "context" in error && error.context instanceof Response) {
+          const body = await error.context.clone().json().catch(() => null) as { error?: string } | null;
+          detail = body?.error ?? detail;
+        }
+        const message = detail || error?.message || "The scan could not finish. Please try again.";
+        setScanError(message);
+        toast({ title: "Hypothesis refresh failed", description: message, variant: "destructive" });
+        return;
+      }
+      setData(response as Response);
+    } catch {
+      setScanError("The scan could not finish. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    setData(response as Response);
   }, [toast]);
 
   useEffect(() => {
@@ -112,10 +124,11 @@ export function OpportunityHypothesesPanel() {
         </div>
       </CardHeader>
       <CardContent>
+        {scanError ? <p role="alert" className="mb-3 text-xs text-destructive">{scanError}</p> : null}
         {!data ? (
           <div className="flex items-center gap-2 rounded-md border border-dashed p-5 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Scanning current world signals for opportunities relevant to you…
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {loading ? "Scanning current world signals for opportunities relevant to you…" : "No scan results yet. Select Scan again to retry."}
           </div>
         ) : data.hypotheses?.length ? (
           <div className="space-y-3">
