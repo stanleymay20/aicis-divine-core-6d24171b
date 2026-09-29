@@ -329,6 +329,7 @@ export function LandedCostVerificationPanel({
       destination: null,
       resolving: true,
     });
+    setSourcePlan(null);
 
     void (async () => {
       const [origin, destination] = await Promise.all([
