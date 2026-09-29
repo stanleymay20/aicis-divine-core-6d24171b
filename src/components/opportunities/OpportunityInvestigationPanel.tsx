@@ -92,6 +92,68 @@ async function sha256Json(value: unknown) {
     .join("");
 }
 
+function buildQuoteRequest(
+  candidate: DiscoveryCandidate,
+  productName: string,
+  unit: string,
+  quantityText: string,
+  originCountry?: string | null,
+  destinationCountry?: string | null,
+) {
+  const quantity = quantityText.trim()
+    ? `${quantityText.trim()} ${unit || "units"}`
+    : "quantity to be confirmed";
+  const company = candidate.title || candidate.domain;
+
+  if (candidate.role === "logistics") {
+    return [
+      `Subject: Request for current logistics quotation — ${productName}`,
+      "",
+      `Hello ${company},`,
+      "",
+      `Please provide a current attributable quotation for transporting ${quantity} of ${productName}` +
+        (originCountry && destinationCountry ? ` from ${originCountry} to ${destinationCountry}.` : "."),
+      "",
+      "Please include:",
+      "- legal company name and registration identifier",
+      "- route and service description",
+      "- freight and other cost components with currency and basis",
+      "- transit time and available capacity",
+      "- quote validity / expiry",
+      "- insurance scope or exclusions",
+      "- payment terms",
+      "- official contact details",
+      "",
+      "This is a request for information and quotation only; it is not an order or contractual commitment.",
+    ].join("\n");
+  }
+
+  const side = candidate.role === "supplier" ? "supply" : "purchase";
+  const priceLabel = candidate.role === "supplier"
+    ? "current unit price and currency"
+    : "current buying price / commercial terms and currency";
+
+  return [
+    `Subject: Request for current ${side} terms — ${productName}`,
+    "",
+    `Hello ${company},`,
+    "",
+    `We are assessing a potential ${candidate.role === "supplier" ? "sourcing" : "sales"} transaction for ${quantity} of ${productName}.`,
+    "",
+    "Please provide or confirm:",
+    "- legal company name and registration identifier",
+    `- ${priceLabel}`,
+    "- minimum / maximum quantity or capacity",
+    "- Incoterm and relevant delivery / collection location",
+    "- quote validity / expiry",
+    "- lead time",
+    "- payment terms",
+    "- official business contact details",
+    "",
+    "This is a request for information and quotation only; it is not an order or contractual commitment.",
+  ].join("\n");
+}
+
 export function OpportunityInvestigationPanel({
   targetCountries,
   comparisonCurrency,
@@ -573,6 +635,22 @@ export function OpportunityInvestigationPanel({
           </div>
         ) : state ? (
           <>
+            <div className="flex flex-col gap-2 rounded-md border border-border/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-medium">Scale to investigate</p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  Set the quantity you want quotes and economics to refer to. This is a research scale, not an order.
+                </p>
+              </div>
+              <Input
+                inputMode="decimal"
+                value={quantityText}
+                onChange={(event) => setQuantityText(event.target.value)}
+                placeholder={state.request.product.unit ? `Quantity (${state.request.product.unit})` : "Quantity"}
+                className="sm:max-w-[220px]"
+              />
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <CandidateColumn
                 title="Supplier side"
@@ -583,6 +661,13 @@ export function OpportunityInvestigationPanel({
                 screenResults={screenResults}
                 onScreen={screen}
                 onPrepareVerification={prepareVerification}
+                requestContext={{
+                  productName: state.request.product.name,
+                  unit: state.request.product.unit,
+                  quantityText,
+                  originCountry: verifiedInputs.supplier_country,
+                  destinationCountry: verifiedInputs.buyer_country,
+                }}
               />
               <CandidateColumn
                 title="Buyer side"
@@ -640,6 +725,13 @@ export function OpportunityInvestigationPanel({
                     screenResults={screenResults}
                     onScreen={screen}
                     onPrepareVerification={prepareVerification}
+                    requestContext={{
+                      productName: state.request.product.name,
+                      unit: state.request.product.unit,
+                      quantityText,
+                      originCountry: verifiedInputs.supplier_country,
+                      destinationCountry: verifiedInputs.buyer_country,
+                    }}
                   />
                 )}
               </div>
@@ -680,13 +772,7 @@ export function OpportunityInvestigationPanel({
                   <Badge variant="secondary">assumptions ≠ facts</Badge>
                 </div>
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <Input
-                    inputMode="decimal"
-                    value={quantityText}
-                    onChange={(event) => setQuantityText(event.target.value)}
-                    placeholder={state.request.product.unit ? `Quantity (${state.request.product.unit})` : "Quantity"}
-                  />
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <Input
                     inputMode="decimal"
                     value={completionProbabilityText}
@@ -793,6 +879,7 @@ function CandidateColumn({
   screenResults,
   onScreen,
   onPrepareVerification,
+  requestContext,
 }: {
   title: string;
   countries: string[];
@@ -802,7 +889,16 @@ function CandidateColumn({
   screenResults: Record<string, SanctionsScreenResponse>;
   onScreen: (candidate: DiscoveryCandidate) => void | Promise<void>;
   onPrepareVerification: (candidate: DiscoveryCandidate) => void;
+  requestContext: {
+    productName: string;
+    unit: string;
+    quantityText: string;
+    originCountry?: string | null;
+    destinationCountry?: string | null;
+  };
 }) {
+  const [draftId, setDraftId] = useState<string | null>(null);
+
   return (
     <div className="rounded-lg border border-border p-3">
       <div className="flex items-center justify-between gap-2">
@@ -865,6 +961,16 @@ function CandidateColumn({
                     : <Building2 className="h-3 w-3" />}
                   Official-list check
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  onClick={() => setDraftId((current) =>
+                    current === candidate.discovery_id ? null : candidate.discovery_id
+                  )}
+                >
+                  {draftId === candidate.discovery_id ? "Hide request" : "Draft quote request"}
+                </Button>
                 {screenResults[candidate.discovery_id] ? (
                   <Button
                     variant="ghost"
@@ -877,6 +983,38 @@ function CandidateColumn({
                   </Button>
                 ) : null}
               </div>
+              {draftId === candidate.discovery_id ? (
+                <div className="mt-2 rounded-md border border-dashed p-2.5">
+                  <pre className="whitespace-pre-wrap text-[10px] leading-relaxed text-muted-foreground">
+                    {buildQuoteRequest(
+                      candidate,
+                      requestContext.productName,
+                      requestContext.unit,
+                      requestContext.quantityText,
+                      requestContext.originCountry,
+                      requestContext.destinationCountry,
+                    )}
+                  </pre>
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[10px]"
+                      onClick={() => void navigator.clipboard?.writeText(buildQuoteRequest(
+                        candidate,
+                        requestContext.productName,
+                        requestContext.unit,
+                        requestContext.quantityText,
+                        requestContext.originCountry,
+                        requestContext.destinationCountry,
+                      ))}
+                    >
+                      Copy request
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
