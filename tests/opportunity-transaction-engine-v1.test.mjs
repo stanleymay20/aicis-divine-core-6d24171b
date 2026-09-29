@@ -205,3 +205,30 @@ test("recoverable-tax cash-flow adjustments survive into the execution dossier",
   assert.equal(result.execution_dossier.cash_flow_adjustments[0].amount, 5985);
   assert.equal(result.execution_dossier.landed_cost_evidence.coverage_complete, true);
 });
+
+test("user-declared scenario assumptions remain research-only even if profile thresholds are lowered", () => {
+  const permissivePrefs = {
+    ...prefs,
+    alert_preferences: {
+      opportunity_profile: {
+        ...prefs.alert_preferences.opportunity_profile,
+        min_evidence_score: 0,
+      },
+    },
+  };
+
+  const result = evaluateOpportunity({
+    ...good,
+    id: "opp-user-scenario",
+    scenario_research_only: true,
+    scenario_evidence_semantics: "user_declared_research_assumption_not_empirically_calibrated",
+    landed_cost_complete: true,
+    landed_cost_execution_ready: true,
+  }, permissivePrefs);
+
+  assert.equal(result.eligible, false);
+  assert.ok(result.rejection_reasons.includes("scenario_research_only_user_assumption"));
+  assert.equal(result.execution_ready, false);
+  assert.ok(result.execution_dossier.missing_execution_fields.includes("independently_validated_scenario"));
+});
+
