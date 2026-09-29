@@ -33,17 +33,92 @@ type EvidenceRow = {
   geo?: string | null;
 };
 
-const DOMAIN_CATEGORIES: Record<string, string[]> = {
-  security: ["defense_conflict", "social_unrest", "cybersecurity", "maritime_security"],
-  governance: ["geopolitical", "legal_regulatory", "elections"],
-  finance: ["economic", "financial_markets", "central_banking"],
-  energy: ["energy", "infrastructure"],
-  food: ["food_agriculture", "water_hydrology"],
-  health: ["public_health"],
-  climate: ["climate_disaster"],
-  supply_chain: ["supply_chain", "technology"],
-  migration: ["migration_displacement"],
+type JsonRecord = Record<string, unknown>;
+
+type GeographyNamedItem = {
+  name?: string;
+  label?: string;
 };
+
+type CandidateSignal = {
+  id?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  primary_source?: string | null;
+  source_references?: unknown;
+  ingested_at?: string | null;
+  occurred_at?: string | null;
+  category?: string | null;
+  geo_admin0_iso3?: string | null;
+  canonical_event_id?: string | null;
+  dedup_key?: string | null;
+};
+
+type SnapshotRow = {
+  id?: string | null;
+  iso3?: string | null;
+  domain?: string | null;
+  performance_index?: number | string | null;
+  momentum_score?: number | string | null;
+  volatility_index?: number | string | null;
+  snapshot_date?: string | null;
+  _unchanged_since?: string | null;
+};
+
+type CitationSource = {
+  url: string | null;
+  publisher: string | null;
+};
+
+type EvidenceQualityMeta = {
+  external_evidence_count: number;
+  internal_measurement_count: number;
+  rejected_irrelevant_count: number;
+  deduplicated_count: number;
+  internal_capped_count?: number;
+  evidence_sufficiency: "strong" | "moderate" | "thin";
+};
+
+type DomainEvidenceSelection = {
+  external: Array<{
+    signal: CandidateSignal;
+    cite: CitationSource;
+    relevance: JsonRecord;
+  }>;
+  internal: SnapshotRow[];
+  meta: EvidenceQualityMeta;
+};
+
+type SpecialistPerspective = JsonRecord & {
+  domain: string;
+  confidence: number;
+  evidence_refs: string[];
+  provider: string;
+  model: string;
+};
+
+type DisputedPoint = JsonRecord & {
+  topic?: unknown;
+  specialist_a?: unknown;
+  position_a?: unknown;
+  specialist_b?: unknown;
+  position_b?: unknown;
+  divergence?: unknown;
+};
+
+function asRecord(value: unknown): JsonRecord {
+  return typeof value === "object" && value !== null ? value as JsonRecord : {};
+}
+
+function errorCode(error: unknown): string {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code ?? "specialist_failed")
+    : "specialist_failed";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? "unknown");
+}
 
 async function sha256(text: string) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -62,13 +137,13 @@ async function callModel(system: string, user: string) {
     timeoutMs: 45_000,
   });
 
-  let parsed: any;
+  let parsed: JsonRecord;
   try {
-    parsed = JSON.parse(result.content);
+    parsed = asRecord(JSON.parse(result.content));
   } catch {
     const m = result.content.match(/\{[\s\S]*\}/);
     if (!m) throw new Error("Model returned unparseable output");
-    parsed = JSON.parse(m[0]);
+    parsed = asRecord(JSON.parse(m[0]));
   }
   return { output: parsed, provider: result.provider, model: result.model };
 }
@@ -148,7 +223,10 @@ Deno.serve(async (req) => {
     const subject_key: string | null = iso3List.length ? iso3List.join(",").slice(0, 500) : null;
     const scopeLabel = geography.scope === "global"
       ? "global"
-      : [...geography.regions.map((r: any) => r.label), ...geography.countries.map((c: any) => c.name)].join(", ") || iso3List.join(", ");
+      : [
+        ...(Array.isArray(geography.regions) ? geography.regions as GeographyNamedItem[] : []).map((r) => r.label),
+        ...(Array.isArray(geography.countries) ? geography.countries as GeographyNamedItem[] : []).map((c) => c.name),
+      ].filter(Boolean).join(", ") || iso3List.join(", ");
 
     const task_key = `${subject_kind}:${subject_key ?? "global"}:${(await sha256(question)).slice(0, 16)}:${new Date().toISOString()}`;
     const configuredProvider = Deno.env.get("AICIS_MODEL_PROVIDER")?.trim() || "provider-neutral";
@@ -189,14 +267,14 @@ Deno.serve(async (req) => {
     if (sigErr) throw sigErr;
 
     const qTerms = questionTerms(question, [
-      ...geography.countries.map((c: any) => c.name),
-      ...geography.regions.map((r: any) => r.label),
+      ...(Array.isArray(geography.countries) ? geography.countries as GeographyNamedItem[] : []).map((c) => c.name).filter((name): name is string => Boolean(name)),
+      ...(Array.isArray(geography.regions) ? geography.regions as GeographyNamedItem[] : []).map((r) => r.label).filter((label): label is string => Boolean(label)),
     ]);
 
     const evidenceByDomain: Record<string, EvidenceRow[]> = {};
-    const evidenceQualityByDomain: Record<string, any> = {};
+    const evidenceQualityByDomain: Record<string, EvidenceQualityMeta> = {};
     await Promise.all(domains.map(async (domain) => {
-      let snaps: any[] = [];
+      let snaps: SnapshotRow[] = [];
       if (iso3List.length) {
         const { data, error: snapErr } = await supabase
           .from("country_performance_snapshots")
@@ -211,15 +289,15 @@ Deno.serve(async (req) => {
 
       const sel = selectDomainEvidence({
         domain,
-        signals: candidateSignals ?? [],
+        signals: (candidateSignals ?? []) as CandidateSignal[],
         snapshots: snaps,
         qTerms,
         iso3List,
         citationSource: signalCitationSource,
-      });
+      }) as DomainEvidenceSelection;
       evidenceQualityByDomain[domain] = sel.meta;
 
-      const rows: EvidenceRow[] = sel.external.map(({ signal: s, cite }: any, i: number) => ({
+      const rows: EvidenceRow[] = sel.external.map(({ signal: s, cite }, i: number) => ({
         ref: `${domain}-S${i + 1}`,
         source_kind: "signal",
         source_table: "global_signals",
@@ -232,7 +310,7 @@ Deno.serve(async (req) => {
         observed_at: s.occurred_at ?? s.ingested_at,
         geo: s.geo_admin0_iso3 ?? null,
       }));
-      sel.internal.forEach((s: any, i: number) =>
+      sel.internal.forEach((s, i: number) =>
         rows.push({
           ref: `${domain}-M${i + 1}`,
           source_kind: "internal_measurement",
@@ -255,7 +333,7 @@ Deno.serve(async (req) => {
       by_domain: evidenceQualityByDomain,
     };
 
-    const perspectives: any[] = [];
+    const perspectives: SpecialistPerspective[] = [];
     let succeeded = 0;
     let failed = 0;
     const specialistErrors: { domain: string; code: string; message: string }[] = [];
@@ -334,14 +412,21 @@ Deno.serve(async (req) => {
         }));
         if (cites.length) await supabase.from("agent_evidence_citations").insert(cites);
 
-        perspectives.push({ domain, ...out, confidence, evidence_refs: usedRefs, provider: modelRun.provider, model: modelRun.model });
+        perspectives.push({
+          ...out,
+          domain,
+          confidence,
+          evidence_refs: usedRefs,
+          provider: modelRun.provider,
+          model: modelRun.model,
+        });
         succeeded++;
       } catch (e) {
         failed++;
         specialistErrors.push({
           domain,
-          code: String((e as any)?.code ?? "specialist_failed"),
-          message: String((e as Error)?.message ?? "unknown").slice(0, 300),
+          code: errorCode(e),
+          message: errorMessage(e).slice(0, 300),
         });
         await supabase.from("agent_specialist_analyses").insert({
           task_id: taskId,
@@ -359,7 +444,7 @@ Deno.serve(async (req) => {
           prompt_hash: promptHash,
           latency_ms: Date.now() - started,
           status: "error",
-          error: (e as Error).message.slice(0, 1000),
+          error: errorMessage(e).slice(0, 1000),
         });
       }
     }));
@@ -443,10 +528,12 @@ Deno.serve(async (req) => {
       specialists_failed: failed,
     });
 
-    const disputes = Array.isArray(syn.disputed_points) ? syn.disputed_points : [];
+    const disputes: DisputedPoint[] = Array.isArray(syn.disputed_points)
+      ? syn.disputed_points.map(asRecord) as DisputedPoint[]
+      : [];
     if (disputes.length) {
       await supabase.from("agent_disagreements").insert(
-        disputes.filter((d: any) => d?.specialist_a && d?.specialist_b).map((d: any) => ({
+        disputes.filter((d) => d.specialist_a && d.specialist_b).map((d) => ({
           task_id: taskId,
           topic: String(d.topic ?? "unspecified").slice(0, 500),
           specialist_a: String(d.specialist_a),
