@@ -345,6 +345,45 @@ export function TransactionPathLab() {
   const { toast } = useToast();
 
   useEffect(() => {
+    const seedHandler = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        signal?: { id?: string; title?: string };
+        product?: { id?: string; name?: string; unit?: string; sectors?: string[] };
+        comparison_currency?: string;
+      }>).detail || {};
+
+      if (!detail.product?.id || !detail.product?.name || !detail.product?.unit) return;
+
+      setPayload(JSON.stringify({
+        as_of: new Date().toISOString(),
+        signal: {
+          id: detail.signal?.id || null,
+          title: detail.signal?.title || null,
+          domain: null,
+          sectors: detail.product.sectors || [],
+        },
+        product: {
+          id: detail.product.id,
+          name: detail.product.name,
+          unit: detail.product.unit,
+          sectors: detail.product.sectors || [],
+        },
+        quantity: null,
+        comparison_currency: /^[A-Z]{3}$/.test(String(detail.comparison_currency || "").toUpperCase())
+          ? String(detail.comparison_currency).toUpperCase()
+          : "",
+        fx_rates: [],
+        source_offers: [],
+        sale_offers: [],
+        routes: [],
+        structures: [],
+        landed_cost_packs: [],
+        scenario: null,
+      }, null, 2));
+      setResult(null);
+      setResearchRuns({});
+    };
+
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ role?: "supplier" | "buyer"; offer?: Record<string, unknown> }>).detail || {};
       if (!detail.offer || (detail.role !== "supplier" && detail.role !== "buyer")) return;
@@ -457,9 +496,11 @@ export function TransactionPathLab() {
       });
     };
 
+    window.addEventListener("aicis:seed-transaction-bundle", seedHandler as EventListener);
     window.addEventListener("aicis:add-verified-offer", handler as EventListener);
     window.addEventListener("aicis:add-verified-route", routeHandler as EventListener);
     return () => {
+      window.removeEventListener("aicis:seed-transaction-bundle", seedHandler as EventListener);
       window.removeEventListener("aicis:add-verified-offer", handler as EventListener);
       window.removeEventListener("aicis:add-verified-route", routeHandler as EventListener);
     };
