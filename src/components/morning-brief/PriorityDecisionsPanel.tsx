@@ -330,6 +330,13 @@ export function PriorityDecisionsPanel() {
                   <Badge variant="outline" className="text-[10px]">
                     {signal.category}
                   </Badge>
+                  <Badge
+                    variant="outline"
+                    className="gap-1 font-mono text-[9px] text-muted-foreground"
+                  >
+                    <Clock className="h-3 w-3" />
+                    {formatObserved(signal.first_detected_at)}
+                  </Badge>
                   {signal.affected_countries?.slice(0, 2).map((country) => (
                     <Badge key={country} variant="outline" className="h-5 text-[9px]">
                       {country}
