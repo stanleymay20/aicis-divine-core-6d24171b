@@ -15,3 +15,4 @@
 - [ ] Latest-signals / citations indexes — scheduled 01:10/01:40 UTC tonight
 - [x] Command-center views: telemetry/intervention/agent/memory/enterprise backbone tables do not exist live (only planetary_causal_command_view). Page now reports "not deployed" per stage instead of erroring or polling 404s. Deploying the backbone would require replaying the unapplied truth-floor migration set — not done (repo/live schema drift risk).
 - [ ] Trust-score + forecast accumulation timeouts — still blocked on the same unapplied migration set (per-file review required)
+- [ ] One Question -> One Decision: code wired to orchestrate-multi-agent (done); BLOCKED on AICIS_MODEL_* secrets + production test; function is admin(+MFA)-only.
