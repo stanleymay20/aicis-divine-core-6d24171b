@@ -4,3 +4,4 @@
 - Password-reset emails use a separate implicit-flow auth client initialized before the normal PKCE app client — because emailed PKCE codes fail across browsers without the originating browser's verifier; recovery sessions never unlock app routes.
 - Shared edge auth rejections (401/403) always include CORS headers — why: otherwise browsers mask the real reason as a CORS failure.
 - Ask AICIS geography/domain scope is resolved deterministically server-side by `_shared/ask-scope-v1.mjs` (country_profiles names first, uppercase-standalone ISO3 only, clarification instead of global fallback) — why: case-insensitive ISO3 matching produced AND/ARE/CAN false countries.
+- Two-step sign-in (TOTP) uses Supabase Auth MFA only via /account/security; state logic lives in src/lib/mfa-state.mjs and TOTP secrets/codes are never persisted — why: satisfies admin AAL2 without weakening role checks, which stay separate.

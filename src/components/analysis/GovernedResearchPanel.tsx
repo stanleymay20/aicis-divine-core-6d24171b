@@ -8,7 +8,7 @@ import {
   Search,
   ShieldCheck,
 } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,6 +69,7 @@ type PriorTurn = {
 type PanelNotice =
   | { kind: "clarification"; message: string }
   | { kind: "not_ready"; message: string; missing: string[] }
+  | { kind: "mfa_required"; message: string }
   | { kind: "error"; message: string };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -178,6 +179,7 @@ const List = ({ items, empty }: { items: string[]; empty: string }) =>
 
 export const GovernedResearchPanel = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const { selectedEntity } = useIntelligenceOS();
   const activeQuestion = searchParams.get("question")?.trim() ?? "";
 
@@ -256,11 +258,15 @@ export const GovernedResearchPanel = () => {
         });
         return;
       }
+      if (response.reason === "mfa_required") {
+        setNotice({
+          kind: "mfa_required",
+          message: "Verify two-step sign-in for this session to run research. Administrator access is checked separately.",
+        });
+        return;
+      }
       if (response.status !== "completed") {
-        const reason =
-          response.reason === "mfa_required"
-            ? "This research run needs an administrator account with two-step sign-in (MFA)."
-            : str(response.degradation_reason) ?? str(response.error) ?? str(response.message) ?? "Research did not complete.";
+        const reason = str(response.degradation_reason) ?? str(response.error) ?? str(response.message) ?? "Research did not complete.";
         throw new Error(reason);
       }
 
@@ -340,6 +346,17 @@ export const GovernedResearchPanel = () => {
             {running ? "Researching…" : "Ask"}
           </Button>
         </form>
+
+        {notice?.kind === "mfa_required" && (
+          <div role="status" data-testid="mfa-required-notice" className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+            <span>{notice.message}</span>
+            <Button asChild size="sm" variant="outline">
+              <Link to={`/account/security?next=${encodeURIComponent(location.pathname + location.search)}`}>
+                Verify two-step sign-in
+              </Link>
+            </Button>
+          </div>
+        )}
 
         {notice?.kind === "clarification" && (
           <div role="status" className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
