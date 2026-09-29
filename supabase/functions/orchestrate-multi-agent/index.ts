@@ -5,7 +5,7 @@ import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 // synthesises the perspectives WITHOUT collapsing disagreement.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { aiChat } from "../_shared/ai-gateway.ts";
+import { aiChat, aiGatewayReadiness } from "../_shared/ai-gateway.ts";
 import {
   ASK_SCOPE_VERSION,
   ORCHESTRATOR_DOMAINS,
@@ -124,14 +124,13 @@ Deno.serve(async (req) => {
     const domains: string[] = routed.domains;
 
     // 3) Fail closed on missing model configuration — never manufacture an answer.
-    const missingConfig = ["AICIS_AI_MODE", "AICIS_MODEL_ENDPOINT", "AICIS_MODEL_NAME"]
-      .filter((k) => !Deno.env.get(k)?.trim());
-    if (missingConfig.length) {
+    const readiness = aiGatewayReadiness();
+    if (!readiness.ready) {
       return json({
         status: "not_ready",
         error: "AICIS model is not configured; no answer was generated.",
         code: "model_not_configured",
-        readiness: { ready: false, missing: missingConfig },
+        readiness,
         geography,
         domains,
         task_id: null,
