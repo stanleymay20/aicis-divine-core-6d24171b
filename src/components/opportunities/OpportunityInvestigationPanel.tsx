@@ -9,6 +9,7 @@ import { ArrowRight, Building2, Loader2, Search, ShieldCheck } from "lucide-reac
 
 type InvestigationRequest = {
   hypothesis_id: string;
+  source_signal_id: string;
   source_signal_title: string;
   product: {
     id: string;
@@ -58,7 +59,13 @@ function uniqueCountries(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 6);
 }
 
-export function OpportunityInvestigationPanel({ targetCountries }: { targetCountries: string[] }) {
+export function OpportunityInvestigationPanel({
+  targetCountries,
+  comparisonCurrency,
+}: {
+  targetCountries: string[];
+  comparisonCurrency?: string;
+}) {
   const [state, setState] = useState<InvestigationState | null>(null);
   const [loading, setLoading] = useState(false);
   const [buyerMarketText, setBuyerMarketText] = useState("");
@@ -155,11 +162,23 @@ export function OpportunityInvestigationPanel({ targetCountries }: { targetCount
         buyer_country: null,
         route_verified: false,
       });
+      window.dispatchEvent(new CustomEvent("aicis:seed-transaction-bundle", {
+        detail: {
+          signal: {
+            id: detail.source_signal_id,
+            title: detail.source_signal_title,
+          },
+          product: detail.product,
+          comparison_currency: /^[A-Z]{3}$/.test(String(comparisonCurrency || "").toUpperCase())
+            ? String(comparisonCurrency).toUpperCase()
+            : "",
+        },
+      }));
       void runDiscovery(detail);
     };
     window.addEventListener("aicis:start-opportunity-investigation", handler as EventListener);
     return () => window.removeEventListener("aicis:start-opportunity-investigation", handler as EventListener);
-  }, [runDiscovery]);
+  }, [comparisonCurrency, runDiscovery]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -385,6 +404,32 @@ export function OpportunityInvestigationPanel({ targetCountries }: { targetCount
                 detail="FX + landed cost + strategy"
               />
             </div>
+
+            {verifiedInputs.route_verified ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
+                <div>
+                  <p className="text-xs font-medium">Counterparties and route are verified inputs</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Continue to economics. AICIS has already seeded the product and verified inputs; quantity, structure, FX, scenario and landed-cost evidence must still be supplied rather than invented.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const advanced = document.getElementById("opportunity-advanced-workspace") as HTMLDetailsElement | null;
+                    if (advanced) advanced.open = true;
+                    window.setTimeout(() => {
+                      document.getElementById("transaction-path-lab")?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }, 50);
+                  }}
+                >
+                  Continue to economics
+                </Button>
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/20 p-3">
               <div>
