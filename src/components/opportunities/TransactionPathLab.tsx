@@ -376,6 +376,16 @@ export function TransactionPathLab() {
         }, null, 2);
       });
 
+      window.dispatchEvent(new CustomEvent("aicis:transaction-input-verified", {
+        detail: {
+          kind: "offer",
+          role: detail.role,
+          id: detail.offer.id ?? null,
+          country: detail.offer.country ?? null,
+          product_id: detail.offer.product_id ?? null,
+        },
+      }));
+
       const evidenceRefs = Array.isArray(detail.offer.evidence_refs) ? detail.offer.evidence_refs : [];
       if (evidenceRefs.length) {
         window.dispatchEvent(new CustomEvent("aicis:research-evidence-satisfied", {
@@ -421,6 +431,15 @@ export function TransactionPathLab() {
           routes: [...withoutDuplicate, detail.route],
         }, null, 2);
       });
+
+      window.dispatchEvent(new CustomEvent("aicis:transaction-input-verified", {
+        detail: {
+          kind: "route",
+          id: detail.route.id ?? null,
+          origin_country: detail.route.origin_country ?? null,
+          destination_country: detail.route.destination_country ?? null,
+        },
+      }));
 
       const evidenceRefs = Array.isArray(detail.route.evidence_refs) ? detail.route.evidence_refs : [];
       if (evidenceRefs.length) {
