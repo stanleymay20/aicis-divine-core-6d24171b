@@ -26,7 +26,7 @@ export const DOMAIN_TERMS = {
     "econom", "inflation", "currency", "cedi", "exchange rate", "debt", "bond", "imf", "budget",
     "fiscal", "tax", "revenue", "bank", "interest rate", "central bank", "gdp", "growth", "investment",
     "investor", "market", "stock", "credit", "loan", "deficit", "export", "import", "trade", "cost",
-    "price", "tariff",
+    "price", "tariff", "public financ", "subsid",
   ],
   energy: [
     "energy", "power", "electricity", "grid", "gas", "oil", "fuel", "petrol", "diesel", "refiner",
