@@ -27,6 +27,37 @@ type RelevanceRow = {
   computed_at: string;
 };
 
+type OpportunitySignal = JsonRecord & {
+  id?: string;
+  title?: string;
+  canonical_event_id?: string | null;
+  dedup_key?: string | null;
+};
+
+function normalizedTitle(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .slice(0, 220);
+}
+
+function deduplicateSignals(signals: OpportunitySignal[]) {
+  const seen = new Set<string>();
+  const unique: OpportunitySignal[] = [];
+
+  for (const signal of signals) {
+    const key = String(signal.canonical_event_id || "").trim()
+      || String(signal.dedup_key || "").trim()
+      || normalizedTitle(signal.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(signal);
+  }
+
+  return unique;
+}
+
 function asRecord(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as JsonRecord
@@ -67,39 +98,79 @@ Deno.serve(async (req) => {
         ? Number(opportunityProfile.min_relevance_score)
         : 45;
 
-    const { data: relevanceRows, error: relevanceError } = await sb
-      .from("signal_relevance_scores")
-      .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
-      .eq("user_id", user.id)
-      .gte("relevance_score", minRelevance)
-      .order("relevance_score", { ascending: false })
-      .limit(limit);
-    if (relevanceError) throw relevanceError;
-
-    const typedRelevanceRows = (relevanceRows ?? []) as RelevanceRow[];
-    const ids = typedRelevanceRows.map((row) => row.signal_id).filter(Boolean);
-    if (ids.length === 0) {
-      return json({
-        ok: true,
-        hypothesis_version: OPPORTUNITY_HYPOTHESIS_VERSION,
-        min_relevance_score: minRelevance,
-        signals_scanned: 0,
-        hypotheses: [],
-      });
-    }
-
-    const { data: signals, error: signalError } = await sb
-      .from("global_signals")
-      .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status")
-      .in("id", ids);
-    if (signalError) throw signalError;
+    const scanScope = String(body.scope || "personalized").trim().toLowerCase() === "global"
+      ? "global"
+      : "personalized";
+    const windowDays = Math.min(Math.max(Number(body.window_days ?? 7), 1), 30);
 
     const relevanceBySignal: Record<string, RelevanceRow> = {};
-    for (const row of typedRelevanceRows) {
-      relevanceBySignal[row.signal_id] = row;
+    let signals: OpportunitySignal[] = [];
+    let rawSignalsScanned = 0;
+
+    if (scanScope === "global") {
+      const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
+      const { data: globalSignals, error: globalSignalError } = await sb
+        .from("global_signals")
+        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status,ingested_at,occurred_at,canonical_event_id,dedup_key")
+        .gte("ingested_at", since)
+        .order("ingested_at", { ascending: false })
+        .limit(limit);
+      if (globalSignalError) throw globalSignalError;
+
+      rawSignalsScanned = globalSignals?.length ?? 0;
+      signals = deduplicateSignals((globalSignals ?? []) as OpportunitySignal[]);
+
+      if (signals.length) {
+        const ids = signals.map((signal) => signal.id).filter((id): id is string => Boolean(id));
+        const { data: relevanceRows } = await sb
+          .from("signal_relevance_scores")
+          .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
+          .eq("user_id", user.id)
+          .in("signal_id", ids);
+        for (const row of (relevanceRows ?? []) as RelevanceRow[]) {
+          relevanceBySignal[row.signal_id] = row;
+        }
+      }
+    } else {
+      const { data: relevanceRows, error: relevanceError } = await sb
+        .from("signal_relevance_scores")
+        .select("signal_id,relevance_score,relevance_tier,relevance_reason,computed_at")
+        .eq("user_id", user.id)
+        .gte("relevance_score", minRelevance)
+        .order("relevance_score", { ascending: false })
+        .limit(limit);
+      if (relevanceError) throw relevanceError;
+
+      const typedRelevanceRows = (relevanceRows ?? []) as RelevanceRow[];
+      const ids = typedRelevanceRows.map((row) => row.signal_id).filter(Boolean);
+      if (ids.length === 0) {
+        return json({
+          ok: true,
+          hypothesis_version: OPPORTUNITY_HYPOTHESIS_VERSION,
+          scan_scope: scanScope,
+          min_relevance_score: minRelevance,
+          raw_signals_scanned: 0,
+          signals_scanned: 0,
+          deduplicated_count: 0,
+          hypotheses: [],
+          scope_notice: "Personalized opportunity discovery is limited to signals scored for this user.",
+        });
+      }
+
+      const { data: personalizedSignals, error: signalError } = await sb
+        .from("global_signals")
+        .select("id,title,summary,category,subcategory,affected_countries,affected_regions,affected_sectors,affected_stakeholders,source_references,evidence_hash,source_identifier_count,source_independence_status,canonical_event_id,dedup_key")
+        .in("id", ids);
+      if (signalError) throw signalError;
+
+      rawSignalsScanned = personalizedSignals?.length ?? 0;
+      signals = deduplicateSignals((personalizedSignals ?? []) as OpportunitySignal[]);
+      for (const row of typedRelevanceRows) {
+        relevanceBySignal[row.signal_id] = row;
+      }
     }
 
-    const hypotheses = generateOpportunityHypotheses(signals ?? [], relevanceBySignal);
+    const hypotheses = generateOpportunityHypotheses(signals, relevanceBySignal);
 
     await sb.from("system_logs").insert({
       user_id: user.id,
@@ -109,8 +180,12 @@ Deno.serve(async (req) => {
       log_level: "info",
       metadata: {
         hypothesis_version: OPPORTUNITY_HYPOTHESIS_VERSION,
+        scan_scope: scanScope,
         min_relevance_score: minRelevance,
-        signals_scanned: signals?.length ?? 0,
+        window_days: scanScope === "global" ? windowDays : null,
+        raw_signals_scanned: rawSignalsScanned,
+        signals_scanned: signals.length,
+        deduplicated_count: Math.max(0, rawSignalsScanned - signals.length),
         hypotheses_generated: hypotheses.length,
         transaction_eligible: 0,
       },
@@ -119,10 +194,17 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       hypothesis_version: OPPORTUNITY_HYPOTHESIS_VERSION,
+      scan_scope: scanScope,
       min_relevance_score: minRelevance,
-      signals_scanned: signals?.length ?? 0,
+      window_days: scanScope === "global" ? windowDays : null,
+      raw_signals_scanned: rawSignalsScanned,
+      signals_scanned: signals.length,
+      deduplicated_count: Math.max(0, rawSignalsScanned - signals.length),
       hypotheses,
-      guardrail: "Hypotheses are personalized research prompts only. They contain no verified transaction economics and are not execution recommendations.",
+      guardrail: "Hypotheses are research prompts only. They contain no verified transaction economics and are not execution recommendations.",
+      scope_notice: scanScope === "global"
+        ? "Global scan means the recent signals currently available in the AICIS evidence corpus. It is not a claim of exhaustive coverage of every market, village, company or transaction worldwide."
+        : "Personalized discovery is limited to signals scored for this user.",
     });
   } catch (error) {
     console.error("generate-opportunity-hypotheses failed", error);
