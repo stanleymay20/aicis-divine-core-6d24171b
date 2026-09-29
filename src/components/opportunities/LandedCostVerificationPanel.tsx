@@ -294,6 +294,33 @@ export function LandedCostVerificationPanel({
     return source + " → " + buyer;
   }, [candidate.source_offer?.name, candidate.sale_offer?.name]);
 
+  const coverageSummary = useMemo(() => {
+    try {
+      const parsed: unknown = JSON.parse(payload);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return { covered: 0, unknown: REQUIRED_CATEGORIES.length, items: [] as Array<{ category: string; status: string }> };
+      }
+      const coverage = Array.isArray((parsed as Record<string, unknown>).coverage)
+        ? (parsed as { coverage: Array<Record<string, unknown>> }).coverage
+        : [];
+      const items = REQUIRED_CATEGORIES.map((category) => {
+        const found = coverage.find((entry) => String(entry.category || "") === category);
+        return {
+          category,
+          status: String(found?.status || "unknown"),
+        };
+      });
+      const covered = items.filter((item) => item.status !== "unknown").length;
+      return {
+        covered,
+        unknown: items.length - covered,
+        items,
+      };
+    } catch {
+      return { covered: 0, unknown: REQUIRED_CATEGORIES.length, items: [] as Array<{ category: string; status: string }> };
+    }
+  }, [payload]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -543,15 +570,49 @@ export function LandedCostVerificationPanel({
         )}
       </div>
 
-      <Textarea
-        value={payload}
-        onChange={(event) => {
-          setPayload(event.target.value);
-          setResult(null);
-          setSourcePlan(null);
-        }}
-        className="min-h-[420px] font-mono text-xs"
-      />
+      <div className="rounded-md border border-border/70 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold">Cost evidence checklist</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">
+              {coverageSummary.covered} of {REQUIRED_CATEGORIES.length} required categories have an explicit status; {coverageSummary.unknown} remain unknown.
+            </p>
+          </div>
+          <Badge variant={coverageSummary.unknown === 0 ? "outline" : "secondary"}>
+            {coverageSummary.unknown === 0 ? "all categories addressed" : `${coverageSummary.unknown} unresolved`}
+          </Badge>
+        </div>
+        <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+          {coverageSummary.items.map((item) => (
+            <div key={item.category} className="flex items-center justify-between gap-2 rounded bg-muted/20 px-2.5 py-2 text-[10px]">
+              <span>{item.category.replaceAll("_", " ")}</span>
+              <Badge variant={item.status === "unknown" ? "secondary" : "outline"} className="text-[8px]">
+                {item.status.replaceAll("_", " ")}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <details className="rounded-md border border-border/70">
+        <summary className="cursor-pointer select-none px-3 py-2.5 text-xs font-medium">
+          Advanced evidence JSON
+          <span className="ml-2 text-[10px] font-normal text-muted-foreground">
+            edit only when adding attributable cost evidence
+          </span>
+        </summary>
+        <div className="border-t border-border p-3">
+          <Textarea
+            value={payload}
+            onChange={(event) => {
+              setPayload(event.target.value);
+              setResult(null);
+              setSourcePlan(null);
+            }}
+            className="min-h-[420px] font-mono text-xs"
+          />
+        </div>
+      </details>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[10px] text-muted-foreground">
@@ -569,7 +630,7 @@ export function LandedCostVerificationPanel({
             {sourcePlanLoading
               ? <Loader2 className="h-4 w-4 animate-spin" />
               : <Search className="h-4 w-4" />}
-            Plan official customs sources
+            Refresh official customs sources
           </Button>
           <Button type="button" size="sm" onClick={verify} disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
