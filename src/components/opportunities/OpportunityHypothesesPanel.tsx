@@ -30,7 +30,12 @@ type Hypothesis = {
 type Response = {
   ok: boolean;
   hypotheses?: Hypothesis[];
+  scan_scope?: "global" | "personalized";
+  window_days?: number | null;
+  raw_signals_scanned?: number;
   signals_scanned?: number;
+  deduplicated_count?: number;
+  scope_notice?: string;
   guardrail?: string;
   error?: string;
 };
@@ -69,7 +74,7 @@ export function OpportunityHypothesesPanel() {
   const refresh = useCallback(async () => {
     setLoading(true);
     const { data: response, error } = await supabase.functions.invoke("generate-opportunity-hypotheses", {
-      body: { limit: 100 },
+      body: { limit: 300, scope: "global", window_days: 7 },
     });
     setLoading(false);
 
@@ -93,6 +98,7 @@ export function OpportunityHypothesesPanel() {
             <CardTitle className="text-base flex items-center gap-2">
               <Lightbulb className="h-4 w-4 text-primary" />
               Opportunities AICIS found
+              <Badge variant="outline" className="text-[9px]">world scan</Badge>
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
               AICIS scans your relevant world signals for situations worth investigating. These are discoveries, not profit claims; transaction economics remain unknown until verified.
@@ -111,7 +117,24 @@ export function OpportunityHypothesesPanel() {
             Scanning current world signals for opportunities relevant to you…
           </div>
         ) : data.hypotheses?.length ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted/20 px-3 py-2 text-[10px] text-muted-foreground">
+              <span>{data.signals_scanned ?? 0} unique recent signals scanned</span>
+              <span>·</span>
+              <span>{data.hypotheses.length} supported opportunity hypotheses</span>
+              {typeof data.deduplicated_count === "number" && data.deduplicated_count > 0 ? (
+                <>
+                  <span>·</span>
+                  <span>{data.deduplicated_count} duplicate signals collapsed</span>
+                </>
+              ) : null}
+              {data.window_days ? (
+                <>
+                  <span>·</span>
+                  <span>{data.window_days}-day window</span>
+                </>
+              ) : null}
+            </div>
             {data.hypotheses.slice(0, 12).map((item) => (
               <div key={item.hypothesis_id} className="rounded-lg border border-border p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -176,7 +199,8 @@ export function OpportunityHypothesesPanel() {
             No supported product hypotheses were found in the current relevant signals.
           </div>
         )}
-        {data?.guardrail ? <p className="mt-3 text-[10px] text-muted-foreground">{data.guardrail}</p> : null}
+        {data?.scope_notice ? <p className="mt-3 text-[10px] text-muted-foreground">{data.scope_notice}</p> : null}
+        {data?.guardrail ? <p className="mt-1 text-[10px] text-muted-foreground">{data.guardrail}</p> : null}
       </CardContent>
     </Card>
   );
