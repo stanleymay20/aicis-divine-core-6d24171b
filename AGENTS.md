@@ -5,4 +5,5 @@
 - Shared edge auth rejections (401/403) always include CORS headers — why: otherwise browsers mask the real reason as a CORS failure.
 - Ask AICIS geography/domain scope is resolved deterministically server-side by `_shared/ask-scope-v1.mjs` (country_profiles names first, uppercase-standalone ISO3 only, clarification instead of global fallback) — why: case-insensitive ISO3 matching produced AND/ARE/CAN false countries.
 - Two-step sign-in (TOTP) uses Supabase Auth MFA only via /account/security; state logic lives in src/lib/mfa-state.mjs and TOTP secrets/codes are never persisted — why: satisfies admin AAL2 without weakening role checks, which stay separate.
-- Ask AICIS evidence is selected deterministically by `_shared/evidence-quality-v1.mjs` (text relevance per domain over an all-category pool, dedup, internal snapshots collapsed/capped to <=50% when external exists) — why: stored signal categories are sometimes wrong and unchanged internal scores crowded out documents.
+- Ask evidence uses deterministic domain relevance, dedup and <=50% internal snapshots when external exists — why: miscategorized signals and repeated scores weakened answers.
+- Opportunity scans probe for optional personal scores before batched lookups — why: empty score lookups stalled world scans; unknown stays unknown.
