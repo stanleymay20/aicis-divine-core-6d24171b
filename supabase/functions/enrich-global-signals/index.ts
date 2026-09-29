@@ -42,7 +42,9 @@ serve(async (req) => {
       .select("*")
       .eq("enrichment_status", "pending_enrichment")
       .lt("enrichment_attempts", MAX_ENRICHMENT_ATTEMPTS)
-      .order("ingested_at", { ascending: true })
+      // Newest first: fresh news must be scored before the historical backlog,
+      // otherwise the brief can never surface current events.
+      .order("ingested_at", { ascending: false })
       .limit(MAX_BATCH);
 
     if (fetchErr) throw new Error(`Fetch pending failed: ${fetchErr.message}`);
@@ -125,7 +127,6 @@ serve(async (req) => {
           { role: "user", content: JSON.stringify({ signals: evidenceBatch }) },
         ],
         responseFormat: { type: "json_object" },
-        temperature: 0.05,
         maxTokens: 2600,
         timeoutMs: AI_TIMEOUT_MS,
       });
