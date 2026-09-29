@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,7 +65,7 @@ export function OpportunityHypothesesPanel() {
     });
   };
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     const { data: response, error } = await supabase.functions.invoke("generate-opportunity-hypotheses", {
       body: { limit: 100 },
@@ -78,7 +78,11 @@ export function OpportunityHypothesesPanel() {
     }
 
     setData(response as Response);
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   return (
     <Card>
@@ -87,22 +91,23 @@ export function OpportunityHypothesesPanel() {
           <div>
             <CardTitle className="text-base flex items-center gap-2">
               <Lightbulb className="h-4 w-4 text-primary" />
-              Personalized Opportunity Hypotheses
+              Opportunities AICIS found
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              AICIS maps your relevant signals to products worth investigating. No price direction or profit is inferred at this stage.
+              AICIS scans your relevant world signals for situations worth investigating. These are discoveries, not profit claims; transaction economics remain unknown until verified.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={refresh} disabled={loading} className="gap-2">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Generate
+            Scan again
           </Button>
         </div>
       </CardHeader>
       <CardContent>
         {!data ? (
-          <div className="rounded-md border border-dashed p-5 text-xs text-muted-foreground">
-            Generate hypotheses from your current personalized signal scores.
+          <div className="flex items-center gap-2 rounded-md border border-dashed p-5 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Scanning current world signals for opportunities relevant to you…
           </div>
         ) : data.hypotheses?.length ? (
           <div className="space-y-2">
@@ -117,7 +122,7 @@ export function OpportunityHypothesesPanel() {
                     {typeof item.relevance_score === "number" ? (
                       <Badge variant="outline">relevance {Math.round(item.relevance_score)}</Badge>
                     ) : null}
-                    <Badge variant="secondary">research hypothesis</Badge>
+                    <Badge variant="secondary">DISCOVERED</Badge>
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -127,36 +132,35 @@ export function OpportunityHypothesesPanel() {
                 <p className="mt-2 text-[10px] text-muted-foreground">
                   Profitability unknown until current quotes, costs, counterparties and compliance are verified.
                 </p>
-                <div className="mt-2 flex flex-wrap justify-end gap-1">
+                <div className="mt-3 flex flex-wrap justify-end gap-1.5">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 gap-1.5 text-xs"
+                    className="h-8 gap-1.5 text-xs"
                     onClick={() => inspectHypothesis(item)}
-                    aria-label={`Inspect hypothesis ${item.product.name}`}
+                    aria-label={`Inspect opportunity ${item.product.name}`}
                   >
                     <BrainCircuit className="h-3.5 w-3.5 text-primary" />
-                    Inspect hypothesis
+                    Why this?
                   </Button>
                   <Button
-                    variant="ghost"
                     size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => window.dispatchEvent(new CustomEvent("aicis:investigate-product", {
-                      detail: { product: item.product.name, countries: item.countries, role: "supplier" },
-                    }))}
+                    className="h-8 text-xs"
+                    onClick={() => {
+                      const advanced = document.getElementById("opportunity-advanced-workspace") as HTMLDetailsElement | null;
+                      if (advanced) advanced.open = true;
+                      window.dispatchEvent(new CustomEvent("aicis:investigate-product", {
+                        detail: { product: item.product.name, countries: item.countries, role: "supplier" },
+                      }));
+                      window.setTimeout(() => {
+                        document.getElementById("opportunity-verification")?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                      }, 50);
+                    }}
                   >
-                    Find suppliers
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => window.dispatchEvent(new CustomEvent("aicis:investigate-product", {
-                      detail: { product: item.product.name, countries: item.countries, role: "buyer" },
-                    }))}
-                  >
-                    Find buyers
+                    Investigate transaction
                   </Button>
                 </div>
               </div>
