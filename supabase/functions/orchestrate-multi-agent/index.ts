@@ -52,8 +52,9 @@ async function callModel(system: string, user: string) {
       { role: "user", content: user },
     ],
     responseFormat: { type: "json_object" },
-    temperature: 0.2,
-    timeoutMs: 30_000,
+    // No temperature override: some configured models (e.g. gpt-5.x) accept only
+    // their default and reject any other value with a 400.
+    timeoutMs: 45_000,
   });
 
   let parsed: any;
@@ -170,7 +171,7 @@ Deno.serve(async (req) => {
     const since = new Date(Date.now() - windowDays * 86400_000).toISOString();
 
     const evidenceByDomain: Record<string, EvidenceRow[]> = {};
-    for (const domain of domains) {
+    await Promise.all(domains.map(async (domain) => {
       const rows: EvidenceRow[] = [];
       let sig = supabase
         .from("global_signals")
@@ -224,14 +225,16 @@ Deno.serve(async (req) => {
         );
       }
       evidenceByDomain[domain] = rows;
-    }
+    }));
 
     const perspectives: any[] = [];
     let succeeded = 0;
     let failed = 0;
     const specialistErrors: { domain: string; code: string; message: string }[] = [];
 
-    for (const domain of domains) {
+    // Independent specialists run concurrently so total latency stays within
+    // the 150s edge request limit (sequential calls exceeded it under DB load).
+    await Promise.all(domains.map(async (domain) => {
       const evidence = evidenceByDomain[domain];
       const started = Date.now();
       const system =
@@ -327,7 +330,10 @@ Deno.serve(async (req) => {
           error: (e as Error).message.slice(0, 1000),
         });
       }
-    }
+    }));
+    // Specialists run concurrently; keep output order stable by routed domain order.
+    perspectives.sort((a, b) => domains.indexOf(a.domain) - domains.indexOf(b.domain));
+
 
     if (succeeded < 2) {
       await supabase.from("agent_coordination_tasks").update({
