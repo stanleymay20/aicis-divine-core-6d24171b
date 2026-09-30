@@ -1,0 +1,35 @@
+{
+  "schema": "aicis.forecast_ledger_migration_generation_proof.v1",
+  "status": "generated_not_deployed",
+  "protocol_version": "aicis-scientific-forecasting-protocol-v1",
+  "source_bundle": [
+    "scripts/sql/forecast-task-registry-ledgers-v1.candidate.sql",
+    "scripts/sql/forecast-task-registry-ledgers-v1.hardening.sql"
+  ],
+  "source_bundle_sha256": "a7ed80a54d37b271dcd6b7a2d08f82009095785db5648f12e76d45eec79517aa",
+  "supabase_cli": {
+    "version": "2.116.0",
+    "command": "supabase migration new forecast_task_registry_ledgers_v1 < ordered-source-bundle"
+  },
+  "generation_evidence": {
+    "github_actions_run_id": 33591371472,
+    "github_actions_head_sha": "9a0bcd9f4a5ae7607d2f5dc6df5c3a658eb157df",
+    "generated_at_utc": "2026-09-02T04:35:32Z",
+    "artifact_id": 9831851816,
+    "artifact_name": "forecast-ledger-generated-migration-33591371472",
+    "artifact_archive_sha256": "4dd8cc4fdee2c6dc0980f07480cb9fa8657b936d1cedf8110afda369120ef1bb"
+  },
+  "migration": {
+    "path": "supabase/migrations/20260902043532_forecast_task_registry_ledgers_v1.sql",
+    "sha256": "a7ed80a54d37b271dcd6b7a2d08f82009095785db5648f12e76d45eec79517aa",
+    "byte_identical_to_source_bundle": true,
+    "transfer_commit_sha": "2f872f3f2de4aacd10b76f6090bcf363c9cad131"
+  },
+  "deployment": {
+    "applied_to_supabase": false,
+    "applied_to_aicis_production": false,
+    "production_writers_enabled": false,
+    "production_cron_changed": false
+  },
+  "next_gate": "isolated_postgresql_behavioral_proof_then_pr_review; remote Supabase application requires a separate non-production environment and advisor evidence"
+}
