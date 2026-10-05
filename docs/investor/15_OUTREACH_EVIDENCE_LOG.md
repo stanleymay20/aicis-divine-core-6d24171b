@@ -27,10 +27,15 @@ Never use `customer`, `partner`, `traction`, `pipeline`, or `pilot` loosely.
 
 | Organization | Contact | Role | Status | Evidence date | Next step |
 |---|---|---|---|---|---|
-| Stadt Brandenburg an der Havel | Jessica Schulz | Koordinatorin Klimaschutz & Klimaanpassung | draft prepared | 2026-10-05 | founder review, then send if approved |
-| StWB Stadtwerke Brandenburg | Max-Johannes Rösler | Leiter Marketing & Geschäftsentwicklung | draft prepared | 2026-10-05 | founder review, then send if approved |
+| Stadt Brandenburg an der Havel | Jessica Schulz | Koordinatorin Klimaschutz & Klimaanpassung | sent | 2026-10-05 | await reply; if positive, schedule discovery |
+| StWB Stadtwerke Brandenburg | Max-Johannes Rösler | Leiter Marketing & Geschäftsentwicklung | sent | 2026-10-05 | await reply; if positive, schedule discovery |
 
-The rows above document only that outreach drafts exist. They are not evidence of interest from either organization.
+Verified send evidence:
+
+- Stadt Brandenburg an der Havel outreach sent from the authenticated Gmail account on 2026-10-05; Gmail sent message id: `1a10b94540ef0c50`.
+- StWB Stadtwerke Brandenburg outreach sent from the authenticated Gmail account on 2026-10-05; Gmail sent message id: `1a10b94670047cfc`.
+
+These rows document only that two outreach messages were sent. They are not evidence of interest, a meeting, design-partner intent, a pilot, a commercial relationship, willingness to pay, or revenue.
 
 ---
 
