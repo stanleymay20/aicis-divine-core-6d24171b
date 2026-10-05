@@ -29,13 +29,17 @@ Never use `customer`, `partner`, `traction`, `pipeline`, or `pilot` loosely.
 |---|---|---|---|---|---|
 | Stadt Brandenburg an der Havel | Jessica Schulz | Koordinatorin Klimaschutz & Klimaanpassung | sent | 2026-10-05 | await reply; if positive, schedule discovery |
 | StWB Stadtwerke Brandenburg | Max-Johannes Rösler | Leiter Marketing & Geschäftsentwicklung | sent | 2026-10-05 | await reply; if positive, schedule discovery |
+| DigitalAgentur Brandenburg | General public contact / DABB team | Public-sector digital transformation and AI | sent | 2026-10-05 | await reply; if positive, identify the relevant practitioner and schedule discovery |
+| Technische Hochschule Brandenburg — Zentrum für Gründung und Transfer | Diana Rosenthal | Head of Centre for Entrepreneurship and Transfer | sent | 2026-10-05 | await reply; if positive, schedule discovery or transfer-scoping call |
 
 Verified send evidence:
 
 - Stadt Brandenburg an der Havel outreach sent from the authenticated Gmail account on 2026-10-05; Gmail sent message id: `1a10b94540ef0c50`.
 - StWB Stadtwerke Brandenburg outreach sent from the authenticated Gmail account on 2026-10-05; Gmail sent message id: `1a10b94670047cfc`.
+- DigitalAgentur Brandenburg outreach sent from the authenticated Gmail account on 2026-10-05; Gmail sent message id: `1a10b98d238acfc1`.
+- Technische Hochschule Brandenburg — Zentrum für Gründung und Transfer outreach sent from the authenticated Gmail account on 2026-10-05; Gmail sent message id: `1a10b98e7a5fb9a9`.
 
-These rows document only that two outreach messages were sent. They are not evidence of interest, a meeting, design-partner intent, a pilot, a commercial relationship, willingness to pay, or revenue.
+These rows document only that four outreach messages were sent. They are not evidence of interest, a meeting, design-partner intent, a pilot, a commercial relationship, willingness to pay, or revenue.
 
 ---
 
@@ -92,7 +96,7 @@ Default all answers to `no` unless supported by explicit evidence.
 
 ### Acceptable
 
-> Two highly relevant organizations have been approached for discovery.
+> Four highly relevant organizations have been approached for discovery.
 
 Only after messages are actually sent.
 
