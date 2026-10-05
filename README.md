@@ -14,6 +14,24 @@ The project is intentionally framed as a **decision-support system**, not an aut
 
 **Engineering signal:** AICIS keeps observed evidence, model inference and consequential action as distinct layers instead of collapsing them into one AI response.
 
+## Commercial validation focus
+
+The long-term AICIS vision is deliberately broad, but the first commercial validation target is narrow:
+
+> **Evidence-governed resilience and continuity intelligence for municipalities, public institutions and critical-infrastructure operators.**
+
+The first design-partner pilot should evaluate one bounded workflow—such as infrastructure-disruption triage, municipal resilience monitoring or critical-event evidence fusion—against a pre-agreed baseline and measurable success criteria.
+
+AICIS is currently **pre-seed / pre-commercial validation**. This repository does not claim paying customers, revenue, signed pilots or independently validated operational impact unless such evidence is explicitly added later.
+
+Controlled investor-readiness materials:
+
+- [`docs/investor/01_ONE_PAGE_INVESTOR_BRIEF.md`](docs/investor/01_ONE_PAGE_INVESTOR_BRIEF.md)
+- [`docs/investor/02_PILOT_BLUEPRINT.md`](docs/investor/02_PILOT_BLUEPRINT.md)
+- [`docs/investor/03_COMMERCIAL_STRATEGY.md`](docs/investor/03_COMMERCIAL_STRATEGY.md)
+- [`docs/investor/04_DATA_ROOM_INDEX.md`](docs/investor/04_DATA_ROOM_INDEX.md)
+- [`docs/investor/05_PITCH_DECK_OUTLINE.md`](docs/investor/05_PITCH_DECK_OUTLINE.md)
+
 ## Development and public-interest relevance
 
 AICIS investigates a practical development problem: important risks rarely arrive in one clean dataset. Climate pressure, economic continuity, infrastructure disruption, governance stability and humanitarian needs can interact, while decision-makers must still distinguish observed evidence from model inference.
