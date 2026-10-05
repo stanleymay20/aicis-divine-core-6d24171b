@@ -21,6 +21,9 @@ It must remain evidence-bounded: documents may define hypotheses, plans and temp
 10. [`10_LEGAL_IP_DILIGENCE_CHECKLIST.md`](10_LEGAL_IP_DILIGENCE_CHECKLIST.md) — corporate, IP, data, regulatory, procurement and security diligence checklist.
 11. [`11_INITIAL_DESIGN_PARTNER_TARGETS.md`](11_INITIAL_DESIGN_PARTNER_TARGETS.md) — researched Brandenburg/Berlin target universe; inclusion is not partnership evidence.
 12. [`12_PILOT_EVIDENCE_SCHEMA.md`](12_PILOT_EVIDENCE_SCHEMA.md) — baseline, provenance, detection, triage, forecast and failure-analysis measurement standard.
+13. [`13_FIRST_WAVE_OUTREACH.md`](13_FIRST_WAVE_OUTREACH.md) — controlled briefs for the first two local design-partner approaches.
+14. [`14_DISCOVERY_CALL_AGENDA.md`](14_DISCOVERY_CALL_AGENDA.md) — 30-minute workflow-discovery agenda and post-call evidence record.
+15. [`15_OUTREACH_EVIDENCE_LOG.md`](15_OUTREACH_EVIDENCE_LOG.md) — controlled status log that separates prepared outreach from actual market evidence.
 
 ## Evidence status vocabulary
 
@@ -41,8 +44,10 @@ Use these terms consistently:
 
 AICIS is a technically substantial, pre-commercial project pursuing accelerator, grant, design-partner and pre-seed pathways. Do not claim paying customers, revenue, signed pilots, institutional endorsement or independently validated operational effectiveness unless documentary evidence is added to the controlled data room.
 
+As of 2026-10-05, two first-wave design-partner messages have been prepared as drafts. They have **not** been sent and therefore are not market evidence.
+
 ## Execution gates
 
-The principal GitHub execution gate is issue #33. Supporting work includes the design-partner outreach sprint, diligence-pack tasks and pilot evidence schema issues.
+The principal GitHub execution gate is issue #33. The active external-evidence workstream is issue #34. Documentation and measurement-schema tasks are supporting controls, not substitutes for customer evidence.
 
 The investor package is not considered complete merely because these documents exist. The package becomes materially stronger only as real discovery records, signed agreements, pilot evidence, corporate records and financial evidence replace hypotheses.
