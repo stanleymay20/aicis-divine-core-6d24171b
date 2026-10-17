@@ -68,6 +68,7 @@ export const SEO_REGISTRY: Record<string, RouteSEOEntry> = {
   },
 
   // ---------- Operational app surfaces (noindex) ----------
+  "/situations": { title: "Situations | AICIS", description: "Governed Situation queue linking canonical signal identity, evidence state, analyst review, and operational outcomes without manufacturing missing certainty.", noindex: true },
   "/command-center": { title: "Planetary Command Center | AICIS", description: "Operational planetary command center for live signals and decision orchestration.", noindex: true },
   "/federation-admin": { title: "Federation Admin | AICIS", description: "Federation peers, trust completion score, and signing key administration.", noindex: true },
 
