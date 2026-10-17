@@ -4,6 +4,10 @@ import {
   buildSituationsV1,
   situationKeyForSignalV1,
 } from "../src/lib/situation-read-model-v1.mjs";
+import {
+  buildSituationWindowMetaV1,
+  classifySituationReadErrorV1,
+} from "../src/lib/situation-query-contract-v1.mjs";
 
 const baseSignal = (overrides = {}) => ({
   id: "signal-a",
@@ -164,4 +168,63 @@ test("missing evidence remains unknown rather than synthetic zero", () => {
   assert.equal(situation.corroboration.state, "unknown");
   assert.equal(situation.signalTrustScore, null);
   assert.equal(situation.forecast.probability, null);
+});
+
+test("exact count is required before a lookback is called complete", () => {
+  const complete = buildSituationWindowMetaV1({
+    lookbackDays: 7,
+    rowLimit: 300,
+    returnedSignalRows: 121,
+    totalSignalRows: 121,
+    queryLatencyMs: 84,
+  });
+  assert.equal(complete.coverageState, "complete_window");
+  assert.equal(complete.totalSignalRows, 121);
+
+  const unknown = buildSituationWindowMetaV1({
+    lookbackDays: 7,
+    rowLimit: 300,
+    returnedSignalRows: 121,
+    totalSignalRows: null,
+    queryLatencyMs: 84,
+  });
+  assert.equal(unknown.coverageState, "total_unknown");
+  assert.equal(unknown.totalSignalRows, null);
+});
+
+test("row cap is surfaced as a sample rather than a seven-day total", () => {
+  const capped = buildSituationWindowMetaV1({
+    lookbackDays: 7,
+    rowLimit: 300,
+    returnedSignalRows: 300,
+    totalSignalRows: 35000,
+    queryLatencyMs: 210,
+  });
+  assert.equal(capped.coverageState, "capped_sample");
+  assert.equal(capped.returnedSignalRows, 300);
+  assert.equal(capped.totalSignalRows, 35000);
+
+  const unknownTotal = buildSituationWindowMetaV1({
+    lookbackDays: 7,
+    rowLimit: 300,
+    returnedSignalRows: 300,
+    totalSignalRows: null,
+  });
+  assert.equal(unknownTotal.coverageState, "cap_reached_total_unknown");
+});
+
+test("concurrent count disagreement never becomes a false completeness claim", () => {
+  const inconsistent = buildSituationWindowMetaV1({
+    lookbackDays: 7,
+    rowLimit: 300,
+    returnedSignalRows: 300,
+    totalSignalRows: 299,
+  });
+  assert.equal(inconsistent.coverageState, "count_inconsistent");
+});
+
+test("read failures distinguish explicit auth/RLS denial from infrastructure unavailability", () => {
+  assert.equal(classifySituationReadErrorV1({ code: "42501", message: "permission denied" }), "access_denied");
+  assert.equal(classifySituationReadErrorV1({ status: 403, message: "Forbidden" }), "access_denied");
+  assert.equal(classifySituationReadErrorV1({ message: "connection pooler unavailable (544)" }), "unavailable");
 });
