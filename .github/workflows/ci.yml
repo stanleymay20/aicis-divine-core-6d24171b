@@ -131,6 +131,13 @@ jobs:
         id: evidence_fabric_v1
         run: node --test tests/evidence-fabric-contract-v1.test.mjs
 
+      - name: Situation read-model v1 truth floor
+        id: situation_read_model_v1
+        continue-on-error: true
+        run: |
+          node --test tests/situation-read-model-v1.test.mjs
+          node --test tests/situation-workspace-v1.test.mjs
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
@@ -196,6 +203,7 @@ jobs:
           echo "Sovereign AI runtime contract: ${{ steps.sovereign_ai_runtime.outcome }}"
           echo "Sovereign artifact lock: ${{ steps.sovereign_artifact_lock.outcome }}"
           echo "Evidence Fabric v1: ${{ steps.evidence_fabric_v1.outcome }}"
+          echo "Situation read-model v1: ${{ steps.situation_read_model_v1.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
@@ -219,6 +227,7 @@ jobs:
           [ "${{ steps.sovereign_ai_runtime.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.sovereign_artifact_lock.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.evidence_fabric_v1.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.situation_read_model_v1.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1

@@ -24,6 +24,7 @@ import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
 const WorldWorkspace = lazy(() => import("./pages/WorldWorkspace"));
+const Situations = lazy(() => import("./pages/Situations"));
 const PlanetaryCommandCenter = lazy(() => import("./pages/PlanetaryCommandCenter"));
 const MorningBrief = lazy(() => import("./pages/MorningBrief"));
 const AccountSecurity = lazy(() => import("./pages/AccountSecurity"));
@@ -173,6 +174,7 @@ const App = () => (
                 <Route path="/upgrade" element={<Lazy><Upgrade /></Lazy>} />
 
                 <Route path="/world" element={<Shell><WorldWorkspace /></Shell>} />
+                <Route path="/situations" element={<Shell><Situations /></Shell>} />
                 <Route path="/command-center" element={<Shell><PlanetaryCommandCenter /></Shell>} />
                 <Route path="/spatial-cockpit" element={<Protected><SpatialCockpit /></Protected>} />
                 <Route path="/cockpit" element={<Protected><SpatialCockpit /></Protected>} />

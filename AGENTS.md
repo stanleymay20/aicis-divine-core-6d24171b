@@ -4,7 +4,9 @@ Before making significant product, architecture, forecasting, commercial, securi
 
 1. `docs/AICIS_NORTH_STAR_CONTINUATION_V1.md`
 2. `README.md`
-3. the controlled task-specific document relevant to the work (for example `docs/AICIS_SCIENTIFIC_FORECASTING_PROTOCOL_V1.md`, migration runbooks, or `docs/investor/*`).
+3. the controlled task-specific document relevant to the work (for example `docs/AICIS_SCIENTIFIC_FORECASTING_PROTOCOL_V1.md`, `docs/SITUATION_READ_MODEL_V1.md`, migration runbooks, or `docs/investor/*`).
+
+If the task touches World, live signals, event identity, evidence triage, analyst review, decisions, outcomes, or the `Situation` product object, read `docs/SITUATION_READ_MODEL_V1.md` before changing behavior. Situation v1 is a read-only projection over existing governed records; do not silently turn it into a second truth store or deploy a Situation schema without a separately reviewed migration/RLS contract.
 
 Do not restart or scaffold a parallel AICIS implementation. Reverse-engineer the existing system first and preserve working contracts.
 
@@ -21,6 +23,8 @@ Non-negotiable rules:
 - prediction is not causality;
 - scientific forecasts obey governed knowledge-time, baseline, calibration, abstention and sealing rules;
 - consequential actions retain explicit human accountability unless a separately governed low-risk automation contract exists;
+- do not infer independent corroboration from publisher/source-identifier counts; only governed source-independence evidence can establish it;
+- operational decision/outcome records are not automatically scientific forecast resolutions;
 - do not weaken RLS, auth, migrations, security, evidence, forecasting or CI gates;
 - do not claim pilot, customer, traction, validated forecasting, compliance, certification or production readiness without the evidence gate required for that claim;
 - do not merge code whose exact current head has not passed the required checks;

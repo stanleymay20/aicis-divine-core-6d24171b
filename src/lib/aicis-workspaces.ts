@@ -39,6 +39,7 @@ export const AICIS_WORKSPACES: readonly AICISWorkspaceDefinition[] = [
     path: "/world",
     match: [
       "/world",
+      "/situations",
       "/command-center",
       "/risk-atlas",
       "/atlas",
@@ -49,7 +50,7 @@ export const AICIS_WORKSPACES: readonly AICISWorkspaceDefinition[] = [
       "/spatial-cockpit",
       "/cockpit",
     ],
-    keywords: "map live signals global situation country event",
+    keywords: "map live signals global situation situations triage evidence country event",
   },
   {
     id: "brief",
