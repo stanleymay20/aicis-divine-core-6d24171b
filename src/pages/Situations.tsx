@@ -55,15 +55,6 @@ const identityLabel = (state: SituationV1["identityStatus"]) => {
   }
 };
 
-const accessLabel = (state?: string) => {
-  switch (state) {
-    case "available": return "available";
-    case "access_denied": return "blocked by auth/RLS";
-    case "not_needed": return "not needed";
-    default: return "unavailable";
-  }
-};
-
 function TruthCell({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
   return (
     <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
@@ -191,30 +182,6 @@ export default function Situations() {
     outcomes: situations.filter((situation) => situation.operational.state === "outcome_observed").length,
   }), [situations]);
 
-  const windowMeta = query.data?.window;
-  const coverageState = windowMeta?.coverageState;
-  const loadedRows = windowMeta?.returnedSignalRows ?? query.data?.sourceSignalCount ?? 0;
-  const exactRows = windowMeta?.totalSignalRows;
-  const coverageWarning = coverageState && coverageState !== "complete_window";
-  const queueScope = coverageState === "complete_window" ? "current seven-day window" : "currently loaded sample";
-
-  const coverageDescription = (() => {
-    if (!windowMeta) return "Coverage unavailable until the signal read completes.";
-    if (coverageState === "complete_window") {
-      return `Complete ${windowMeta.lookbackDays}-day window · ${loadedRows} signal row(s).`;
-    }
-    if (coverageState === "capped_sample") {
-      return `Capped recent sample · newest ${loadedRows} of ${exactRows ?? "unknown"} signal rows in the ${windowMeta.lookbackDays}-day lookback.`;
-    }
-    if (coverageState === "cap_reached_total_unknown") {
-      return `Row cap reached · newest ${loadedRows} signal rows loaded; exact ${windowMeta.lookbackDays}-day total is unknown.`;
-    }
-    if (coverageState === "count_inconsistent") {
-      return `Live count and row reads disagreed during concurrent ingestion; ${loadedRows} rows are loaded but completeness is not claimed.`;
-    }
-    return `${loadedRows} signal rows loaded; exact ${windowMeta.lookbackDays}-day total is unavailable, so completeness is not claimed.`;
-  })();
-
   if (query.isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -240,41 +207,11 @@ export default function Situations() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card className="p-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Situations</div>
-          <div className="mt-1 text-2xl font-bold">{situations.length}</div>
-          <div className="text-[10px] text-muted-foreground">
-            from {loadedRows} loaded signal rows{typeof exactRows === "number" ? ` · ${exactRows} in lookback` : ""}
-          </div>
-        </Card>
+        <Card className="p-3"><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Situations</div><div className="mt-1 text-2xl font-bold">{situations.length}</div><div className="text-[10px] text-muted-foreground">from {query.data?.sourceSignalCount ?? 0} signal rows</div></Card>
         <Card className="p-3"><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Needs review</div><div className="mt-1 text-2xl font-bold text-amber-400">{counts.review}</div><div className="text-[10px] text-muted-foreground">unreviewed, unclear, conflict, or identity issue</div></Card>
         <Card className="p-3"><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Corroboration established</div><div className="mt-1 text-2xl font-bold text-emerald-400">{counts.corroborated}</div><div className="text-[10px] text-muted-foreground">only explicit existing confirmation</div></Card>
         <Card className="p-3"><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Operational outcomes</div><div className="mt-1 text-2xl font-bold">{counts.outcomes}</div><div className="text-[10px] text-muted-foreground">not scientific forecast resolutions</div></Card>
       </div>
-
-      {windowMeta && (
-        <div className="grid gap-2 rounded-md border border-border/60 bg-muted/20 p-3 text-[11px] text-muted-foreground md:grid-cols-3">
-          <div><span className="font-semibold text-foreground">Coverage:</span> {coverageDescription}</div>
-          <div><span className="font-semibold text-foreground">Read batch latency:</span> {windowMeta.queryLatencyMs == null ? "unknown" : `${windowMeta.queryLatencyMs} ms`} <span className="text-[10px]">(client-observed, not DB execution time)</span></div>
-          <div>
-            <span className="font-semibold text-foreground">Read access:</span>{" "}
-            count {accessLabel(query.data?.accessStates.exactCount)} · identity {accessLabel(query.data?.accessStates.identity)} · review {accessLabel(query.data?.accessStates.feedback)} · outcomes {accessLabel(query.data?.accessStates.operationalOutcome)}
-          </div>
-        </div>
-      )}
-
-      {coverageWarning && (
-        <Card className="border-amber-500/30 bg-amber-500/5">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm text-amber-300">
-              <AlertTriangle className="h-4 w-4" /> Lookback coverage is not exhaustive
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-muted-foreground">
-            {coverageDescription} Counts and filters on this page describe the loaded rows only; they are not presented as totals for the full lookback unless exact count evidence proves completeness.
-          </CardContent>
-        </Card>
-      )}
 
       {(query.error || (query.data?.dataGaps?.length ?? 0) > 0) && (
         <Card className="border-amber-500/30 bg-amber-500/5">
@@ -294,8 +231,8 @@ export default function Situations() {
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base"><Radio className="h-4 w-4 text-primary" /> Situation queue · seven-day lookback</CardTitle>
-              <CardDescription>{coverageDescription} Verified duplicate identity is reused when available; candidate duplicates are never silently collapsed.</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-base"><Radio className="h-4 w-4 text-primary" /> Seven-day Situation queue</CardTitle>
+              <CardDescription>Verified duplicate identity is reused when available. Candidate duplicates are never silently collapsed.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-1.5">
               <Button size="sm" variant={filter === "all" ? "default" : "outline"} className="h-7 text-[10px]" onClick={() => setFilter("all")}>All</Button>
@@ -309,14 +246,14 @@ export default function Situations() {
           {filtered.length === 0 ? (
             <div className="rounded-md border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
               <GitMerge className="mx-auto mb-2 h-5 w-5" />
-              No Situations match this filter in the {queueScope}.
+              No Situations match this filter in the current seven-day window.
             </div>
           ) : filtered.map((situation) => <SituationCard key={situation.id} situation={situation} />)}
         </CardContent>
       </Card>
 
       <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-[11px] leading-relaxed text-muted-foreground">
-        <strong className="text-foreground">Situation v1 truth floor:</strong> source identifier count is descriptive, not source independence; source contradictions are not yet governed in this projection; the signal trust score is not a forecast probability; operational outcomes are not forecast resolutions; a configured lookback is not called exhaustive when the row cap or an unavailable count prevents proof; auth/RLS denial is not interpreted as an empty dataset; the forecast slot remains empty until a registered sealed forecast can be joined under the scientific protocol.
+        <strong className="text-foreground">Situation v1 truth floor:</strong> source identifier count is descriptive, not source independence; source contradictions are not yet governed in this projection; the signal trust score is not a forecast probability; operational outcomes are not forecast resolutions; the forecast slot remains empty until a registered sealed forecast can be joined under the scientific protocol.
       </div>
     </div>
   );
