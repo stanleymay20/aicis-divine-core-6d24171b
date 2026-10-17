@@ -6,6 +6,20 @@ AICIS is an applied AI and data-engineering project exploring how institutions c
 
 The project is intentionally framed as a **decision-support system**, not an autonomous authority. Human review, provenance, access control and auditable intervention workflows are central design concerns.
 
+## Start here — north star and continuation
+
+The controlled continuation contract is [`docs/AICIS_NORTH_STAR_CONTINUATION_V1.md`](docs/AICIS_NORTH_STAR_CONTINUATION_V1.md). Humans and coding agents should read it before significant product, architecture, forecasting, commercial or UI changes.
+
+AICIS is evolving toward this governed lifecycle:
+
+```text
+Observe → Verify → Understand → Forecast → Simulate → Decide → Act → Resolve → Learn
+```
+
+The long-term product thesis is not “more dashboards” or “more agents.” It is a traceable loop in which real signals become governed situations, uncertainty-aware analysis and human-reviewed decisions, and later outcomes become evidence for forecast and workflow evaluation.
+
+The intended canonical product object is a **Situation**: a governed container linking source evidence, time semantics, affected entities, contradictions, uncertainty, forecasts, scenarios, human decisions and eventual resolution.
+
 ## Recruiter quick scan
 
 **Problem:** important operational risks arrive through fragmented, heterogeneous signals rather than one clean dataset.
@@ -50,15 +64,17 @@ Potential Sustainable Development Goal relevance includes **SDG 9 (Industry, Inn
 
 ## Core questions
 
-AICIS is organized around three questions:
+AICIS is organized around five questions:
 
 ```text
 1. What is happening?
-2. What evidence supports that assessment?
-3. What response options should a human decision-maker review?
+2. What evidence supports that assessment, and what remains unknown?
+3. What might happen next under a registered, evidence-valid forecasting contract?
+4. What response options should an authorized human decision-maker review?
+5. What actually happened, and what did the system learn from the resolved outcome?
 ```
 
-## System architecture
+## System architecture direction
 
 ```text
 Open APIs / Signals / Feeds
@@ -67,15 +83,21 @@ Telemetry Intake Pipelines
                 ↓
 Canonicalization + Deduplication
                 ↓
-Enrichment + Relevance Scoring
+Evidence Fabric + Time Semantics
                 ↓
-Causal / Predictive Analysis
+Entities + Governed Situations
+                ↓
+Analysis / Forecast / Scenario Layers
                 ↓
 Evidence + Governance Review
                 ↓
 Decision-Support Interfaces
                 ↓
 Human Operational Coordination
+                ↓
+Governed Resolution
+                ↓
+Evaluation + Learning History
 ```
 
 ## Implemented engineering areas
@@ -97,7 +119,7 @@ Human Operational Coordination
 - multi-domain consequence analysis;
 - structured risk variables covering areas such as economic continuity, governance stability and climate resilience.
 
-These components support analytical experimentation. Forecasts and causal outputs should be validated for the specific data, geography and decision context before operational use.
+These components support analytical experimentation. Forecasts and causal outputs should be validated for the specific data, geography and decision context before operational use. Scientific forecasting claims are governed by [`docs/AICIS_SCIENTIFIC_FORECASTING_PROTOCOL_V1.md`](docs/AICIS_SCIENTIFIC_FORECASTING_PROTOCOL_V1.md).
 
 ### Governance and human review
 
@@ -130,7 +152,8 @@ Current hardening work includes:
 - alert and incident lifecycle design;
 - institutional onboarding;
 - audit and evidence provenance;
-- role-specific operational experiences.
+- role-specific operational experiences;
+- governed outcome resolution and learning history.
 
 This distinction is deliberate: claims about system effectiveness should remain proportional to the evidence available.
 
@@ -165,12 +188,13 @@ AICIS prioritizes:
 - evidence before recommendation;
 - human accountability for consequential decisions;
 - provenance and auditability;
-- uncertainty-aware analysis;
+- uncertainty-aware analysis and explicit abstention;
 - operational clarity over dashboard clutter;
-- global-to-local context without assuming one model fits every location.
+- global-to-local context without assuming one model fits every location;
+- resolved outcomes as evidence for learning rather than retroactive rewriting of forecasts.
 
 ## Project direction
 
-The long-term engineering goal is a governed environment in which heterogeneous risk signals can be transformed into traceable analysis and decision options for human review.
+The long-term engineering goal is a governed environment in which heterogeneous risk signals can be transformed into traceable Situations, uncertainty-aware analysis, decision options and later outcome evidence for human review and measurable learning.
 
-The immediate focus is narrower and testable: improve data provenance, analytical validation, security, reliability and the quality of evidence available to decision-makers.
+The immediate focus remains narrower and testable: improve data provenance, analytical validation, security, reliability and one complete resilience / continuity workflow before expanding authority or product breadth.

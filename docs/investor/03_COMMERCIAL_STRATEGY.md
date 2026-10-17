@@ -8,6 +8,8 @@ AICIS should not enter the market as a general-purpose “civilization intellige
 
 The long-term multi-domain vision remains an expansion path, not the first sales message.
 
+The controlled product direction is defined in `../AICIS_NORTH_STAR_CONTINUATION_V1.md`.
+
 ## Initial customer profile
 
 ### Primary organizations
@@ -38,6 +40,20 @@ The commercial problem to validate is not “organizations need more AI.” It i
 
 AICIS competes first against the current workflow: manual monitoring, disconnected dashboards, spreadsheets, email / chat escalation and analyst reconciliation.
 
+## Product thesis to validate
+
+AICIS should organize the operational workflow around a governed **Situation** rather than a collection of disconnected dashboards.
+
+A Situation should link the relevant source artifacts, provenance, time semantics, affected entities / assets, contradictions, unresolved evidence, forecasts where scientifically admissible, human-reviewed decision options and eventual resolution.
+
+The product lifecycle to validate is:
+
+```text
+Observe → Verify → Understand → Forecast → Simulate → Decide → Act → Resolve → Learn
+```
+
+Forecast and simulation steps may be absent or explicitly abstained when the evidence contract is not met. The commercial value of the loop must be measured against the customer's current process rather than assumed.
+
 ## Value hypotheses to test
 
 AICIS must earn commercial value through measurable outcomes such as:
@@ -47,7 +63,9 @@ AICIS must earn commercial value through measurable outcomes such as:
 - earlier identification of relevant events;
 - better provenance coverage;
 - more consistent escalation and review;
-- improved auditability of how a decision was reached.
+- improved auditability of how a decision was reached;
+- higher resolution coverage so organizations can learn from what actually happened;
+- better forecast / decision evaluation where enough governed outcomes exist.
 
 These are hypotheses until measured.
 
@@ -70,6 +88,18 @@ Conduct structured interviews with target organizations. Record:
 
 Secure one partner around one workflow. Use the pilot blueprint in `02_PILOT_BLUEPRINT.md`.
 
+The preferred first workflow is a complete evidence-to-resolution vertical slice, for example:
+
+```text
+source artifact
+  → canonicalized evidence
+  → governed Situation
+  → contradiction / coverage state
+  → analyst triage
+  → human-reviewed disposition
+  → governed resolution
+```
+
 ### Phase 3 — paid validation
 
 Prefer a paid pilot where procurement permits. If an unpaid research/design pilot is necessary, require a defined evaluation protocol and a documented conversion decision.
@@ -86,7 +116,8 @@ Expand through:
 - additional data sources;
 - additional event / risk workflows;
 - integrations;
-- broader geographic or operational coverage.
+- broader geographic or operational coverage;
+- validated forecasting tasks where prospective evidence supports promotion.
 
 ## Revenue-model hypothesis
 
@@ -110,21 +141,31 @@ AICIS should not claim “no competitors.” The relevant alternatives include:
 - general-purpose LLM / agent tooling;
 - internal data / analytics teams.
 
-The differentiated thesis is the combination of heterogeneous-signal fusion, provenance, uncertainty-aware analysis, human review and reusable evaluation history inside one governed workflow.
+AICIS should not try to win by claiming more AI, more agents, more dashboards or more raw data than every incumbent.
+
+The differentiated thesis is the combination of heterogeneous-signal fusion, provenance, temporal truth, uncertainty-aware analysis, scientifically governed forecasting, human review and reusable resolution / evaluation history inside one governed workflow.
 
 ## Moat-building plan
 
 Defensibility should compound through:
 
 - customer-specific integrations that become reusable connectors;
-- normalized event / entity representations;
-- evidence lineage and evaluation data;
+- normalized event / entity / Situation representations;
+- evidence lineage and temporal-truth data;
 - accumulated human review and labelled outcomes;
+- sealed forecast history and resolved forecast evidence;
+- decision and resolution history where legally / operationally appropriate;
 - calibrated domain workflows;
 - security, governance and audit controls;
 - deployment knowledge in regulated / public-institution contexts.
 
-A model provider can be replaced. The governed workflow, data history and institutional integration should become harder to replace.
+The long-term moat hypothesis is:
+
+> **Evidence Graph + Temporal Truth + Forecast History + Decision History + Resolved Outcomes + Institutional Integration**
+
+A model provider can be replaced. The governed workflow, data history, resolution history and institutional integration should become harder to replace.
+
+This is a defensibility hypothesis until AICIS has real deployments and accumulated resolved evidence; do not present it as already proven.
 
 ## Evidence gates for investor claims
 
@@ -135,8 +176,10 @@ A model provider can be replaced. The governed workflow, data history and instit
 | “Revenue” | invoiced / received revenue records |
 | “Traction” | verifiable customer, usage, procurement or revenue evidence |
 | “Validated forecasting” | reproducible evaluation on defined datasets / contexts |
+| “Calibrated forecasting” | sufficient resolved forecasts under the controlled scientific protocol and reported calibration evidence |
 | “Improves decisions” | controlled or baseline-comparative measured outcome |
 | “Production ready” | defined production gates passed in the target deployment context |
+| “Compliant” / “certified” | deployment-specific legal / technical evidence and any required independent assurance; implemented controls alone are insufficient |
 | “Product-market fit” | repeatable demand, retention / expansion and sustainable commercial evidence |
 
 ## Current commercial status

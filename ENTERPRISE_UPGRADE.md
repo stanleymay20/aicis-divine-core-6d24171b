@@ -1,16 +1,22 @@
-# 🏢 Enterprise-Grade Security Upgrade
+# 🏢 Enterprise Security Controls Upgrade
+
+## Evidence boundary
+
+This document records security, privacy and operational controls implemented or intended by the AICIS codebase. It does **not** by itself establish production readiness, legal compliance, independent certification, availability guarantees or successful deployment in a specific target environment.
+
+Terms such as GDPR, SOC 2, HIPAA and ISO 27001 below identify control areas that may be relevant to a future compliance program. Certification / compliance status must be established separately through deployment-specific technical, legal and independent assurance evidence.
 
 ## ✅ What Was Upgraded
 
-Your AICIS application has been upgraded to **enterprise-grade** standards with comprehensive security, compliance, and operational features.
+AICIS includes a set of **enterprise-oriented security and operational controls** that can contribute to a production hardening and compliance program when they are verified in the target deployment context.
 
 ### 🔐 Security Enhancements
 
 1. **Comprehensive Audit Logging**
-   - Every sensitive action logged with user, IP, timestamp
+   - Sensitive actions can be logged with user, IP, timestamp
    - Severity levels: info, warning, error, critical
    - Searchable by user, organization, action type
-   - Compliant with SOC 2, GDPR, HIPAA requirements
+   - Relevant to audit-control requirements; not proof of SOC 2, GDPR, HIPAA or other compliance by itself
 
 2. **Rate Limiting & DDoS Protection**
    - Automatic rate limiting per user/IP
@@ -19,7 +25,7 @@ Your AICIS application has been upgraded to **enterprise-grade** standards with 
    - Admin unblock capability
 
 3. **Enhanced Session Management**
-   - Track all active sessions per user
+   - Track active sessions per user
    - IP address and device tracking
    - Remote session revocation
    - Session expiry enforcement
@@ -31,76 +37,78 @@ Your AICIS application has been upgraded to **enterprise-grade** standards with 
    - Security event logging
 
 5. **Function Security Hardening**
-   - Fixed search_path vulnerabilities
-   - All functions use `SECURITY DEFINER` with explicit schema
-   - Prevents SQL injection via search_path manipulation
+   - Search-path hardening for privileged functions
+   - `SECURITY DEFINER` functions should use explicit schema / search-path controls
+   - Intended to reduce search-path manipulation risk
 
-### 🛡️ GDPR & Privacy Compliance
+### 🛡️ GDPR & Privacy Control Areas
 
-1. **Right to Data Portability (Article 20)**
-   - Users can request full data export
-   - Secure download links with expiration
+1. **Data Portability Workflow**
+   - Users can request a data export
+   - Secure download-link pattern with expiration
    - Audit trail of export requests
 
-2. **Right to be Forgotten (Article 17)**
+2. **Account / Data Deletion Workflow**
    - Account deletion request workflow
    - Admin approval process
-   - Irreversible data purging
+   - Data-purge pathway
    - Deletion audit logging
 
 3. **Consent Management**
-   - Already tracked via existing `user_consent` table
+   - Existing `user_consent` table
    - Integrated with privacy flows
+
+These controls may support obligations such as GDPR Articles 17 and 20, but legal applicability, completeness, retention rules, controller/processor responsibilities, lawful basis and deployment-specific behavior still require explicit review.
 
 ### 📊 Operational Excellence
 
 1. **System Health Monitoring**
-   - Real-time health checks (database, storage, edge functions)
-   - Response time tracking
-   - Component status dashboard
-   - Degradation alerts
+   - Health checks for database, storage and edge-function surfaces
+   - Response-time tracking
+   - Component-status dashboard
+   - Degradation-alert concepts
 
 2. **Per-Tenant Metrics**
    - API request counting
    - Storage usage tracking
-   - Error rate monitoring
+   - Error-rate monitoring
    - Cost estimation per organization
    - Performance analytics
 
 3. **Automated Maintenance**
-   - Hourly cleanup of old rate limit records
-   - Expired export removal
-   - Critical event alerting
-   - Health check cron job
+   - Cleanup of old rate-limit records
+   - Expired-export removal
+   - Critical-event alerting concepts
+   - Health-check cron job
 
-## 🔧 New Database Tables
+## 🔧 Database Tables
 
 | Table | Purpose |
 |-------|---------|
-| `audit_log` | Comprehensive audit trail for compliance |
-| `rate_limits` | DDoS protection and rate limiting |
-| `user_sessions` | Enhanced session tracking |
+| `audit_log` | Audit trail for security / compliance workflows |
+| `rate_limits` | Rate limiting and abuse protection |
+| `user_sessions` | Session tracking |
 | `ip_access_control` | IP whitelist/blacklist |
-| `data_export_requests` | GDPR data export tracking |
-| `data_deletion_requests` | GDPR right to be forgotten |
-| `system_health` | System monitoring logs |
+| `data_export_requests` | Data-export request tracking |
+| `data_deletion_requests` | Account / data-deletion request tracking |
+| `system_health` | System-monitoring records |
 | `tenant_metrics` | Per-organization usage metrics |
 
-## 🎯 New Edge Functions
+## 🎯 Edge Functions
 
 | Function | Purpose |
 |----------|---------|
 | `enterprise-health-check` | System health monitoring |
-| `gdpr-export-data` | User data export |
-| `gdpr-delete-data` | Account deletion request |
-| `cron-enterprise-health` | Automated health & cleanup |
+| `gdpr-export-data` | User data export workflow |
+| `gdpr-delete-data` | Account / data deletion workflow |
+| `cron-enterprise-health` | Automated health / cleanup workflow |
 
-## 🎨 New UI Components
+## 🎨 UI Components
 
 | Component | Access | Purpose |
 |-----------|--------|---------|
-| `EnterpriseSecurityPanel` | All Users | View health, audit logs, sessions, GDPR |
-| `AdminSecurityDashboard` | Admins Only | Manage rate limits, IP controls, security events |
+| `EnterpriseSecurityPanel` | All Users | View health, audit logs, sessions and privacy workflows |
+| `AdminSecurityDashboard` | Admins Only | Manage rate limits, IP controls and security events |
 
 ## 🚀 How to Use
 
@@ -120,7 +128,7 @@ Your AICIS application has been upgraded to **enterprise-grade** standards with 
    - Download when ready
 
 3. **Manage Sessions**
-   - View all active login sessions
+   - View active login sessions
    - Revoke suspicious sessions remotely
 
 ### For Administrators
@@ -134,17 +142,17 @@ Your AICIS application has been upgraded to **enterprise-grade** standards with 
    ```
 
 2. **Monitor Health**
-   - Real-time system health status
+   - System health status
    - Component response times
-   - Degradation alerts
+   - Degradation alerts where configured
 
 3. **Manage IP Access**
-   - Add IPs to blacklist (block attackers)
-   - Add IPs to whitelist (restrict to known IPs)
-   - View all access control rules
+   - Add IPs to blacklist
+   - Add IPs to whitelist
+   - View access-control rules
 
 4. **Review Security Events**
-   - View breach attempts
+   - View suspected breach attempts
    - Policy violations
    - Critical incidents
 
@@ -202,15 +210,21 @@ schedule = "0 * * * *"  # Every hour
 
 ### Auth Settings
 
-- ✅ Leaked password protection: **ENABLED**
-- ✅ Auto-confirm email: **ENABLED** (for dev)
-- ✅ Anonymous users: **DISABLED**
+Repository / environment documentation has historically referenced settings such as:
+
+- leaked-password protection;
+- development email auto-confirm;
+- anonymous-user restrictions.
+
+Treat actual runtime configuration as **environment-specific** and verify it directly before relying on these controls in a readiness or compliance claim.
 
 ### Rate Limit Defaults
 
-- Default: **100 requests per 60 minutes**
+- Default design value: **100 requests per 60 minutes**
 - Configurable per endpoint
 - Auto-block duration: matches window size
+
+Verify deployed configuration and enforcement behavior in the target environment before treating these values as operational facts.
 
 ## 🔒 Security Best Practices
 
@@ -227,82 +241,93 @@ schedule = "0 * * * *"  # Every hour
    if (!allowed) return Response.json({ error: "Too many requests" }, { status: 429 });
    ```
 
-3. **Enable IP restrictions for high-security orgs**
-   - Use whitelist mode for maximum security
-   - Only allow known office/VPN IPs
+3. **Enable IP restrictions for high-security organizations where appropriate**
+   - Use whitelist mode only under an explicit access-policy design
+   - Validate office / VPN / emergency-access requirements
 
 4. **Monitor audit logs regularly**
    - Review critical/error severity events
    - Investigate unusual patterns
-   - Export logs for external SIEM
+   - Export logs to an external SIEM where required
 
-5. **Rotate sessions periodically**
-   - Force logout after password change
-   - Revoke old sessions on security events
+5. **Rotate sessions appropriately**
+   - Force logout after relevant account-security events
+   - Revoke old sessions on security incidents
 
 ## 📈 Monitoring & Alerting
 
-### Critical Metrics to Watch
+### Candidate Metrics to Watch
 
 1. **System Health**
-   - Database response time < 100ms
-   - Storage availability 99.9%
-   - Edge function success rate > 99%
+   - Database response time
+   - Storage availability
+   - Edge-function success rate
 
 2. **Security Events**
-   - Critical severity events: **0** (investigate immediately)
-   - Failed login attempts: monitor for brute force
-   - Rate limit hits: identify abusive users
+   - Critical-severity events
+   - Failed-login attempts
+   - Rate-limit hits
 
 3. **Per-Tenant Usage**
    - API request trends
    - Storage growth rate
    - Cost projections
 
-### Alert Thresholds
+### Candidate Alert Thresholds
+
+The following values are examples / historical design targets, not verified service-level objectives:
 
 | Metric | Warning | Critical |
-|--------|---------|----------|
+|--------|---------|
 | DB Response Time | >200ms | >500ms |
 | Error Rate | >1% | >5% |
 | Critical Events | >0 | >10/hour |
 | Rate Limit Blocks | - | >100/hour |
 
-## 🎓 Compliance Certifications
+Operational thresholds must be calibrated against a real deployment and documented SLO / incident-response process.
 
-This upgrade helps achieve:
+## 🎓 Compliance Relevance — Not Certification
 
-- ✅ **GDPR** (General Data Protection Regulation)
-- ✅ **SOC 2 Type II** (audit logging, access control)
-- ✅ **HIPAA** (audit trails, encryption)
-- ✅ **ISO 27001** (security management)
+These controls may contribute evidence toward future programs involving:
+
+- **GDPR** privacy and data-subject workflows;
+- **SOC 2** security / availability / confidentiality controls;
+- **HIPAA** requirements only if AICIS is actually deployed in a covered use case with all applicable safeguards and agreements;
+- **ISO 27001** information-security management controls.
+
+No certification or universal compliance claim is made by this document. Certification and legal compliance require a broader management system, deployment evidence, policies, risk assessment, operational practice and, where applicable, independent audit / legal review.
 
 ## 🔄 Next Steps
 
-1. **Enable Monitoring**
-   - Set up external alerting (PagerDuty, Slack)
-   - Configure log forwarding to SIEM
-   - Enable Supabase monitoring dashboard
+1. **Verify Runtime Controls**
+   - prove actual deployed configuration rather than relying on documentation;
+   - test authorization, rate limiting, audit and privacy workflows end-to-end;
+   - preserve evidence of exact environment / commit tested.
 
-2. **Customize Rate Limits**
-   - Adjust limits per endpoint
-   - Create tiered limits by plan
-   - Implement burst allowance
+2. **Enable External Monitoring Where Needed**
+   - set up incident alerting;
+   - configure log forwarding to SIEM where required;
+   - validate monitoring coverage and alert ownership.
 
-3. **Enhance IP Control**
-   - Integrate with threat intelligence feeds
-   - Auto-block IPs with security events
-   - GeoIP restrictions
+3. **Customize Rate Limits**
+   - adjust limits per endpoint and risk level;
+   - create tiered limits by plan where justified;
+   - test burst and abuse behavior.
 
-4. **Automate GDPR Workflows**
-   - Implement data export compilation
-   - Automate deletion after approval
-   - Notify users of completion
+4. **Enhance IP Control**
+   - integrate threat intelligence only when governed and necessary;
+   - define emergency / administrator access paths;
+   - test lockout and recovery scenarios.
 
-5. **Performance Optimization**
-   - Add caching layer (Redis)
-   - Implement CDN for static assets
-   - Database query optimization
+5. **Complete Privacy / Compliance Diligence**
+   - verify export and deletion completeness;
+   - define retention and deletion policies;
+   - document data roles, lawful basis and third-party processors where applicable;
+   - obtain legal / independent assurance when making formal compliance claims.
+
+6. **Performance Optimization**
+   - add caching / CDN / query optimization only from measured bottlenecks;
+   - avoid introducing unverified infrastructure complexity.
 
 ## 📚 References
 
@@ -313,6 +338,4 @@ This upgrade helps achieve:
 
 ---
 
-**Your application is now enterprise-ready! 🎉**
-
-All security functions are deployed and active. The database is hardened with proper RLS policies, audit logging is capturing all sensitive operations, and GDPR compliance features are ready for production use.
+**Controlled status:** enterprise-oriented security controls exist in the codebase, but AICIS is **not declared enterprise-ready, certified, or universally compliant by this document**. Production readiness and compliance must be proven for the exact deployment context.

@@ -1,3 +1,37 @@
+# AICIS agent continuation contract
+
+Before making significant product, architecture, forecasting, commercial, security, migration or UI changes, read these files in order:
+
+1. `docs/AICIS_NORTH_STAR_CONTINUATION_V1.md`
+2. `README.md`
+3. the controlled task-specific document relevant to the work (for example `docs/AICIS_SCIENTIFIC_FORECASTING_PROTOCOL_V1.md`, migration runbooks, or `docs/investor/*`).
+
+Do not restart or scaffold a parallel AICIS implementation. Reverse-engineer the existing system first and preserve working contracts.
+
+The product north star is:
+
+`Observe → Verify → Understand → Forecast → Simulate → Decide → Act → Resolve → Learn`
+
+AICIS is an evidence-governed decision-support system, not an autonomous authority and not a validated general “world predictor.” The first commercial wedge remains evidence-governed operational resilience / continuity intelligence for public institutions and critical-infrastructure operators.
+
+Non-negotiable rules:
+
+- unknown stays unknown;
+- observed evidence, model inference and consequential action stay distinct;
+- prediction is not causality;
+- scientific forecasts obey governed knowledge-time, baseline, calibration, abstention and sealing rules;
+- consequential actions retain explicit human accountability unless a separately governed low-risk automation contract exists;
+- do not weaken RLS, auth, migrations, security, evidence, forecasting or CI gates;
+- do not claim pilot, customer, traction, validated forecasting, compliance, certification or production readiness without the evidence gate required for that claim;
+- do not merge code whose exact current head has not passed the required checks;
+- PR #31 / `feat/forecast-ledger-migration-v1` remains quarantined until its stated database validation gates are satisfied.
+
+Prefer verified vertical progress over feature count. The strongest target loop is:
+
+`real source → traceable evidence → governed Situation → sealed forecast where appropriate → human decision → real outcome → measurable learning`
+
+# Existing operational notes
+
 - Scheduled jobs calling backend functions must send header x-cron-secret read from vault secret 'cron_secret' (matches CRON_SECRET env) — hardened function auth rejects anon-key calls.
 - Export functions select only columns verified live (GLOBAL_SIGNALS_MISSING_LIVE_COLUMNS / runtime probe); ~165 descriptive-named repo migrations are NOT applied live and must not be replayed without per-file review — why: repo/live schema drift broke all exports.
 - Recovery authorization binds the auth service's PASSWORD_RECOVERY event to its exact server-validated access token and keeps it out of normal route authorization — because legitimate OTP/recovery links may not carry a "recovery" AMR claim and the reset page loads lazily.
