@@ -43,6 +43,30 @@ const OPTIONAL_IDENTITY_COLUMNS = [
   "duplicate_match_status",
 ].join(",");
 
+type LooseQueryResult = {
+  data: unknown[] | null;
+  error: unknown;
+};
+
+interface LooseQueryBuilder {
+  select(columns: string): LooseQueryBuilder;
+  gte(column: string, value: string): LooseQueryBuilder;
+  order(column: string, options: { ascending: boolean }): LooseQueryBuilder;
+  limit(value: number): PromiseLike<LooseQueryResult>;
+  in(column: string, values: string[]): PromiseLike<LooseQueryResult>;
+}
+
+interface LooseSupabaseClient {
+  from(table: string): LooseQueryBuilder;
+}
+
+type SituationIdentityRow = {
+  id: string;
+  canonical_event_id?: string | null;
+  duplicate_of_signal_id?: string | null;
+  duplicate_match_status?: string | null;
+};
+
 type SituationQueryResult = {
   situations: SituationV1[];
   sourceSignalCount: number;
@@ -51,6 +75,11 @@ type SituationQueryResult = {
   feedbackAvailable: boolean;
   operationalOutcomeAvailable: boolean;
 };
+
+const looseSupabase = supabase as unknown as LooseSupabaseClient;
+
+const rowsAs = <T,>(value: unknown): T[] =>
+  Array.isArray(value) ? value as T[] : [];
 
 export function useSituationsV1(options?: { days?: number; limit?: number }) {
   const days = Math.max(1, Math.min(options?.days ?? 7, 30));
@@ -62,7 +91,7 @@ export function useSituationsV1(options?: { days?: number; limit?: number }) {
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
       const dataGaps: string[] = [];
 
-      const { data: baseSignals, error: signalError } = await (supabase as any)
+      const { data: baseSignals, error: signalError } = await looseSupabase
         .from("global_signals")
         .select(BASE_SIGNAL_COLUMNS)
         .gte("first_detected_at", since)
@@ -71,12 +100,12 @@ export function useSituationsV1(options?: { days?: number; limit?: number }) {
 
       if (signalError) throw signalError;
 
-      const signals = ((baseSignals ?? []) as SituationSignalV1[]).map((row) => ({ ...row }));
+      const signals = rowsAs<SituationSignalV1>(baseSignals).map((row) => ({ ...row }));
       const signalIds = signals.map((row) => row.id).filter(Boolean);
 
       let identityContractAvailable = false;
       if (signalIds.length > 0) {
-        const { data: identityRows, error: identityError } = await (supabase as any)
+        const { data: identityRows, error: identityError } = await looseSupabase
           .from("global_signals")
           .select(OPTIONAL_IDENTITY_COLUMNS)
           .in("id", signalIds);
@@ -85,7 +114,9 @@ export function useSituationsV1(options?: { days?: number; limit?: number }) {
           dataGaps.push("verified duplicate-target identity columns unavailable; duplicate reports remain separate when target identity cannot be proven");
         } else {
           identityContractAvailable = true;
-          const identityById = new Map((identityRows ?? []).map((row: any) => [row.id, row]));
+          const identityById = new Map(
+            rowsAs<SituationIdentityRow>(identityRows).map((row) => [row.id, row] as const),
+          );
           for (const signal of signals) {
             const identity = identityById.get(signal.id);
             if (!identity) continue;
@@ -103,11 +134,11 @@ export function useSituationsV1(options?: { days?: number; limit?: number }) {
 
       if (signalIds.length > 0) {
         const [feedbackResult, outcomeResult] = await Promise.all([
-          (supabase as any)
+          looseSupabase
             .from("signal_routing_feedback")
             .select("signal_id,feedback,created_at")
             .in("signal_id", signalIds),
-          (supabase as any)
+          looseSupabase
             .from("decision_outcome_log")
             .select("signal_id,action_taken,outcome_success,execution_status,evidence_type,outcome_timestamp")
             .in("signal_id", signalIds),
@@ -117,14 +148,14 @@ export function useSituationsV1(options?: { days?: number; limit?: number }) {
           feedbackAvailable = false;
           dataGaps.push("routing feedback unavailable; review state shown as unreviewed rather than inferred");
         } else {
-          feedback = (feedbackResult.data ?? []) as SituationFeedbackV1[];
+          feedback = rowsAs<SituationFeedbackV1>(feedbackResult.data);
         }
 
         if (outcomeResult.error) {
           operationalOutcomeAvailable = false;
           dataGaps.push("operational decision/outcome records unavailable; outcome state remains not recorded in this projection");
         } else {
-          outcomes = (outcomeResult.data ?? []) as SituationOutcomeV1[];
+          outcomes = rowsAs<SituationOutcomeV1>(outcomeResult.data);
         }
       }
 
