@@ -5,6 +5,7 @@ This document preserves existing URLs while defining their future workspace owne
 ## World
 
 /world
+/situations
 /command-center
 /spatial-cockpit
 /cockpit
@@ -14,6 +15,8 @@ This document preserves existing URLs while defining their future workspace owne
 /live-stream
 /local-events
 /atlas/region/:id
+
+`/situations` is the first governed Situation read-model surface. Its implementation contract is `docs/SITUATION_READ_MODEL_V1.md`. It is a read-only projection over existing governed records, not a new source of truth.
 
 Long-term behavior: these become World modes, layers or drill-down states. Existing URLs remain aliases until migration tests prove parity.
 
@@ -90,3 +93,4 @@ Long-term behavior: these become World modes, layers or drill-down states. Exist
 - Browser back and forward must remain correct.
 - Query-state migration must be shareable and deterministic.
 - Route aliases must be covered by smoke tests before cleanup.
+- Situation routes must preserve `docs/SITUATION_READ_MODEL_V1.md` truth boundaries until a later controlled Situation persistence contract supersedes them.
