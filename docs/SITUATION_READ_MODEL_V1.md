@@ -131,6 +131,20 @@ The forecast state is `not_linked` until a registered, sealed forecast can be jo
 
 Do not reuse an arbitrary model score as a Situation forecast probability.
 
+## Runtime coverage and access truth
+
+The Situation workspace uses a configured lookback and row cap. Those settings describe a query boundary; they do not by themselves prove that every row in the lookback was loaded.
+
+1. The row read and an exact, read-only count query are independent. A failure of the exact count must not hide otherwise readable signal rows.
+2. The UI may call the lookback `complete_window` only when the exact count equals the number of loaded signal rows.
+3. If the exact count is greater than the loaded row count, the page must label the result `capped_sample` and make clear that queue counts and filters describe only the loaded sample.
+4. If the exact count is unavailable, completeness remains unknown. Reaching the configured row cap must be labeled `cap_reached_total_unknown`, not a complete lookback.
+5. If the count and row reads disagree in the opposite direction during concurrent ingestion, the state is `count_inconsistent`; the UI must not claim completeness.
+6. Authentication / RLS denial must be distinguished from ordinary read unavailability. A denied or failed read must never be interpreted as an empty table or as proof that no feedback / outcome record exists.
+7. Client-observed read-batch latency may be displayed for runtime diagnostics, but it must be labeled as client-observed latency rather than database execution time.
+
+These rules preserve the v1 truth floor while giving issue #48 reproducible row-volume, coverage and access-state evidence without introducing persistence or weakening RLS.
+
 ## UI behavior
 
 The first Situation page should make the truth boundary visible:
@@ -143,7 +157,10 @@ The first Situation page should make the truth boundary visible:
 - signal trust screen with non-probability label;
 - review status and review conflicts;
 - linked operational action / outcome state;
-- forecast state (`not linked` until governed forecasts exist).
+- forecast state (`not linked` until governed forecasts exist);
+- configured lookback coverage state and loaded-vs-total row count when known;
+- read-batch latency with its client-observed semantics;
+- distinct access states for exact count, identity, routing feedback and operational outcomes.
 
 The page should prioritize Situations that need review rather than reward high feature count.
 
@@ -171,8 +188,10 @@ Before merge:
 4. missing corroboration must stay unknown;
 5. conflicting review feedback must remain conflicted;
 6. operational outcomes must remain distinct from forecast resolution;
-7. route / workspace ownership must be deterministic;
-8. exact-head CI, CodeQL, authentication boundary proof and DB behavioral proof must pass.
+7. row-cap coverage must never be reported as complete unless exact-count evidence proves it;
+8. auth/RLS denial must remain distinct from generic infrastructure unavailability and from an empty result;
+9. route / workspace ownership must be deterministic;
+10. exact-head CI, CodeQL, authentication boundary proof and DB behavioral proof must pass.
 
 ## Next controlled step after v1
 
