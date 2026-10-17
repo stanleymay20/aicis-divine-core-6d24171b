@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Activity, Check, Clock3, Layers3, Network, Radio, Search, ShieldCheck } from "lucide-react";
+import { Activity, Check, Clock3, GitMerge, Layers3, Network, Radio, Search, ShieldCheck } from "lucide-react";
 import {
   GlobalMap,
   type CountryData,
@@ -208,6 +208,17 @@ export default function WorldWorkspace() {
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-[10px] text-muted-foreground"
+            onClick={() => navigate("/situations")}
+            title="Open the governed Situation queue"
+          >
+            <GitMerge className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Situations</span>
+          </Button>
 
           <Button
             variant="ghost"
