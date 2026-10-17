@@ -167,7 +167,7 @@ export default function Situations() {
   const [filter, setFilter] = useState<Filter>("all");
   const query = useSituationsV1({ days: 7, limit: 300 });
 
-  const situations = query.data?.situations ?? [];
+  const situations = useMemo(() => query.data?.situations ?? [], [query.data?.situations]);
   const filtered = useMemo(() => situations.filter((situation) => {
     if (filter === "needs_review") return situation.needsReview;
     if (filter === "review_conflict") return situation.review.state === "conflicted";
