@@ -31,16 +31,25 @@ const DOMAIN_BUSINESS_IMPACT: Record<string, string> = {
 };
 
 export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: Props) => {
-  const { data: domains, isLoading: domainsLoading } = useQuery({
+  const { data: domains, isLoading: domainsLoading, isError: domainsError } = useQuery({
     queryKey: ["resolution-country-domains", iso3],
     queryFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
-      const { data } = await supabase
+      const dates = await supabase
+        .from("country_performance_snapshots")
+        .select("snapshot_date")
+        .eq("iso3", iso3)
+        .order("snapshot_date", { ascending: false })
+        .limit(1);
+      if (dates.error) throw dates.error;
+      const snapshotDate = dates.data?.[0]?.snapshot_date;
+      if (!snapshotDate) return [];
+      const { data, error } = await supabase
         .from("country_performance_snapshots")
         .select("domain, performance_index, risk_pressure_score, momentum_score, forecast_direction, systemic_fragility_score, confidence_score")
         .eq("iso3", iso3)
-        .eq("snapshot_date", today);
-      return data || [];
+        .eq("snapshot_date", snapshotDate);
+      if (error) throw error;
+      return data ?? [];
     },
   });
 
@@ -87,7 +96,7 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
   // Compute overall market risk
   const avgRisk = domains?.length
     ? domains.reduce((s, d) => s + d.risk_pressure_score, 0) / domains.length
-    : 0;
+    : null;
 
   const stressedDomains = domains?.filter(d => d.risk_pressure_score > 50) || [];
 
@@ -111,7 +120,7 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
             <div className="flex gap-3">
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">Market Risk</p>
-                <p className={cn("text-lg font-bold", riskColor(avgRisk))}>{avgRisk.toFixed(0)}</p>
+                <p className={cn("text-lg font-bold", avgRisk == null ? "text-muted-foreground" : riskColor(avgRisk))}>{avgRisk == null ? "Unknown" : avgRisk.toFixed(0)}</p>
               </div>
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">Domains</p>
@@ -170,6 +179,10 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
         <CardContent>
           {domainsLoading ? (
             <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+          ) : domainsError ? (
+            <p className="text-sm text-amber-400" role="alert">Country snapshot read unavailable; risk is unknown.</p>
+          ) : !domains?.length ? (
+            <p className="text-sm text-muted-foreground">No country snapshot found for this market.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {domains?.map((d) => (
