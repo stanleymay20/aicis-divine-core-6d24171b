@@ -8,6 +8,8 @@ Before making significant product, architecture, forecasting, commercial, securi
 
 If the task touches World, live signals, event identity, evidence triage, analyst review, decisions, outcomes, or the `Situation` product object, read `docs/SITUATION_READ_MODEL_V1.md` before changing behavior. Situation v1 is a read-only projection over existing governed records; do not silently turn it into a second truth store or deploy a Situation schema without a separately reviewed migration/RLS contract.
 
+If a task touches country comparisons, market potential, international trade, export-entry screening, source licensing, or globalEDGE-like features, first read `docs/GLOBALEDGE_MARKET_EVIDENCE_BENCHMARK_V1.md`. Reuse existing country, normalized-metric, risk-atlas and transaction contracts. Never scrape globalEDGE DIBS into a commercial system, invent a market-potential index, compare mismatched indicator vintages or convert descriptive screening into calibrated forecasts.
+
 Do not restart or scaffold a parallel AICIS implementation. Reverse-engineer the existing system first and preserve working contracts.
 
 The product north star is:

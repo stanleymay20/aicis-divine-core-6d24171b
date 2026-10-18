@@ -9,6 +9,7 @@ import {
 import { MapQuery } from "./queryParser";
 import { SignalRow } from "./useAtlasData";
 import { COUNTRY_NAMES as CN } from "./countryNames";
+import { MarketEvidenceComparisonV1 } from "./MarketEvidenceComparisonV1";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -248,6 +249,10 @@ export function AtlasInsightPanel({
                 })}
               </div>
             </div>
+          )}
+
+          {query.comparison && !selectedCountry && (
+            <MarketEvidenceComparisonV1 countryA={query.comparison.a} countryB={query.comparison.b} />
           )}
 
           {/* Top affected countries */}
