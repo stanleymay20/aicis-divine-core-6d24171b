@@ -3,12 +3,14 @@
 const PERIOD = /^\d{4}(?:-(?:0[1-9]|1[0-2]))?(?:-(?:0[1-9]|[12]\d|3[01]))?$/;
 const iso = (value) => typeof value === "string" ? value.trim().toUpperCase() : "";
 const clean = (value) => typeof value === "string" ? value.trim() : "";
-const keyOf = (row) => clean(row.metric_name).toLocaleLowerCase("en");
+const keyOf = (row) => clean(row.metric_name)
+  ? [clean(row.domain).toLocaleLowerCase("en") || "unknown_domain", clean(row.metric_name).toLocaleLowerCase("en")].join("::")
+  : "";
 const alignedKey = (row) => [clean(row.period), clean(row.provider_name).toLocaleLowerCase("en"), clean(row.unit)].join("\u0000");
 const valid = (row) => !!row && typeof row.value === "number" && Number.isFinite(row.value)
   && PERIOD.test(clean(row.period)) && !!clean(row.unit)
   && !!clean(row.provider_name) && !/^(unknown|unverified|n\/a)$/i.test(clean(row.provider_name))
-  && !!keyOf(row);
+  && !!clean(row.domain) && !!keyOf(row);
 
 function observation(row) {
   return {
@@ -47,6 +49,7 @@ export function buildMarketEvidenceComparison({ countryA, countryB, rowsA = [], 
   const result = names.map((name) => {
     const aa = A.get(name) || [], bb = B.get(name) || [];
     const label = [...aa, ...bb].map((r) => clean(r.metric_name)).sort()[0] || name;
+    const domain = [...aa, ...bb].map((r) => clean(r.domain)).sort()[0] || "unknown";
     const goodA = aa.filter(valid), goodB = bb.filter(valid);
     const indexB = new Map();
     for (const row of goodB) {
@@ -70,6 +73,7 @@ export function buildMarketEvidenceComparison({ countryA, countryB, rowsA = [], 
       : !goodA.length || !goodB.length ? "invalid_evidence" : "not_aligned";
     return {
       metric: label,
+      domain,
       state,
       // Values are exposed only for an unambiguous same-provider, same-period, same-unit pair.
       countryA: state === "comparable" ? observation(first[0]) : null,
@@ -86,7 +90,7 @@ export function buildMarketEvidenceComparison({ countryA, countryB, rowsA = [], 
   const capped = Math.min(Math.max(Number.isInteger(maxIndicators) ? maxIndicators : 8, 1), 20);
   // Prioritize comparable indicators but always show failures: coverage is part of the result.
   const rows = result.sort((x, y) => Number(y.state === "comparable") - Number(x.state === "comparable")
-    || x.metric.localeCompare(y.metric)).slice(0, capped);
+    || x.domain.localeCompare(y.domain) || x.metric.localeCompare(y.metric)).slice(0, capped);
   return {
     countryA: a,
     countryB: b,
