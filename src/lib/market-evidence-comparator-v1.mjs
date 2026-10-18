@@ -1,10 +1,10 @@
 // AICIS market evidence comparator v1 — observation-only, never an MPI or forecast.
 // Do not infer market attractiveness, causal effects, source independence, or probability.
-const PERIOD = /^\\d{4}(?:-(?:0[1-9]|1[0-2]))?(?:-(?:0[1-9]|[12]\\d|3[01]))?$/;
+const PERIOD = /^\d{4}(?:-(?:0[1-9]|1[0-2]))?(?:-(?:0[1-9]|[12]\d|3[01]))?$/;
 const iso = (value) => typeof value === "string" ? value.trim().toUpperCase() : "";
 const clean = (value) => typeof value === "string" ? value.trim() : "";
 const keyOf = (row) => clean(row.metric_name).toLocaleLowerCase("en");
-const alignedKey = (row) => [clean(row.period), clean(row.provider_name).toLocaleLowerCase("en"), clean(row.unit)].join("\\u0000");
+const alignedKey = (row) => [clean(row.period), clean(row.provider_name).toLocaleLowerCase("en"), clean(row.unit)].join("\u0000");
 const valid = (row) => !!row && typeof row.value === "number" && Number.isFinite(row.value)
   && PERIOD.test(clean(row.period)) && !!clean(row.provider_name) && !!keyOf(row);
 
