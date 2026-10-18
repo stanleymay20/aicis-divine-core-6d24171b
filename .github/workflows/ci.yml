@@ -138,6 +138,9 @@ jobs:
           node --test tests/situation-read-model-v1.test.mjs
           node --test tests/situation-workspace-v1.test.mjs
 
+      - name: Market evidence comparator v1 truth floor
+        run: node --test tests/market-evidence-comparator-v1.test.mjs
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
