@@ -34,6 +34,10 @@ test("missing rows, nonfinite values, and missing provenance identity remain una
   assert.equal(invalid.indicators[0].state, "invalid_evidence");
   const noProvider = compare({ countryA: "DEU", countryB: "POL", rowsA: [metric("DEU")], rowsB: [metric("POL", { provider_name: "" })] });
   assert.equal(noProvider.indicators[0].state, "invalid_evidence");
+  const noUnit = compare({ countryA: "DEU", countryB: "POL", rowsA: [metric("DEU")], rowsB: [metric("POL", { unit: null })] });
+  assert.equal(noUnit.indicators[0].state, "invalid_evidence");
+  const unknownProvider = compare({ countryA: "DEU", countryB: "POL", rowsA: [metric("DEU")], rowsB: [metric("POL", { provider_name: "unknown" })] });
+  assert.equal(unknownProvider.indicators[0].state, "invalid_evidence");
 });
 
 test("multiple matching source records remain ambiguous rather than being silently chosen", () => {
