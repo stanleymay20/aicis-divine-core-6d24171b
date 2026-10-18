@@ -44,6 +44,7 @@ import {
   type PrioritySignal,
 } from "./usePrioritySignals";
 import { cn } from "@/lib/utils";
+import { CountryRegionLinksV1 } from "@/components/navigation/CountryRegionLinksV1";
 
 const formatUtcStamp = (date: Date) => {
   const iso = date.toISOString();
@@ -206,6 +207,7 @@ export const MorningBriefDashboard = () => {
               <p className="max-w-2xl leading-relaxed text-muted-foreground">
                 {featured.strategic_implications || featured.summary}
               </p>
+              <CountryRegionLinksV1 countries={featured.affected_countries} regions={featured.affected_regions} />
               <div className="flex flex-wrap gap-6 pt-2">
                 <div>
                   <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -303,11 +305,12 @@ export const MorningBriefDashboard = () => {
       {/* Secondary grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {secondarySignals.slice(0, 2).map((signal) => (
-          <button
-            key={signal.id}
-            onClick={() => inspectSignal(signal)}
-            className="space-y-3 rounded-lg border border-border bg-card p-5 text-left transition-colors hover:border-primary/30"
-          >
+          <div key={signal.id} className="space-y-3 rounded-lg border border-border bg-card p-5">
+            <button
+              onClick={() => inspectSignal(signal)}
+              className="block w-full space-y-3 text-left transition-colors hover:text-primary focus-visible:outline focus-visible:outline-2"
+              aria-label={`Inspect signal: ${signal.title}`}
+            >
             <div className="flex items-start justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                 {signal.category}
@@ -337,7 +340,9 @@ export const MorningBriefDashboard = () => {
                 {scoreText(signal.impact_score)}
               </span>
             </div>
-          </button>
+            </button>
+            <CountryRegionLinksV1 countries={signal.affected_countries} regions={signal.affected_regions} />
+          </div>
         ))}
         <ActionsAwaitingStrip />
       </div>
@@ -439,6 +444,12 @@ export const MorningBriefDashboard = () => {
                   title="Check Watchlist"
                   desc="Review countries, sectors, or routes you track"
                   onClick={() => navigate("/watchlist")}
+                />
+                <ActionCard
+                  icon={<Layers className="h-4 w-4 text-primary" />}
+                  title="Resolution Explorer"
+                  desc="Drill down into countries and verified administrative regions"
+                  onClick={() => navigate("/resolution")}
                 />
                 <ActionCard
                   icon={<Layers className="h-4 w-4 text-primary" />}

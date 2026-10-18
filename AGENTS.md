@@ -10,6 +10,8 @@ If the task touches World, live signals, event identity, evidence triage, analys
 
 If a task touches country comparisons, market potential, international trade, export-entry screening, source licensing, or globalEDGE-like features, first read `docs/GLOBALEDGE_MARKET_EVIDENCE_BENCHMARK_V1.md`. Reuse existing country, normalized-metric, risk-atlas and transaction contracts. Never scrape globalEDGE DIBS into a commercial system, invent a market-potential index, compare mismatched indicator vintages or convert descriptive screening into calibrated forecasts.
 
+When a task touches Resolution Explorer country/region routing, dated country snapshots, Brief/Situation geography badges, or the `enrich-global-signals` worker, read `docs/RESOLUTION_NAVIGATION_ENRICHMENT_V1.md` first. Do not promote free-text regions to verified IDs, treat missing country snapshots as zero risk, or raise enrichment concurrency without conditional-claim and failure-isolation proofs.
+
 Do not restart or scaffold a parallel AICIS implementation. Reverse-engineer the existing system first and preserve working contracts.
 
 The product north star is:

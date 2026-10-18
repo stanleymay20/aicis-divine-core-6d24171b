@@ -141,6 +141,10 @@ jobs:
       - name: Market evidence comparator v1 truth floor
         run: node --test tests/market-evidence-comparator-v1.test.mjs
 
+      - name: Resolution navigation and enrichment v1 truth floor
+        id: resolution_enrichment_v1
+        run: node --test tests/resolution-navigation-enrichment-v1.test.mjs
+
       - name: Strict lint — post-portability code
         id: strict_lint
         continue-on-error: true
@@ -207,6 +211,7 @@ jobs:
           echo "Sovereign artifact lock: ${{ steps.sovereign_artifact_lock.outcome }}"
           echo "Evidence Fabric v1: ${{ steps.evidence_fabric_v1.outcome }}"
           echo "Situation read-model v1: ${{ steps.situation_read_model_v1.outcome }}"
+          echo "Resolution/enrichment v1: ${{ steps.resolution_enrichment_v1.outcome }}"
           echo "Strict lint: ${{ steps.strict_lint.outcome }}"
           echo "Lint debt ratchet: ${{ steps.lint_ratchet.outcome }}"
           echo "Typecheck: ${{ steps.typecheck.outcome }}"
@@ -231,6 +236,7 @@ jobs:
           [ "${{ steps.sovereign_artifact_lock.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.evidence_fabric_v1.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.situation_read_model_v1.outcome }}" = "success" ] || FAILED=1
+          [ "${{ steps.resolution_enrichment_v1.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.strict_lint.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.lint_ratchet.outcome }}" = "success" ] || FAILED=1
           [ "${{ steps.typecheck.outcome }}" = "success" ] || FAILED=1

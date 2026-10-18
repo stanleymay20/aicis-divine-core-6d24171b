@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Activity, Check, Clock3, GitMerge, Layers3, Network, Radio, Search, ShieldCheck } from "lucide-react";
+import { Activity, Check, Clock3, GitMerge, Globe2, Layers3, MapPin, Network, Radio, Search, ShieldCheck } from "lucide-react";
 import {
   GlobalMap,
   type CountryData,
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useIntelligenceOS } from "@/hooks/useIntelligenceOS";
 import { ALL_COUNTRIES } from "@/lib/geo/all-countries";
+import { countryDeepDivePath, resolutionCountryPath } from "@/lib/country-navigation-v1.mjs";
 
 type WorldLayer = "vulnerability" | "networks";
 
@@ -209,6 +210,17 @@ export default function WorldWorkspace() {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-[10px] text-muted-foreground"
+            onClick={() => navigate(resolutionCountryPath(selectedEntity?.type === "country" ? selectedEntity.id : null) ?? "/resolution")}
+            title="Open Resolution Explorer">
+            <MapPin className="h-3.5 w-3.5" /><span className="hidden sm:inline">Resolution</span>
+          </Button>
+          {selectedEntity?.type === "country" && countryDeepDivePath(selectedEntity.id) && (
+            <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-[10px] text-muted-foreground"
+              onClick={() => navigate(countryDeepDivePath(selectedEntity.id)!)} title="Country deep dive">
+              <Globe2 className="h-3.5 w-3.5" /><span className="hidden lg:inline">Country</span>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
