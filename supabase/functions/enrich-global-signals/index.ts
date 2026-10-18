@@ -2,6 +2,7 @@ import { requireAdminOrTrustedWorker } from "../_shared/auth.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { aiChat } from "../_shared/ai-gateway.ts";
+import { enrichmentChunks, verifyEnrichmentClassifications } from "../_shared/enrichment-batch-contract-v1.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,7 +16,9 @@ const CATEGORIES = [
   "supply_chain", "elections", "social_unrest", "infrastructure",
 ];
 
-const MAX_BATCH = 4;
+const MAX_BATCH = 12;
+const CHUNK_SIZE = 4;
+const MAX_PARALLEL_CHUNKS = 2;
 const AI_TIMEOUT_MS = 25000;
 const MAX_ENRICHMENT_ATTEMPTS = 3;
 
@@ -69,22 +72,38 @@ serve(async (req) => {
       });
     }
 
-    const pendingIds = pending.map((s: any) => s.id);
+    // Claim only rows that the current worker actually transitions to "enriching".
+    // Concurrent workers may fetch the same candidates; a fetched row is not a claim.
+    const claimed: typeof pending = [];
+    const claimErrors: string[] = [];
     for (const signal of pending) {
-      await supabase.from("global_signals").update({
+      const { data: won, error: claimError } = await supabase.from("global_signals").update({
         enrichment_status: "enriching",
         enrichment_attempts: Number(signal.enrichment_attempts || 0) + 1,
         updated_at: new Date().toISOString(),
-      } as any).eq("id", signal.id).eq("enrichment_status", "pending_enrichment");
+      } as any)
+        .eq("id", signal.id)
+        .eq("enrichment_status", "pending_enrichment")
+        .eq("enrichment_attempts", signal.enrichment_attempts)
+        .select("id");
+      if (claimError) claimErrors.push(`Claim ${signal.id}: ${claimError.message.slice(0, 100)}`);
+      else if (won?.length === 1) claimed.push(signal);
+    }
+    if (!claimed.length) {
+      return new Response(JSON.stringify({ ok: claimErrors.length === 0, enriched: 0, claimed: 0, claim_errors: claimErrors.length }), {
+        status: claimErrors.length ? 503 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const failPending = async (reason: string) => {
-      for (const signal of pending) {
+    const failClaimed = async (signals: typeof pending, reason: string) => {
+      for (const signal of signals) {
         const attempts = Number(signal.enrichment_attempts || 0) + 1;
-        await supabase.from("global_signals").update({
+        const { error: failureError } = await supabase.from("global_signals").update({
           enrichment_status: attempts >= MAX_ENRICHMENT_ATTEMPTS ? "failed" : "pending_enrichment",
           enrichment_error: reason.slice(0, 500),
-        } as any).eq("id", signal.id);
+        } as any).eq("id", signal.id).eq("enrichment_status", "enriching");
+        if (failureError) console.error(`Failed to release claimed signal ${signal.id}`, failureError.message);
       }
     };
 
@@ -99,7 +118,7 @@ serve(async (req) => {
     };
     const highTrustThreshold = thresholds?.find((t: any) => t.rule_name === "high_trust_override") || defaultThreshold;
 
-    const evidenceBatch = pending.map((s: any, index: number) => ({
+    const evidenceBatch = claimed.map((s: any, index: number) => ({
       index,
       title: String(s.title || "").slice(0, 500),
       summary: String(s.summary || "").slice(0, 1800),
@@ -112,49 +131,74 @@ serve(async (req) => {
       first_detected_at: s.first_detected_at || null,
     }));
 
-    let classifications: any[] = [];
-    let aiProvider = "unknown";
-    let aiModel = "unknown";
+    const classifications: any[] = [];
+    const metadataByIndex = new Map<number, { provider: string; model: string; durationMs: number }>();
+    const errors: string[] = [...claimErrors];
+    const classificationFailures = new Set<number>();
     const classifyStart = Date.now();
+    const chunks = enrichmentChunks(claimed, CHUNK_SIZE);
 
-    try {
-      const ai = await aiChat({
-        messages: [
-          {
-            role: "system",
-            content: `You are AICIS's evidence-constrained signal classifier. Use ONLY the supplied title, summary, source metadata and timestamps. Do not add events, actors, locations, consequences or facts not supported by the supplied evidence. Return a JSON object {"classifications":[...]} with exactly one item per input. Each item: index; category (one of ${CATEGORIES.join(",")}); confidence_score 0-100 (confidence in classification, not truth); impact_score 0-100; urgency_score 0-100; affected_regions string[]; affected_countries ISO3 string[] only when evidenced; affected_sectors string[]; strategic_implications string; likely_consequences string; recommended_actions object with government/media/business/public; misinformation_risk 0-100; impact_reasoning string; uncertainty_notes string. If a field is unsupported, use empty array/string rather than inventing it.`,
-          },
-          { role: "user", content: JSON.stringify({ signals: evidenceBatch }) },
-        ],
-        responseFormat: { type: "json_object" },
-        maxTokens: 2600,
-        timeoutMs: AI_TIMEOUT_MS,
-      });
-      aiProvider = ai.provider;
-      aiModel = ai.model;
-      const parsed = JSON.parse(ai.content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
-      classifications = Array.isArray(parsed?.classifications) ? parsed.classifications : [];
-      if (classifications.length !== pending.length) throw new Error(`Expected ${pending.length} classifications, received ${classifications.length}`);
-    } catch (aiErr) {
-      const message = `AI enrichment unavailable: ${(aiErr as Error).message || "unknown error"}`;
-      console.error(message);
-      await failPending(message);
-      return new Response(JSON.stringify({ ok: false, error: "Enrichment provider unavailable; signals left un-enriched", pending: pendingIds.length }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Waves of two AI requests bound concurrency, tokens and duration. Each
+    // chunk's failure releases only its own claimed signals for controlled retry.
+    for (let wave = 0; wave < chunks.length; wave += MAX_PARALLEL_CHUNKS) {
+      const results = await Promise.all(chunks.slice(wave, wave + MAX_PARALLEL_CHUNKS).map(async (chunk) => {
+        const started = Date.now();
+        try {
+          const chunkEvidence = evidenceBatch.slice(chunk.offset, chunk.offset + chunk.signals.length)
+            .map((item, index) => ({ ...item, index }));
+          const ai = await aiChat({
+            messages: [
+              { role: "system",
+                content: `You are AICIS's evidence-constrained signal classifier. Use ONLY the supplied title, summary, source metadata and timestamps. Do not add events, actors, locations, consequences or facts not supported by the supplied evidence. Return a JSON object {"classifications":[...]} with exactly one item per input. Each item: index; category (one of ${CATEGORIES.join(",")}); confidence_score 0-100 (confidence in classification, not truth); impact_score 0-100; urgency_score 0-100; affected_regions string[]; affected_countries ISO3 string[] only when evidenced; affected_sectors string[]; strategic_implications string; likely_consequences string; recommended_actions object with government/media/business/public; misinformation_risk 0-100; impact_reasoning string; uncertainty_notes string. If a field is unsupported, use empty array/string rather than inventing it.`,
+              },
+              { role: "user", content: JSON.stringify({ signals: chunkEvidence }) },
+            ],
+            responseFormat: { type: "json_object" },
+            maxTokens: 2600,
+            timeoutMs: AI_TIMEOUT_MS,
+          });
+          const parsed = JSON.parse(ai.content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+          const classified = verifyEnrichmentClassifications(parsed?.classifications, chunk.signals.length);
+          return { ok: true as const, chunk, classified, provider: ai.provider, model: ai.model, durationMs: Date.now() - started };
+        } catch (cause) {
+          return { ok: false as const, chunk, error: cause instanceof Error ? cause.message : "Unknown provider error" };
+        }
+      }));
+
+      for (const result of results) {
+        if (!result.ok) {
+          const reason = `AI enrichment unavailable: ${result.error}`;
+          errors.push(`Chunk ${result.chunk.offset}: ${reason.slice(0, 140)}`);
+          for (let index = result.chunk.offset; index < result.chunk.offset + result.chunk.signals.length; index++) {
+            classificationFailures.add(index);
+          }
+          await failClaimed(result.chunk.signals, reason);
+          continue;
+        }
+        for (const cls of result.classified) {
+          const globalIndex = result.chunk.offset + cls.index;
+          classifications.push({ ...cls, index: globalIndex });
+          metadataByIndex.set(globalIndex, { provider: result.provider, model: result.model, durationMs: result.durationMs });
+        }
+      }
     }
 
     const classificationTimeMs = Date.now() - classifyStart;
+    const providers = [...new Set([...metadataByIndex.values()].map((item) => item.provider))];
+    const models = [...new Set([...metadataByIndex.values()].map((item) => item.model))];
+    const aiProvider = providers.length === 1 ? providers[0] : providers.length ? "mixed" : "unavailable";
+    const aiModel = models.length === 1 ? models[0] : models.length ? "mixed" : "unavailable";
+
     let enrichedCount = 0;
     let routedCount = 0;
-    const errors: string[] = [];
-
-    for (let i = 0; i < pending.length; i++) {
-      const signal = pending[i];
+    for (let i = 0; i < claimed.length; i++) {
+      if (classificationFailures.has(i)) continue;
+      const signal = claimed[i];
       try {
         const cls = classifications.find((c: any) => Number(c.index) === i);
         if (!cls) throw new Error("Missing classifier result");
+        const aiMetadata = metadataByIndex.get(i);
+        if (!aiMetadata) throw new Error("Missing classifier provenance");
 
         const baseImpact = boundedNumber(cls.impact_score);
         const confidenceScore = boundedNumber(cls.confidence_score);
@@ -216,8 +260,8 @@ serve(async (req) => {
           audience_framing: recActions,
           impact_reasoning: typeof cls.impact_reasoning === "string" ? cls.impact_reasoning.slice(0, 1000) : null,
           uncertainty_notes: uncertainty,
-          model_version: `${aiProvider}:${aiModel}`,
-          classification_time_ms: classificationTimeMs,
+          model_version: `${aiMetadata.provider}:${aiMetadata.model}`,
+          classification_time_ms: aiMetadata.durationMs,
           enrichment_status: "enriched",
           enrichment_error: null,
           enriched_at: new Date().toISOString(),
@@ -254,11 +298,7 @@ serve(async (req) => {
       } catch (signalErr) {
         const errMsg = (signalErr as Error).message || "Unknown";
         errors.push(`Signal ${signal.id}: ${errMsg.slice(0, 100)}`);
-        const attempts = Number(signal.enrichment_attempts || 0) + 1;
-        await supabase.from("global_signals").update({
-          enrichment_status: attempts >= MAX_ENRICHMENT_ATTEMPTS ? "failed" : "pending_enrichment",
-          enrichment_error: errMsg.slice(0, 500),
-        } as any).eq("id", signal.id);
+        await failClaimed([signal], errMsg);
       }
     }
 
@@ -268,6 +308,9 @@ serve(async (req) => {
       severity: errors.length > 0 ? "warn" : "info",
       metadata: {
         signals_enriched: enrichedCount,
+        signals_claimed: claimed.length,
+        classifier_chunks: chunks.length,
+        classifier_parallelism: MAX_PARALLEL_CHUNKS,
         signals_routed: routedCount,
         classification_time_ms: classificationTimeMs,
         total_duration_ms: Date.now() - enrichStart,
@@ -279,7 +322,9 @@ serve(async (req) => {
     });
 
     return new Response(JSON.stringify({
-      ok: true,
+      ok: errors.length === 0,
+      claimed: claimed.length,
+      classifier_chunks: chunks.length,
       enriched: enrichedCount,
       routed: routedCount,
       errors: errors.length,
