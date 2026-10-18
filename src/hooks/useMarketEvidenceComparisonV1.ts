@@ -6,7 +6,7 @@ import { buildMarketEvidenceComparison } from "@/lib/market-evidence-comparator-
 // or a current-year data set until independent runtime completeness proof exists.
 const SAMPLE_LIMIT_PER_COUNTRY = 250;
 const FIELDS = [
-  "iso3", "metric_name", "period", "value", "unit",
+  "iso3", "domain", "metric_name", "period", "value", "unit",
   "provider_name", "provenance_source", "provenance_observed_at", "last_verified_at",
 ].join(",");
 
