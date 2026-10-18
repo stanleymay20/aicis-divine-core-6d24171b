@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { buildMarketEvidenceComparison as compare } from "../src/lib/market-evidence-comparator-v1.mjs";
 
 const metric = (iso3, extra = {}) => ({
-  iso3, metric_name: "GDP growth", period: "2024", unit: "%", provider_name: "World Bank",
+  iso3, domain: "economy", metric_name: "GDP growth", period: "2024", unit: "%", provider_name: "World Bank",
   value: 0, provenance_source: "WDI", last_verified_at: null, ...extra,
 });
 
@@ -79,4 +79,14 @@ test("Market evidence stays a read-only sample in existing protected Risk Atlas"
   assert.doesNotMatch(hook, /\.(?:insert|update|upsert|delete)\(/);
   assert.match(atlas, /<MarketEvidenceComparisonV1/);
   assert.match(agents, /GLOBALEDGE_MARKET_EVIDENCE_BENCHMARK_V1\.md/);
+});
+
+test("identical indicator names in different domains are not treated as the same series", () => {
+  const out = compare({
+    countryA: "DEU", countryB: "POL",
+    rowsA: [metric("DEU", { domain: "energy" })],
+    rowsB: [metric("POL", { domain: "economy" })],
+  });
+  assert.equal(out.indicators.filter((row) => row.state === "comparable").length, 0);
+  assert.equal(out.availableIndicatorGroups, 2);
 });
