@@ -42,13 +42,15 @@ export function MarketEvidenceComparisonV1({ countryA, countryB }: { countryA: s
           <div className="space-y-2">
             {result.indicators.map((indicator: {
               metric: string;
+              domain: string;
               state: string;
               note: string;
               countryA: { value: number; unit: string | null; period: string; provider: string; provenance: string | null; verifiedAt: string | null } | null;
               countryB: { value: number; unit: string | null; period: string; provider: string; provenance: string | null; verifiedAt: string | null } | null;
             }) => (
-              <div key={indicator.metric} className="rounded-md border border-border/70 p-2">
+              <div key={`${indicator.domain}:${indicator.metric}`} className="rounded-md border border-border/70 p-2">
                 <div className="text-[11px] font-medium">{indicator.metric}</div>
+                <div className="text-[10px] text-muted-foreground">Domain: {indicator.domain}</div>
                 {indicator.state === "comparable" && indicator.countryA && indicator.countryB ? (
                   <>
                     <div className="mt-1 grid grid-cols-2 gap-2 text-[11px]">
