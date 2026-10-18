@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { buildMarketEvidenceComparison as compare } from "../src/lib/market-evidence-comparator-v1.mjs";
 
 const metric = (iso3, extra = {}) => ({
@@ -62,4 +63,16 @@ test("deterministic and explicitly bounded display is not a market-potential ran
   assert.deepEqual(one, two);
   assert.equal(one.availableIndicatorGroups, 3);
   assert.equal(one.displayedIndicatorGroups, 2);
+});
+
+test("Market evidence stays a read-only sample in existing protected Risk Atlas", () => {
+  const hook = readFileSync(new URL("../src/hooks/useMarketEvidenceComparisonV1.ts", import.meta.url), "utf8");
+  const atlas = readFileSync(new URL("../src/components/risk-atlas/AtlasInsightPanel.tsx", import.meta.url), "utf8");
+  const agents = readFileSync(new URL("../AGENTS.md", import.meta.url), "utf8");
+  assert.match(hook, /\.from\("normalized_metrics"\)/);
+  assert.match(hook, /\.eq\("iso3", country\)/);
+  assert.match(hook, /SAMPLE_LIMIT_PER_COUNTRY = 250/);
+  assert.doesNotMatch(hook, /\.(?:insert|update|upsert|delete)\(/);
+  assert.match(atlas, /<MarketEvidenceComparisonV1/);
+  assert.match(agents, /GLOBALEDGE_MARKET_EVIDENCE_BENCHMARK_V1\.md/);
 });
