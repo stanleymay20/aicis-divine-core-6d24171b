@@ -31,18 +31,28 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
     staleTime: 60_000,
   });
 
-  const { data: topCountries, isLoading: countriesLoading } = useQuery({
+  const { data: topCountries, isLoading: countriesLoading, isError: countriesError } = useQuery({
     queryKey: ["resolution-top-countries"],
     queryFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
-      const { data } = await supabase
+      // Snapshot publication is not guaranteed to happen every calendar day.
+      // Select the most recent available vintage instead of silently showing an empty table.
+      const dateResult = await supabase
+        .from("country_performance_snapshots")
+        .select("snapshot_date")
+        .order("snapshot_date", { ascending: false })
+        .limit(1);
+      if (dateResult.error) throw dateResult.error;
+      const snapshotDate = dateResult.data?.[0]?.snapshot_date ?? null;
+      if (!snapshotDate) return { rows: [], snapshotDate: null };
+
+      const { data, error } = await supabase
         .from("country_performance_snapshots")
         .select("iso3, risk_pressure_score, momentum_score, forecast_direction, domain")
-        .eq("snapshot_date", today)
+        .eq("snapshot_date", snapshotDate)
         .order("risk_pressure_score", { ascending: false })
         .limit(200);
-
-      if (!data?.length) return [];
+      if (error) throw error;
+      if (!data?.length) return { rows: [], snapshotDate };
 
       interface CountryAgg { iso3: string; avgRisk: number; avgMomentum: number; domains: number; directions: string[] }
       const map: Record<string, CountryAgg> = {};
@@ -55,7 +65,7 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
         if (row.forecast_direction) existing.directions.push(row.forecast_direction);
       }
 
-      return Object.values(map)
+      const rows = Object.values(map)
         .map((c) => ({
           iso3: c.iso3,
           avgRisk: c.avgRisk / c.domains,
@@ -65,6 +75,7 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
         }))
         .sort((a, b) => b.avgRisk - a.avgRisk)
         .slice(0, 20);
+      return { rows, snapshotDate };
     },
     staleTime: 60_000,
   });
@@ -158,13 +169,18 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          <div className="px-4 pb-2 text-[11px] text-muted-foreground">Snapshot: {topCountries?.snapshotDate ?? "unknown"} · top 20 in a capped 200-row sample; not complete country coverage</div>
           {countriesLoading ? (
             <div className="p-4 space-y-2">
               {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
             </div>
+          ) : countriesError ? (
+            <p className="px-4 py-5 text-sm text-amber-400" role="alert">Country snapshot query unavailable; this is not evidence of zero risk.</p>
+          ) : !topCountries?.rows.length ? (
+            <p className="px-4 py-5 text-sm text-muted-foreground">No country snapshots are available in this view.</p>
           ) : (
             <div className="divide-y divide-border">
-              {topCountries?.map((c) => (
+              {topCountries.rows.map((c) => (
                 <div
                   key={c.iso3}
                   role="button"
