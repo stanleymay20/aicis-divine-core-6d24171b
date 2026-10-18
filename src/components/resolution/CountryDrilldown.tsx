@@ -208,7 +208,7 @@ export const CountryDrilldown = ({ iso3, countryName, onSelectRegion, onBack }: 
 
       <EvidenceSection mode="country" iso3={iso3} />
 
-      <CountryRecommendations domains={domains as any} />
+      <CountryRecommendations domains={domains} />
 
       {/* Interactive map */}
       <CountryRiskMap iso3={iso3} countryName={countryName} onSelectRegion={onSelectRegion} />
