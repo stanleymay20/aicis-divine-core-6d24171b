@@ -6,7 +6,9 @@ const clean = (value) => typeof value === "string" ? value.trim() : "";
 const keyOf = (row) => clean(row.metric_name).toLocaleLowerCase("en");
 const alignedKey = (row) => [clean(row.period), clean(row.provider_name).toLocaleLowerCase("en"), clean(row.unit)].join("\u0000");
 const valid = (row) => !!row && typeof row.value === "number" && Number.isFinite(row.value)
-  && PERIOD.test(clean(row.period)) && !!clean(row.provider_name) && !!keyOf(row);
+  && PERIOD.test(clean(row.period)) && !!clean(row.unit)
+  && !!clean(row.provider_name) && !/^(unknown|unverified|n\/a)$/i.test(clean(row.provider_name))
+  && !!keyOf(row);
 
 function observation(row) {
   return {
