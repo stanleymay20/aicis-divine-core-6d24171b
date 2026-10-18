@@ -42,13 +42,13 @@ Existing Risk Atlas accepts comparisons such as `compare Nigeria and Kenya on go
 When a verified ISO3 pair is selected, `MarketEvidenceComparisonV1` reads only existing `normalized_metrics` using the authenticated user's existing Supabase RLS. It does not write, create tables, call globalEDGE, or deploy a new backend.
 
 Contract files:
-- `src/lib/market-evidence-comparator-v1.mjs` — deterministic observation join (metric, exact period, unit and provider).
+- `src/lib/market-evidence-comparator-v1.mjs` — deterministic observation join (domain, metric, exact period, unit and provider).
 - `src/hooks/useMarketEvidenceComparisonV1.ts` — bounded read-only samples of up to 250 metrics **per country**, explicitly not exhaustive.
 - `src/components/risk-atlas/MarketEvidenceComparisonV1.tsx` — annotated, provenance-aware comparison in existing Risk Atlas.
 - `tests/market-evidence-comparator-v1.test.mjs` — required deterministic truth-floor regression tests.
 - `.github/workflows/ci.yml` — mandatory gate for tests.
 
-Comparison output states: `comparable`, `not_aligned`, `missing_country`, `invalid_evidence`, `ambiguous`. Only unambiguous pairs with a shared indicator/period/provider/unit display side-by-side numeric values. Zero is a valid observed value; nonfinite and provider-less observations do not qualify. Multiple matching rows without record-level disambiguation remain ambiguous.
+Comparison output states: `comparable`, `not_aligned`, `missing_country`, `invalid_evidence`, `ambiguous`. Only unambiguous pairs with a shared domain/indicator/period/provider/unit display side-by-side numeric values. Zero is a valid observed value; nonfinite and provider-less observations do not qualify. Multiple matching rows without record-level disambiguation remain ambiguous.
 
 **Do not interpret this as:** globally complete World Bank coverage, data freshness certification, statistical significance, data licensing approval, GDP / trade / demand forecast, estimated market share, relative market attractiveness, source independence, or investment recommendation.
 
@@ -68,7 +68,7 @@ Queries can fail from absent optional live columns, RLS, empty feeds or runtime 
 
 1. Exact-head tests, lint, typecheck, build, CodeQL, auth-boundary and Security DB behavioral workflows must pass before merge.
 2. Live read access must be separately verified on the **maintained** runtime for at least two valid country ISO3s; document query success/error, schema support, record count, sampling cap, latency and RLS behavior. **This has not been shown by CI**.
-3. Verify there are actual same-vintage/source/unit indicator pairs, plus at least one explicit mismatched-period and missingness case.
+3. Verify there are actual same-domain/vintage/source/unit indicator pairs, plus at least one explicit mismatched-period and missingness case.
 4. Verify the UI reports unavailable data and does not portray empty or sampled rows as a full-country profile.
 5. Confirm provenance and source licensing per original provider before broader commercial use.
 6. For any future market-entry *decision* candidate: preregister product/HS code, target user, entry mode, sector-specific indicators, data time, weights (if justified), counterfactuals/alternatives, permission, affordability and human sign-off. Ranking must remain clearly separate from forecast.
