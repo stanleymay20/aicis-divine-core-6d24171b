@@ -1,4 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { countryDeepDivePath } from "@/lib/country-navigation-v1.mjs";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +17,7 @@ interface Props {
 }
 
 export const GlobalOverview = ({ onSelectCountry }: Props) => {
+  const navigate = useNavigate();
   const { data: stats } = useQuery({
     queryKey: ["resolution-global-stats"],
     queryFn: async () => {
@@ -200,6 +204,11 @@ export const GlobalOverview = ({ onSelectCountry }: Props) => {
                     <Badge variant="outline" className="text-[10px]">{c.domains} domains</Badge>
                   </div>
                   <div className="flex items-center gap-3">
+                    <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={(event) => {
+                      event.stopPropagation();
+                      const path = countryDeepDivePath(c.iso3);
+                      if (path) navigate(path);
+                    }} aria-label={`Open country deep dive for ${c.iso3}`}>Country profile</Button>
                     <WatchButton watchType="country" label={countryNames[c.iso3] || c.iso3} countryIso3={c.iso3} />
                     <div className="text-right">
                       <span className="text-xs text-muted-foreground">Risk</span>
