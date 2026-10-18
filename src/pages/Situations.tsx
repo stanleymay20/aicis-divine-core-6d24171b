@@ -18,6 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useSituationsV1 } from "@/hooks/useSituationsV1";
 import type { SituationV1 } from "@/lib/situation-read-model-v1.mjs";
 import { cn } from "@/lib/utils";
+import { CountryRegionLinksV1 } from "@/components/navigation/CountryRegionLinksV1";
 
 type Filter = "all" | "needs_review" | "review_conflict" | "outcome_observed";
 
@@ -130,7 +131,10 @@ function SituationCard({ situation }: { situation: SituationV1 }) {
           </div>
           <div className="grid gap-x-6 gap-y-2 md:grid-cols-2">
             <div><span className="text-muted-foreground">Sources:</span> {situation.sourceIdentifiers.length > 0 ? situation.sourceIdentifiers.slice(0, 4).join(", ") : "unknown"}{situation.sourceIdentifiers.length > 4 ? ` +${situation.sourceIdentifiers.length - 4}` : ""}</div>
-            <div><span className="text-muted-foreground">Countries:</span> {situation.affectedCountries.length > 0 ? situation.affectedCountries.join(", ") : "unknown"}</div>
+            <div className="space-y-1"><span className="text-muted-foreground">Countries / regions:</span>
+              <CountryRegionLinksV1 countries={situation.affectedCountries} regions={situation.affectedRegions} />
+              {situation.affectedCountries.length === 0 && situation.affectedRegions.length === 0 && <span>unknown</span>}
+            </div>
             <div><span className="text-muted-foreground">Sectors:</span> {situation.affectedSectors.length > 0 ? situation.affectedSectors.join(", ") : "unknown"}</div>
             <div><span className="text-muted-foreground">Stakeholders:</span> {situation.affectedStakeholders.length > 0 ? situation.affectedStakeholders.join(", ") : "unknown"}</div>
           </div>
@@ -154,6 +158,7 @@ function SituationCard({ situation }: { situation: SituationV1 }) {
             )}
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => navigate("/resolution")}>Resolution Explorer</Button>
             <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => navigate("/live-stream")}>Open source stream</Button>
             <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => navigate("/decision-ops")}>Decision operations</Button>
           </div>
